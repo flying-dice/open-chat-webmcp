@@ -56,6 +56,26 @@
   background: var(--color-surface-container);
 }
 
+/* Card 41: an already-stored default that no longer checks out
+   (decisions/11-provider-capability-detection.md) — same shape as `.note`,
+   coloured like the danger badges/test-result states below so it reads as
+   something to act on, not just background info. */
+.note--warning {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* Card 41: the inline reason "Set as default" is disabled for a given row —
+   deliberately muted, not danger-coloured, matching the treatment
+   ProviderPicker.svelte gives a disabled model row's reason (explanatory,
+   not alarming — decisions/11's "listed but disabled with a reason", never
+   hidden). */
+.hint {
+  font-size: var(--font-size-small);
+  color: var(--color-on-surface-variant);
+  margin: 0;
+}
+
 /* ---- Empty states ------------------------------------------------------
    Product has more than one distinct empty state (no providers registered
    here, vs. "no tool-capable models" in the side panel); each carries its

@@ -22,6 +22,19 @@
     permissionGranted: boolean | undefined;
     testOutcome: TestOutcome | undefined;
     testing: boolean;
+    /**
+     * Card 41 (decisions/11-provider-capability-detection.md): whether
+     * `provider.defaultModel`'s tool-capability is still being checked —
+     * "Set as default" reads "Checking…" and stays disabled meanwhile,
+     * rather than flashing enabled before the answer is in.
+     */
+    checkingDefaultModel: boolean;
+    /** Whether `provider.defaultModel` is confirmed tool-capable — the same three-state rule (tool-capable / no-tools / unknown) the side panel's picker applies, computed once in the parent (src/options/components/ProvidersSection.svelte) via the shared src/lib/providers/capability.ts so both surfaces never disagree. */
+    canSetDefault: boolean;
+    /** The inline reason "Set as default" is disabled, in the picker's own wording — `undefined` once the model checks out (or while still checking). */
+    setDefaultBlockedReason: string | undefined;
+    /** Set only when `isDefault` and the STORED default no longer checks out (model removed, re-pulled without tools, provider deleted) — card 41's fourth checklist item: an already-stored invalid default must surface clearly, not silently. */
+    defaultInvalidReason: string | undefined;
     onEdit: () => void;
     onRemove: () => void;
     onMoveUp: () => void;
@@ -38,6 +51,10 @@
     permissionGranted,
     testOutcome,
     testing,
+    checkingDefaultModel,
+    canSetDefault,
+    setDefaultBlockedReason,
+    defaultInvalidReason,
     onEdit,
     onRemove,
     onMoveUp,
@@ -69,7 +86,13 @@
     </div>
 
     <span class="badge">{TYPE_LABELS[provider.type]}</span>
-    {#if isDefault}<span class="badge badge--primary">Default</span>{/if}
+    {#if isDefault}
+      {#if defaultInvalidReason}
+        <span class="badge badge--danger" title={defaultInvalidReason}>Default — needs attention</span>
+      {:else}
+        <span class="badge badge--primary">Default</span>
+      {/if}
+    {/if}
     {#if provider.headers && provider.headers.length > 0}
       <span
         class="provider-row__headers"
@@ -94,12 +117,20 @@
         {testing ? "Testing…" : "Test connection"}
       </button>
       {#if !isDefault}
-        <button type="button" onclick={onSetDefault}>Set as default</button>
+        <button type="button" onclick={onSetDefault} disabled={checkingDefaultModel || !canSetDefault}>
+          {checkingDefaultModel ? "Checking…" : "Set as default"}
+        </button>
       {/if}
       <button type="button" onclick={onEdit}>Edit</button>
       <button type="button" onclick={onRemove}>Remove</button>
     </div>
   </div>
+
+  {#if !isDefault && !checkingDefaultModel && setDefaultBlockedReason}
+    <!-- Card 41: same treatment ProviderPicker.svelte gives a disabled
+         model row's reason — muted, explanatory text, not an alarm. -->
+    <p class="hint">{setDefaultBlockedReason}</p>
+  {/if}
 
   {#if testOutcome}
     <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>

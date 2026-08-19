@@ -56,6 +56,7 @@ import {
   type ProviderError,
   type ProviderModel,
 } from "../../lib/provider";
+import { resolveCapability } from "../../lib/providers/capability";
 import { flushSession, type SelectionResolution } from "../../lib/session";
 import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
 
@@ -313,19 +314,12 @@ async function loadModels(providerId: string): Promise<void> {
   modelsState = { status: "loaded", entries };
 }
 
-/** Capability lookups run concurrently, one per model (decision 06's "issued concurrently and cached thereafter", carried into decision 11). A lookup failure resolves to `"unknown"` with the error as its reason — never dropped from the list. */
+/** Capability lookups run concurrently, one per model (decision 06's "issued concurrently and cached thereafter", carried into decision 11). A lookup failure resolves to `"unknown"` with the error as its reason — never dropped from the list (src/lib/providers/capability.ts's {@link resolveCapability}, shared with the options page's default-model check — card 41). */
 async function resolveCapabilities(
   client: ChatProvider,
   models: ProviderModel[],
 ): Promise<ModelListEntry[]> {
-  const capabilities = await Promise.all(
-    models.map(async (model) => {
-      const result = await client.getCapabilities(model);
-      return result.ok
-        ? result.value
-        : ({ status: "unknown", detail: [describeProviderError(result.error)] } as ModelCapabilities);
-    }),
-  );
+  const capabilities = await Promise.all(models.map((model) => resolveCapability(client, model)));
   return models.map((model, i) => ({ model, capability: capabilities[i] }));
 }
 
@@ -356,11 +350,8 @@ export async function enterManualModel(modelId: string): Promise<void> {
 
   const token = modelsRequestToken; // manual entry doesn't invalidate an in-flight list load
   const model: ProviderModel = { id: trimmed, name: trimmed };
-  const result = await client.getCapabilities(model);
+  const capability = await resolveCapability(client, model);
   if (token !== modelsRequestToken || modelsState.status !== "not-supported") return;
-  const capability: ModelCapabilities = result.ok
-    ? result.value
-    : { status: "unknown", detail: [describeProviderError(result.error)] };
   modelsState = { ...modelsState, manualEntry: { model, capability } };
 }
 
