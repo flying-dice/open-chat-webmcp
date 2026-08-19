@@ -1,9 +1,24 @@
 // Panel state for the side panel chat shell (card 07), now backed by
-// card 12's per-tab persistence (src/lib/session.ts,
+// card 34's global, tab-aware chat history (src/lib/session.ts,
+// decisions/13-global-tab-aware-chat-history.md, which REVISES
 // decisions/07-session-state-and-persistence.md) — the SESSION SWAP
-// documented in card 07's original header comment.
+// documented in card 07's original header comment, generalised from "swap
+// to this tab's session" to "swap to whichever chat is current".
 //
-// `messages` is a VIEW over the active tab's `ChatSession.messages`: every
+// IDENTITY (decision 13): a chat is no longer a property of a tab. Each
+// `ChatSession` has its own `id` and is listed globally; a tab merely
+// POINTS at its current chat id (persisted via src/lib/session.ts's
+// `tabchat:<tabId>` pointer). This module tracks which tab it's currently
+// showing in two plain module vars, `activeTabId`/`activeTabOrigin` — NOT
+// on the `ChatSession` itself, since the same chat can legitimately be
+// viewed from a tab whose origin differs from the chat's own `origin`
+// (decision 13's cross-origin-open case). `activeTabOrigin` is the tab's
+// REAL current origin, kept in step by `syncSessionToTab`/
+// `applyPanelNavigation` only — opening a past chat via `openChatInTab`
+// does NOT touch it, so a later actual navigation is still detected
+// correctly regardless of which chat happens to be open at the time.
+//
+// `messages` is a VIEW over the active chat's `ChatSession.messages`: every
 // entry this module pushes is a `PanelMessage`, which structurally *is* a
 // `ChatMessage` (role/content/toolCalls/toolCallId/toolName) plus small
 // UI-only extras (`id`, `createdAt`, `toolArgs`, `toolStatus`). Because
@@ -30,18 +45,31 @@
 //     copy — the transcript copy and the log are two different views of the
 //     same call, kept in step by these two mutators.
 //
-// `syncSessionToTab`/`applyPanelNavigation` replace the old unconditional
-// `resetConversation()` — see src/sidepanel/services/activeTab.ts, which
-// now distinguishes a real tab switch (load-or-create that tab's own
-// history) from a same-tab cross-origin navigation (reset), per decision
-// 07's "switching tabs swaps the visible session; it never merges
-// histories" vs. "the old conversation refers to tools and page state that
-// no longer exist" for cross-origin nav.
+// `syncSessionToTab` (real tab switch: resolve that tab's pointer) and
+// `applyPanelNavigation` (same-tab cross-origin nav: RETIRE the current
+// chat — leave it exactly as-is in storage, just stop pointing this tab at
+// it — and start a fresh one) are the swap's entry points; see
+// src/sidepanel/services/activeTab.ts, which distinguishes the two per
+// decision 13's "cross-origin navigation no longer destroys a conversation
+// ... it starts a new current chat and leaves the old one in history."
+// Both funnel through `startNewChat`, exported as the SEAM card 36 ("New
+// Chat" button) needs — see its doc comment below.
+//
+// `openChatInTab` is the third entry point: resuming a chat from the
+// History view (card 34), including one started against a different origin
+// than the current tab — allowed, but the UI must stay honest about it
+// (decision 13): `activeChatOrigin` is exposed below precisely so a
+// consumer (App.svelte) can compare it against `pageInfo.origin` and show
+// that this page's tools are not the ones the transcript used, rather than
+// implying old tool calls could be re-run here. Page tools themselves
+// always come from `pageInfo`/`tools` (the CURRENT tab), never from
+// anything chat-specific — that separation already existed and needs no
+// change here.
 //
 // `streamingMessageId`, `connectionStatus`, `pageInfo`, and the stop-handler
 // seam stay in-memory/ephemeral — they were never part of the swap.
 //
-// SINGLE OWNER (card 27, boards/project-backlog/27-selection-store-stale-session-write.md):
+// SINGLE OWNER (card 29, boards/project-backlog/29-selection-store-stale-session-write.md):
 // this module is the ONLY place that loads or holds an in-memory
 // `ChatSession`. src/sidepanel/stores/selection.svelte.ts used to keep its
 // own private copy just to read/write the `selection` field, and that
@@ -51,16 +79,21 @@
 // `setSessionSelection` below are the fix: selection.svelte.ts now reads
 // and writes the selection field through the SAME live object every other
 // mutator in this file uses, so a write can never be based on a copy it
-// did not just read.
+// did not just read. That invariant still holds under the id-keyed model —
+// only the tab-identity guard they use changed, from comparing the tab id
+// stored ON the session to comparing against this module's own
+// `activeTabId` (see the two functions' bodies).
 
 import type { ChatMessage, ToolCall } from "../../lib/provider";
 import type { ProviderSelection } from "../../lib/providers/registry";
 import {
-  applyNavigation,
   completeToolCall,
-  getOrCreateSession,
+  createChat,
+  getChat,
+  getOrCreateChatForTab,
   logToolCall,
   saveSession,
+  setCurrentChatForTab,
   type ChatSession,
   type ToolCallLogEntry,
   type ToolCallMode,
@@ -170,6 +203,10 @@ function makeId(): string {
 // ---------------------------------------------------------------------------
 
 let session = $state<ChatSession | undefined>(undefined);
+/** The tab this module is currently pointed at — NOT stored on `session` itself, since decision 13 lets a chat be viewed from a tab whose origin differs from the chat's own. Undefined until the first {@link syncSessionToTab} call. */
+let activeTabId: number | undefined = undefined;
+/** `activeTabId`'s REAL current origin — updated only by {@link syncSessionToTab} and {@link applyPanelNavigation}, never by {@link openChatInTab}, so a later actual navigation is detected against the tab's true history regardless of which chat happens to be open. */
+let activeTabOrigin = "";
 let streamingMessageId = $state<string | null>(null);
 let connectionStatus = $state<ConnectionStatus>("unknown");
 let pageInfo = $state<PageInfo | undefined>(undefined);
@@ -210,6 +247,31 @@ export const panel = {
   get toolCalls(): ToolCallLogEntry[] {
     return session?.toolCalls ?? [];
   },
+  /** The active chat's own id, or `undefined` if none is loaded yet — for the History view to know which entry is currently open. */
+  get activeChatId(): string | undefined {
+    return session?.id;
+  },
+  /**
+   * The active chat's own `origin` — the origin it was STARTED against,
+   * which is what the history list shows and, per decision 13, does not
+   * have to match `pageInfo.origin`. Compare the two to detect the
+   * cross-origin-open case; App.svelte does exactly that to show the
+   * "this page's tools are not the ones this conversation used" notice.
+   */
+  get activeChatOrigin(): string | undefined {
+    return session?.origin;
+  },
+  /**
+   * Card 35: whether the active chat's persisted `selection` was set by a
+   * deliberate user action rather than silently seeded from the stored
+   * global default. See {@link setSessionSelection}'s `explicit` param and
+   * `SessionWithSelectionMeta`'s doc comment above for why this can't live
+   * on `ChatSession` itself. `false` (never `undefined`) when there's no
+   * session, or no selection, loaded yet — nothing to have confirmed.
+   */
+  get selectionExplicit(): boolean {
+    return (session as SessionWithSelectionMeta | undefined)?.selectionExplicit === true;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -218,29 +280,114 @@ export const panel = {
 // ---------------------------------------------------------------------------
 
 /**
- * Point the panel at `tabId`/`origin`: loads that tab's persisted
- * `ChatSession` (or creates a fresh one) and makes it the live target for
- * every mutator below. Call on initial mount and on every real tab switch
- * — never for a same-tab navigation, see {@link applyPanelNavigation}.
+ * Point the panel at `tabId`/`origin`: resolves that tab's CURRENT chat
+ * (its stored pointer, or a fresh chat if there is none/it's stale/it was
+ * deleted — see `getOrCreateChatForTab`'s doc comment) and makes it the
+ * live target for every mutator below. Call on initial mount and on every
+ * real tab switch — never for a same-tab navigation, see
+ * {@link applyPanelNavigation}.
  */
 export async function syncSessionToTab(tabId: number, origin: string): Promise<void> {
-  session = await getOrCreateSession(tabId, origin);
+  activeTabId = tabId;
+  activeTabOrigin = origin;
+  session = await getOrCreateChatForTab(tabId, origin);
   streamingMessageId = null;
+  await setCurrentChatForTab(tabId, session.id, origin);
 }
 
 /**
- * Apply a same-tab navigation to the active session (decision 07):
- * same-origin is a no-op (history stays), cross-origin resets it (the old
- * conversation refers to tools/page state that no longer exist). No-op if
- * no session is loaded yet.
+ * Apply a same-tab navigation (decision 13): a real origin change retires
+ * the current chat — it stays exactly as it is in storage, this tab simply
+ * stops pointing at it — and starts a fresh one via {@link startNewChat}.
+ * A no-op if the origin hasn't actually changed from what this tab was last
+ * known to be at, or if no session/tab is loaded yet. Compares against this
+ * module's own `activeTabOrigin`, not the loaded chat's `origin` — the two
+ * can legitimately differ already if a history entry was opened
+ * cross-origin (see `openChatInTab`), so this must not mistake "the user
+ * opened an old chat from a different site" for "the tab just navigated".
  */
 export async function applyPanelNavigation(newOrigin: string): Promise<void> {
-  if (!session) return;
-  const next = applyNavigation(session, newOrigin);
-  if (next === session) return; // same-origin: nothing changed
-  session = next;
+  if (!session || activeTabId === undefined) return;
+  if (activeTabOrigin === newOrigin) return;
+  activeTabOrigin = newOrigin;
+  await startNewChat(newOrigin);
+}
+
+/**
+ * Retire the current tab's chat (leave it untouched in storage — it's
+ * already committed if it has content, and if it's still empty nothing was
+ * ever written for it) and start a fresh one for `origin`, carrying the
+ * previous chat's provider/model selection over (a user preference, not
+ * page state — same rationale decision 07 gave for the old per-tab reset).
+ * No-op if no tab is loaded yet.
+ *
+ * Card 35's explicit-selection flag (see `panel.selectionExplicit` above) is
+ * carried over alongside the selection itself: a choice the user already
+ * confirmed stays confirmed in the fresh chat too ("remembering that choice
+ * for subsequent chats is fine" — boards/project-backlog/35-force-explicit-model-selection.md).
+ * This stays in-memory only, same as the carried-over `selection` itself
+ * (`createChat` never writes to storage — see its doc comment) — tried
+ * persisting it immediately once, but that made the fresh empty chat show
+ * up in the History list right away with a "(no messages yet)" placeholder,
+ * which is worse than the (rare: panel closed in the few seconds before the
+ * first message) risk of losing the carry-over. Matches
+ * `syncSessionToTab`'s existing fresh-chat behaviour, which already accepted
+ * that same tradeoff before this card.
+ *
+ * Used internally by {@link applyPanelNavigation} for a cross-origin
+ * navigation. Also exported as the SEAM card 36 ("New Chat",
+ * boards/project-backlog/36-new-chat-action.md) uses: its header button
+ * calls this directly (passing `pageInfo.origin`, i.e. "new chat for the
+ * page I'm looking at right now") instead of a navigation event triggering
+ * it — the retire-and-start-fresh behaviour itself is exactly this function
+ * either way. That card guards against piling up empty duplicate chats by
+ * simply not calling this at all when the current chat has no messages yet
+ * (there's nothing to retire, so starting "fresh" would just be a second,
+ * indistinguishable empty chat) — see App.svelte's `handleNewChat`.
+ */
+export async function startNewChat(origin: string): Promise<void> {
+  if (activeTabId === undefined) return;
+  const priorExplicit = (session as SessionWithSelectionMeta | undefined)?.selectionExplicit === true;
+  session = createChat(origin, session?.selection);
+  if (session.selection) (session as SessionWithSelectionMeta).selectionExplicit = priorExplicit;
   streamingMessageId = null;
-  await saveSession(session, { immediate: true });
+  await setCurrentChatForTab(activeTabId, session.id, origin);
+}
+
+/**
+ * Resume a past chat (card 34's History view) as the current tab's chat.
+ * Allowed even when `chat.origin` differs from `pageInfo.origin` (decision
+ * 13) — the transcript stays readable, but page tools keep coming from
+ * `pageInfo`/`tools` (the CURRENT tab) regardless of which chat is open,
+ * since those are never sourced from the chat object at all. Deliberately
+ * does NOT touch `activeTabOrigin`, so a real navigation afterwards is
+ * still measured against the tab's actual history (see module doc
+ * comment). Returns `false` (no-op) if no tab is loaded yet or `chatId`
+ * doesn't resolve to a stored chat (e.g. it was just deleted).
+ */
+export async function openChatInTab(chatId: string): Promise<boolean> {
+  if (activeTabId === undefined) return false;
+  const chat = await getChat(chatId);
+  if (!chat) return false;
+  session = chat;
+  streamingMessageId = null;
+  await setCurrentChatForTab(activeTabId, chat.id, activeTabOrigin);
+  return true;
+}
+
+/**
+ * If `chatId` is the chat currently open in this tab, replace it with a
+ * fresh one (via {@link startNewChat}) so a later message can't resurrect
+ * a chat the user just deleted (storage writes are keyed by chat id, so
+ * continuing to write to the in-memory `session` object after its storage
+ * record was removed would otherwise silently recreate it). Called by the
+ * History view right after {@link deleteChat}/`clearAllChats`
+ * (src/lib/session.ts) for whichever of those was the active chat. A no-op
+ * for any other `chatId`.
+ */
+export async function discardActiveChatIfDeleted(chatId: string): Promise<void> {
+  if (session?.id !== chatId || activeTabId === undefined) return;
+  await startNewChat(activeTabOrigin);
 }
 
 function findMessage(id: string): PanelMessage | undefined {
@@ -256,10 +403,29 @@ function findMessage(id: string): PanelMessage | undefined {
 // it thinks it is.
 // ---------------------------------------------------------------------------
 
-/** The live session's persisted `{providerId, model}` selection for `tabId`, or `undefined` if no session is loaded yet (or a different tab's is). Read-only — never returns a copy the caller could mistakenly persist later. */
+/** The live session's persisted `{providerId, model}` selection for `tabId`, or `undefined` if no session is loaded yet (or a different tab's is — checked against this module's `activeTabId`, since the chat object itself no longer carries a tab id, see module doc comment). Read-only — never returns a copy the caller could mistakenly persist later. */
 export function getSessionSelection(tabId: number): ProviderSelection | undefined {
-  return session && session.tabId === tabId ? session.selection : undefined;
+  return session && activeTabId === tabId ? session.selection : undefined;
 }
+
+/**
+ * Card 35 (boards/project-backlog/35-force-explicit-model-selection.md):
+ * `ChatSession` (src/lib/session.ts, out of this package's ownership) has
+ * no field distinguishing a selection the user actually chose from one that
+ * was silently seeded from the stored global default — both round-trip as
+ * the exact same `{providerId, model}` shape. Rather than widen that type,
+ * this stores one extra boolean alongside `selection` the same way
+ * `PanelMessage` stores UI-only extras alongside `ChatMessage` (see this
+ * module's header doc comment): not part of `ChatSession`'s declared type,
+ * but `chrome.storage.local` round-trips arbitrary JSON shape regardless,
+ * and `isChatSession`'s validator only checks for the fields it declares,
+ * never rejects extras. A chat persisted before this field existed reads
+ * back `undefined` here, which `panel.selectionExplicit` treats as
+ * "not explicit" — the safer of the two readings when the data genuinely
+ * can't say which it was (an already-blocked composer once, rather than
+ * silently trusting an old implicit default forever).
+ */
+type SessionWithSelectionMeta = ChatSession & { selectionExplicit?: boolean };
 
 /**
  * Persist `next` as `tabId`'s selection by mutating the SAME live session
@@ -267,17 +433,24 @@ export function getSessionSelection(tabId: number): ProviderSelection | undefine
  * snapshot. This is what makes it safe to change the model mid-conversation:
  * whatever messages the agent loop has appended since this session was
  * loaded are still on `session.messages` when this saves, because it's the
- * identical object, not a copy read earlier (card 27's invariant: "no
+ * identical object, not a copy read earlier (card 29's invariant: "no
  * writer may persist a session it did not just read"). Returns `false`
  * (and does not write anything) if no session is loaded for `tabId` yet —
  * the caller should not assume the write took effect.
+ *
+ * `explicit` records whether this write represents a deliberate user
+ * choice (card 35) — `true` from the picker's `selectModel`/`confirmSelection`,
+ * `false` from `syncToTab`'s silent default-seed. See
+ * `panel.selectionExplicit`.
  */
 export async function setSessionSelection(
   tabId: number,
   next: ProviderSelection,
+  explicit: boolean,
 ): Promise<boolean> {
-  if (!session || session.tabId !== tabId) return false;
+  if (!session || activeTabId !== tabId) return false;
   session.selection = next;
+  (session as SessionWithSelectionMeta).selectionExplicit = explicit;
   await saveSession(session, { immediate: true });
   return true;
 }

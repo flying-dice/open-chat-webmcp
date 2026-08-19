@@ -69,6 +69,7 @@ function toChatMessage(message: OllamaChatMessage): ChatMessage {
 
 async function* adaptChatStream(
   baseUrl: string,
+  headers: ProviderConfig["headers"],
   params: ChatParams,
 ): AsyncGenerator<ChatStreamEvent, void, void> {
   const stream = ollamaChat({
@@ -77,6 +78,7 @@ async function* adaptChatStream(
     tools: params.tools,
     signal: params.signal,
     baseUrl,
+    headers,
   });
 
   for await (const event of stream) {
@@ -110,15 +112,22 @@ async function* adaptChatStream(
   }
 }
 
-/** Build a `ChatProvider` bound to one resolved Ollama provider config. */
+/**
+ * Build a `ChatProvider` bound to one resolved Ollama provider config.
+ * `config.headers` (decisions/15-custom-headers-are-credentials.md) is
+ * threaded through to every wire call below — useful for a user running
+ * Ollama behind a gateway that wants its own headers, not just the local,
+ * auth-free case this client was originally built for.
+ */
 export function createOllamaProvider(config: ProviderConfig): ChatProvider {
   const baseUrl = config.baseUrl;
+  const headers = config.headers;
 
   return {
     type: "ollama",
 
     async listModels(opts): Promise<ProviderResult<ProviderModel[]>> {
-      const result = await ollamaListModels({ baseUrl, signal: opts?.signal });
+      const result = await ollamaListModels({ baseUrl, headers, signal: opts?.signal });
       if (!result.ok) return result;
       return { ok: true, value: result.value.map(toProviderModel) };
     },
@@ -130,12 +139,12 @@ export function createOllamaProvider(config: ProviderConfig): ChatProvider {
     getCapabilities(model, opts) {
       return ollamaGetCapabilities(
         { name: model.id, digest: model.cacheKey ?? model.id },
-        { baseUrl, signal: opts?.signal, forceRefresh: opts?.forceRefresh },
+        { baseUrl, headers, signal: opts?.signal, forceRefresh: opts?.forceRefresh },
       );
     },
 
     chat(params: ChatParams) {
-      return adaptChatStream(baseUrl, params);
+      return adaptChatStream(baseUrl, headers, params);
     },
   };
 }

@@ -12,10 +12,14 @@
   // needs a human's OK. This component only lets the user pick which of the
   // three policies is active — it does not itself judge any tool call.
   //
-  // History controls (decisions/07-session-state-and-persistence.md): a
-  // clear-all action over src/lib/session.ts's `listSessionSummaries` /
-  // `clearAllSessions`, showing what's actually stored so "Clear all
-  // history" isn't a blind destructive button.
+  // History controls (decisions/13-global-tab-aware-chat-history.md, which
+  // revises decisions/07-session-state-and-persistence.md on this point): a
+  // clear-all action over src/lib/session.ts's `listChatSummaries` /
+  // `clearAllChats`, showing what's actually stored so "Clear all history"
+  // isn't a blind destructive button. Chats are global now, not per-tab —
+  // this lists every stored chat regardless of which tab or site it
+  // happened on (card 34's panel History view is the same list, with an
+  // open action this card doesn't need).
   import { onDestroy, onMount } from "svelte";
   import {
     getApprovalPolicy,
@@ -23,7 +27,7 @@
     setApprovalPolicy,
     type ApprovalPolicy,
   } from "../../lib/settings";
-  import { clearAllSessions, listSessionSummaries, type SessionSummary } from "../../lib/session";
+  import { clearAllChats, listChatSummaries, type ChatSummary } from "../../lib/session";
 
   const POLICY_OPTIONS: {
     value: ApprovalPolicy;
@@ -55,14 +59,14 @@
   let policy = $state<ApprovalPolicy>("default");
   let policyLoading = $state(true);
 
-  let sessions = $state<SessionSummary[]>([]);
+  let sessions = $state<ChatSummary[]>([]);
   let sessionsLoading = $state(true);
   let clearingHistory = $state(false);
 
   let unsubscribePolicy: (() => void) | undefined;
 
   async function refreshSessions(): Promise<void> {
-    sessions = await listSessionSummaries();
+    sessions = await listChatSummaries();
   }
 
   onMount(() => {
@@ -105,15 +109,15 @@
     if (sessions.length === 0) return;
     const totalMessages = sessions.reduce((sum, s) => sum + s.messageCount, 0);
     const ok = confirm(
-      `Delete all ${sessions.length} stored chat session${sessions.length === 1 ? "" : "s"} ` +
+      `Delete all ${sessions.length} stored chat${sessions.length === 1 ? "" : "s"} ` +
         `(${totalMessages} message${totalMessages === 1 ? "" : "s"} total)? ` +
-        `This removes the conversation history and tool-call log for every tab. This cannot be undone.`,
+        `This removes every conversation and tool-call log, on every site and every tab. This cannot be undone.`,
     );
     if (!ok) return;
 
     clearingHistory = true;
     try {
-      await clearAllSessions();
+      await clearAllChats();
       sessions = [];
     } finally {
       clearingHistory = false;
@@ -169,9 +173,11 @@
   <div class="section__header">
     <h2 id="history-heading">Chat history</h2>
     <p>
-      Each tab keeps its own conversation, tied to the site's origin
-      (decisions/07-session-state-and-persistence.md). Provider connections — base URL, API keys,
-      default model — are managed in <a href="#providers-heading">Chat providers</a> above.
+      Every chat is listed here, newest first, no matter which tab or site it happened on — a chat
+      is its own thing now, not tied to a tab (decisions/13-global-tab-aware-chat-history.md). Open
+      and delete individual chats from the side panel's History view; this page only offers
+      clear-all. Provider connections — base URL, API keys, default model — are managed in
+      <a href="#providers-heading">Chat providers</a> above.
     </p>
   </div>
 
@@ -192,7 +198,7 @@
     </div>
   {:else}
     <div class="session-list">
-      {#each sessions as session (session.tabId)}
+      {#each sessions as session (session.id)}
         <div class="session-row">
           <span class="session-row__origin">{formatOrigin(session.origin)}</span>
           <span class="session-row__meta">

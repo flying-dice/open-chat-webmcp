@@ -32,6 +32,7 @@ import type { SerializedTool } from "./protocol";
 import type {
   ModelCapabilities,
   ProviderError,
+  ProviderHeader,
   ProviderResult,
 } from "./provider";
 
@@ -237,6 +238,33 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/**
+ * Build the `Headers` for one request: custom headers
+ * (decisions/15-custom-headers-are-credentials.md) first — for a user
+ * putting this Ollama server behind a gateway that wants its own
+ * `x-api-key`, tenant header, or `Authorization` (Ollama itself has no
+ * API-key concept, so unlike src/lib/providers/openai.ts's client,
+ * `Authorization` is never reserved here) — then `Content-Type` set on top
+ * so it always wins regardless of what the user typed or how it's cased
+ * (`Headers.set` is case-insensitive). Defense in depth only: the options
+ * UI (src/options/components/ProviderForm.svelte) is what refuses a
+ * reserved header *visibly*, before it's ever saved.
+ */
+function buildHeaders(
+  custom: ProviderHeader[] | undefined,
+  contentType?: string,
+): Headers {
+  const headers = new Headers();
+  for (const { key, value } of custom ?? []) {
+    if (key.trim().length === 0) continue;
+    headers.set(key, value);
+  }
+  if (contentType) {
+    headers.set("Content-Type", contentType);
+  }
+  return headers;
+}
+
 // ---------------------------------------------------------------------------
 // listModels() — GET /api/tags
 // ---------------------------------------------------------------------------
@@ -278,16 +306,17 @@ function normalizeModel(raw: unknown): OllamaModel | null {
   };
 }
 
-/** List every locally-pulled model via `GET /api/tags`. */
+/** List every locally-pulled model via `GET /api/tags`. `headers` carries custom request headers (decisions/15) — e.g. for an Ollama server sitting behind a gateway. */
 export async function listModels(opts?: {
   signal?: AbortSignal;
   baseUrl?: string;
+  headers?: ProviderHeader[];
 }): Promise<ProviderResult<OllamaModel[]>> {
   const baseUrl = opts?.baseUrl ?? (await getBaseUrl());
   const result = await ollamaFetchJson<{ models?: unknown }>(
     baseUrl,
     "/api/tags",
-    { method: "GET", signal: opts?.signal },
+    { method: "GET", headers: buildHeaders(opts?.headers), signal: opts?.signal },
   );
   if (!result.ok) return result;
 
@@ -347,7 +376,12 @@ async function writeCachedCapabilities(
  */
 export async function getCapabilities(
   model: Pick<OllamaModel, "name" | "digest">,
-  opts?: { signal?: AbortSignal; baseUrl?: string; forceRefresh?: boolean },
+  opts?: {
+    signal?: AbortSignal;
+    baseUrl?: string;
+    forceRefresh?: boolean;
+    headers?: ProviderHeader[];
+  },
 ): Promise<ProviderResult<ModelCapabilities>> {
   if (!opts?.forceRefresh) {
     const cached = await readCachedCapabilities(model.digest);
@@ -360,7 +394,7 @@ export async function getCapabilities(
     "/api/show",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildHeaders(opts?.headers, "application/json"),
       body: JSON.stringify({ model: model.name }),
       signal: opts?.signal,
     },
@@ -390,7 +424,12 @@ export async function getCapabilities(
  */
 export async function getCapabilitiesForModels(
   models: Pick<OllamaModel, "name" | "digest">[],
-  opts?: { signal?: AbortSignal; baseUrl?: string; forceRefresh?: boolean },
+  opts?: {
+    signal?: AbortSignal;
+    baseUrl?: string;
+    forceRefresh?: boolean;
+    headers?: ProviderHeader[];
+  },
 ): Promise<ProviderResult<ModelCapabilities>[]> {
   return Promise.all(models.map((model) => getCapabilities(model, opts)));
 }
@@ -494,6 +533,8 @@ export interface OllamaChatParams {
   /** Tied to the panel's lifetime — aborting mid-stream ends the generator with a "aborted" error event. */
   signal?: AbortSignal;
   baseUrl?: string;
+  /** Custom request headers (decisions/15-custom-headers-are-credentials.md) — e.g. for an Ollama server sitting behind a gateway. */
+  headers?: ProviderHeader[];
 }
 
 function normalizeToolCall(
@@ -606,7 +647,7 @@ function parseNdjsonLine(line: string): unknown | undefined {
 export async function* chat(
   params: OllamaChatParams,
 ): AsyncGenerator<OllamaStreamEvent, void, void> {
-  const { model, messages, tools, signal } = params;
+  const { model, messages, tools, signal, headers } = params;
   const baseUrl = params.baseUrl ?? (await getBaseUrl());
 
   // One counter per call to `chat`, so every tool call's synthesized id is
@@ -628,7 +669,7 @@ export async function* chat(
   try {
     response = await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildHeaders(headers, "application/json"),
       body: JSON.stringify(requestBody),
       signal,
     });

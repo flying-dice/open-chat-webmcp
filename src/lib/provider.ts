@@ -32,6 +32,62 @@ import type { SerializedTool } from "./protocol";
 export type ProviderType = "ollama" | "openai";
 
 // ---------------------------------------------------------------------------
+// Custom request headers (decisions/15-custom-headers-are-credentials.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * One user-defined request header attached to a provider config. `value` is
+ * a credential by default (decision 15) — the same treatment as `apiKey`:
+ * stored in `chrome.storage.local` only (src/lib/providers/registry.ts),
+ * masked in the options UI (src/options/components/ProviderForm.svelte),
+ * and never written into an error message, the call log, or the inspector.
+ */
+export interface ProviderHeader {
+  key: string;
+  value: string;
+}
+
+/**
+ * Whether `name` is a header a `ChatProvider` client controls for
+ * correctness and a user-defined header (decision 15) can therefore never
+ * override — checked case-insensitively, since HTTP header names are.
+ * Returns the reason to show inline at edit time when reserved, `undefined`
+ * when the name is free to use.
+ *
+ * - `Content-Type` is reserved for every provider type: both clients
+ *   (src/lib/ollama.ts, src/lib/providers/openai.ts) always send JSON
+ *   bodies and depend on this value being exactly right.
+ * - `Accept` is reserved for `"openai"` only — that client sets it per
+ *   request (`application/json` for `listModels`, `text/event-stream` for
+ *   `chat`'s SSE stream); Ollama's client never sets it, so there is nothing
+ *   for a custom value to conflict with.
+ * - `Authorization` is reserved for `"openai"` only, and only while
+ *   `apiKeyConfigured` — decision 15's "exactly one thing controls it":
+ *   OpenAI's client sends `Authorization: Bearer <apiKey>` when a key is
+ *   set, so a custom value would silently lose to it. Ollama has no API-key
+ *   concept at all, so `Authorization` is always free there — useful for a
+ *   gateway sitting in front of a local Ollama server.
+ */
+export function reservedHeaderReason(
+  name: string,
+  opts: { type: ProviderType; apiKeyConfigured: boolean },
+): string | undefined {
+  const lower = name.trim().toLowerCase();
+  if (lower.length === 0) return undefined;
+
+  if (lower === "content-type") {
+    return "Content-Type is set automatically for this provider's wire format and can't be overridden.";
+  }
+  if (opts.type === "openai" && lower === "accept") {
+    return "Accept is set automatically for this provider's wire format and can't be overridden.";
+  }
+  if (opts.type === "openai" && lower === "authorization" && opts.apiKeyConfigured) {
+    return "Authorization is already set from the API key configured above — remove the API key first if you need to set this header yourself.";
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Errors / results
 // ---------------------------------------------------------------------------
 

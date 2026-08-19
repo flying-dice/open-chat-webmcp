@@ -28,9 +28,18 @@
     pageInfo: PageInfo | undefined;
     connectionStatus: ConnectionStatus;
     picker?: Snippet;
+    /**
+     * Card 36 (boards/project-backlog/36-new-chat-action.md): retires the
+     * current chat to history and starts a fresh one, keeping the
+     * provider/model selection. Omitted entirely (button doesn't render)
+     * until App.svelte passes a handler, mirroring how `picker` degrades.
+     */
+    onNewChat?: () => void;
+    /** True while there's no page to start a fresh chat against, or a reply is currently streaming (swapping the live session mid-stream would silently orphan it — see App.svelte's `handleNewChat`). */
+    newChatDisabled?: boolean;
   }
 
-  let { pageInfo, connectionStatus, picker }: Props = $props();
+  let { pageInfo, connectionStatus, picker, onNewChat, newChatDisabled }: Props = $props();
 
   const statusLabel: Record<ConnectionStatus, string> = {
     unknown: "Not connected",
@@ -53,6 +62,17 @@
       <span class="tool-count" title="Tools available on this page">
         {pageInfo.toolCount} {pageInfo.toolCount === 1 ? "tool" : "tools"}
       </span>
+    {/if}
+    {#if onNewChat}
+      <button
+        type="button"
+        class="new-chat-btn"
+        onclick={onNewChat}
+        disabled={newChatDisabled}
+        title="Start a new chat — keeps your provider/model selection, previous chat stays in History"
+      >
+        New chat
+      </button>
     {/if}
   </div>
 
@@ -168,6 +188,13 @@
 
   .connection[data-status="error"] .dot {
     background: var(--color-danger);
+  }
+
+  .new-chat-btn {
+    flex: 0 0 auto;
+    font-size: var(--font-size-small);
+    padding: var(--space-1) var(--space-2);
+    white-space: nowrap;
   }
 
   .picker-slot {

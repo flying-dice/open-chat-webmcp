@@ -70,6 +70,14 @@
 
     <span class="badge">{TYPE_LABELS[provider.type]}</span>
     {#if isDefault}<span class="badge badge--primary">Default</span>{/if}
+    {#if provider.headers && provider.headers.length > 0}
+      <span
+        class="provider-row__headers"
+        title="Header values are masked here — open Edit to view or change them."
+      >
+        {provider.headers.length} custom header{provider.headers.length === 1 ? "" : "s"}
+      </span>
+    {/if}
     {#if permissionGranted === false}
       <span
         class="badge badge--danger"

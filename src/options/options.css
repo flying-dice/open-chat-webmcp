@@ -254,3 +254,55 @@
   display: flex;
   justify-content: flex-end;
 }
+
+/* ---- Custom headers (decisions/15-custom-headers-are-credentials.md) ---- */
+
+.header-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.header-row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.header-row input {
+  flex: 1 1 0;
+}
+
+.header-row__error {
+  color: var(--color-danger);
+  font-size: var(--font-size-small);
+  margin: 0 0 0 2px;
+}
+
+.provider-row__headers {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-small);
+}
+
+/* ---- Disabled state (MCP servers only — providers have no such state) -- */
+
+.provider-row--disabled {
+  opacity: 0.6;
+}
+
+/* ---- Discovered-tools list (decisions/14: "test connection" must show
+   WHAT it found, not just a tick) -------------------------------------- */
+
+.mcp-tool-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--font-size-small);
+  color: var(--color-on-surface-variant);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mcp-tool-list code {
+  color: var(--color-on-surface);
+}

@@ -34,6 +34,7 @@ import type {
   ChatStreamEvent,
   ModelCapabilities,
   ProviderError,
+  ProviderHeader,
   ProviderModel,
   ProviderResult,
   ToolCall,
@@ -111,8 +112,41 @@ function extractErrorMessage(body: string | undefined): string | undefined {
   return body;
 }
 
-function authHeaders(apiKey: string | undefined): Record<string, string> {
-  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+/**
+ * Build the `Headers` for one request: custom headers (decisions/15) first,
+ * then this client's own correctness-critical headers set on top — `Headers`
+ * comparisons and `.set` are case-insensitive, so setting them last means
+ * they always win regardless of what the user typed or how it's cased, the
+ * same guarantee `reservedHeaderReason` (src/lib/provider.ts) describes at
+ * edit time. This is defense in depth, not the primary enforcement — the
+ * options UI (src/options/components/ProviderForm.svelte) is what refuses a
+ * reserved header *visibly*, before it's ever saved.
+ *
+ * `Authorization` is the one client-controlled header that's conditional:
+ * only set here when `apiKey` is present, so a user-supplied `Authorization`
+ * (allowed only when no API key is configured, per decision 15) survives
+ * untouched.
+ */
+function buildHeaders(
+  apiKey: string | undefined,
+  custom: ProviderHeader[] | undefined,
+  clientControlled: { "Content-Type"?: string; Accept?: string },
+): Headers {
+  const headers = new Headers();
+  for (const { key, value } of custom ?? []) {
+    if (key.trim().length === 0) continue;
+    headers.set(key, value);
+  }
+  if (clientControlled["Content-Type"]) {
+    headers.set("Content-Type", clientControlled["Content-Type"]);
+  }
+  if (clientControlled.Accept) {
+    headers.set("Accept", clientControlled.Accept);
+  }
+  if (apiKey) {
+    headers.set("Authorization", `Bearer ${apiKey}`);
+  }
+  return headers;
 }
 
 /** Classify a non-2xx response into the shared `ProviderError` union, distinguishing 401 auth failures and (for endpoints without `/v1/models`) 404/405 as `not-supported` when `treatMissingAsNotSupported` is set. */
@@ -167,13 +201,14 @@ function normalizeModel(raw: unknown): ProviderModel | null {
 async function listModels(
   baseUrl: string,
   apiKey: string | undefined,
+  headers: ProviderHeader[] | undefined,
   opts?: { signal?: AbortSignal },
 ): Promise<ProviderResult<ProviderModel[]>> {
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/v1/models`, {
       method: "GET",
-      headers: authHeaders(apiKey),
+      headers: buildHeaders(apiKey, headers, { Accept: "application/json" }),
       signal: opts?.signal,
     });
   } catch (err) {
@@ -470,6 +505,7 @@ const DONE = Symbol("sse-done");
 async function* chat(
   baseUrl: string,
   apiKey: string | undefined,
+  headers: ProviderHeader[] | undefined,
   params: ChatParams,
 ): AsyncGenerator<ChatStreamEvent, void, void> {
   const { model, messages, tools, signal } = params;
@@ -488,10 +524,10 @@ async function* chat(
   try {
     response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
-      headers: {
+      headers: buildHeaders(apiKey, headers, {
         "Content-Type": "application/json",
-        ...authHeaders(apiKey),
-      },
+        Accept: "text/event-stream",
+      }),
       body: JSON.stringify(requestBody),
       signal,
     });
@@ -690,12 +726,13 @@ async function* chat(
 export function createOpenAiProvider(config: ProviderConfig): ChatProvider {
   const baseUrl = config.baseUrl || DEFAULT_OPENAI_BASE_URL;
   const apiKey = config.apiKey;
+  const headers = config.headers;
 
   return {
     type: "openai",
 
     listModels(opts) {
-      return listModels(baseUrl, apiKey, opts);
+      return listModels(baseUrl, apiKey, headers, opts);
     },
 
     // Static allowlist lookup (decisions/11) — never fails, so this always
@@ -707,7 +744,7 @@ export function createOpenAiProvider(config: ProviderConfig): ChatProvider {
     },
 
     chat(params: ChatParams) {
-      return chat(baseUrl, apiKey, params);
+      return chat(baseUrl, apiKey, headers, params);
     },
   };
 }

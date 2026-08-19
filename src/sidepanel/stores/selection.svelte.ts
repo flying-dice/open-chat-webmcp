@@ -57,7 +57,7 @@ import {
   type ProviderModel,
 } from "../../lib/provider";
 import { flushSession, type SelectionResolution } from "../../lib/session";
-import { getSessionSelection, setSessionSelection } from "./panel.svelte";
+import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
 
 export type { SelectionResolution } from "../../lib/session";
 
@@ -109,6 +109,16 @@ let modelsState = $state<ModelsState>({ status: "idle" });
 /** Guards against a stale async `loadModels` response landing after the user has already switched providers again. */
 let modelsRequestToken = 0;
 
+/**
+ * Card 35/36: the picker popover's own open/close state, lifted out of
+ * ProviderPicker.svelte (which still owns the click-outside/Escape wiring)
+ * so Composer.svelte's blocked-composer empty state (card 35's "route to
+ * the picker in one click") can open the SAME popover instance mounted in
+ * the header, rather than each component owning an independent one that
+ * could disagree about whether it's open.
+ */
+let pickerOpen = $state(false);
+
 // ---------------------------------------------------------------------------
 // Derived
 // ---------------------------------------------------------------------------
@@ -146,6 +156,21 @@ export const selection = {
     if (m.status !== "loaded" && m.status !== "not-supported") return undefined;
     const entries = m.status === "loaded" ? m.entries : m.manualEntry ? [m.manualEntry] : [];
     return entries.find((e) => e.model.id === r.model)?.capability;
+  },
+  /**
+   * Card 35: there IS a resolved provider+model (`resolution.status ===
+   * "ok"`), but it was silently seeded from the stored default rather than
+   * deliberately chosen for this chat (`panel.selectionExplicit` is
+   * `false`) — the "one-click confirm" state. Composer.svelte gates
+   * sending on `resolution.status === "ok" && !needsConfirmation`, not on
+   * `resolution.status === "ok"` alone.
+   */
+  get needsConfirmation(): boolean {
+    return resolution.status === "ok" && !panel.selectionExplicit;
+  },
+  /** Card 35/36's shared picker popover open state — see `pickerOpen`'s doc comment. */
+  get pickerOpen(): boolean {
+    return pickerOpen;
   },
 };
 
@@ -200,7 +225,11 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
   // selection already set and skips the write).
   let persisted = getSessionSelection(newTabId);
   if (persisted === undefined && defaultSelection) {
-    const applied = await setSessionSelection(newTabId, defaultSelection);
+    // Card 35: this is the exact "resolve implicitly from a stored default"
+    // path the card is unhappy about — `explicit: false` records that so
+    // the composer knows to ask for a one-click confirmation before the
+    // first message, rather than treating this silent seed as good enough.
+    const applied = await setSessionSelection(newTabId, defaultSelection, false);
     if (applied) persisted = defaultSelection;
   }
 
@@ -373,12 +402,43 @@ export async function selectModel(model: string): Promise<void> {
 
   const next: ProviderSelection = { providerId, model };
 
-  await setSessionSelection(tabId, next);
+  // Card 35: a click here IS the deliberate choice — explicit: true.
+  await setSessionSelection(tabId, next, true);
 
   const currentDefault = await getDefaultSelection();
   if (!currentDefault) await setDefaultSelection(next);
 
   resolution = { status: "ok", config, model };
+}
+
+/**
+ * Card 35's one-click confirmation for the "needs confirmation" empty
+ * state (`selection.needsConfirmation`): the current chat's selection is
+ * already resolved — `syncToTab` seeded it from the stored default — the
+ * user just hasn't deliberately confirmed it for THIS chat yet. Marks it
+ * explicit without changing provider or model (unlike {@link selectModel},
+ * there's no different model to commit here — the whole point is this one
+ * is already right, it just needed a nod). No-ops unless
+ * `resolution.status === "ok"`.
+ */
+export async function confirmSelection(): Promise<void> {
+  if (resolution.status !== "ok" || tabId === undefined) return;
+  await setSessionSelection(tabId, { providerId: resolution.config.id, model: resolution.model }, true);
+}
+
+/** Card 35/36's shared picker popover — open it (e.g. from Composer's blocked-composer empty state), so ProviderPicker.svelte's already-mounted instance in the header shows up in exactly one click. */
+export function openPicker(): void {
+  pickerOpen = true;
+}
+
+/** Close the shared picker popover — ProviderPicker.svelte's click-outside/Escape/pick-a-model handlers call this. */
+export function closePicker(): void {
+  pickerOpen = false;
+}
+
+/** Toggle the shared picker popover — ProviderPicker.svelte's trigger chip calls this. */
+export function togglePicker(): void {
+  pickerOpen = !pickerOpen;
 }
 
 function currentEntries(): ModelListEntry[] {
@@ -403,10 +463,11 @@ export async function refresh(): Promise<void> {
   await syncToTab(currentTabId, currentOrigin);
 }
 
-/** Flush any pending session write immediately — the picker component calls this from the panel's unload/visibility-change path if it owns one, mirroring `src/lib/session.ts`'s `flushSession` contract. Safe to call with nothing pending. */
+/** Flush any pending session write immediately — the picker component calls this from the panel's unload/visibility-change path if it owns one, mirroring `src/lib/session.ts`'s `flushSession` contract. Safe to call with nothing pending. `src/lib/session.ts`'s debounce map is keyed by chat id (decision 13), not tab id, so this flushes whichever chat `panel.svelte.ts` currently has loaded for this tab rather than `tabId` itself. */
 export async function flush(): Promise<void> {
-  if (tabId === undefined) return;
-  await flushSession(tabId);
+  const chatId = panel.activeChatId;
+  if (tabId === undefined || chatId === undefined) return;
+  await flushSession(chatId);
 }
 
 /** Open the extension's options page — the "no providers registered" and "provider deleted" empty states both link here (decisions/10: provider CRUD lives only in the options page). */

@@ -1,43 +1,59 @@
-// The provider-config registry (decisions/10-provider-registry-and-credential-storage.md):
+// The provider-config registry (decisions/10-provider-registry-and-credential-storage.md,
+// decisions/15-custom-headers-are-credentials.md):
 // CRUD + reordering over the list of providers a user has configured, the
 // active provider+model selection the side panel and agent loop resolve
 // against, and dangling-provider detection for a session (or the default
 // selection) that references a provider id the user has since deleted.
 //
-// Storage split (decisions/10): the provider list — everything except
-// `apiKey` — lives in `chrome.storage.sync` under `providers:list`. Each
-// provider's `apiKey`, if any, lives in `chrome.storage.local` under
-// `providers:apiKey:<id>`, and is merged back in on read. An API key must
-// never reach `chrome.storage.sync` — it's the one field every read/write
-// path here routes separately so that can't happen by accident.
+// Storage split (decisions/10, extended by decisions/15): the provider list
+// — everything except `apiKey` and `headers` — lives in `chrome.storage.sync`
+// under `providers:list`. Each provider's `apiKey`, if any, lives in
+// `chrome.storage.local` under `providers:apiKey:<id>`; its custom headers
+// (decision 15: header VALUES are credentials, same as `apiKey`) live
+// together as one array under `providers:headers:<id>`, keys and values
+// alike — there is no reason to split a header's name from its value across
+// two stores, only to keep both out of the synced list. Both are merged back
+// in on read. Neither field may reach `chrome.storage.sync` — they're the
+// two fields every read/write path here routes separately so that can't
+// happen by accident.
 //
 // Both stores are unencrypted at rest (decisions/07, decisions/10) — that's
 // the options UI's (card 22) job to state plainly next to the API key field,
 // not this module's.
 
-import type { ChatProvider, ProviderType } from "../provider";
+import type { ChatProvider, ProviderHeader, ProviderType } from "../provider";
 import { createOllamaProvider } from "./ollama";
 
 // ---------------------------------------------------------------------------
 // Config shape
 // ---------------------------------------------------------------------------
 
-/** A provider config as the rest of the app sees it (decisions/10). `apiKey`, when present, has already been merged in from local storage. */
+/**
+ * A provider config as the rest of the app sees it (decisions/10, 15).
+ * `apiKey` and `headers`, when present, have already been merged in from
+ * local storage. `headers` is additive on top of decision 10's original
+ * shape — every existing caller that doesn't know about it keeps working
+ * unchanged (it's simply `undefined`/absent), per this card's "keep
+ * `provider.ts`/`registry.ts` edits additive" instruction.
+ */
 export interface ProviderConfig {
   id: string;
   type: ProviderType;
   name: string;
   baseUrl: string;
   apiKey?: string;
+  /** Custom request headers sent on every call (decision 15). Values are credentials — see {@link ProviderHeader}. Empty/absent means none configured. */
+  headers?: ProviderHeader[];
   defaultModel?: string;
 }
 
-/** What actually lives in `chrome.storage.sync` — never carries `apiKey`. */
-type StoredProviderConfig = Omit<ProviderConfig, "apiKey">;
+/** What actually lives in `chrome.storage.sync` — never carries `apiKey` or `headers` (decision 15: header values are credentials, same rule as `apiKey`). */
+type StoredProviderConfig = Omit<ProviderConfig, "apiKey" | "headers">;
 
 const SYNC_KEY_PROVIDERS = "providers:list";
 const SYNC_KEY_DEFAULT_SELECTION = "providers:default";
 const LOCAL_KEY_API_KEY_PREFIX = "providers:apiKey:";
+const LOCAL_KEY_HEADERS_PREFIX = "providers:headers:";
 
 const PROVIDER_TYPES: readonly ProviderType[] = ["ollama", "openai"];
 
@@ -94,11 +110,52 @@ async function writeApiKey(id: string, apiKey: string | undefined): Promise<void
   }
 }
 
-function withApiKey(
+function headersStorageKey(id: string): string {
+  return `${LOCAL_KEY_HEADERS_PREFIX}${id}`;
+}
+
+/** Defensive against corrupted/foreign-written storage, mirroring {@link isStoredProviderConfig}: drop any entry that isn't a clean `{key, value}` pair of strings rather than letting it crash a consumer downstream. */
+function isProviderHeader(v: unknown): v is ProviderHeader {
+  return (
+    isRecord(v) &&
+    typeof v.key === "string" &&
+    v.key.trim().length > 0 &&
+    typeof v.value === "string"
+  );
+}
+
+async function readHeaders(id: string): Promise<ProviderHeader[] | undefined> {
+  const key = headersStorageKey(id);
+  const stored = await chrome.storage.local.get(key);
+  const value = stored[key];
+  if (!Array.isArray(value)) return undefined;
+  const headers = value.filter(isProviderHeader);
+  return headers.length > 0 ? headers : undefined;
+}
+
+/** Write (or, given `undefined`/`[]`, clear) a provider's custom headers — keys and values together, exactly as entered. Always local storage — never synced (decision 15). */
+async function writeHeaders(
+  id: string,
+  headers: ProviderHeader[] | undefined,
+): Promise<void> {
+  const key = headersStorageKey(id);
+  if (headers === undefined || headers.length === 0) {
+    await chrome.storage.local.remove(key);
+  } else {
+    await chrome.storage.local.set({ [key]: headers });
+  }
+}
+
+function withSecrets(
   config: StoredProviderConfig,
   apiKey: string | undefined,
+  headers: ProviderHeader[] | undefined,
 ): ProviderConfig {
-  return apiKey !== undefined ? { ...config, apiKey } : { ...config };
+  return {
+    ...config,
+    ...(apiKey !== undefined ? { apiKey } : {}),
+    ...(headers !== undefined ? { headers } : {}),
+  };
 }
 
 function generateProviderId(): string {
@@ -111,40 +168,48 @@ function generateProviderId(): string {
 // CRUD (decisions/10) — options page (card 22) owns the UI on top of these
 // ---------------------------------------------------------------------------
 
-/** List every registered provider, in display order, with each `apiKey` (if any) merged in from local storage. */
+/** List every registered provider, in display order, with each `apiKey`/`headers` (if any) merged in from local storage. */
 export async function listProviders(): Promise<ProviderConfig[]> {
   const stored = await readStoredList();
   return Promise.all(
-    stored.map(async (config) => withApiKey(config, await readApiKey(config.id))),
+    stored.map(async (config) => {
+      const [apiKey, headers] = await Promise.all([
+        readApiKey(config.id),
+        readHeaders(config.id),
+      ]);
+      return withSecrets(config, apiKey, headers);
+    }),
   );
 }
 
-/** Look up one provider by id, `apiKey` merged in. `undefined` if `id` isn't registered — see {@link resolveProvider} for the "was this deleted" case a session/selection needs. */
+/** Look up one provider by id, `apiKey`/`headers` merged in. `undefined` if `id` isn't registered — see {@link resolveProvider} for the "was this deleted" case a session/selection needs. */
 export async function getProvider(id: string): Promise<ProviderConfig | undefined> {
   const stored = await readStoredList();
   const config = stored.find((c) => c.id === id);
   if (!config) return undefined;
-  return withApiKey(config, await readApiKey(id));
+  const [apiKey, headers] = await Promise.all([readApiKey(id), readHeaders(id)]);
+  return withSecrets(config, apiKey, headers);
 }
 
-/** Register a new provider. Assigns and returns its `id`. `apiKey`, if given, is written to local storage only — it never enters the synced list. */
+/** Register a new provider. Assigns and returns its `id`. `apiKey` and `headers`, if given, are written to local storage only — neither ever enters the synced list. */
 export async function addProvider(
   input: Omit<ProviderConfig, "id">,
 ): Promise<ProviderConfig> {
   const id = generateProviderId();
-  const { apiKey, ...rest } = input;
+  const { apiKey, headers, ...rest } = input;
   const stored = await readStoredList();
   const config: StoredProviderConfig = { ...rest, id };
   await writeStoredList([...stored, config]);
   if (apiKey) await writeApiKey(id, apiKey);
-  return withApiKey(config, apiKey);
+  if (headers && headers.length > 0) await writeHeaders(id, headers);
+  return withSecrets(config, apiKey, headers);
 }
 
 /**
- * Patch an existing provider. `apiKey` — including an explicit `undefined`
- * to clear it — is routed to local storage; every other field updates the
- * synced entry. Returns the merged config, or `undefined` if `id` isn't
- * registered.
+ * Patch an existing provider. `apiKey` and `headers` — including an
+ * explicit `undefined`/`[]` to clear either — are routed to local storage;
+ * every other field updates the synced entry. Returns the merged config, or
+ * `undefined` if `id` isn't registered.
  */
 export async function updateProvider(
   id: string,
@@ -154,24 +219,28 @@ export async function updateProvider(
   const index = stored.findIndex((c) => c.id === id);
   if (index === -1) return undefined;
 
-  const { apiKey, ...rest } = patch;
+  const { apiKey, headers, ...rest } = patch;
   const updated: StoredProviderConfig = { ...stored[index], ...rest };
   const next = [...stored];
   next[index] = updated;
   await writeStoredList(next);
 
-  if ("apiKey" in patch) {
-    await writeApiKey(id, apiKey);
-    return withApiKey(updated, apiKey);
-  }
-  return withApiKey(updated, await readApiKey(id));
+  if ("apiKey" in patch) await writeApiKey(id, apiKey);
+  if ("headers" in patch) await writeHeaders(id, headers);
+
+  const [finalApiKey, finalHeaders] = await Promise.all([
+    "apiKey" in patch ? Promise.resolve(apiKey) : readApiKey(id),
+    "headers" in patch ? Promise.resolve(headers) : readHeaders(id),
+  ]);
+  return withSecrets(updated, finalApiKey, finalHeaders);
 }
 
-/** Remove a provider and its API key. Also clears it as the default selection if it was set — a since-removed provider referenced by a *tab session* is a separate concern the session owner detects via {@link resolveProvider}. */
+/** Remove a provider and its API key and headers. Also clears it as the default selection if it was set — a since-removed provider referenced by a *tab session* is a separate concern the session owner detects via {@link resolveProvider}. */
 export async function removeProvider(id: string): Promise<void> {
   const stored = await readStoredList();
   await writeStoredList(stored.filter((c) => c.id !== id));
   await writeApiKey(id, undefined);
+  await writeHeaders(id, undefined);
 
   const selection = await getDefaultSelection();
   if (selection?.providerId === id) {

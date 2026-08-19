@@ -146,8 +146,9 @@
   </div>
 
   <p class="note">
-    API keys are stored unencrypted on this device (chrome.storage.local) and never synced to
-    your Google account. Anyone with access to this browser profile's data can read them.
+    API keys and custom header values are stored unencrypted on this device
+    (chrome.storage.local) and never synced to your Google account. Anyone with access to this
+    browser profile's data can read them.
   </p>
 
   {#if loading}

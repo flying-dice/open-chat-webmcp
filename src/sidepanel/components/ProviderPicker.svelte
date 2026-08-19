@@ -22,6 +22,8 @@
     reloadModels,
     refresh,
     openOptionsPage,
+    closePicker,
+    togglePicker,
     type ModelListEntry,
   } from "../stores/selection.svelte";
   import { panel } from "../stores/panel.svelte";
@@ -39,7 +41,10 @@
     return "```\n" + command + "\n```";
   }
 
-  let open = $state(false);
+  // Card 35/36: the popover's open/close state lives in the store
+  // (`selection.pickerOpen`), not as local state here, so
+  // Composer.svelte's blocked-composer empty state can open THIS mounted
+  // instance in one click rather than owning a second, independent popover.
   let manualModelInput = $state("");
   let rootEl: HTMLDivElement | undefined = $state();
 
@@ -50,21 +55,13 @@
     if (info) void syncToTab(info.tabId, info.origin);
   });
 
-  function toggle(): void {
-    open = !open;
-  }
-
-  function close(): void {
-    open = false;
-  }
-
   $effect(() => {
-    if (!open) return;
+    if (!selection.pickerOpen) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (rootEl && e.target instanceof Node && !rootEl.contains(e.target)) close();
+      if (rootEl && e.target instanceof Node && !rootEl.contains(e.target)) closePicker();
     };
     const onKeydown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") closePicker();
     };
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("keydown", onKeydown);
@@ -81,7 +78,7 @@
 
   function handlePickModel(entry: ModelListEntry): void {
     if (entry.capability?.status !== "tool-capable") return;
-    void selectModel(entry.model.id).then(() => close());
+    void selectModel(entry.model.id).then(() => closePicker());
   }
 
   function handleManualSubmit(e: SubmitEvent): void {
@@ -97,6 +94,11 @@
     const r = selection.resolution;
     if (r.status === "dangling") return { label: "Provider removed — choose one", variant: "warning" };
     if (r.status === "none") return { label: "Choose provider & model", variant: "muted" };
+    // Card 35: still needs a one-click confirmation before it can send —
+    // flag that on the trigger chip too, not just in the composer.
+    if (selection.needsConfirmation) {
+      return { label: `Confirm ${r.config.name} · ${r.model}`, variant: "warning" };
+    }
     return { label: `${r.config.name} · ${r.model}`, variant: "normal" };
   });
 
@@ -139,14 +141,14 @@
     class="picker__trigger"
     data-variant={triggerInfo.variant}
     aria-haspopup="dialog"
-    aria-expanded={open}
-    onclick={toggle}
+    aria-expanded={selection.pickerOpen}
+    onclick={togglePicker}
     title={triggerInfo.label}
   >
     {triggerInfo.label}
   </button>
 
-  {#if open}
+  {#if selection.pickerOpen}
     <div class="picker__panel" role="dialog" aria-label="Choose provider and model">
       {#if selection.providersStatus === "loading"}
         <p class="hint">Loading providers…</p>
@@ -297,7 +299,14 @@
   }
 
   .picker__trigger {
-    max-width: 160px;
+    /* Clamp to whichever is smaller: the usual 160px cap, or whatever
+       width the header's flex row actually shrank `.picker` down to (e.g.
+       once card 36's "New chat" button is sharing the row) — `.picker`
+       itself already shrinks correctly (min-width: 0 below), but a plain
+       <button> doesn't inherit a flex item's shrunk width on its own, so
+       without this it kept sizing up to the flat 160px and overflowing
+       past its now-narrower parent instead of ellipsizing within it. */
+    max-width: min(160px, 100%);
     border-radius: var(--radius-pill);
     padding: var(--space-1) var(--space-2);
     font-size: var(--font-size-small);

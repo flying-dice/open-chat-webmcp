@@ -8,13 +8,19 @@
   // this options page.
   //
   // Submitting always sends every field (never a sparse patch) — including
-  // `apiKey` when the input is empty, which registry.ts's `updateProvider`
-  // treats as "clear the key" (`"apiKey" in patch`). That keeps this form's
-  // mental model simple: what you see in the fields is what gets saved,
-  // full stop.
+  // `apiKey` and `headers` when empty, which registry.ts's `updateProvider`
+  // treats as "clear it" (`"apiKey"`/`"headers" in patch`). That keeps this
+  // form's mental model simple: what you see in the fields is what gets
+  // saved, full stop.
+  //
+  // Custom headers (decisions/15-custom-headers-are-credentials.md) are
+  // offered for every provider type, not just OpenAI-compatible ones — a
+  // local Ollama server can sit behind a gateway too, and needs the same
+  // shape. Header VALUES get the exact same treatment as `apiKey`: masked
+  // by default, stored local-only (registry.ts), never synced.
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../lib/providers/registry";
-  import type { ProviderType } from "../../lib/provider";
+  import { reservedHeaderReason, type ProviderType } from "../../lib/provider";
   import { DEFAULT_OPENAI_BASE_URL } from "../../lib/providers/openai";
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
@@ -65,6 +71,70 @@
   let defaultModel = $state(untrack(() => initial?.defaultModel ?? ""));
   let showApiKey = $state(false);
 
+  /**
+   * Custom request headers (decisions/15-custom-headers-are-credentials.md).
+   * Each row carries a synthetic `id` distinct from `key`/`value` so
+   * `{#each ... (row.id)}` stays stable while the user is mid-edit on a
+   * duplicate or not-yet-valid key — keying on `key` itself would make two
+   * rows collide, or a row jump position, while its name is still being typed.
+   */
+  interface HeaderRow {
+    id: number;
+    key: string;
+    value: string;
+  }
+  let nextHeaderRowId = untrack(() => (initial?.headers?.length ?? 0) + 1);
+  let headers = $state<HeaderRow[]>(
+    untrack(() =>
+      (initial?.headers ?? []).map((h, i) => ({ id: i, key: h.key, value: h.value })),
+    ),
+  );
+  let showHeaderValues = $state(false);
+
+  function addHeaderRow(): void {
+    headers = [...headers, { id: nextHeaderRowId++, key: "", value: "" }];
+  }
+  function removeHeaderRow(id: number): void {
+    headers = headers.filter((h) => h.id !== id);
+  }
+
+  /**
+   * Refuse a reserved header, or a name duplicated across rows, right where
+   * it's being typed — decision 15's "refused visibly at edit time, not
+   * dropped silently at request time." A row with both fields still blank
+   * (the just-added, not-yet-filled-in row) is not an error. Reads `type`
+   * and `apiKey` reactively, so switching provider type or clearing the API
+   * key re-evaluates every row's reserved-name check live.
+   */
+  function headerRowError(row: HeaderRow): string | undefined {
+    const key = row.key.trim();
+    const value = row.value.trim();
+    if (key.length === 0 && value.length === 0) return undefined;
+    if (key.length === 0) return "Enter a header name, or remove this row.";
+    if (value.length === 0) return "Enter a value, or remove this row.";
+
+    const reserved = reservedHeaderReason(key, {
+      type,
+      apiKeyConfigured: apiKey.trim().length > 0,
+    });
+    if (reserved) return reserved;
+
+    const lower = key.toLowerCase();
+    const duplicates = headers.filter((h) => h.key.trim().toLowerCase() === lower).length;
+    if (duplicates > 1) return `"${key}" is already set on another row above.`;
+
+    return undefined;
+  }
+
+  /** First header validation failure across every row, or `undefined` if all are clean — shared by "Test connection" and submit so neither sends a request built from an invalid header. */
+  function firstHeaderError(): string | undefined {
+    for (const row of headers) {
+      const err = headerRowError(row);
+      if (err) return `Header "${row.key.trim() || "(empty)"}": ${err}`;
+    }
+    return undefined;
+  }
+
   let saving = $state(false);
   let formError = $state<string | undefined>(undefined);
 
@@ -104,11 +174,21 @@
   let testOutcome = $state<TestOutcome | undefined>(undefined);
 
   function buildData(): Omit<ProviderConfig, "id"> {
+    // Drop only fully-blank rows (an added-but-not-yet-filled-in row) —
+    // anything else is sent as typed, including an invalid one; callers
+    // (handleTest/handleSubmit) check `firstHeaderError()` first and never
+    // reach here with one, since a reserved or duplicate name must be fixed
+    // or removed before the row's own validation lets it through.
+    const cleanHeaders = headers
+      .filter((h) => h.key.trim().length > 0 || h.value.trim().length > 0)
+      .map((h) => ({ key: h.key.trim(), value: h.value.trim() }));
+
     return {
       type,
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       apiKey: apiKey.trim() ? apiKey.trim() : undefined,
+      headers: cleanHeaders.length > 0 ? cleanHeaders : undefined,
       defaultModel: defaultModel.trim() ? defaultModel.trim() : undefined,
     };
   }
@@ -125,6 +205,11 @@
     const draft = buildData();
     if (!originPatternForUrl(draft.baseUrl)) {
       testOutcome = { kind: "invalid-response", message: "Enter a valid http:// or https:// base URL first." };
+      return;
+    }
+    const headerError = firstHeaderError();
+    if (headerError) {
+      testOutcome = { kind: "invalid-response", message: headerError };
       return;
     }
     testing = true;
@@ -157,6 +242,11 @@
     }
     if (!originPatternForUrl(baseUrl.trim())) {
       formError = "Enter a valid http:// or https:// base URL.";
+      return;
+    }
+    const headerError = firstHeaderError();
+    if (headerError) {
+      formError = headerError;
       return;
     }
 
@@ -221,9 +311,65 @@
     </div>
   {/if}
 
+  <div class="field">
+    <label for="pf-header-0-key">Custom headers (optional)</label>
+    <p class="note">
+      Sent on every request to this provider — for a gateway that wants its own <code
+        >x-api-key</code
+      >, a tenant or project header, a proxy <code>Authorization</code>, or a Cloudflare Access
+      service-token pair. A bearer token from the API key field above isn't enough for those.
+    </p>
+
+    {#if headers.length > 0}
+      <div class="header-rows">
+        {#each headers as row, i (row.id)}
+          {@const err = headerRowError(row)}
+          <div class="header-row">
+            <input
+              id={i === 0 ? "pf-header-0-key" : undefined}
+              type="text"
+              bind:value={row.key}
+              placeholder="Header name, e.g. x-api-key"
+              autocomplete="off"
+              aria-invalid={err ? "true" : undefined}
+            />
+            <input
+              type={showHeaderValues ? "text" : "password"}
+              bind:value={row.value}
+              placeholder="Value"
+              autocomplete="off"
+              aria-invalid={err ? "true" : undefined}
+            />
+            <button
+              type="button"
+              class="btn-plain"
+              onclick={() => removeHeaderRow(row.id)}
+              aria-label={`Remove header ${row.key || i + 1}`}
+            >
+              Remove
+            </button>
+          </div>
+          {#if err}
+            <p class="header-row__error">{err}</p>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+
+    <div class="form__actions">
+      <button type="button" class="btn-plain" onclick={addHeaderRow}>+ Add header</button>
+      {#if headers.length > 0}
+        <button type="button" class="btn-plain" onclick={() => (showHeaderValues = !showHeaderValues)}>
+          {showHeaderValues ? "Hide values" : "Show values"}
+        </button>
+      {/if}
+    </div>
+  </div>
+
   <p class="note">
-    API keys are stored unencrypted on this device (chrome.storage.local) and never synced to
-    your Google account. Anyone with access to this browser profile can read them.
+    API keys and custom header values are stored unencrypted on this device
+    (chrome.storage.local) and never synced to your Google account. Anyone with access to this
+    browser profile can read them.
   </p>
 
   <div class="field">
