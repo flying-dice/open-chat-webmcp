@@ -1,5 +1,5 @@
-// Provider + model selection for the side panel's picker (card 23,
-// decisions/10-provider-registry-and-credential-storage.md,
+// Provider + model selection for the side panel's picker (card 23, flattened
+// by card 51 per decisions/22-flat-model-picker.md, decisions/10-provider-registry-and-credential-storage.md,
 // decisions/11-provider-capability-detection.md).
 //
 // This is the ONE place the panel resolves "which provider, which model,
@@ -12,15 +12,28 @@
 // mean "don't attach tools" (decisions/11 — an `"unknown"` model is not a
 // confirmed "yes").
 //
-// State model, deliberately split into two things that can disagree:
+// State model:
 //   - `resolution`: the PERSISTED selection for the active tab's session
 //     (decisions/07, decisions/10) — "none" (nothing chosen yet), "dangling"
 //     (chosen, then the provider was deleted), or "ok" (a live provider +
 //     model). This is what the agent loop should read.
-//   - `browsingProviderId` / `models`: the picker UI's own in-progress
-//     browsing state (level 1 = provider, level 2 = model) — lets the user
-//     look at a different provider's models before committing. Only
-//     `selectModel` commits a browse into `resolution`.
+//   - `modelsByProvider`: EVERY registered provider's model list, loaded in
+//     PARALLEL and degrading PER PROVIDER (decisions/22's consequences: "one
+//     unreachable backend greys its own group and never blocks the others" —
+//     the same discipline decisions/19 §4 applies to MCP server discovery,
+//     src/sidepanel/services/mcpTools.ts's `refreshNow`/`ensureMcpDiscoveryFresh`).
+//     Card 23's two-level "browse one provider at a time" concept is gone:
+//     the flat picker (ProviderPicker.svelte) needs every provider's list at
+//     once to build its grouped view, so this module fetches all of them.
+//
+// PER-PROVIDER DEGRADATION: each provider's load is tracked by its own
+// monotonic token in `providerTokens`, not a single shared one. A shared
+// token (like card 23's `modelsRequestToken`) would mean retrying ONE
+// provider bumps the generation for ALL of them, silently discarding
+// still-in-flight loads for providers that were never asked to reload —
+// exactly the "one slow backend blocks/cancels the others" failure this
+// card exists to avoid. `loadModelsForProvider` is otherwise a straight
+// per-provider generalisation of card 23's single `loadModels`.
 //
 // SINGLE OWNER (card 27, boards/project-backlog/27-selection-store-stale-session-write.md):
 // this module used to hold its own private `ChatSession` copy just to
@@ -56,22 +69,31 @@ import {
   type ProviderError,
   type ProviderModel,
 } from "../../lib/provider";
-import { resolveCapability } from "../../lib/providers/capability";
+import { isSelectable, resolveCapability } from "../../lib/providers/capability";
 import { flushSession, type SelectionResolution } from "../../lib/session";
 import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
 
 export type { SelectionResolution } from "../../lib/session";
 
-/** One row in the level-2 model list, with its capability lookup resolved (or still in flight). */
+/** One row in a provider's model list, with its capability lookup resolved (or still in flight — see the doc comment on `capability` below). */
 export interface ModelListEntry {
   model: ProviderModel;
-  /** `undefined` while the per-model capability check is still in flight. */
+  /**
+   * `undefined` while the per-model capability check is still in flight.
+   * In practice this is never observed by a consumer of `ModelsState`:
+   * `loadModelsForProvider` only flips a provider to `"loaded"` once every
+   * entry's capability lookup has resolved (`resolveCapabilities` awaits
+   * `Promise.all` first), so `capability` is always defined by the time UI
+   * reads a `"loaded"` provider's entries. The type stays optional as a
+   * defensive fallback for any future caller that doesn't go through that
+   * path — grouping logic should treat `undefined` the same as `"unknown"`
+   * (never as `"tool-capable"`), never silently drop the row.
+   */
   capability: ModelCapabilities | undefined;
 }
 
-/** State of the level-2 model list for whichever provider is currently being browsed. */
+/** State of one provider's model list. */
 export type ModelsState =
-  | { status: "idle" }
   | { status: "loading" }
   | { status: "loaded"; entries: ModelListEntry[] }
   /**
@@ -81,7 +103,10 @@ export type ModelsState =
    * can branch on `.kind` for a kind-specific fix — a copyable CORS command,
    * an "open options" shortcut for an auth failure — the same vocabulary
    * card 22's options-page UI already keys off (src/options/lib/testResultDisplay.ts),
-   * never a second one invented here (card 14).
+   * never a second one invented here (card 14). decisions/22's consequences:
+   * this is what the picker now has to surface on the PROVIDER'S GROUP
+   * HEADING, since the two-level picker's provider `<select>` — the only
+   * other place this was ever shown prominently — is gone.
    */
   | { status: "error"; message: string; error: ProviderError }
   /**
@@ -103,12 +128,18 @@ let providersStatus = $state<"loading" | "loaded" | "error">("loading");
 
 let resolution = $state<SelectionResolution>({ status: "none" });
 
-/** The provider currently shown at level 1 of the picker — not necessarily the persisted `resolution`'s provider until `selectModel` commits it. */
-let browsingProviderId = $state<string | undefined>(undefined);
-let modelsState = $state<ModelsState>({ status: "idle" });
+/** Every registered provider's model list, keyed by provider id — loaded in parallel, degrading per provider (see this module's header comment). Absent key = never (yet) requested. */
+let providerModelsState = $state<Record<string, ModelsState>>({});
 
-/** Guards against a stale async `loadModels` response landing after the user has already switched providers again. */
-let modelsRequestToken = 0;
+/**
+ * Per-provider load generation, guarding against a stale async response
+ * landing after a NEWER load for that SAME provider has started (e.g. two
+ * quick "Retry" clicks). Deliberately one token per provider id, not one
+ * shared token: reloading provider A must never invalidate an in-flight
+ * load for provider B. Not `$state` — this is internal bookkeeping the UI
+ * never reads directly.
+ */
+const providerTokens: Record<string, number> = {};
 
 /**
  * Card 35/36: the picker popover's own open/close state, lifted out of
@@ -128,6 +159,14 @@ function findProvider(id: string | undefined): ProviderConfig | undefined {
   return id === undefined ? undefined : providers.find((p) => p.id === id);
 }
 
+function entriesFor(providerId: string): ModelListEntry[] {
+  const state = providerModelsState[providerId];
+  if (!state) return [];
+  if (state.status === "loaded") return state.entries;
+  if (state.status === "not-supported" && state.manualEntry) return [state.manualEntry];
+  return [];
+}
+
 export const selection = {
   /** Registered providers, in display order. Empty + `providersStatus === "loaded"` is the "no providers registered" empty state. */
   get providers(): ProviderConfig[] {
@@ -140,23 +179,15 @@ export const selection = {
   get resolution(): SelectionResolution {
     return resolution;
   },
-  get browsingProviderId(): string | undefined {
-    return browsingProviderId;
+  /** Every provider's model-list state, keyed by provider id (decisions/22: the flat picker needs all of them at once, loaded in parallel and degrading independently — see this module's header comment). ProviderPicker.svelte builds its per-provider groups plus the Unverified/No-tool-support buckets from this. */
+  get modelsByProvider(): Record<string, ModelsState> {
+    return providerModelsState;
   },
-  get browsingProvider(): ProviderConfig | undefined {
-    return findProvider(browsingProviderId);
-  },
-  get modelsState(): ModelsState {
-    return modelsState;
-  },
-  /** Tool-capability of the currently *selected* (persisted, not just browsed) model, if resolved and its capability lookup has completed. The agent loop should only attach page tools when this is `"tool-capable"` (decisions/11). */
+  /** Tool-capability of the currently *selected* (persisted) model, if resolved. The agent loop should only attach page tools when this is `"tool-capable"` (decisions/11). */
   get activeCapability(): ModelCapabilities | undefined {
     const r = resolution;
     if (r.status !== "ok") return undefined;
-    const m = modelsState;
-    if (m.status !== "loaded" && m.status !== "not-supported") return undefined;
-    const entries = m.status === "loaded" ? m.entries : m.manualEntry ? [m.manualEntry] : [];
-    return entries.find((e) => e.model.id === r.model)?.capability;
+    return entriesFor(r.config.id).find((e) => e.model.id === r.model)?.capability;
   },
   /**
    * Card 35: there IS a resolved provider+model (`resolution.status ===
@@ -179,11 +210,28 @@ export const selection = {
 // Loading providers + the tab's session
 // ---------------------------------------------------------------------------
 
+/** Kick off a load for any registered provider that doesn't have a model-list state yet — idempotent, safe to call on every sync. Providers already loaded (or loading) are left alone; use {@link reloadModels} or {@link refresh} to force a re-fetch. */
+function ensureModelsLoaded(): void {
+  for (const p of providers) {
+    if (!(p.id in providerModelsState)) void loadModelsForProvider(p);
+  }
+}
+
 async function loadProviders(): Promise<void> {
   providersStatus = "loading";
   try {
     providers = await listProviders();
     providersStatus = "loaded";
+
+    // Drop model-list state for providers that no longer exist, so a
+    // deleted provider can't leave a stale group behind if it's ever
+    // re-added under a reused id.
+    const liveIds = new Set(providers.map((p) => p.id));
+    for (const id of Object.keys(providerModelsState)) {
+      if (!liveIds.has(id)) delete providerModelsState[id];
+    }
+
+    ensureModelsLoaded();
   } catch {
     providers = [];
     providersStatus = "error";
@@ -193,11 +241,14 @@ async function loadProviders(): Promise<void> {
 /**
  * Point the store at a tab: resolves its persisted selection (reading it
  * off `panel.svelte.ts`'s live session for `newTabId` — see this module's
- * header comment) and primes the picker's level-1 provider to whatever is
- * already resolved (falling back to the first registered provider so the
- * picker has something to show). Call whenever the panel's active tab
- * changes (including the initial mount) — safe to call repeatedly for the
- * same `tabId`.
+ * header comment). Call whenever the panel's active tab changes (including
+ * the initial mount) — safe to call repeatedly for the same `tabId`.
+ *
+ * Unlike card 23's two-level picker, this no longer needs to pick a
+ * "browsing" provider per tab — every provider's models are loaded once
+ * (via `ensureModelsLoaded`, inside `loadProviders`) and reused across tab
+ * switches; only `resolution` (which model is highlighted as active) is
+ * per-tab.
  *
  * Relies on `panel.svelte.ts` having already loaded (or created) `newTabId`'s
  * session by the time this runs — true for this store's one caller
@@ -215,6 +266,8 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
 
   if (providersStatus === "loading" || changedTab) {
     await loadProviders();
+  } else {
+    ensureModelsLoaded();
   }
 
   const defaultSelection = await getDefaultSelection();
@@ -235,23 +288,10 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
   }
 
   resolution = await resolveSelection(persisted);
-
-  const nextBrowsingId =
-    resolution.status === "ok"
-      ? resolution.config.id
-      : resolution.status === "dangling"
-        ? providers[0]?.id
-        : (providers.find((p) => p.id === defaultSelection?.providerId)?.id ?? providers[0]?.id);
-
-  if (nextBrowsingId !== browsingProviderId || changedTab) {
-    browsingProviderId = nextBrowsingId;
-    if (browsingProviderId) void loadModels(browsingProviderId);
-    else modelsState = { status: "idle" };
-  }
 }
 
 // ---------------------------------------------------------------------------
-// Level 1: browsing a provider's models
+// Per-provider model loading (decisions/22: parallel, degrading per provider)
 // ---------------------------------------------------------------------------
 
 function buildClient(config: ProviderConfig): ChatProvider | undefined {
@@ -267,53 +307,6 @@ function buildClient(config: ProviderConfig): ChatProvider | undefined {
   }
 }
 
-async function loadModels(providerId: string): Promise<void> {
-  const token = ++modelsRequestToken;
-  modelsState = { status: "loading" };
-
-  const config = findProvider(providerId);
-  if (!config) {
-    const message = "This provider is no longer registered.";
-    modelsState = { status: "error", message, error: { kind: "invalid-response", message } };
-    return;
-  }
-
-  const client = buildClient(config);
-  if (!client) {
-    // Programming-error path (registry.ts: no factory registered for this
-    // provider type), not an actual `ProviderError` from a client — there
-    // is no real "kind" to report, so this is the closest honest fit
-    // rather than fabricating a network/auth failure that didn't happen.
-    const message = `No client is registered for provider type "${config.type}".`;
-    modelsState = { status: "error", message, error: { kind: "invalid-response", message } };
-    return;
-  }
-
-  const result = await client.listModels();
-  if (token !== modelsRequestToken) return; // superseded by a later browse
-
-  if (!result.ok) {
-    if (result.error.kind === "not-supported") {
-      modelsState = {
-        status: "not-supported",
-        message: describeProviderError(result.error),
-        manualEntry: undefined,
-      };
-      return;
-    }
-    modelsState = {
-      status: "error",
-      message: describeProviderError(result.error),
-      error: result.error,
-    };
-    return;
-  }
-
-  const entries = await resolveCapabilities(client, result.value);
-  if (token !== modelsRequestToken) return; // superseded by a later browse
-  modelsState = { status: "loaded", entries };
-}
-
 /** Capability lookups run concurrently, one per model (decision 06's "issued concurrently and cached thereafter", carried into decision 11). A lookup failure resolves to `"unknown"` with the error as its reason — never dropped from the list (src/lib/providers/capability.ts's {@link resolveCapability}, shared with the options page's default-model check — card 41). */
 async function resolveCapabilities(
   client: ChatProvider,
@@ -323,73 +316,132 @@ async function resolveCapabilities(
   return models.map((model, i) => ({ model, capability: capabilities[i] }));
 }
 
-/** Switch the picker's level-1 provider without persisting anything yet — persisting happens once a model is actually chosen ({@link selectModel}). */
-export function selectProvider(providerId: string): void {
-  if (providerId === browsingProviderId) return;
-  browsingProviderId = providerId;
-  void loadModels(providerId);
+/**
+ * Load (or reload) ONE provider's model list, writing only that provider's
+ * slot in `providerModelsState`. This is the unit of "degrade per
+ * provider": callers fire this once per provider without awaiting each
+ * other (`ensureModelsLoaded`, `refresh`), so a slow or unreachable
+ * provider's `await client.listModels()` never delays another provider's
+ * write to `providerModelsState` — each provider's group in the picker
+ * updates the moment ITS OWN fetch settles, independent of the rest.
+ *
+ * Guarded by `providerTokens[config.id]` rather than a single shared token
+ * (see this module's header comment) so retrying provider A can never
+ * discard an in-flight load for provider B.
+ */
+async function loadModelsForProvider(config: ProviderConfig): Promise<void> {
+  const token = (providerTokens[config.id] = (providerTokens[config.id] ?? 0) + 1);
+  providerModelsState[config.id] = { status: "loading" };
+
+  const client = buildClient(config);
+  if (!client) {
+    // Programming-error path (registry.ts: no factory registered for this
+    // provider type), not an actual `ProviderError` from a client — there
+    // is no real "kind" to report, so this is the closest honest fit
+    // rather than fabricating a network/auth failure that didn't happen.
+    const message = `No client is registered for provider type "${config.type}".`;
+    if (providerTokens[config.id] !== token) return;
+    providerModelsState[config.id] = {
+      status: "error",
+      message,
+      error: { kind: "invalid-response", message },
+    };
+    return;
+  }
+
+  const result = await client.listModels();
+  if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
+
+  if (!result.ok) {
+    if (result.error.kind === "not-supported") {
+      providerModelsState[config.id] = {
+        status: "not-supported",
+        message: describeProviderError(result.error),
+        manualEntry: undefined,
+      };
+      return;
+    }
+    providerModelsState[config.id] = {
+      status: "error",
+      message: describeProviderError(result.error),
+      error: result.error,
+    };
+    return;
+  }
+
+  const entries = await resolveCapabilities(client, result.value);
+  if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
+  providerModelsState[config.id] = { status: "loaded", entries };
 }
 
-/** Re-run the model list for whichever provider is currently browsed — the picker's "Retry" affordance after a `modelsState.status === "error"`. Unlike {@link selectProvider} this always reloads, even for the provider already showing. */
-export function reloadModels(): void {
-  if (browsingProviderId) void loadModels(browsingProviderId);
+/** Re-run one provider's model list — the picker's per-group "Retry" affordance after `modelsByProvider[id].status === "error"` (or its empty/zero-models state). Unlike the initial `ensureModelsLoaded` pass, this always reloads, even for a provider already showing something. */
+export function reloadModels(providerId: string): void {
+  const config = findProvider(providerId);
+  if (config) void loadModelsForProvider(config);
 }
 
 /**
  * Look up (or synthesize, for a `"not-supported"` provider) a manually
  * entered model id and check its capability, so the picker can show it in
- * the same three-state list rather than blindly trusting a typed string.
- * Only meaningful while `modelsState.status === "not-supported"`.
+ * the same three-bucket grouping as every other row rather than blindly
+ * trusting a typed string. Only meaningful while that provider's
+ * `modelsByProvider[providerId].status === "not-supported"`.
  */
-export async function enterManualModel(modelId: string): Promise<void> {
+export async function enterManualModel(providerId: string, modelId: string): Promise<void> {
   const trimmed = modelId.trim();
-  if (!trimmed || modelsState.status !== "not-supported") return;
-  const config = findProvider(browsingProviderId);
+  if (!trimmed) return;
+  const state = providerModelsState[providerId];
+  if (!state || state.status !== "not-supported") return;
+
+  const config = findProvider(providerId);
   const client = config ? buildClient(config) : undefined;
   if (!client) return;
 
-  const token = modelsRequestToken; // manual entry doesn't invalidate an in-flight list load
+  const token = providerTokens[providerId] ?? 0; // manual entry doesn't invalidate an in-flight list load, but a real reload should invalidate a stale manual-entry write
   const model: ProviderModel = { id: trimmed, name: trimmed };
   const capability = await resolveCapability(client, model);
-  if (token !== modelsRequestToken || modelsState.status !== "not-supported") return;
-  modelsState = { ...modelsState, manualEntry: { model, capability } };
+  if (providerTokens[providerId] !== token) return;
+
+  const current = providerModelsState[providerId];
+  if (!current || current.status !== "not-supported") return;
+  providerModelsState[providerId] = { ...current, manualEntry: { model, capability } };
 }
 
 // ---------------------------------------------------------------------------
-// Level 2: committing a model selection
+// Committing a model selection
 // ---------------------------------------------------------------------------
 
 /**
- * Commit `{browsingProviderId, model}` as the active selection: persists it
- * into the current tab's session (decisions/07, /10) and, only if no global
+ * Commit `{providerId, model}` as the active selection: persists it into
+ * the current tab's session (decisions/07, /10) and, only if no global
  * default exists yet, seeds the default too (so a brand-new tab has
  * something sensible to inherit — decisions/10's "exactly one active
  * provider+model pair is tracked as the default", which this never
  * overwrites once set, keeping tabs free to diverge from it). No-ops if the
- * model isn't `"tool-capable"` in the current `modelsState` — the caller
+ * model isn't selectable ({@link isSelectable} — decisions/06/11's shared
+ * rule) in that provider's current `modelsByProvider` entry — the caller
  * (the picker component) should never wire a disabled row's click handler
  * to this, but this is the second guard against sending a no-tools/unknown
  * model to `chat()` unattached-to-tools by accident.
  *
  * Also the dangling-provider replacement path (decisions/10, card 27's
  * checklist): when `resolution.status === "dangling"`, the picker drives
- * the user through the same browse-then-pick flow and this same function
- * commits the replacement — so it inherits the single-owner write below
- * with no separate code path to re-audit.
+ * the user through the same flat list and this same function commits the
+ * replacement — so it inherits the single-owner write below with no
+ * separate code path to re-audit.
  *
  * Persists via `setSessionSelection` (`panel.svelte.ts`), which mutates the
  * SAME live session object the agent loop appends messages to — never a
  * stale copy this module loaded earlier — so this can never clobber
  * history (card 27).
  */
-export async function selectModel(model: string): Promise<void> {
-  const providerId = browsingProviderId;
-  if (!providerId || tabId === undefined) return;
+export async function selectModel(providerId: string, model: string): Promise<void> {
+  if (tabId === undefined) return;
   const config = findProvider(providerId);
   if (!config) return;
 
-  const entry = currentEntries().find((e) => e.model.id === model);
-  if (!entry || entry.capability?.status !== "tool-capable") return;
+  const entry = entriesFor(providerId).find((e) => e.model.id === model);
+  if (!entry || !isSelectable(entry.capability)) return;
 
   const next: ProviderSelection = { providerId, model };
 
@@ -432,22 +484,15 @@ export function togglePicker(): void {
   pickerOpen = !pickerOpen;
 }
 
-function currentEntries(): ModelListEntry[] {
-  if (modelsState.status === "loaded") return modelsState.entries;
-  if (modelsState.status === "not-supported" && modelsState.manualEntry) {
-    return [modelsState.manualEntry];
-  }
-  return [];
-}
-
 // ---------------------------------------------------------------------------
 // Dangling-provider replacement (decisions/10)
 // ---------------------------------------------------------------------------
 
-/** Re-run the provider list + tab resolution from scratch — for a "Retry" affordance after fixing something on the options page (adding a provider, re-granting a permission) without closing and reopening the panel. */
+/** Re-run the provider list + every provider's model list, and the tab resolution, from scratch — for a "Refresh" affordance after fixing something on the options page (adding a provider, re-granting a permission) without closing and reopening the panel. Unlike `ensureModelsLoaded`'s incremental caching, this force-reloads every currently-registered provider. */
 export async function refresh(): Promise<void> {
   if (tabId === undefined) return;
   await loadProviders();
+  await Promise.all(providers.map((p) => loadModelsForProvider(p)));
   const currentTabId = tabId;
   const currentOrigin = origin;
   tabId = undefined; // force syncToTab's changedTab branch
