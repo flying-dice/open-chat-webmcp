@@ -10,6 +10,7 @@
    * directly, matching how Header.svelte/Transcript.svelte are wired.
    */
   import type { SerializedTool } from "../../lib/protocol";
+  import type { MergedTool } from "../../lib/mcp/merge";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
   import SegmentedControl from "./SegmentedControl.svelte";
   import ToolsPanel from "./ToolsPanel.svelte";
@@ -17,17 +18,21 @@
 
   interface Props {
     tools: SerializedTool[];
+    /** Every currently-cached MCP server tool (card 38, decisions/19 §6) — shown in the same Tools view, each clearly labelled with the server it runs on. */
+    serverTools: MergedTool[];
     toolCalls: ToolCallLogEntry[];
     /** See PageInfo.webmcpAvailable's doc comment (decisions/16, card 43) — distinguishes "WebMCP unavailable in this browser" from "this page has no tools" in the empty state below. */
     webmcpAvailable: boolean;
   }
 
-  let { tools, toolCalls, webmcpAvailable }: Props = $props();
+  let { tools, serverTools, toolCalls, webmcpAvailable }: Props = $props();
 
   let section = $state<"tools" | "log">("tools");
 
+  const totalTools = $derived(tools.length + serverTools.length);
+
   const sectionOptions = $derived([
-    { value: "tools", label: `Tools${tools.length > 0 ? ` (${tools.length})` : ""}` },
+    { value: "tools", label: `Tools${totalTools > 0 ? ` (${totalTools})` : ""}` },
     { value: "log", label: `Call Log${toolCalls.length > 0 ? ` (${toolCalls.length})` : ""}` },
   ]);
 </script>
@@ -44,7 +49,7 @@
 
   <div class="section-body">
     {#if section === "tools"}
-      <ToolsPanel {tools} {webmcpAvailable} />
+      <ToolsPanel {tools} {serverTools} {webmcpAvailable} />
     {:else}
       <CallLogPanel {toolCalls} />
     {/if}

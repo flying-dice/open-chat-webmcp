@@ -12,9 +12,15 @@
    * must be as visible as a successful one": a denied entry gets the same
    * danger-coloured treatment a failed one does, never a quieter one.
    * Auto-run successes start collapsed since nobody had to review them.
+   *
+   * Card 38 (decisions/19 §6): `entry.origin`, recorded alongside args and
+   * result by src/lib/session.ts's `logToolCall`, is shown next to the call
+   * name — the call log is the accountability surface, so it must say where
+   * every logged call ran, not just what it did.
    */
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
+  import { originLabel } from "../../lib/mcp/merge";
   import ToolArgs from "./ToolArgs.svelte";
   import ToolArgValue from "./ToolArgValue.svelte";
 
@@ -73,6 +79,11 @@
     >
       <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
       <span class="call-name">{entry.name}</span>
+      {#if entry.origin}
+        <span class="badge" class:badge-server={entry.origin.kind === "server"}>
+          {originLabel(entry.origin)}
+        </span>
+      {/if}
     </button>
 
     <span class="log-meta">
@@ -207,6 +218,14 @@
     border-color: var(--color-danger);
     color: var(--color-on-primary);
     font-weight: 600;
+  }
+
+  /* Decisions/19 §6 — the origin badge, same tinted-primary treatment as
+     ToolListItem.svelte/ToolCallCard.svelte's so a remote call reads
+     consistently everywhere it's named. */
+  .badge-server {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
   }
 
   .duration {

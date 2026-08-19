@@ -99,6 +99,8 @@ import {
   type ToolCallMode,
 } from "../../lib/session";
 import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
+import type { McpToolAnnotations } from "../../lib/mcp/types";
+import type { MergedTool, ToolOrigin } from "../../lib/mcp/merge";
 
 export type MessageRole = "user" | "assistant" | "tool";
 
@@ -157,6 +159,20 @@ export interface PanelMessage extends ChatMessage {
    * guarantee.
    */
   toolAnnotations?: ToolAnnotations;
+  /**
+   * Set on role:"tool" messages — where this call actually ran (decisions/19
+   * §6): `undefined` for a call whose tool wasn't found in this turn's
+   * merged list at all (a hallucinated name), never defaulted to `"page"`.
+   * A snapshot at call time, same rationale as {@link toolAnnotations}.
+   */
+  toolOrigin?: ToolOrigin;
+  /**
+   * Set on role:"tool" messages for a SERVER-origin call only — the
+   * original MCP annotations (title/destructiveHint/idempotentHint/
+   * openWorldHint), display-only per decisions/19 §2. `undefined` for a
+   * page tool, which has no MCP annotation vocabulary to show.
+   */
+  toolMcpAnnotations?: McpToolAnnotations;
   /** Set on a plain assistant note (never on a live stream) that offers one or more action chips — see {@link PanelMessageAction}. */
   actions?: PanelMessageAction[];
 }
@@ -230,6 +246,8 @@ let connectionStatus = $state<ConnectionStatus>("unknown");
 let pageInfo = $state<PageInfo | undefined>(undefined);
 /** The active tab's current published tool list (card 11's inspector) — kept in sync by src/sidepanel/services/activeTab.ts, same source (`runtime:get-tools`/`runtime:tools-updated`) that already drives `pageInfo.toolCount`. */
 let tools = $state<SerializedTool[]>([]);
+/** Every currently-cached MCP server tool (card 38's Tools view, decisions/19 §6) — kept in sync by src/sidepanel/services/mcpTools.ts's background discovery refresh, independent of which tab is active (server tools aren't per-page). Unlike `tools` above this is never network-blocking to read: it's always whatever that module's cache currently holds. */
+let serverTools = $state<MergedTool[]>([]);
 
 /**
  * Registered by whoever owns the live generation (the agent loop,
@@ -260,6 +278,10 @@ export const panel = {
   /** The active tab's current tool list (card 11's Tools view). Empty until the first `runtime:get-tools` response lands. */
   get tools(): SerializedTool[] {
     return tools;
+  },
+  /** Every currently-cached MCP server tool (card 38's Tools view) — see the `serverTools` state var's own doc comment. */
+  get serverTools(): MergedTool[] {
+    return serverTools;
   },
   /** The active session's tool-call log (card 11's Call Log view) — same entries `addToolCall`/`updateToolCallResult` above write via `logToolCall`/`completeToolCall`, exposed read-only for the inspector. */
   get toolCalls(): ToolCallLogEntry[] {
@@ -534,12 +556,18 @@ export function endAssistantMessage(id: string, toolCalls?: ToolCall[]): void {
  * content ("the user denied this call"), mirroring `logToolCall`'s doc
  * comment. Pass `annotations` from the matching tool descriptor (undefined
  * if none/unknown) so the transcript can flag a destructive-hint call after
- * the fact — see {@link PanelMessage.toolAnnotations}.
+ * the fact — see {@link PanelMessage.toolAnnotations}. Pass `origin`/
+ * `mcpAnnotations` from the same descriptor (card 38, decisions/19 §6) so
+ * the transcript and call log can say where the call ran, and (for a server
+ * tool) show the MCP-specific display-only hints — both `undefined` for a
+ * call whose tool wasn't found in the turn's merged list at all.
  */
 export function addToolCall(
   call: ToolCall,
   mode: ToolCallMode,
   annotations?: ToolAnnotations,
+  origin?: ToolOrigin,
+  mcpAnnotations?: McpToolAnnotations,
 ): string {
   if (!session) return call.id;
   const message: PanelMessage = {
@@ -553,9 +581,11 @@ export function addToolCall(
     toolStatus: mode === "denied" ? "denied" : "pending",
     toolMode: mode,
     toolAnnotations: annotations,
+    toolOrigin: origin,
+    toolMcpAnnotations: mcpAnnotations,
   };
   session.messages.push(message);
-  logToolCall(session, { id: call.id, name: call.name, arguments: call.arguments, mode });
+  logToolCall(session, { id: call.id, name: call.name, arguments: call.arguments, mode, origin });
   void saveSession(session, { immediate: true });
   return call.id;
 }
@@ -639,6 +669,11 @@ export function setToolCount(tabId: number, count: number, available: boolean): 
 /** Sets the active tab's full tool list (card 11's Tools view) — same `tabId` guard as {@link setToolCount} so a late response for a tab that's no longer active can't clobber what's on screen. */
 export function setTools(tabId: number, next: SerializedTool[]): void {
   if (pageInfo && pageInfo.tabId === tabId) tools = next;
+}
+
+/** Sets the currently-cached MCP server tool list (card 38, decisions/19 §6) — called by src/sidepanel/services/mcpTools.ts after every discovery refresh. Not tab-scoped: server tools aren't per-page, so there is no stale-tab race to guard against here. */
+export function setServerTools(next: MergedTool[]): void {
+  serverTools = next;
 }
 
 // Re-exported so consumers can type tool lists / the call log without

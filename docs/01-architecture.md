@@ -154,31 +154,53 @@ generation.** The request is tied to the panel's lifetime via an
 
 ## A tool call, end to end
 
-1. User sends a message. `src/sidepanel/services/agentLoop.ts` sends the
-   conversation plus the active tab's tool list to the active provider's
-   `chat()` and streams the reply into the transcript.
-2. The model's response includes a `tool_calls` entry. The agent loop checks
-   the approval policy (`decisions/05-tool-approval-policy.md`,
-   [decisions/17](../decisions/17-spec-annotations-and-untrusted-content.md)):
-   a call whose `annotations.readOnlyHint === true` runs immediately;
-   anything else — including a tool with no annotations at all — blocks on
-   an approve/deny card in the UI.
-3. Once cleared to run, the panel sends `runtime:call-tool` to the service
-   worker.
-4. The service worker looks up which tab owns the session, forwards the call
-   to that tab's relay as `runtime:call-tool` over `chrome.runtime`
-   messaging.
-5. The relay resolves the tool by name against its cached `getTools()`
-   objects and calls `document.modelContext.executeTool(tool, input)`
-   directly — no further hop into the page.
-6. The result — an MCP-shaped `{ content: [...] }`, or `{ isError: true }` —
-   travels back up: relay → service worker → panel. If the tool's
-   `annotations.untrustedContentHint === true`, the agent loop fences the
-   result in an explicit delimiter before it re-enters the model's context
-   (see [decisions/17](../decisions/17-spec-annotations-and-untrusted-content.md));
-   the transcript also marks such results visibly. The panel appends the
-   (unfenced) result as a `role: "tool"` message and the loop continues
-   until the model stops calling tools or an 8-iteration cap trips.
+1. User sends a message. `src/sidepanel/services/agentLoop.ts` builds ONE
+   merged tool list — the active tab's page tools plus every enabled MCP
+   server's currently-cached tools, namespaced `<serverSlug>__<toolName>`
+   so a server tool can never collide with a page tool or another server's
+   ([decisions/19](../decisions/19-merging-server-tools-with-page-tools.md))
+   — and sends it, plus the conversation, to the active provider's `chat()`,
+   streaming the reply into the transcript. Server tool discovery
+   (`src/sidepanel/services/mcpTools.ts`) runs in the background and is
+   never awaited on this critical path: a slow, dead, unauthenticated, or
+   not-yet-permitted server simply contributes no tools this turn.
+2. The model's response includes a `tool_calls` entry. The agent loop
+   resolves the requested name back to its merged entry and applies THAT
+   entry's own source's policy — a page tool by the unchanged decisions/05/17
+   rule (`annotations.readOnlyHint === true` runs immediately; anything else,
+   including no annotations at all, blocks on an approve/deny card), a
+   server tool by its own, separate, stricter
+   [decisions/20](../decisions/20-approval-policy-is-per-tool-source.md)
+   rule (default: every server call blocks on approval regardless of
+   `readOnlyHint`). The two policies share no decision logic and are
+   configured independently on the options page.
+3. Once cleared to run, a PAGE tool call goes through the worker/relay hops
+   below; a SERVER tool call instead goes straight out over HTTP via
+   `src/lib/mcp/client.ts`'s `callServerTool`. `executeToolCall` itself never
+   branches on which kind it's calling — it just invokes whichever executor
+   the merged entry already carries.
+4. **Page tools only:** the panel sends `runtime:call-tool` to the service
+   worker, which looks up which tab owns the session and forwards the call
+   to that tab's relay over `chrome.runtime` messaging.
+5. **Page tools only:** the relay resolves the tool by name against its
+   cached `getTools()` objects and calls
+   `document.modelContext.executeTool(tool, input)` directly — no further
+   hop into the page.
+6. The result travels back to the panel — for a page tool, an MCP-shaped
+   `{ content: [...] }` or `{ isError: true }` from relay → service worker →
+   panel; for a server tool, `callServerTool`'s own result, straight back to
+   the panel. A page tool's result is fenced only if
+   `annotations.untrustedContentHint === true`; a SERVER tool's result is
+   ALWAYS fenced, regardless of what (if anything) the server said — MCP has
+   no equivalent hint, so absence is never read as "trusted" (decisions/19
+   §3). Fencing wraps the result in an explicit delimiter before it re-enters
+   the model's context (see
+   [decisions/17](../decisions/17-spec-annotations-and-untrusted-content.md));
+   the transcript also marks such results visibly and states WHERE the call
+   ran (decisions/19 §6) on every surface that names it — the tools list, the
+   approval card, and the call log. The panel appends the (unfenced) result
+   as a `role: "tool"` message and the loop continues until the model stops
+   calling tools or an 8-iteration cap trips.
 
 ## The timeout ladder
 

@@ -34,6 +34,7 @@
   import HistoryPanel from "./components/HistoryPanel.svelte";
   import { titleFromMessages } from "./lib/chatTitle";
   import { initActiveTabSync } from "./services/activeTab";
+  import { initMcpToolsSync } from "./services/mcpTools";
   import { runAgentTurn } from "./services/agentLoop";
   import { createProviderClient } from "../lib/providers/registry";
   import { selection } from "./stores/selection.svelte";
@@ -118,9 +119,15 @@
   onMount(() => {
     const teardownTabSync = initActiveTabSync();
     const teardownPolicySync = initApprovalPolicySync();
+    // Card 38 (decisions/19 §4): kicks the first MCP server discovery
+    // immediately and keeps it refreshed in the background for the panel's
+    // lifetime, so runAgentTurn's per-turn merge (agentLoop.ts) almost
+    // always finds something already cached rather than starting cold.
+    const teardownMcpToolsSync = initMcpToolsSync();
     return () => {
       teardownTabSync();
       teardownPolicySync();
+      teardownMcpToolsSync();
     };
   });
 
@@ -309,6 +316,7 @@
     {#if view === "inspector"}
       <Inspector
         tools={panel.tools}
+        serverTools={panel.serverTools}
         toolCalls={panel.toolCalls}
         webmcpAvailable={panel.pageInfo?.webmcpAvailable ?? true}
       />

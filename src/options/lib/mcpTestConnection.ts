@@ -70,5 +70,14 @@ export async function testMcpServerConnection(
       return { kind: "rpc-error", message: `(${error.code}) ${error.message}` };
     case "invalid-response":
       return { kind: "invalid-response", message: error.message };
+    case "permission":
+      // Card 38 added this `McpError` kind (src/lib/mcp/types.ts) for its
+      // own out-of-band permission check (decisions/19 §4) — client.ts
+      // itself never produces it, so this arm is unreachable from a real
+      // `discoverAllServerTools` call today. Handled anyway so the switch
+      // stays exhaustive against the shared `McpError` union, and so this
+      // module keeps working unchanged if a future caller ever does check
+      // permission before calling this test.
+      return { kind: "permission-denied", message: error.message };
   }
 }
