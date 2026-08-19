@@ -52,8 +52,12 @@ must not be trimmed to match WebMCP's.
 The merged tool carries a **normalised** annotation set for behaviour plus the
 original for display:
 
-- `readOnlyHint` means the same thing in both and drives approval, unchanged
-  from decision 17: `true` auto-runs, everything else asks.
+- `readOnlyHint` means the same thing in both, but **does not drive the same
+  approval rule** in both. This clause originally said the decision 17 rule
+  applied unchanged to server tools; that is **superseded by
+  [decisions/20](20-approval-policy-is-per-tool-source.md)**, which gives page
+  tools and server tools separate policies. A server tool's `readOnlyHint` does
+  not auto-run under the default policy.
 - MCP's `destructiveHint` / `idempotentHint` / `openWorldHint` are **display
   only**. They never relax approval. `destructiveHint` may escalate UI warning
   prominence — it must never make a call run that would otherwise have asked.

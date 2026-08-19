@@ -31,6 +31,13 @@ The approval policy from decision 05 applies UNCHANGED to both kinds: a tool
 annotated `readOnlyHint` runs automatically, everything else asks. MCP tool
 annotations are used the same way page annotations are.
 
+> **Superseded by [decisions/20](20-approval-policy-is-per-tool-source.md).**
+> Page tools and remote server tools now have separate approval policies that
+> share no decision logic. A server tool's `readOnlyHint` is asserted by a
+> remote service about itself and no longer auto-runs by default — the "same
+> way" framing above is exactly the conflation decision 20 rejects. The
+> `Consequences` section below anticipated this risk; decision 20 acts on it.
+
 Server configs live in a registry alongside providers (decision 10): URL, display
 name, optional auth, enabled/disabled, stored in `chrome.storage.sync` with any
 credential split into `chrome.storage.local`. Reaching a server's host requires
