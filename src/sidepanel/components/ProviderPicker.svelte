@@ -25,7 +25,7 @@
     type ModelListEntry,
   } from "../stores/selection.svelte";
   import { panel } from "../stores/panel.svelte";
-  import Markdown from "./Markdown.svelte";
+  import Markdown from "../../lib/components/Markdown.svelte";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders

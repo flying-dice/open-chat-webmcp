@@ -17,7 +17,20 @@ export type TestOutcome =
   | { kind: "success"; modelCount: number }
   | { kind: "not-supported"; message: string }
   | { kind: "auth"; message: string }
-  | { kind: "unreachable"; message: string }
+  | {
+      kind: "unreachable";
+      message: string;
+      /**
+       * Carried straight through from `ProviderError`'s `unreachable-or-cors`
+       * kind (src/lib/provider.ts) when the client supplied one — e.g.
+       * Ollama's copyable `OLLAMA_ORIGINS`/`launchctl setenv` fix
+       * (src/lib/ollama.ts's `originRejectedError`). `undefined` when
+       * there's no single command to hand back. UI built on this should
+       * render `fix.command` verbatim (see testResultDisplay.ts's sibling
+       * doc), the same rule `ProviderError.fix` documents.
+       */
+      fix?: { label: string; command: string };
+    }
   | { kind: "http"; message: string }
   | { kind: "invalid-response"; message: string }
   | { kind: "aborted" }
@@ -63,8 +76,10 @@ export async function testProviderConnection(
       // Already carries a provider-specific fix (Ollama's client names the
       // OLLAMA_ORIGINS setting; OpenAI's points at the options-page
       // permission grant) — pass it straight through rather than
-      // re-wording it.
-      return { kind: "unreachable", message: error.message };
+      // re-wording it. `fix` is passed through too now (card 33) — this
+      // used to drop it, so the options page never rendered the copyable
+      // command the side panel's picker already did.
+      return { kind: "unreachable", message: error.message, fix: error.fix };
     case "not-supported":
       return { kind: "not-supported", message: error.message };
     case "http":

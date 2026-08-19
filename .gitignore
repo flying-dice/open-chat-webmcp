@@ -18,6 +18,12 @@ dist-ssr
 dist-verify
 verify/output
 
+# npm run launch (boards/project-backlog/32-launch-chrome-with-extension-script.md):
+# dedicated, persistent Chrome profile so the unpacked extension can be
+# loaded outside your default profile without losing logins/settings
+# between runs.
+.chrome-profile
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

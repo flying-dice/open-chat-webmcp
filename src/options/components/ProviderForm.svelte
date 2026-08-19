@@ -19,6 +19,21 @@
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
+  import Markdown from "../../lib/components/Markdown.svelte";
+
+  /**
+   * Wrap a copy-pasteable command as a fenced code block so it renders
+   * through Markdown.svelte's existing code-block pipeline (src/lib/markdown.ts's
+   * `renderCodeBlock`) — that pipeline already gives every fenced block its
+   * own working "Copy"/"Copied" button, so this reuses that exact,
+   * already-tested affordance instead of hand-rolling a second one
+   * (card 14: "make the fix copyable, not just described"; card 33: same
+   * trick, reused here so the options page's fix is copyable too, not just
+   * the side panel's).
+   */
+  function fenceOf(command: string): string {
+    return "```\n" + command + "\n```";
+  }
 
   interface Props {
     mode: "add" | "edit";
@@ -227,6 +242,11 @@
 
   {#if testOutcome}
     <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
+    {#if testOutcome.kind === "unreachable" && testOutcome.fix}
+      {@const fix = testOutcome.fix}
+      <p class="note">{fix.label}:</p>
+      <Markdown source={fenceOf(fix.command)} />
+    {/if}
   {/if}
 
   <div class="form__actions">

@@ -23,7 +23,10 @@
 // (a narrowed view of the shared `ProviderError` — Ollama has no `"auth"` or
 // `"not-supported"` failure mode) names a blocked CORS preflight and a dead
 // server as a shared, explicit discriminant rather than a generic network
-// error (decisions/09, carried forward from decisions/04).
+// error (decisions/09, carried forward from decisions/04). A plain HTTP 403
+// response gets the same `unreachable-or-cors` treatment — see
+// `originRejectedError`'s doc comment below — instead of falling into the
+// generic `"http"` kind (card 33).
 
 import type { SerializedTool } from "./protocol";
 import type {
@@ -109,6 +112,70 @@ function toOllamaError(err: unknown): OllamaError {
   };
 }
 
+/**
+ * This extension's own origin, when the runtime is available to ask
+ * (always true for the side panel and options page this client is called
+ * from; guarded defensively rather than assumed). Used only to make the
+ * "narrow the wildcard" suggestion below concrete instead of hypothetical.
+ */
+function ownExtensionOrigin(): string | undefined {
+  try {
+    const id = chrome.runtime?.id;
+    return id ? `chrome-extension://${id}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Unlike the ambiguous TypeError case above, a plain HTTP 403 from Ollama
+ * is unambiguous: the server is reachable and definitely rejected THIS
+ * request because of its `Origin` header — Ollama has no other concept of
+ * authorization (no API keys, no user accounts) that could produce a 403
+ * (boards/project-backlog/33-ollama-403-origin-rejection-generic.md).
+ * Confirmed against a real server: the rejection carries no body and no
+ * extra headers (`curl -H 'Origin: chrome-extension://<32-char-id>'` against
+ * an Ollama instance with no `OLLAMA_ORIGINS` override returns a bare
+ * `403 Forbidden`, `Content-Length: 0`, regardless of whether the id looks
+ * like a real extension id) — so there is nothing in the response itself to
+ * key off; the 403 status from this Ollama-specific client is the entire
+ * signal, and that's the "isOllama" check card 14/33 asked for: every
+ * caller of this module only ever talks to an Ollama server, never a
+ * different provider's endpoint, so this mapping can't leak onto an
+ * OpenAI-compatible host's unrelated 403s (those go through
+ * src/lib/providers/openai.ts, which has its own `ollamaFetchJson`-style
+ * function that never calls this).
+ *
+ * Reuses the `unreachable-or-cors` kind and its `fix` field (card 14's
+ * mechanism) rather than inventing a second one — same copyable-fix
+ * rendering, same UI branch, just a more specific message for a more
+ * specific diagnosis.
+ */
+function originRejectedError(): OllamaError {
+  const selfOrigin = ownExtensionOrigin();
+  return {
+    kind: "unreachable-or-cors",
+    message:
+      `Ollama is running, but it rejected this request because of its ` +
+      `origin — chrome-extension:// origins aren't in Ollama's default ` +
+      `allowlist. On macOS, Ollama.app reads its environment from launchd, ` +
+      `so setting export OLLAMA_ORIGINS=... in a terminal will NOT reach ` +
+      `it — instead run the command below, then fully quit and reopen ` +
+      `Ollama.app. Running ollama serve from a terminal instead of using ` +
+      `Ollama.app? Set it there: OLLAMA_ORIGINS="chrome-extension://*" ` +
+      `ollama serve. Either way, Ollama only reads this variable at ` +
+      `startup — restarting is required, reconfiguring alone won't take ` +
+      `effect. Once it's working, consider narrowing the wildcard to just ` +
+      `this extension` +
+      (selfOrigin ? ` (${selfOrigin})` : "") +
+      `, since chrome-extension://* currently lets any installed extension reach this Ollama server.`,
+    fix: {
+      label: "Set OLLAMA_ORIGINS, then restart Ollama",
+      command: 'launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"',
+    },
+  };
+}
+
 async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();
@@ -131,6 +198,11 @@ async function ollamaFetchJson<T>(
   }
 
   if (!response.ok) {
+    // See originRejectedError's doc comment: a 403 from this Ollama-specific
+    // client always means an origin rejection, not a generic HTTP failure.
+    if (response.status === 403) {
+      return { ok: false, error: originRejectedError() };
+    }
     const body = await safeReadText(response);
     return {
       ok: false,
@@ -566,6 +638,12 @@ export async function* chat(
   }
 
   if (!response.ok) {
+    // See originRejectedError's doc comment: a 403 from this Ollama-specific
+    // client always means an origin rejection, not a generic HTTP failure.
+    if (response.status === 403) {
+      yield { type: "error", error: originRejectedError() };
+      return;
+    }
     const body = await safeReadText(response);
     yield {
       type: "error",

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "demo": "vite --config demo/vite.config.ts",
+    "launch": "node scripts/launch-chrome.mjs",
     "verify": "node verify/run.mjs"
   },
   "devDependencies": {

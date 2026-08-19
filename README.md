@@ -56,6 +56,16 @@ root has no `manifest.json` at its top level and will not load.
    build.
 4. Click the extension's toolbar icon to open the side panel (it opens
    directly — there is no popup).
+5. Optional: the extension works fully without any Chrome flag — it ships
+   its own adopt-or-provide shim that provides `navigator.modelContext` when
+   Chrome doesn't have one (see
+   [decisions/02-mainworld-webmcp-bridge.md](decisions/02-mainworld-webmcp-bridge.md)).
+   To exercise Chrome's own **native** `navigator.modelContext` instead of
+   that shim, turn on the "WebMCP for testing" flag at
+   `chrome://flags/#enable-webmcp-testing` (confirmed present under that id
+   in Chrome 151; WebMCP is still shipping behind flags/an origin trial, so
+   search "webmcp" on `chrome://flags` if that id has moved) and relaunch
+   Chrome.
 
 For iterative development, `npm run dev` runs Vite with HMR for the side
 panel and options page; you still need to reload the unpacked extension in
@@ -184,6 +194,65 @@ the bridge's late-adoption path — see
 [docs/01-architecture.md](docs/01-architecture.md). Load these pages in a tab
 with the built extension installed and open the side panel to see tool
 discovery happen live.
+
+## Launch it in real Chrome
+
+```
+npm run launch
+```
+
+Rebuilds the extension into `dist/` (always fresh — never a stale build from
+a previous session) and opens it in your **real, installed Google Chrome**,
+not Playwright's bundled Chromium (that's what `npm run verify` uses, on
+purpose, for deterministic testing). This is for actually using the
+extension by hand, against real sites and a real local Ollama.
+
+It loads the extension into a **dedicated, persistent profile**
+(`.chrome-profile/`, gitignored) rather than your everyday default profile —
+Chrome won't load an unpacked extension into a profile that's already
+running, and a fresh throwaway profile every launch would throw away your
+logins and provider settings on every run. This profile is reused across
+launches, so set your providers up once.
+
+**Real Chrome refuses to auto-load an unpacked extension, even on the
+command line.** Unlike `npm run verify`'s Playwright-driven Chromium, real
+Google Chrome hard-rejects the `--load-extension` flag (it logs
+`--load-extension is not allowed in Google Chrome, ignoring.` and does
+nothing) — a deliberate Google restriction, not a bug here. So **the first
+time** you run `npm run launch` for a given profile, it opens straight to
+`chrome://extensions/` and prints a one-time manual setup: turn on
+*Developer mode*, click *Load unpacked*, and select `dist/`. Chrome
+remembers that for the profile from then on, so **every run after the
+first** opens straight into a working extension — and, since there's
+nothing left to set up, starts (or reuses) the `npm run demo` fixture
+server on port 5175 and opens it as the start page instead, since a real
+WebMCP page with tools to try is more useful than a blank tab. (If the demo
+server can't be started you get a blank tab with a printed warning, never a
+tab pointing at a dead port.)
+
+That first run also opens a **second, optional** tab on `chrome://flags` at
+the "WebMCP for testing" flag (`chrome://flags/#enable-webmcp-testing`,
+confirmed present under that id in Chrome 151 by inspecting the installed
+binary). The extension does not need this flag: it ships its own
+adopt-or-provide shim (`decisions/02-mainworld-webmcp-bridge.md`) that
+*provides* `navigator.modelContext` whenever Chrome doesn't have one of its
+own, so WebMCP pages work either way. Turning the flag on only matters if
+you specifically want to exercise Chrome's own **native**
+`navigator.modelContext` instead of the shim — a genuinely different code
+path (the shim's "adopt" branch in `src/inject/bridge.ts`) — to compare
+behaviour or test against the real browser implementation as it ships.
+WebMCP is still shipping behind flags/an origin trial, so this id can move
+or disappear in a future Chrome version; if the tab that opens doesn't show
+it, search "webmcp" on `chrome://flags` to find its current name.
+
+**MV3 side panels can't be opened programmatically** — Chrome will not pop
+the panel open on its own. Click the extension's toolbar icon to open it
+(pin it first from the puzzle-piece/extensions menu if it isn't visible).
+
+On macOS, Chrome is found at the standard `/Applications/Google Chrome.app`
+install path; set `CHROME_PATH` to override. If Chrome can't be found the
+script fails with a clear message rather than silently falling back to
+Chromium.
 
 ## Verification harness
 

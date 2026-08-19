@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { renderMarkdown } from "../../lib/markdown";
+  import { renderMarkdown } from "../markdown";
 
   /**
    * Renders a markdown string as sanitised HTML.
@@ -11,6 +11,15 @@
    * src/lib/markdown.ts for the streaming-tolerance and sanitisation
    * design (marked -> DOMPurify, strict allowlist, no raw HTML
    * passthrough).
+   *
+   * Lives in src/lib/components (not src/sidepanel/components, where it
+   * originated with card 14) because it's used by both the side panel
+   * (streaming transcript, ProviderPicker's copyable fixes/commands) and
+   * the options page (card 33's copyable OLLAMA_ORIGINS fix in
+   * ProviderForm.svelte/ProviderRow.svelte) — a presentational component
+   * with no dependency on either app's own state, so it belongs in the
+   * shared tree rather than being cross-imported out of one app into the
+   * other.
    *
    * Props:
    *   source - the (possibly incomplete) markdown text to render. Required.
@@ -77,7 +86,9 @@
    * see decisions/08-native-chrome-design-language.md. This block only
    * adds the element styling theme.css doesn't already cover (it styles
    * p/h1-h3/hr globally, which already apply to this component's {@html}
-   * output for free).
+   * output for free). Both src/sidepanel/main.ts and src/options/main.ts
+   * import theme.css, so its tokens are available wherever this component
+   * is mounted.
    *
    * Content is injected via {@html}, so descendant rules below must use
    * :global() — Svelte's scoping class isn't attached to dynamically

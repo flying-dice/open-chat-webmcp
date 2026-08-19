@@ -6,6 +6,12 @@
   import type { ProviderConfig } from "../../lib/providers/registry";
   import type { TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
+  import Markdown from "../../lib/components/Markdown.svelte";
+
+  /** See ProviderForm.svelte's identical helper for why this reuses Markdown.svelte's code-block/copy-button pipeline instead of a second one (card 14, card 33). */
+  function fenceOf(command: string): string {
+    return "```\n" + command + "\n```";
+  }
 
   interface Props {
     provider: ProviderConfig;
@@ -89,5 +95,10 @@
 
   {#if testOutcome}
     <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
+    {#if testOutcome.kind === "unreachable" && testOutcome.fix}
+      {@const fix = testOutcome.fix}
+      <p class="note">{fix.label}:</p>
+      <Markdown source={fenceOf(fix.command)} />
+    {/if}
   {/if}
 </div>

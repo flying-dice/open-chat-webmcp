@@ -11,7 +11,7 @@
    * truth for `atBottom` (via the `scroll` listener below) — there is no
    * separate "user is reading" flag to fall out of sync with it.
    */
-  import Markdown from "./Markdown.svelte";
+  import Markdown from "../../lib/components/Markdown.svelte";
   import ToolCallCard from "./ToolCallCard.svelte";
   import ApprovalCard from "./ApprovalCard.svelte";
   import type { PanelMessage } from "../stores/panel.svelte";
