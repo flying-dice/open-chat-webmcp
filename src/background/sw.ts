@@ -239,26 +239,41 @@ const PULL_TIMEOUT_MS = 3000;
 // (boards/project-backlog/30-panel-timeout-outside-ladder.md).
 const CALL_TIMEOUT_MS = 30_000;
 
-/** Rebuild-on-restart: ask the relay in `tabId` for its current tools right now. */
-async function pullToolsFromRelay(tabId: number): Promise<RegistryEntry | null> {
+/**
+ * Rebuild-on-restart: ask the relay in `tabId` for its current tools right
+ * now.
+ *
+ * On failure this also reports whether the failure was specifically
+ * `sendToRelay`'s "no-relay" reason — the pattern-matched, authoritative
+ * signal that there is no content script in this tab at all (card 31). A
+ * timeout or other messaging error is NOT the same claim (the relay may well
+ * exist and just be slow/busy), so only "no-relay" is reported as
+ * `restricted: true`.
+ */
+async function pullToolsFromRelay(
+  tabId: number,
+): Promise<{ ok: true; entry: RegistryEntry } | { ok: false; restricted: boolean }> {
   const req: RuntimeRefreshToolsRequest = { type: "runtime:refresh-tools" };
   const result = await sendToRelay(tabId, req, PULL_TIMEOUT_MS);
   if (!result.ok) {
     console.warn(
       `[webmcp][sw] could not rebuild registry for tab ${tabId}: ${describeUnreachable(tabId, result)}`,
     );
-    return null;
+    return { ok: false, restricted: result.reason === "no-relay" };
   }
   if (!isToolsUpdatedMessage(result.response)) {
     console.warn(
       `[webmcp][sw] tab ${tabId} relay replied to refresh with an unexpected shape`,
     );
-    return null;
+    return { ok: false, restricted: false };
   }
   return {
-    origin: result.response.origin,
-    available: result.response.available,
-    tools: result.response.tools,
+    ok: true,
+    entry: {
+      origin: result.response.origin,
+      available: result.response.available,
+      tools: result.response.tools,
+    },
   };
 }
 
@@ -295,6 +310,7 @@ async function handleGetTools(
       type: "runtime:get-tools-response",
       tabId: req.tabId,
       available: cached.available,
+      restricted: false,
       tools: cached.tools,
     };
   }
@@ -303,13 +319,14 @@ async function handleGetTools(
   // in practice) the worker was restarted and lost its in-memory state.
   // Rebuild live rather than reporting a false "no tools".
   const pulled = await pullToolsFromRelay(req.tabId);
-  if (pulled) {
-    setRegistryEntry(req.tabId, pulled);
+  if (pulled.ok) {
+    setRegistryEntry(req.tabId, pulled.entry);
     return {
       type: "runtime:get-tools-response",
       tabId: req.tabId,
-      available: pulled.available,
-      tools: pulled.tools,
+      available: pulled.entry.available,
+      restricted: false,
+      tools: pulled.entry.tools,
     };
   }
 
@@ -319,7 +336,16 @@ async function handleGetTools(
   // reports `available: false` rather than claiming a definite "yes" or
   // "no" — the specific unreachable-reason is logged above and surfaces with
   // detail on the call-tool path, which does have an error field.
-  return { type: "runtime:get-tools-response", tabId: req.tabId, available: false, tools: [] };
+  // `restricted` carries the ADDITIONAL, authoritative claim that there is no
+  // relay in this tab at all (card 31) — distinct from a merely slow/timed-out
+  // one, which is not restricted, just unresponsive right now.
+  return {
+    type: "runtime:get-tools-response",
+    tabId: req.tabId,
+    available: false,
+    restricted: pulled.restricted,
+    tools: [],
+  };
 }
 
 async function handleCallTool(

@@ -6,14 +6,21 @@
    * with the worker's registry as the page registers/unregisters tools, so
    * nothing here needs its own polling or subscription.
    *
-   * There are two distinct empty states (decisions/16-native-webmcp-client.md,
-   * card 43) — neither is a bare "No tools" line, since either way this is
-   * the FIRST thing most users of this panel will ever see here, and it's
-   * worth explaining rather than looking broken:
-   *   - `webmcpAvailable === false`: WebMCP itself is unavailable in this
-   *     browser/for this page (the feature is off, or this origin has no
-   *     origin-trial token) — `document.modelContext` doesn't exist at all,
-   *     so there was nothing to even ask.
+   * There are THREE distinct empty states (decisions/16-native-webmcp-client.md
+   * card 43, and card 31 for the third) — none is a bare "No tools" line,
+   * since this is the FIRST thing most users of this panel will ever see
+   * here, and each is worth explaining rather than looking broken:
+   *   - `restricted === true`: Chrome never allowed a content script into
+   *     this tab at all (chrome://, chrome-extension://, the Web Store, the
+   *     built-in PDF viewer, ...) — the worker's own authoritative signal
+   *     (RuntimeGetToolsResponse.restricted), not a client-side URL guess.
+   *     Nothing will EVER work here; this is checked first since it implies
+   *     the other two.
+   *   - `webmcpAvailable === false`: a content script IS running here, but
+   *     WebMCP itself is unavailable in this browser/for this page (the
+   *     feature is off, or this origin has no origin-trial token) —
+   *     `document.modelContext` doesn't exist, so there was nothing to even
+   *     ask.
    *   - `webmcpAvailable === true` and `tools.length === 0`: the feature
    *     works here, this particular page just hasn't registered anything —
    *     expected, since most sites don't speak WebMCP yet.
@@ -24,13 +31,25 @@
   interface Props {
     tools: SerializedTool[];
     webmcpAvailable: boolean;
+    restricted: boolean;
   }
 
-  let { tools, webmcpAvailable }: Props = $props();
+  let { tools, webmcpAvailable, restricted }: Props = $props();
 </script>
 
 <div class="tools-panel">
-  {#if !webmcpAvailable}
+  {#if restricted}
+    <div class="empty-state">
+      <p><strong>This page can't run extension scripts at all.</strong></p>
+      <p class="text-small">
+        Chrome blocks content scripts on <code>chrome://</code> pages, other
+        extensions' pages, the Chrome Web Store, and its built-in PDF viewer —
+        there is no way for this or any extension to reach in, so this tab
+        will never have page tools, no matter what the page itself supports.
+        Chat still works here, just without page tools.
+      </p>
+    </div>
+  {:else if !webmcpAvailable}
     <div class="empty-state">
       <p><strong>WebMCP isn't available in this browser (or on this page).</strong></p>
       <p class="text-small">

@@ -108,7 +108,7 @@
    */
   const toolsNotice = $derived.by((): string | undefined => {
     const info = panel.pageInfo;
-    if (!info || info.restrictedReason) return undefined;
+    if (!info || info.restricted) return undefined;
     if (info.toolCount === 0) {
       return "This page hasn't published any WebMCP tools, so there's nothing extra to call here — plain chat works exactly the same.";
     }
@@ -255,9 +255,12 @@
       {modelLabel}
     >
       {#snippet notices()}
-        {#if panel.pageInfo?.restrictedReason}
+        {#if panel.pageInfo?.restricted}
           <NoticeCard>
-            <p>{panel.pageInfo.restrictedReason}</p>
+            <p>
+              This page doesn't allow browser extensions to run scripts on it, so nothing here
+              will ever have page tools — chat still works exactly the same.
+            </p>
           </NoticeCard>
         {/if}
         {#if showMismatchNotice && chatOriginMismatch}
@@ -311,6 +314,7 @@
         tools={panel.tools}
         toolCalls={panel.toolCalls}
         webmcpAvailable={panel.pageInfo?.webmcpAvailable ?? true}
+        restricted={panel.pageInfo?.restricted ?? false}
       />
     {:else}
       <HistoryPanel />

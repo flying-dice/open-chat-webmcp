@@ -104,6 +104,30 @@ export interface RuntimeGetToolsResponse {
   tabId: number;
   /** See {@link RuntimeToolsUpdatedMessage.available}. */
   available: boolean;
+  /**
+   * True when the worker could not reach ANY content relay in this tab at
+   * all — the pattern-matched "Receiving end does not exist" /
+   * "Could not establish connection" failure in src/background/sw.ts's
+   * `looksLikeNoRelay`, which is what chrome://, chrome-extension://, the
+   * Chrome Web Store, the built-in PDF viewer, and any other page Chrome
+   * never allows a content script into all look like from the worker's side
+   * (card 31, boards/project-backlog/31-restricted-page-detection-duplicated.md).
+   *
+   * This is a THIRD, more fundamental state than `available: false`: there,
+   * a relay IS running and answered honestly that
+   * `document.modelContext` doesn't exist; here, there is no relay at all to
+   * even ask, so nothing will ever work on this tab. `available` is always
+   * `false` alongside `restricted: true` (unknown, not "no"), and `tools` is
+   * always empty. The panel must show a distinct message for this case
+   * rather than folding it into "WebMCP not enabled" — see
+   * src/sidepanel/components/ToolsPanel.svelte and
+   * src/sidepanel/components/ContextChip.svelte.
+   *
+   * This is worker-only knowledge and has no counterpart on
+   * {@link RuntimeToolsUpdatedMessage}: that message can only ever be sent
+   * BY a relay that is alive, so it is never restricted by definition.
+   */
+  restricted: boolean;
   tools: SerializedTool[];
 }
 
