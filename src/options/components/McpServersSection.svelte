@@ -146,8 +146,9 @@
     <p>
       An MCP server exposes tools the model can call that have nothing to do with the current page
       — a ticket tracker, a search index, an internal service. Its tools are merged into the same
-      list the page's own tools appear in, namespaced by server so nothing collides, and the same
-      approval policy applies to them.
+      list the page's own tools appear in, namespaced by server so nothing collides — but a server
+      tool call is judged by its own, separate, stricter approval policy, not the page's
+      (decisions/20-approval-policy-is-per-tool-source.md). See "MCP server tool approval" above.
     </p>
   </div>
 

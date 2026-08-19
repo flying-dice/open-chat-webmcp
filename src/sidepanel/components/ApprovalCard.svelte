@@ -26,9 +26,30 @@
    * there is no `destructiveHint` (decisions/17: not in the WebMCP IDL, and
    * silently dropped by Chrome's WebIDL dictionary conversion even if a page
    * sets it).
+   *
+   * Card 38 (decisions/19 §6): `request.tool` now comes from the MERGED
+   * tool list, so it also carries `origin` — this is THE moment a user must
+   * not mistake a remote action for a local one, so the origin line is not
+   * a badge among others here, it's its own prominent statement right under
+   * the tool name. A server tool's own `mcpAnnotations` (decisions/19 §2)
+   * are shown too, display-only — `destructiveHint` may only raise visual
+   * prominence, never approval behaviour.
+   *
+   * decisions/20-approval-policy-is-per-tool-source.md: this card is reached
+   * under two DIFFERENT policies depending on `request.tool.origin` — a
+   * page tool by the unchanged decisions/05/17 rule, a server tool by its
+   * own, stricter, independent `McpApprovalPolicy` (default
+   * "always-confirm": every server call asks regardless of
+   * `readOnlyHint`). This component itself doesn't decide which — that
+   * happens in src/sidepanel/services/agentLoop.ts before this card is ever
+   * shown — it only has to make the difference visible (the origin line
+   * above) and remember approvals in the right scope (see the "don't ask
+   * again" label below, and src/sidepanel/stores/approvals.svelte.ts's two
+   * separate skip-lists).
    */
   import type { PendingApproval } from "../stores/approvals.svelte";
   import { approve, deny } from "../stores/approvals.svelte";
+  import { originLabel } from "../../lib/mcp/merge";
   import ToolArgs from "./ToolArgs.svelte";
 
   interface Props {
@@ -51,6 +72,8 @@
   const readOnly = $derived(tool?.annotations?.readOnlyHint === true);
   const untrustedContent = $derived(tool?.annotations?.untrustedContentHint === true);
   const unannotated = $derived(!tool?.annotations || (!readOnly && !untrustedContent));
+  const isServerTool = $derived(tool?.origin.kind === "server");
+  const destructive = $derived(tool?.mcpAnnotations?.destructiveHint === true);
 </script>
 
 <div class="approval-card" role="group" aria-label={`Approval needed: ${request.call.name}`}>
@@ -63,6 +86,9 @@
       {#if untrustedContent}
         <span class="badge badge-untrusted">untrusted content</span>
       {/if}
+      {#if destructive}
+        <span class="badge badge-untrusted">server: destructive</span>
+      {/if}
       {#if unannotated}
         <span class="badge badge-unannotated">unannotated</span>
       {/if}
@@ -71,10 +97,18 @@
 
   <p class="tool-name">{request.call.name}</p>
 
+  <p class="origin-line" class:origin-remote={isServerTool}>
+    {#if tool === undefined}
+      Origin unknown — this name isn't in the current tool list.
+    {:else}
+      Runs on <strong>{originLabel(tool.origin)}</strong>{isServerTool ? " (a remote MCP server, not this page)" : ""}.
+    {/if}
+  </p>
+
   {#if tool === undefined}
     <p class="warning text-small">
-      This tool isn't in the page's current tool list — it may be a
-      hallucinated name, or a tool that was unregistered after the model
+      This tool isn't in the current tool list — it may be a hallucinated
+      name, or a tool that was unregistered/removed after the model
       requested it. Review the arguments below carefully before approving.
     </p>
   {:else if tool.description}
@@ -82,8 +116,8 @@
   {/if}
 
   <p class="disclaimer text-small">
-    These hints are reported by the page itself, not verified by the
-    extension — treat them as a guide, not a guarantee.
+    These hints are reported by {isServerTool ? "the MCP server" : "the page"} itself, not verified by
+    the extension — treat them as a guide, not a guarantee.
   </p>
 
   <div class="args-section">
@@ -93,7 +127,11 @@
 
   <label class="remember text-small">
     <input type="checkbox" bind:checked={remember} />
-    Don't ask again for this tool on this page (this session)
+    {#if isServerTool}
+      Don't ask again for this tool on this server (this session)
+    {:else}
+      Don't ask again for this tool on this page (this session)
+    {/if}
   </label>
 
   <div class="actions">
@@ -188,6 +226,19 @@
   .disclaimer {
     margin: 0;
     color: var(--color-on-surface-variant);
+  }
+
+  /* Decisions/19 §6: where a call runs is stated plainly, not buried in a
+     badge — neutral for the page (the common case), tinted primary and bold
+     for a remote server so it reads as a distinct fact, not decoration. */
+  .origin-line {
+    margin: 0;
+    color: var(--color-on-surface-variant);
+  }
+
+  .origin-line.origin-remote {
+    color: var(--color-primary);
+    font-weight: 600;
   }
 
   .warning {

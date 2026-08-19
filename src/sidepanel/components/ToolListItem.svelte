@@ -20,12 +20,25 @@
    * (decisions/17): it isn't in the WebMCP IDL, and Chrome's WebIDL
    * dictionary conversion silently drops any unknown member a page sets, so
    * it's a field that's always absent, not merely unused.
+   *
+   * Card 38 (decisions/19 §6): every tool now also carries `origin` — "this
+   * page" or a server's display name — rendered as its own badge so a
+   * remote tool can never be mistaken for one this page published itself.
+   * A server tool's `mcpAnnotations` (decisions/19 §2), when present, adds
+   * its own display-only badges alongside the normalised ones above;
+   * `destructiveHint`/`idempotentHint`/`openWorldHint` never affect approval.
    */
-  import type { SerializedTool } from "../../lib/protocol";
+  import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
+  import type { McpToolAnnotations } from "../../lib/mcp/types";
+  import { originLabel, type ToolOrigin } from "../../lib/mcp/merge";
   import ToolSchema from "./ToolSchema.svelte";
 
   interface Props {
-    tool: SerializedTool;
+    tool: Pick<SerializedTool, "name" | "description" | "inputSchema"> & {
+      annotations?: ToolAnnotations;
+      mcpAnnotations?: McpToolAnnotations;
+      origin: ToolOrigin;
+    };
   }
 
   let { tool }: Props = $props();
@@ -35,17 +48,23 @@
   const readOnly = $derived(tool.annotations?.readOnlyHint === true);
   const untrustedContent = $derived(tool.annotations?.untrustedContentHint === true);
   const unannotated = $derived(!tool.annotations || (!readOnly && !untrustedContent));
+  const isServerTool = $derived(tool.origin.kind === "server");
+  const destructive = $derived(tool.mcpAnnotations?.destructiveHint === true);
 </script>
 
 <div class="tool-item">
   <div class="tool-item-head">
     <span class="tool-name">{tool.name}</span>
     <span class="badges">
+      <span class="badge" class:badge-server={isServerTool}>{originLabel(tool.origin)}</span>
       {#if readOnly}
         <span class="badge badge-readonly">read-only</span>
       {/if}
       {#if untrustedContent}
         <span class="badge badge-untrusted">untrusted content</span>
+      {/if}
+      {#if destructive}
+        <span class="badge badge-destructive">server: destructive</span>
       {/if}
       {#if unannotated}
         <span class="badge badge-unannotated">unannotated</span>
@@ -132,6 +151,20 @@
   .badge-unannotated {
     color: var(--color-on-surface-variant);
     border-style: dashed;
+  }
+
+  /* The origin badge — decisions/19 §6. Neutral for "this page" (the common
+     case); a server's badge is tinted primary so a remote tool visibly
+     stands out from the page's own list at a glance, not just on close
+     reading of the text. */
+  .badge-server {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+
+  .badge-destructive {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
   }
 
   .tool-desc {

@@ -9,16 +9,35 @@
 // and re-enters the provider call until the model stops asking for tools,
 // the iteration cap trips, or the user hits Stop.
 //
-// Approval policy (decisions/05-tool-approval-policy.md, src/lib/settings.ts)
-// is implemented here as LOGIC only, not UI — see `executeToolCall` below:
-//   - policy "auto-run-all" -> everything runs automatically, no exceptions.
-//   - policy "always-confirm" -> everything requires approval, INCLUDING a
-//     `readOnlyHint` call — this is the one case that overrides the
-//     annotation-based default.
-//   - policy "default" -> `annotations.readOnlyHint === true` runs
-//     automatically; everything else, INCLUDING a tool with no annotations
-//     at all, requires approval (absence of a hint is treated as mutating,
-//     never as safe).
+// Approval policy is implemented here as LOGIC only, not UI — see
+// `executeToolCall` below. Per decisions/20-approval-policy-is-per-tool-source.md
+// (which supersedes decisions/14's "one policy for both kinds" and replaces
+// decisions/19 §2's approval sentence), a PAGE tool and a SERVER tool are
+// judged by two entirely separate policy units — `shouldAutoRunPageTool`/
+// `shouldAutoRunServerTool` below — never a single function branching on
+// kind, so an edit to one can never quietly change the other:
+//
+//   PAGE tools (decisions/05, decisions/17, src/lib/settings.ts's
+//   `ApprovalPolicy` — unchanged by this card):
+//     - "auto-run-all" -> everything runs automatically, no exceptions.
+//     - "always-confirm" -> everything requires approval, INCLUDING a
+//       `readOnlyHint` call — this is the one case that overrides the
+//       annotation-based default.
+//     - "default" -> `annotations.readOnlyHint === true` runs
+//       automatically; everything else, INCLUDING a tool with no
+//       annotations at all, requires approval (absence of a hint is treated
+//       as mutating, never as safe).
+//
+//   SERVER (MCP) tools (decisions/20, src/lib/settings.ts's separate
+//   `McpApprovalPolicy` — new in this card, default `"always-confirm"`):
+//     - "always-confirm" (default) -> everything requires approval,
+//       REGARDLESS of `readOnlyHint` — a remote server's self-assertion
+//       about itself is not, alone, grounds to act unseen on the user's
+//       behalf.
+//     - "trust-read-only" -> opt-in to the page-style rule: `readOnlyHint`
+//       runs automatically.
+//     - "auto-run-all" -> everything runs automatically, no exceptions.
+//
 // Whenever a human decision is required, it goes through the injected
 // `ApprovalRequester` seam below. The DEFAULT requester
 // (`denyByDefaultApprovalRequester`) denies every such call — this is the
@@ -37,14 +56,17 @@ import {
   type ProviderError,
   type ToolCall,
 } from "../../lib/provider";
-import type {
-  RuntimeCallToolRequest,
-  RuntimeCallToolResponse,
-  SerializedTool,
-} from "../../lib/protocol";
+import type { RuntimeCallToolRequest, RuntimeCallToolResponse } from "../../lib/protocol";
 import type { ToolCallMode } from "../../lib/session";
-import { getApprovalPolicy } from "../../lib/settings";
+import { getApprovalPolicy, getMcpApprovalPolicy } from "../../lib/settings";
 import { getToolsForTab } from "./activeTab";
+import { getMergedToolsForTab } from "./mcpTools";
+import {
+  originLabel,
+  toSerializedTools,
+  type MergedTool,
+  type MergedToolCallOutcome,
+} from "../../lib/mcp/merge";
 import {
   addAssistantNote,
   addToolCall,
@@ -66,8 +88,15 @@ import {
 export interface ApprovalRequest {
   /** The call the model wants to make. */
   call: ToolCall;
-  /** The matching tool descriptor from the tab's live tool list, if still known — annotations (and any UI copy) come from here. `undefined` if the model named a tool that isn't (or is no longer) registered; that case still requires approval, never auto-runs. */
-  tool: SerializedTool | undefined;
+  /**
+   * The matching entry from this turn's MERGED tool list (page tools plus
+   * every enabled MCP server's, decisions/19), if still known — annotations,
+   * description, and ORIGIN (card 38, decisions/19 §6: the approval card
+   * must say where a call will actually run) all come from here. `undefined`
+   * if the model named a tool that isn't (or is no longer) in the list; that
+   * case still requires approval, never auto-runs.
+   */
+  tool: MergedTool | undefined;
 }
 
 export type ApprovalDecision = "approved" | "denied";
@@ -226,7 +255,20 @@ export interface RunAgentTurnOptions {
 export async function runAgentTurn(userText: string, opts: RunAgentTurnOptions): Promise<void> {
   addUserMessage(userText);
 
-  const tools = opts.attachTools ? await getToolsForTab(opts.tabId) : [];
+  // The merged list is built ONCE here, per turn (decisions/19 §5): page
+  // tools from the worker's live registry, combined with whatever server
+  // tools src/sidepanel/services/mcpTools.ts currently has cached (never a
+  // fresh network round trip on this turn's critical path — decisions/19
+  // §4). `attachTools` gates the whole mechanism, not just page tools: it
+  // reflects whether the SELECTED MODEL supports tool calling at all
+  // (decisions/11), so when it's false neither kind is offered, exactly as
+  // before this card.
+  const pageTools = opts.attachTools ? await getToolsForTab(opts.tabId) : [];
+  const tools = opts.attachTools
+    ? getMergedToolsForTab(pageTools, (name, args, execOpts) =>
+        callPageTool(opts.tabId, name, args, execOpts),
+      )
+    : [];
   const requestApproval = opts.requestApproval ?? denyByDefaultApprovalRequester;
 
   const controller = new AbortController();
@@ -243,23 +285,27 @@ export async function runAgentTurn(userText: string, opts: RunAgentTurnOptions):
 // The loop
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(title: string, origin: string, tools: SerializedTool[]): string {
+function buildSystemPrompt(title: string, origin: string, tools: MergedTool[]): string {
   const parts = [
     `You are assisting a user in a browser side panel while they view the web page "${title}" (${origin}).`,
   ];
 
   if (tools.length > 0) {
+    // Each line names WHERE the tool runs (decisions/19 §6 — the same
+    // honesty requirement the UI carries applies to what the model itself
+    // is told, not just what a human sees) in addition to what its
+    // namespaced name already implies for a server tool.
     const toolLines = tools
-      .map((t) => `- ${t.name}${t.description ? `: ${t.description}` : ""}`)
+      .map((t) => `- ${t.name} (runs on ${originLabel(t.origin)})${t.description ? `: ${t.description}` : ""}`)
       .join("\n");
     parts.push(
-      `This page exposes tools you may call to read or act on it:\n${toolLines}\n\n` +
+      `You may call these tools to read or act on ${originLabel({ kind: "page" })} or on a connected MCP server:\n${toolLines}\n\n` +
         "Only call a tool when it helps answer the user, and pass arguments matching its schema. " +
         "Some calls require the user's explicit approval and may be denied — if one is denied, " +
         "acknowledge that plainly and continue helping without repeating the same call.",
     );
   } else {
-    parts.push("This page does not currently expose any callable tools.");
+    parts.push("This page does not currently expose any callable tools, and no MCP server tools are available right now.");
   }
 
   parts.push(
@@ -303,7 +349,7 @@ function actionsForStreamError(error: ProviderError): PanelMessageAction[] {
 
 async function runLoop(
   opts: RunAgentTurnOptions,
-  tools: SerializedTool[],
+  tools: MergedTool[],
   requestApproval: ApprovalRequester,
   signal: AbortSignal,
 ): Promise<void> {
@@ -329,7 +375,7 @@ async function runLoop(
       {
         model: opts.model,
         messages: conversation,
-        tools: tools.length > 0 ? tools : undefined,
+        tools: tools.length > 0 ? toSerializedTools(tools) : undefined,
         signal,
       },
       assistantId,
@@ -353,7 +399,7 @@ async function runLoop(
 
     for (const call of toolCalls) {
       if (signal.aborted) return;
-      await executeToolCall(call, tools, opts.tabId, requestApproval, signal);
+      await executeToolCall(call, tools, requestApproval, signal);
     }
   }
 
@@ -404,38 +450,67 @@ async function streamOneTurn(
 }
 
 // ---------------------------------------------------------------------------
-// Tool-call execution (decisions/05's policy logic lives here)
+// Tool-call execution (decisions/05/17's page policy and decisions/20's
+// server policy both live here, as two separate units — see the module doc
+// comment)
 // ---------------------------------------------------------------------------
+
+/**
+ * decisions/20's PAGE-tool policy unit — exactly decision 17, unchanged.
+ * Only ever called for a page-origin (or unresolved) tool; never reads or
+ * knows about `McpApprovalPolicy`. Reads settings.ts fresh on every call
+ * (not cached across the turn) so a mid-conversation policy change — another
+ * open options tab, or a synced change from another machine — takes effect
+ * on the very next call.
+ */
+async function shouldAutoRunPageTool(tool: MergedTool | undefined): Promise<boolean> {
+  const policy = await getApprovalPolicy();
+  const readOnly = tool?.annotations.readOnlyHint === true;
+  return policy === "auto-run-all" || (readOnly && policy !== "always-confirm");
+}
+
+/**
+ * decisions/20's SERVER-tool policy unit — independent and stricter, never
+ * derived from or sharing logic with {@link shouldAutoRunPageTool}. Defaults
+ * (`McpApprovalPolicy` unset) to "always-confirm": every server call asks
+ * regardless of `readOnlyHint`, because a remote service's self-assertion
+ * about itself is not, alone, grounds to act unseen on the user's behalf.
+ */
+async function shouldAutoRunServerTool(tool: MergedTool | undefined): Promise<boolean> {
+  const policy = await getMcpApprovalPolicy();
+  if (policy === "auto-run-all") return true;
+  if (policy === "trust-read-only") return tool?.annotations.readOnlyHint === true;
+  return false; // "always-confirm"
+}
 
 async function executeToolCall(
   call: ToolCall,
-  tools: SerializedTool[],
-  tabId: number,
+  tools: MergedTool[],
   requestApproval: ApprovalRequester,
   signal: AbortSignal,
 ): Promise<void> {
+  // ONE lookup resolves the model's requested name to its merged entry —
+  // page or server, this call site never asks which (decisions/19 §5). The
+  // list itself was already built once for the whole turn, in runAgentTurn.
   const tool = tools.find((t) => t.name === call.name);
-  // Absence of a hint (including an unknown/hallucinated tool name) is
-  // treated as mutating, never as safe (decisions/05).
-  const readOnly = tool?.annotations?.readOnlyHint === true;
-  // Read fresh per call, not cached across the turn — settings.ts's
-  // `onApprovalPolicyChange` can flip this mid-conversation (another open
-  // options tab, or a synced change from another machine) and the very next
-  // call should honour the new value.
-  const policy = await getApprovalPolicy();
 
-  // The three-way policy matrix (decisions/05, src/lib/settings.ts's own
-  // doc comment naming this card's job): "auto-run-all" skips approval for
-  // everything; "always-confirm" requires it for everything, including a
-  // readOnlyHint call that would otherwise auto-run; "default" is the
-  // annotation-based rule alone.
+  // decisions/20: resolve the tool's SOURCE, then hand off to THAT source's
+  // own policy unit — a thin dispatcher, never a branch inside a shared
+  // function. An unresolved (hallucinated) tool has no source to resolve
+  // and is treated the page way, matching decision 17's own "absence is
+  // mutating, never safe" default (there is no server identity to apply the
+  // stricter server rule against, and the page rule already refuses to
+  // auto-run an unannotated/unknown call).
+  const mayAutoRun =
+    tool?.origin.kind === "server" ? await shouldAutoRunServerTool(tool) : await shouldAutoRunPageTool(tool);
+
   let mode: ToolCallMode;
-  if (policy === "auto-run-all" || (readOnly && policy !== "always-confirm")) {
+  if (mayAutoRun) {
     mode = "auto";
   } else {
     const decision = await raceApproval(requestApproval({ call, tool }), signal);
     if (decision !== "approved") {
-      const id = addToolCall(call, "denied", tool?.annotations);
+      const id = addToolCall(call, "denied", tool?.annotations, tool?.origin, tool?.mcpAnnotations);
       updateToolCallResult(id, {
         status: "denied",
         content: "The user denied this tool call.",
@@ -445,20 +520,31 @@ async function executeToolCall(
     mode = "approved";
   }
 
-  const id = addToolCall(call, mode, tool?.annotations);
-  const response = await callToolWithTimeout(tabId, call, signal);
+  const id = addToolCall(call, mode, tool?.annotations, tool?.origin, tool?.mcpAnnotations);
 
-  if (!response.ok) {
+  if (!tool) {
+    // A hallucinated/no-longer-registered name — nothing to invoke. Report
+    // it as a clean tool-result error rather than guessing at an executor.
     updateToolCallResult(id, {
       status: "error",
-      content: response.error ?? "Tool call failed for an unknown reason.",
+      content: `"${call.name}" isn't in this turn's tool list — it may be a name the model made up, or a tool that changed since the turn started.`,
+    });
+    return;
+  }
+
+  const outcome = await raceToolCall(tool.call(call.arguments, { signal }), signal);
+
+  if (!outcome.ok) {
+    updateToolCallResult(id, {
+      status: "error",
+      content: outcome.error,
     });
     return;
   }
 
   updateToolCallResult(id, {
     status: "success",
-    content: truncate(stringifyResult(response.result)),
+    content: truncate(stringifyResult(outcome.result)),
   });
 }
 
@@ -482,56 +568,72 @@ async function raceApproval(
   });
 }
 
-/** Sends the call through the service worker into the page (decisions/02) with a timeout and abort race. Never throws — every failure path resolves `{ok:false, error}` so the caller can feed it back to the model as a tool result. */
-async function callToolWithTimeout(
-  tabId: number,
-  call: ToolCall,
+/**
+ * Races ANY merged tool's outcome — page or server, this helper doesn't
+ * know or care which (decisions/19 §5) — against the outer per-call timeout
+ * ladder and the turn's abort signal. For a page tool this IS the ladder's
+ * outermost rung (see {@link TOOL_CALL_TIMEOUT_MS}'s doc comment); for a
+ * server tool it's a defensive backstop on top of client.ts's own internal
+ * budget (`DEFAULT_CALL_TOOL_TIMEOUT_MS`, comfortably inside this one) —
+ * either way the caller gets a bounded, never-throw result.
+ */
+async function raceToolCall(
+  outcome: Promise<MergedToolCallOutcome>,
   signal: AbortSignal,
-): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+): Promise<MergedToolCallOutcome> {
   if (signal.aborted) return { ok: false, error: "Stopped by the user before this call ran." };
 
-  const request: RuntimeCallToolRequest = {
-    type: "runtime:call-tool",
-    tabId,
-    name: call.name,
-    args: call.arguments,
-  };
+  const settled = outcome.catch(
+    (err): MergedToolCallOutcome => ({
+      ok: false,
+      error: err instanceof Error ? err.message : "Tool call failed for an unknown reason.",
+    }),
+  );
 
-  const send = (async (): Promise<{ ok: boolean; result?: unknown; error?: string }> => {
-    try {
-      const response = (await chrome.runtime.sendMessage(request)) as
-        | RuntimeCallToolResponse
-        | undefined;
-      if (!response) {
-        return { ok: false, error: "No response from the extension's background worker." };
-      }
-      return response;
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "Tool call failed to reach the page.",
-      };
-    }
-  })();
-
-  const timeout = new Promise<{ ok: boolean; error: string }>((resolve) => {
+  const timeout = new Promise<MergedToolCallOutcome>((resolve) => {
     setTimeout(
-      () =>
-        resolve({
-          ok: false,
-          error: `Tool call timed out after ${TOOL_CALL_TIMEOUT_MS / 1000}s.`,
-        }),
+      () => resolve({ ok: false, error: `Tool call timed out after ${TOOL_CALL_TIMEOUT_MS / 1000}s.` }),
       TOOL_CALL_TIMEOUT_MS,
     );
   });
 
-  const aborted = new Promise<{ ok: boolean; error: string }>((resolve) => {
+  const aborted = new Promise<MergedToolCallOutcome>((resolve) => {
     signal.addEventListener("abort", () => resolve({ ok: false, error: "Stopped by the user." }), {
       once: true,
     });
   });
 
-  return Promise.race([send, timeout, aborted]);
+  return Promise.race([settled, timeout, aborted]);
+}
+
+/**
+ * The {@link PageToolExecutor} bound into every page-origin `MergedTool`
+ * (decisions/19 §5): sends the call through the service worker into the
+ * page (decisions/02). Never throws — every failure path resolves
+ * `{ok:false, error}`, the same {@link MergedToolCallOutcome} shape a
+ * server tool's executor produces (src/sidepanel/services/mcpTools.ts), so
+ * `executeToolCall` above needs no branch on kind. The timeout/abort race
+ * itself now lives one level up, in {@link raceToolCall} — applied uniformly
+ * to whichever kind of tool this turn is calling.
+ */
+async function callPageTool(
+  tabId: number,
+  name: string,
+  args: Record<string, unknown>,
+  opts: { signal?: AbortSignal },
+): Promise<MergedToolCallOutcome> {
+  if (opts.signal?.aborted) return { ok: false, error: "Stopped by the user before this call ran." };
+
+  const request: RuntimeCallToolRequest = { type: "runtime:call-tool", tabId, name, args };
+
+  try {
+    const response = (await chrome.runtime.sendMessage(request)) as RuntimeCallToolResponse | undefined;
+    if (!response) return { ok: false, error: "No response from the extension's background worker." };
+    if (!response.ok) return { ok: false, error: response.error ?? "Tool call failed for an unknown reason." };
+    return { ok: true, result: response.result };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Tool call failed to reach the page." };
+  }
 }
 
 /** Tool results are untrusted page data (decisions/02) — this only ever produces a plain display/model-readable string, never anything evaluated or interpolated into executable code. */

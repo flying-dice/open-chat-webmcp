@@ -26,6 +26,13 @@ to the user's discretion.
   [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md).
 - Streams a chat conversation against your chosen provider, feeding it the
   page's tools and executing whatever it calls, subject to an approval policy.
+- Also calls tools from remote MCP servers you register on the options page —
+  merged into the same tool list, namespaced so a server tool can never be
+  mistaken for a page tool. A server tool call is judged by its OWN, stricter
+  approval policy, independent of the page tools' one: a remote service's
+  self-reported "read-only" claim isn't something you can see the effect of
+  the way you can a page
+  (`decisions/20-approval-policy-is-per-tool-source.md`).
 - Keeps one conversation per browser tab, persisted across panel close/reopen.
 - Adopts Chrome's own visual language rather than inventing a UI style, so the
   panel reads as part of the browser.

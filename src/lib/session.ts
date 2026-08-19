@@ -61,6 +61,7 @@
 // module's.
 
 import type { ChatMessage } from "./provider";
+import type { ToolOrigin } from "./mcp/merge";
 import {
   resolveSelection,
   type ProviderSelection,
@@ -87,6 +88,15 @@ export interface ToolCallLogEntry {
   name: string;
   arguments: Record<string, unknown>;
   mode: ToolCallMode;
+  /**
+   * Where this call ran (decisions/19 §6: the call log must show it
+   * alongside args/result, not just imply it via the namespaced name).
+   * `undefined` for a call logged before this field existed, or for the
+   * rare hallucinated-tool-name case where the model named something not in
+   * this turn's tool list at all — the UI treats an absent origin as
+   * unknown, never as "the page" by default.
+   */
+  origin?: ToolOrigin;
   result?: unknown;
   error?: string;
   startedAt: number;

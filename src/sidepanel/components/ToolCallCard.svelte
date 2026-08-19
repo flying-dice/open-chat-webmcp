@@ -27,9 +27,15 @@
    * `fenceUntrustedContent`) — the badge just calls out why it reads that
    * way, so a human scanning the transcript can tell an untrusted-source
    * result apart from an ordinary one.
+   *
+   * Card 38 (decisions/19 §6): `message.toolOrigin`, snapshotted the same
+   * way `toolAnnotations` is, names where the call ran — shown right next
+   * to the tool name so a completed remote call is never mistaken for a
+   * local one after the fact, exactly as ApprovalCard.svelte does before.
    */
   import { untrack } from "svelte";
   import type { PanelMessage } from "../stores/panel.svelte";
+  import { originLabel } from "../../lib/mcp/merge";
   import ToolArgs from "./ToolArgs.svelte";
 
   interface Props {
@@ -46,6 +52,7 @@
 
   const readOnly = $derived(message.toolAnnotations?.readOnlyHint === true);
   const untrustedContent = $derived(message.toolAnnotations?.untrustedContentHint === true);
+  const isServerTool = $derived(message.toolOrigin?.kind === "server");
 </script>
 
 <div class="tool-card" data-status={message.toolStatus}>
@@ -57,6 +64,9 @@
   >
     <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
     <span class="tool-name">{message.toolName}</span>
+    {#if message.toolOrigin}
+      <span class="badge" class:badge-server={isServerTool}>{originLabel(message.toolOrigin)}</span>
+    {/if}
     <span class="header-badges">
       {#if untrustedContent}
         <span class="badge badge-untrusted">untrusted content</span>
@@ -169,6 +179,13 @@
 
   .badge-auto {
     color: var(--color-on-surface-variant);
+  }
+
+  /* Decisions/19 §6 — the origin badge, same tinted-primary treatment as
+     ToolListItem.svelte's so a remote call reads consistently everywhere. */
+  .badge-server {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
   }
 
   .tool-status {

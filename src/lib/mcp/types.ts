@@ -50,6 +50,15 @@
  *     params) — the server IS an MCP server, this one call just failed.
  *   - `"invalid-response"`: the server's response parsed as JSON-RPC but the
  *     `result` payload didn't match the shape this method expects.
+ *   - `"permission"`: card 38's merge step (src/sidepanel/services/mcpTools.ts)
+ *     checked `chrome.permissions.contains` for this server's origin BEFORE
+ *     ever attempting a request and found it not granted. Distinct from
+ *     `"unreachable"` on purpose (decisions/19 §4: "reported as unavailable
+ *     with that specific reason, never as a generic failure") — this client
+ *     module itself never produces this kind, since a blocked fetch here is
+ *     indistinguishable from a dead host (see `"unreachable"`'s doc); only a
+ *     caller that checked the permission first, out of band, can tell the
+ *     two apart.
  */
 export type McpError =
   | { kind: "unreachable"; message: string }
@@ -64,7 +73,8 @@ export type McpError =
       message: string;
     }
   | { kind: "rpc-error"; code: number; message: string; data?: unknown }
-  | { kind: "invalid-response"; message: string };
+  | { kind: "invalid-response"; message: string }
+  | { kind: "permission"; message: string };
 
 /** Ready-made user-facing copy for an {@link McpError}, for UI that doesn't want to hand-roll it. Never includes header/credential values — see decisions/15-custom-headers-are-credentials.md. */
 export function describeMcpError(error: McpError): string {
@@ -85,6 +95,8 @@ export function describeMcpError(error: McpError): string {
       return `Server returned an error (${error.code}): ${error.message}`;
     case "invalid-response":
       return `Server returned something this extension couldn't understand: ${error.message}`;
+    case "permission":
+      return error.message;
   }
 }
 
