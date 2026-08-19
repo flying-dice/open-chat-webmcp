@@ -30,6 +30,10 @@
   import { panel } from "../stores/panel.svelte";
   import Markdown from "../../lib/components/Markdown.svelte";
   import Icon from "./Icon.svelte";
+  import {
+    capabilityBadge,
+    reasonForCapability,
+  } from "../../lib/providers/capability";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
@@ -116,26 +120,9 @@
     return triggerInfo.label;
   });
 
-  function capabilityBadge(status: "tool-capable" | "no-tools" | "unknown"): { icon: string; label: string } {
-    switch (status) {
-      case "no-tools":
-        return { icon: "⊘", label: "No tools" };
-      case "unknown":
-        return { icon: "?", label: "Unverified" };
-      case "tool-capable":
-        return { icon: "✓", label: "Tool-capable" };
-    }
-  }
-
+  /** {@link reasonForCapability}, adapted for a `ModelListEntry` — kept as a thin wrapper here so every call site below reads `reasonFor(entry)` rather than unwrapping `.capability` at each use. */
   function reasonFor(entry: ModelListEntry): string | undefined {
-    if (!entry.capability) return undefined;
-    if (entry.capability.status === "unknown") {
-      return entry.capability.detail?.join(" ") ?? "Tool support not verified for this model.";
-    }
-    if (entry.capability.status === "no-tools") {
-      return entry.capability.detail?.join(" ") ?? "This model doesn't support tool calling.";
-    }
-    return entry.capability.detail?.join(" ");
+    return reasonForCapability(entry.capability);
   }
 
   const hasToolCapableEntry = $derived(
