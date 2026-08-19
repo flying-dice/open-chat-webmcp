@@ -26,6 +26,8 @@
   } from "../../lib/providers/capability";
   import { hasHostPermission, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
+  import type { ProviderPreset } from "../../lib/providers/presets";
+  import PresetPicker from "./PresetPicker.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderRow from "./ProviderRow.svelte";
 
@@ -56,7 +58,14 @@
    */
   let staleDefaultReason = $state<string | undefined>(undefined);
 
-  let adding = $state(false);
+  /**
+   * The add-provider flow's two steps (card 50, decisions/21): "choose"
+   * shows `PresetPicker`, "form" shows `ProviderForm` pre-filled from
+   * whichever backend (or `undefined` for Custom) was picked. `chosenPreset`
+   * is only meaningful while `addStep === "form"`.
+   */
+  let addStep = $state<"closed" | "choose" | "form">("closed");
+  let chosenPreset = $state<ProviderPreset | undefined>(undefined);
   let editingId = $state<string | null>(null);
 
   /** `undefined` per id while its grant check is in flight — kept distinct from a settled `false` so the badge never briefly flashes "needed". */
@@ -155,7 +164,8 @@
 
   async function handleAddSubmit(data: Omit<ProviderConfig, "id">): Promise<void> {
     await addProvider(data);
-    adding = false;
+    addStep = "closed";
+    chosenPreset = undefined;
     await refresh();
   }
 
@@ -287,7 +297,7 @@
   {#if loading}
     <p>Loading providers…</p>
   {:else}
-    {#if providers.length === 0 && !adding}
+    {#if providers.length === 0 && addStep === "closed"}
       <div class="empty-state">
         <span class="empty-state__glyph" aria-hidden="true">🔌</span>
         <span class="empty-state__title">No providers registered yet</span>
@@ -333,11 +343,28 @@
       </div>
     {/if}
 
-    {#if adding}
-      <ProviderForm mode="add" onSubmit={handleAddSubmit} onCancel={() => (adding = false)} />
+    {#if addStep === "choose"}
+      <PresetPicker
+        onChoose={(preset) => {
+          chosenPreset = preset;
+          addStep = "form";
+        }}
+        onCancel={() => (addStep = "closed")}
+      />
+    {:else if addStep === "form"}
+      <ProviderForm
+        mode="add"
+        preset={chosenPreset}
+        onSubmit={handleAddSubmit}
+        onCancel={() => {
+          addStep = "closed";
+          chosenPreset = undefined;
+        }}
+        onChangeBackend={() => (addStep = "choose")}
+      />
     {:else}
       <div class="toolbar">
-        <button type="button" class="btn-primary" onclick={() => (adding = true)}>+ Add provider</button>
+        <button type="button" class="btn-primary" onclick={() => (addStep = "choose")}>+ Add provider</button>
       </div>
     {/if}
   {/if}
