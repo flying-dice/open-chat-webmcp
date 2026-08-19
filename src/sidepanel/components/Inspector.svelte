@@ -20,9 +20,11 @@
     toolCalls: ToolCallLogEntry[];
     /** See PageInfo.webmcpAvailable's doc comment (decisions/16, card 43) — distinguishes "WebMCP unavailable in this browser" from "this page has no tools" in the empty state below. */
     webmcpAvailable: boolean;
+    /** See PageInfo.restricted's doc comment (card 31) — the third, more fundamental "no content script possible at all" empty state. */
+    restricted: boolean;
   }
 
-  let { tools, toolCalls, webmcpAvailable }: Props = $props();
+  let { tools, toolCalls, webmcpAvailable, restricted }: Props = $props();
 
   let section = $state<"tools" | "log">("tools");
 
@@ -44,7 +46,7 @@
 
   <div class="section-body">
     {#if section === "tools"}
-      <ToolsPanel {tools} {webmcpAvailable} />
+      <ToolsPanel {tools} {webmcpAvailable} {restricted} />
     {:else}
       <CallLogPanel {toolCalls} />
     {/if}

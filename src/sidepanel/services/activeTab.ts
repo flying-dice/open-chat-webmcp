@@ -34,67 +34,6 @@ function originOf(url: string | undefined): string {
   }
 }
 
-/**
- * Best-effort match for a tab Chrome never lets a content script run in —
- * card 14 (boards/project-backlog/14-connection-diagnostics-and-empty-states.md).
- *
- * This is a CLIENT-SIDE heuristic on the tab's own URL, not a live check.
- * src/background/sw.ts already has a more authoritative version of this
- * same reasoning (`describeUnreachable`'s `"no-relay"` case, sw.ts:162-177)
- * — but it only ever fires as the *result of an attempted tool call*;
- * `handleGetTools` (sw.ts:273-296) reports a restricted tab the same way
- * as an ordinary page that simply has zero tools (an empty list, no
- * reason attached), by its own doc comment's admission. Since editing
- * src/background/** is out of this card's scope, and probing with a fake
- * tool call just to learn "why" would be worse (a spurious call logged
- * for every ordinary zero-tool page, which is most of the web), this
- * reproduces sw.ts's own enumeration from the tab's URL instead, so the
- * panel can explain the restriction up front rather than only after a
- * user tries to use it and something goes quietly nowhere.
- *
- * Chrome/Web-Store/chrome-extension cases are exact (scheme/host alone is
- * definitive). The PDF case is inherently a guess from a URL alone — see
- * the report for that gap.
- */
-export function restrictedPageReason(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return undefined;
-  }
-
-  const suffix = "— chat still works here, just without page tools.";
-
-  if (
-    parsed.protocol === "chrome:" ||
-    parsed.protocol === "edge:" ||
-    parsed.protocol === "about:" ||
-    parsed.protocol === "devtools:"
-  ) {
-    return `This is a Chrome system page, which extensions can't run scripts on ${suffix}`;
-  }
-  if (parsed.protocol === "chrome-extension:") {
-    return `This is another extension's page, which extensions can't run scripts on ${suffix}`;
-  }
-  if (
-    parsed.hostname === "chromewebstore.google.com" ||
-    (parsed.hostname === "chrome.google.com" && parsed.pathname.startsWith("/webstore"))
-  ) {
-    return `The Chrome Web Store blocks extension scripts on its own pages ${suffix}`;
-  }
-  if (parsed.pathname.toLowerCase().endsWith(".pdf")) {
-    // Best-effort only: a `.pdf` URL usually opens in Chrome's built-in PDF
-    // viewer, which blocks content scripts the same way — but a server can
-    // technically serve a `.pdf` path as something else entirely, so this
-    // can be wrong in either direction and there's no way to confirm it
-    // from the URL alone.
-    return `This looks like Chrome's built-in PDF viewer, which blocks extension scripts ${suffix}`;
-  }
-  return undefined;
-}
-
 async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
@@ -106,27 +45,32 @@ export async function getToolsForTab(tabId: number): Promise<SerializedTool[]> {
 }
 
 /**
- * Same lookup as {@link getToolsForTab}, but also reports whether
- * `document.modelContext` exists on the tab at all (decisions/16, card 43) —
- * `refreshActiveTab` below needs both to fill in `PageInfo.webmcpAvailable`
+ * Same lookup as {@link getToolsForTab}, but also reports the worker's
+ * `available`/`restricted` signals (see RuntimeGetToolsResponse.restricted's
+ * doc comment in src/lib/protocol.ts, card 31) — `refreshActiveTab` below
+ * needs all three to fill in `PageInfo.webmcpAvailable`/`restricted`
  * distinctly from an ordinary zero-tool page.
  */
 async function getToolsAndAvailabilityForTab(
   tabId: number,
-): Promise<{ tools: SerializedTool[]; available: boolean }> {
+): Promise<{ tools: SerializedTool[]; available: boolean; restricted: boolean }> {
   try {
     const response = (await chrome.runtime.sendMessage({
       type: "runtime:get-tools",
       tabId,
     })) as RuntimeGetToolsResponse | undefined;
     // Worker not reachable yet, or answered with an unexpected shape — default
-    // `available: true` so a transient startup gap doesn't flash "WebMCP
-    // unavailable" for an ordinary page (see PageInfo.webmcpAvailable's doc
-    // comment).
-    return { tools: response?.tools ?? [], available: response?.available ?? true };
+    // `available: true, restricted: false` so a transient startup gap doesn't
+    // flash "WebMCP unavailable"/"restricted page" for an ordinary page (see
+    // PageInfo.webmcpAvailable's doc comment).
+    return {
+      tools: response?.tools ?? [],
+      available: response?.available ?? true,
+      restricted: response?.restricted ?? false,
+    };
   } catch {
     // No listener yet (worker still starting) — treat as "no tools known".
-    return { tools: [], available: true };
+    return { tools: [], available: true, restricted: false };
   }
 }
 
@@ -147,7 +91,7 @@ async function refreshActiveTab(tabId: number, opts: { isNewTab: boolean }): Pro
 
   const origin = originOf(tab.url);
   const previousOrigin = opts.isNewTab ? undefined : panel.pageInfo?.origin;
-  const { tools, available } = await getToolsAndAvailabilityForTab(tabId);
+  const { tools, available, restricted } = await getToolsAndAvailabilityForTab(tabId);
 
   if (opts.isNewTab) {
     await syncSessionToTab(tabId, origin);
@@ -161,7 +105,7 @@ async function refreshActiveTab(tabId: number, opts: { isNewTab: boolean }): Pro
     origin,
     favIconUrl: tab.favIconUrl,
     toolCount: tools.length,
-    restrictedReason: restrictedPageReason(tab.url),
+    restricted,
     webmcpAvailable: available,
   });
   // card 11's Tools view needs the full descriptors, not just the count.

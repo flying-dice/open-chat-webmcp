@@ -188,15 +188,22 @@ export interface PageInfo {
   favIconUrl?: string;
   toolCount: number;
   /**
-   * Set when src/sidepanel/services/activeTab.ts's URL-based heuristic
-   * recognizes this tab as one Chrome never allows a content script into
-   * (chrome://, chrome-extension://, the Web Store, the built-in PDF
-   * viewer — card 14). `toolCount` is always 0 here too, but for a
-   * DIFFERENT reason than an ordinary page simply not publishing any
-   * WebMCP tools, and that distinction is worth surfacing rather than
-   * leaving the user to guess why nothing works on this tab.
+   * True when the background worker (src/background/sw.ts) could not reach
+   * ANY content relay in this tab at all — chrome://, chrome-extension://,
+   * the Chrome Web Store, the built-in PDF viewer, and any other page Chrome
+   * never allows a content script into all surface this way (card 31,
+   * boards/project-backlog/31-restricted-page-detection-duplicated.md).
+   * `toolCount` is always 0 here too, but for a DIFFERENT, more fundamental
+   * reason than `webmcpAvailable: false` (a relay IS running there, it just
+   * answered "WebMCP is off") or an ordinary page simply not publishing any
+   * tools — nothing will EVER work here, and that distinction is worth
+   * surfacing rather than leaving the user to guess why. This is the
+   * worker's own authoritative signal (RuntimeGetToolsResponse.restricted),
+   * not a client-side URL guess — the panel used to pattern-match the tab's
+   * URL itself, which was wrong in both directions for `.pdf` paths; that
+   * heuristic is gone.
    */
-  restrictedReason?: string;
+  restricted: boolean;
   /**
    * Whether `document.modelContext` exists on this tab at all
    * (decisions/16-native-webmcp-client.md, card 43). `false` means WebMCP is

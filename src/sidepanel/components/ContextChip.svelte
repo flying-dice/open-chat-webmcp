@@ -39,12 +39,12 @@
 
   const label = $derived.by((): string => {
     if (!pageInfo) return "No active tab";
-    if (pageInfo.restrictedReason) return `Can't read ${pageInfo.origin}`;
+    if (pageInfo.restricted) return `Can't read ${pageInfo.origin}`;
     return `Sharing '${pageInfo.title || pageInfo.origin}'`;
   });
 
   const toolCountLabel = $derived.by((): string | undefined => {
-    if (!pageInfo || pageInfo.restrictedReason) return undefined;
+    if (!pageInfo || pageInfo.restricted) return undefined;
     return `${pageInfo.toolCount} ${pageInfo.toolCount === 1 ? "tool" : "tools"}`;
   });
 
@@ -52,7 +52,11 @@
   const detail = $derived.by((): string => {
     const parts = [label, statusLabel[connectionStatus]];
     if (toolCountLabel) parts.push(toolCountLabel);
-    if (pageInfo?.restrictedReason) parts.push(pageInfo.restrictedReason);
+    if (pageInfo?.restricted) {
+      parts.push(
+        "This page doesn't allow extension scripts to run, so there's nothing to call here — chat still works, just without page tools.",
+      );
+    }
     return parts.join(" · ");
   });
 
