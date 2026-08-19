@@ -1,0 +1,141 @@
+// `ChatProvider` adapter for the raw Ollama REST client in src/lib/ollama.ts
+// — translates between Ollama's wire habits (NDJSON, no auth, no call ids)
+// and the shared vocabulary in src/lib/provider.ts
+// (decisions/09-provider-agnostic-chat-transport.md,
+// decisions/11-provider-capability-detection.md). Ollama is the one
+// adapting here, not the other way round — see src/lib/provider.ts's header
+// comment for why the interface is shaped the way it is.
+
+import type {
+  ChatMessage,
+  ChatParams,
+  ChatProvider,
+  ChatStreamEvent,
+  ProviderModel,
+  ProviderResult,
+  ToolCall,
+} from "../provider";
+import type { ProviderConfig } from "./registry";
+import {
+  chat as ollamaChat,
+  getCapabilities as ollamaGetCapabilities,
+  listModels as ollamaListModels,
+  type OllamaChatMessage,
+  type OllamaModel,
+  type OllamaToolCall,
+} from "../ollama";
+
+function toProviderModel(model: OllamaModel): ProviderModel {
+  return { id: model.name, name: model.name, cacheKey: model.digest };
+}
+
+function toOllamaToolCall(call: ToolCall): OllamaToolCall {
+  // Outbound only (replaying history back to Ollama) — no `id`, since
+  // Ollama's wire format has no concept of one to send.
+  return { function: { name: call.name, arguments: call.arguments } };
+}
+
+function toOllamaMessage(message: ChatMessage): OllamaChatMessage {
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.toolCalls && message.toolCalls.length > 0
+      ? { tool_calls: message.toolCalls.map(toOllamaToolCall) }
+      : {}),
+    ...(message.toolName ? { tool_name: message.toolName } : {}),
+  };
+}
+
+function toChatToolCall(call: OllamaToolCall): ToolCall {
+  return {
+    // Always present on an inbound call — synthesized by src/lib/ollama.ts's
+    // stream parser, since Ollama itself assigns no call ids. The fallback
+    // is defensive only; it should never be hit in practice.
+    id: call.id ?? "",
+    name: call.function.name,
+    arguments: call.function.arguments,
+  };
+}
+
+function toChatMessage(message: OllamaChatMessage): ChatMessage {
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.tool_calls && message.tool_calls.length > 0
+      ? { toolCalls: message.tool_calls.map(toChatToolCall) }
+      : {}),
+  };
+}
+
+async function* adaptChatStream(
+  baseUrl: string,
+  params: ChatParams,
+): AsyncGenerator<ChatStreamEvent, void, void> {
+  const stream = ollamaChat({
+    model: params.model,
+    messages: params.messages.map(toOllamaMessage),
+    tools: params.tools,
+    signal: params.signal,
+    baseUrl,
+  });
+
+  for await (const event of stream) {
+    switch (event.type) {
+      case "content":
+        yield event;
+        break;
+      case "tool-calls":
+        yield {
+          type: "tool-calls",
+          toolCalls: event.toolCalls.map(toChatToolCall),
+        };
+        break;
+      case "done":
+        yield {
+          type: "done",
+          message: toChatMessage(event.message),
+          stats: {
+            doneReason: event.stats.doneReason,
+            // Ollama's duration breakdown has no cross-provider equivalent
+            // (decisions/09) — surfaced as-is for diagnostics under `raw`
+            // rather than forced into `promptTokens`/`completionTokens`.
+            raw: { ...event.stats },
+          },
+        };
+        break;
+      case "error":
+        yield { type: "error", error: event.error };
+        break;
+    }
+  }
+}
+
+/** Build a `ChatProvider` bound to one resolved Ollama provider config. */
+export function createOllamaProvider(config: ProviderConfig): ChatProvider {
+  const baseUrl = config.baseUrl;
+
+  return {
+    type: "ollama",
+
+    async listModels(opts): Promise<ProviderResult<ProviderModel[]>> {
+      const result = await ollamaListModels({ baseUrl, signal: opts?.signal });
+      if (!result.ok) return result;
+      return { ok: true, value: result.value.map(toProviderModel) };
+    },
+
+    // Ollama's `ModelCapabilities` result is already the shared shape
+    // (src/lib/ollama.ts imports it from src/lib/provider.ts directly), so
+    // there is nothing to convert here beyond supplying the digest cache
+    // key from `model.cacheKey`.
+    getCapabilities(model, opts) {
+      return ollamaGetCapabilities(
+        { name: model.id, digest: model.cacheKey ?? model.id },
+        { baseUrl, signal: opts?.signal, forceRefresh: opts?.forceRefresh },
+      );
+    },
+
+    chat(params: ChatParams) {
+      return adaptChatStream(baseUrl, params);
+    },
+  };
+}

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!--
+    Extension mark (boards/project-backlog/16-extension-icons.md,
+    decisions/08-native-chrome-design-language.md): a single-weight chat
+    bubble with three "typing" dots punched out as negative space, so the
+    dots automatically pick up whatever is behind the icon (Chrome's light
+    or dark toolbar) instead of needing separate light/dark art. One solid
+    fill, no gradients, no stroke — reads at 16px as a simple chat glyph.
+  -->
+  <path
+    fill-rule="evenodd"
+    clip-rule="evenodd"
+    fill="#4C8BF5"
+    d="
+      M36 18
+      L92 18
+      A20 20 0 0 1 112 38
+      L112 70
+      A20 20 0 0 1 92 90
+      L46 90
+      L28 108
+      L34 90
+      L36 90
+      A20 20 0 0 1 16 70
+      L16 38
+      A20 20 0 0 1 36 18
+      Z
+      M47 54 a7 7 0 1 0 -14 0 a7 7 0 1 0 14 0 Z
+      M71 54 a7 7 0 1 0 -14 0 a7 7 0 1 0 14 0 Z
+      M95 54 a7 7 0 1 0 -14 0 a7 7 0 1 0 14 0 Z
+    "
+  />
+</svg>

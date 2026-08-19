@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebMCP Demo — Shim / Native Discovery</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header>
+    <h1>WebMCP demo — shim / native discovery</h1>
+    <nav>
+      <a href="./late.html">Late-polyfill variant &rarr;</a>
+    </nav>
+    <span id="status" data-kind="pending">checking navigator.modelContext&hellip;</span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Page state</h2>
+      <p class="hint">Tools below read and mutate this state. Watch it change when a tool runs.</p>
+
+      <h3 style="font-size:0.85rem;margin:0 0 .3rem;">Notes</h3>
+      <ul id="notes-list"><li class="empty">No notes yet.</li></ul>
+
+      <h3 style="font-size:0.85rem;margin:1rem 0 .3rem;">Tasks</h3>
+      <ul id="tasks-list"><li class="empty">No tasks yet.</li></ul>
+
+      <div class="counter-box">
+        <span>dynamic-echo calls:</span>
+        <span id="dynamic-counter">0</span>
+      </div>
+
+      <div class="controls">
+        <button id="register-dynamic" class="secondary">Register dynamic-echo tool</button>
+        <button id="unregister-dynamic" class="secondary" disabled>Unregister dynamic-echo tool</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Registered tools</h2>
+      <p class="hint">What this page believes is registered. Compare against the extension's inspector for this tab.</p>
+      <ul id="tools-list"><li class="empty">Not registered yet.</li></ul>
+    </section>
+
+    <section class="panel">
+      <h2>Activity log</h2>
+      <p class="hint">Every call this page's tools receive, with arguments and outcome, newest first.</p>
+      <ul id="log"></ul>
+    </section>
+  </main>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

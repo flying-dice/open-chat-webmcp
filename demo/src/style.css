@@ -1,0 +1,211 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #2a2e38;
+  --text: #e4e7ee;
+  --muted: #8b93a3;
+  --accent: #5b8def;
+  --ok: #4caf6f;
+  --error: #e5534b;
+  --warn: #d99a30;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+header nav a {
+  color: var(--accent);
+  margin-left: 1rem;
+  font-size: 0.85rem;
+}
+
+#status {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+#status[data-kind="pending"] { color: var(--warn); border-color: var(--warn); }
+#status[data-kind="ok"] { color: var(--ok); border-color: var(--ok); }
+#status[data-kind="error"] { color: var(--error); border-color: var(--error); }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) minmax(320px, 1.2fr);
+  gap: 1rem;
+  padding: 1rem 1.5rem 2rem;
+}
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+}
+
+section.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  min-width: 0;
+}
+
+section.panel h2 {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+section.panel > p.hint {
+  margin: -0.4rem 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#notes-list li, #tasks-list li {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+button:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+#tools-list li {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.tool-name {
+  font-weight: 600;
+}
+.tool-desc {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.badge-readonly { color: var(--ok); border-color: var(--ok); }
+.badge-destructive { color: var(--error); border-color: var(--error); }
+.badge-mutating { color: var(--warn); border-color: var(--warn); }
+
+#log {
+  max-height: 480px;
+  overflow-y: auto;
+}
+.log-entry {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.log-time {
+  color: var(--muted);
+  font-weight: 400;
+}
+.log-args, .log-outcome {
+  margin-top: 0.15rem;
+  word-break: break-word;
+}
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+.outcome-ok { color: var(--ok); font-weight: 600; }
+.outcome-error { color: var(--error); font-weight: 600; }
+.outcome-pending { color: var(--warn); font-weight: 600; }
+
+.counter-box {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+#dynamic-counter {
+  color: var(--text);
+  font-weight: 600;
+}
