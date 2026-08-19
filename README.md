@@ -2,7 +2,7 @@
 
 A Chrome MV3 extension that puts a chat model in a side panel next to any tab
 and lets it *drive that page* through [WebMCP](https://github.com/webmachinelearning/webmcp) —
-tools a web page publishes on `navigator.modelContext`. The model reads and
+tools a web page publishes on `document.modelContext`. The model reads and
 acts on the page you're looking at, with your approval on anything that isn't
 explicitly marked read-only.
 
@@ -18,9 +18,12 @@ to the user's discretion.
 
 ## What it does
 
-- Injects a bridge into every page that discovers WebMCP tools regardless of
-  whether the page has native browser support, ships a polyfill, or expects
-  neither — see [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md).
+- Reads tools directly from a page's **native** `document.modelContext` —
+  the same registry the browser itself maintains, so this extension sees
+  exactly what any other WebMCP consumer (like the official inspector
+  extension) sees. This requires WebMCP to actually be enabled in your
+  Chrome; see [Requirements](#requirements) and
+  [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md).
 - Streams a chat conversation against your chosen provider, feeding it the
   page's tools and executing whatever it calls, subject to an approval policy.
 - Keeps one conversation per browser tab, persisted across panel close/reopen.
@@ -33,9 +36,25 @@ account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
 ## Requirements
 
 - **Node.js** 20 or later, to build the extension. Not required at runtime.
-- **Google Chrome 116+** (or a Chromium build of the same vintage) — this is
-  the `minimum_chrome_version` in `manifest.config.ts`, set by the combination
-  of the `chrome.sidePanel` API and `world: "MAIN"` content scripts.
+- **Google Chrome 149+** (or a Chromium build of the same vintage) — this is
+  the `minimum_chrome_version` in `manifest.config.ts`. Native WebMCP is only
+  available from Chrome 149 onward (the origin trial runs 149–156).
+- **WebMCP itself enabled** — this is a hard requirement, not optional.
+  `document.modelContext` does not exist in a stock Chrome install by
+  default. Turn it on one of three ways:
+  - the `chrome://flags/#enable-webmcp-testing` toggle, then relaunch Chrome
+    (`npm run launch` opens this page for you on first run);
+  - launching Chrome with `--enable-features=WebMCP`;
+  - or simply visiting a site that carries a WebMCP origin-trial token —
+    these work with no flag at all. This is why Google's own demos at
+    [googlechromelabs.github.io/webmcp-tools](https://googlechromelabs.github.io/webmcp-tools)
+    work on a stock Chrome while a local demo page does not — see
+    [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md#turning-it-on).
+
+  Without one of these, the extension still loads and chat still works, but
+  the side panel reports WebMCP as unavailable rather than showing any page
+  tools — see
+  [docs/04-troubleshooting.md](docs/04-troubleshooting.md#a-tab-shows-no-tools--no-relay-in-this-tab).
 - A chat backend: either a locally running [Ollama](https://ollama.com), or an
   API key for an OpenAI-compatible provider. Neither is required to build or
   load the extension — only to actually chat.
@@ -56,16 +75,14 @@ root has no `manifest.json` at its top level and will not load.
    build.
 4. Click the extension's toolbar icon to open the side panel (it opens
    directly — there is no popup).
-5. Optional: the extension works fully without any Chrome flag — it ships
-   its own adopt-or-provide shim that provides `navigator.modelContext` when
-   Chrome doesn't have one (see
-   [decisions/02-mainworld-webmcp-bridge.md](decisions/02-mainworld-webmcp-bridge.md)).
-   To exercise Chrome's own **native** `navigator.modelContext` instead of
-   that shim, turn on the "WebMCP for testing" flag at
+5. **Required, not optional:** turn on the "WebMCP for testing" flag at
    `chrome://flags/#enable-webmcp-testing` (confirmed present under that id
-   in Chrome 151; WebMCP is still shipping behind flags/an origin trial, so
-   search "webmcp" on `chrome://flags` if that id has moved) and relaunch
-   Chrome.
+   in Chrome 151/152; WebMCP is still shipping behind flags/an origin trial,
+   so search "webmcp" on `chrome://flags` if that id has moved) and relaunch
+   Chrome. Without it, `document.modelContext` doesn't exist and the side
+   panel reports WebMCP as unavailable — see [Requirements](#requirements).
+   A page carrying a WebMCP origin-trial token works without this flag; see
+   [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md).
 
 For iterative development, `npm run dev` runs Vite with HMR for the side
 panel and options page; you still need to reload the unpacked extension in
@@ -184,16 +201,18 @@ above) — see [docs/04-troubleshooting.md](docs/04-troubleshooting.md).
 npm run demo
 ```
 
-Serves two static fixture pages at `http://localhost:5175` (`index.html` and
-`late.html`) with a handful of hand-built WebMCP tools — read-only, mutating,
-destructive-hint, rich-schema, throwing, and hanging — for exercising the
-extension without depending on a real third-party WebMCP site.
-`late.html` deliberately assigns `navigator.modelContext` two seconds after
-load (via a fake polyfill, not the real `@mcp-b/global` package) to exercise
-the bridge's late-adoption path — see
-[docs/01-architecture.md](docs/01-architecture.md). Load these pages in a tab
+Serves a single fixture page at `http://localhost:5175` (`index.html`),
+built directly against `document.modelContext.registerTool()` — the real
+native API, not a hand-rolled stand-in — with seven WebMCP tools: read-only,
+mutating, untrusted-content, rich-schema, throwing, and hanging, plus a
+dynamic tool you can register/unregister on demand via an `AbortController`
+button pair. This requires WebMCP to be enabled in the browser you load it
+in (see [Requirements](#requirements)); if it isn't, the page shows a clear
+"enable WebMCP" message instead of silently doing nothing. Load it in a tab
 with the built extension installed and open the side panel to see tool
-discovery happen live.
+discovery happen live. The official WebMCP inspector extension sees the
+identical tool set on this same page — that parity is the whole point of
+[decisions/16](decisions/16-native-webmcp-client.md).
 
 ## Launch it in real Chrome
 
@@ -203,9 +222,12 @@ npm run launch
 
 Rebuilds the extension into `dist/` (always fresh — never a stale build from
 a previous session) and opens it in your **real, installed Google Chrome**,
-not Playwright's bundled Chromium (that's what `npm run verify` uses, on
-purpose, for deterministic testing). This is for actually using the
-extension by hand, against real sites and a real local Ollama.
+not the Chrome for Testing build `npm run verify` uses (see
+[Verification harness](#verification-harness) below — real Chrome doesn't
+allow `--load-extension` at all). This is for actually using the extension
+by hand, against real sites and a real local Ollama. Remember that WebMCP
+still needs to be enabled for this to see any page tools at all — see
+[Requirements](#requirements).
 
 It loads the extension into a **dedicated, persistent profile**
 (`.chrome-profile/`, gitignored) rather than your everyday default profile —
@@ -215,7 +237,7 @@ logins and provider settings on every run. This profile is reused across
 launches, so set your providers up once.
 
 **Real Chrome refuses to auto-load an unpacked extension, even on the
-command line.** Unlike `npm run verify`'s Playwright-driven Chromium, real
+command line.** Unlike `npm run verify`'s Chrome for Testing browser, real
 Google Chrome hard-rejects the `--load-extension` flag (it logs
 `--load-extension is not allowed in Google Chrome, ignoring.` and does
 nothing) — a deliberate Google restriction, not a bug here. So **the first
@@ -230,20 +252,18 @@ WebMCP page with tools to try is more useful than a blank tab. (If the demo
 server can't be started you get a blank tab with a printed warning, never a
 tab pointing at a dead port.)
 
-That first run also opens a **second, optional** tab on `chrome://flags` at
-the "WebMCP for testing" flag (`chrome://flags/#enable-webmcp-testing`,
-confirmed present under that id in Chrome 151 by inspecting the installed
-binary). The extension does not need this flag: it ships its own
-adopt-or-provide shim (`decisions/02-mainworld-webmcp-bridge.md`) that
-*provides* `navigator.modelContext` whenever Chrome doesn't have one of its
-own, so WebMCP pages work either way. Turning the flag on only matters if
-you specifically want to exercise Chrome's own **native**
-`navigator.modelContext` instead of the shim — a genuinely different code
-path (the shim's "adopt" branch in `src/inject/bridge.ts`) — to compare
-behaviour or test against the real browser implementation as it ships.
-WebMCP is still shipping behind flags/an origin trial, so this id can move
-or disappear in a future Chrome version; if the tab that opens doesn't show
-it, search "webmcp" on `chrome://flags` to find its current name.
+That first run also opens a **second** tab on `chrome://flags` at the
+"WebMCP for testing" flag (`chrome://flags/#enable-webmcp-testing`,
+confirmed present under that id in Chrome 151/152 by inspecting the
+installed binary). The script also passes `--enable-features=WebMCP` on
+every launch's command line, which should enable native WebMCP without you
+touching this tab at all — it's a manual fallback, kept for the case where
+the command-line switch is blocked (enterprise policy) or a future Chrome
+renames the feature. Native WebMCP is a **hard requirement**, not optional —
+see [Requirements](#requirements). WebMCP is still shipping behind
+flags/an origin trial, so this flag's id can move or disappear in a future
+Chrome version; if the tab that opens doesn't show it, search "webmcp" on
+`chrome://flags` to find its current name.
 
 **MV3 side panels can't be opened programmatically** — Chrome will not pop
 the panel open on its own. Click the extension's toolbar icon to open it
@@ -262,17 +282,25 @@ npm run verify
 
 Builds the extension into its own `dist-verify/` output (kept separate from
 `dist/` so it can't be clobbered by a concurrent `npm run build`), launches
-**real, headed Chromium** via Playwright with the extension loaded unpacked,
-starts (or reuses) the demo server from `npm run demo`, and drives the actual
-running extension: confirms the MAIN-world bridge really executes in the
-page's JS world and is invisible to the ISOLATED-world relay, confirms tool
-discovery against both demo pages including late adoption, confirms the
-service worker's tool registry survives a real service-worker restart, and
-calls tools end to end including the deliberately throwing and hanging ones.
-It needs a graphical environment (MV3 extensions require a headed launch) and
-Playwright's bundled Chromium (`npx playwright install chromium` if it hasn't
-been downloaded yet). It does not require Ollama or any provider configured —
-it only exercises the WebMCP bridge/relay/worker/demo path, not chat.
+**real, headed Chrome for Testing** with `--enable-features=WebMCP` and the
+extension loaded unpacked, starts (or reuses) the demo server from
+`npm run demo`, and drives the actual running extension against the real
+native `document.modelContext` API: tool discovery via `getTools()`, live
+add/remove through `ontoolchange`, a call round-tripping through
+`executeTool()` with parsed MCP content, the deliberately throwing and
+hanging fixtures, the registry surviving a real service-worker restart and
+clearing on navigation, and — since native WebMCP is a hard requirement now —
+a dedicated check that with the feature *off* the extension reports a
+distinct "WebMCP unavailable" state rather than an empty tool list. Chrome
+for Testing is required specifically because Playwright's own bundled
+Chromium does not have WebMCP compiled in at all, and branded Google Chrome
+refuses `--load-extension` outright; Chrome for Testing is the only build
+that satisfies both. It's resolved and downloaded automatically via
+`@puppeteer/browsers` on first run (cached under gitignored
+`.chrome-for-testing/`) — no manual install step. It needs a graphical
+environment (MV3 extensions require a headed launch). It does not require
+Ollama or any provider configured — it only exercises the WebMCP
+relay/worker/demo path, not chat.
 
 This is the only part of the project that has been checked against a real
 running browser end to end; everything else in the codebase not covered by
@@ -282,12 +310,11 @@ running browser end to end; everything else in the codebase not covered by
 
 ## Documentation
 
-- [docs/01-architecture.md](docs/01-architecture.md) — the four JS contexts,
-  how a tool call travels between them, the adopt-or-provide bridge shim, and
-  the timeout ladder.
-- [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md) — what
-  happens on native, polyfilled, and WebMCP-unaware pages, and what's
-  explicitly out of scope (iframes).
+- [docs/01-architecture.md](docs/01-architecture.md) — the three JS contexts,
+  how a tool call travels between them, and the timeout ladder.
+- [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md) — why
+  native WebMCP is a hard requirement now, how to turn it on, and what's
+  explicitly out of scope (polyfilled pages, iframes).
 - [docs/03-privacy-and-trust.md](docs/03-privacy-and-trust.md) — what's
   stored, where, unencrypted, and what a hostile page can and can't do to you
   through this extension.
@@ -313,13 +340,28 @@ as behavior changes. A few things worth knowing if you're picking this up:
   (a second panel view listing every tool a page published and every call
   made) is also still in the backlog. The approval cards in the transcript
   are the only visibility into tool calls today.
-- **Iframe tool discovery is deferred.** The bridge only injects into the top
+- **Iframe tool discovery is deferred.** The relay only injects into the top
   frame; tools published from an embedded widget or iframe are invisible to
-  the extension. See `boards/project-backlog/18-iframe-tool-discovery.md` and
-  `decisions/02-mainworld-webmcp-bridge.md`.
+  the extension. The native API defines the primitives needed to support this
+  (`exposedTo`, `fromOrigins`, per-tool `origin`/`window`) — the platform
+  question is answered, it just isn't implemented. See
+  `boards/project-backlog/18-iframe-tool-discovery.md` and
+  [decisions/16](decisions/16-native-webmcp-client.md).
 - **No Chrome Web Store listing.** Packaging and store submission
   (`boards/project-backlog/19-packaging-and-store-listing.md`) haven't
   happened; the only way to run this is loading `dist/` unpacked as above.
+
+## Third-party assets
+
+The side panel's icons are Material Symbols (Outlined, Weight 400, Grade 0,
+Optical size 24) from [google/material-design-icons][msicons], Copyright Google
+LLC, licensed under the Apache License 2.0. Only the `d` path attributes were
+extracted; they are inlined in `src/lib/icons.ts`, which carries the SPDX
+identifier and provenance. The `sparkle` glyph in that file is not Google's — it
+is a plain four-point star drawn for this project, since the reference panel's
+star is a product mark.
+
+[msicons]: https://github.com/google/material-design-icons
 
 ## License
 

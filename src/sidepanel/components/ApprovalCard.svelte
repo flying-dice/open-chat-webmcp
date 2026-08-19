@@ -16,11 +16,16 @@
    * because denying is dangerous but so a scanning eye can tell the two
    * buttons apart at a glance.
    *
-   * Per decisions/05: `annotations` are supplied by the PAGE, not the
-   * extension, and are not a security boundary — a hostile page could label
-   * a destructive tool read-only. The badges below are worded as reports
-   * ("the page marked this...") and the arguments panel is the actual
-   * substance of the decision, not the badges.
+   * Per decisions/05 and decisions/17: `annotations` are supplied by the
+   * PAGE, not the extension, and are not a security boundary — a hostile
+   * page could label a mutating tool read-only, or omit
+   * `untrustedContentHint` on a tool returning attacker-controlled text. The
+   * badges below are worded as reports ("the page marked this...") and the
+   * arguments panel is the actual substance of the decision, not the badges.
+   * `ToolAnnotations` is exactly `{ readOnlyHint, untrustedContentHint }` —
+   * there is no `destructiveHint` (decisions/17: not in the WebMCP IDL, and
+   * silently dropped by Chrome's WebIDL dictionary conversion even if a page
+   * sets it).
    */
   import type { PendingApproval } from "../stores/approvals.svelte";
   import { approve, deny } from "../stores/approvals.svelte";
@@ -44,19 +49,19 @@
 
   const tool = $derived(request.tool);
   const readOnly = $derived(tool?.annotations?.readOnlyHint === true);
-  const destructive = $derived(tool?.annotations?.destructiveHint === true);
-  const unannotated = $derived(!tool?.annotations || (!readOnly && !destructive));
+  const untrustedContent = $derived(tool?.annotations?.untrustedContentHint === true);
+  const unannotated = $derived(!tool?.annotations || (!readOnly && !untrustedContent));
 </script>
 
-<div class="approval-card" data-destructive={destructive} role="group" aria-label={`Approval needed: ${request.call.name}`}>
+<div class="approval-card" role="group" aria-label={`Approval needed: ${request.call.name}`}>
   <div class="approval-heading">
     <span class="eyebrow text-small">Approval needed</span>
     <div class="badges">
-      {#if destructive}
-        <span class="badge badge-destructive">destructive</span>
-      {/if}
       {#if readOnly}
         <span class="badge badge-readonly">read-only</span>
+      {/if}
+      {#if untrustedContent}
+        <span class="badge badge-untrusted">untrusted content</span>
       {/if}
       {#if unannotated}
         <span class="badge badge-unannotated">unannotated</span>
@@ -103,23 +108,23 @@
 
 <style>
   /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+     and src/sidepanel/chat-theme.css (decisions/18). */
 
+  /* The one thing in the transcript that BLOCKS the loop, so it is the one
+     thing tinted rather than merely filled — it has to be distinguishable
+     from an ordinary tool card at a glance, and the 3px accent border it
+     used to rely on reads as decoration now that nothing else has one. */
   .approval-card {
     width: 100%;
     min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    border: 1px solid var(--color-outline);
-    border-left: 3px solid var(--color-primary);
-    border-radius: var(--radius-card);
-    background: var(--color-surface);
-    padding: var(--space-3);
-  }
-
-  .approval-card[data-destructive="true"] {
-    border-left-color: var(--color-danger);
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--color-secondary-container);
+    color: var(--color-on-secondary-container);
+    padding: var(--space-4);
   }
 
   .approval-heading {
@@ -148,18 +153,22 @@
     padding: 2px var(--space-1);
     border-radius: var(--radius-sm);
     border: 1px solid var(--color-outline);
+    /* The card's own fill is the secondary container, so badges need their
+       own surface to stay legible against it rather than inheriting it. */
+    background: var(--color-surface);
     white-space: nowrap;
-  }
-
-  .badge-destructive {
-    background: var(--color-danger);
-    border-color: var(--color-danger);
-    color: var(--color-on-primary);
-    font-weight: 600;
   }
 
   .badge-readonly {
     color: var(--color-on-surface-variant);
+  }
+
+  /* theme.css has no separate "warning" token (decisions/08) — this reuses
+     --color-danger, the only attention colour available, purely to catch
+     the eye; it does not imply the call itself is dangerous to make. */
+  .badge-untrusted {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
   }
 
   .badge-unannotated {
@@ -169,7 +178,7 @@
 
   .tool-name {
     margin: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: var(--font-size-heading);
     font-weight: 600;
     overflow-wrap: anywhere;
@@ -211,13 +220,25 @@
     flex: 0 0 auto;
   }
 
+  /* Buttons no longer have borders to colour (chat-theme.css), so the
+     approve/deny distinction is carried by fill and weight instead: approve
+     is the filled primary action, deny is a quieter tonal button in the
+     danger colour. Deny stays the autofocused one — see the markup. */
   .deny-button {
-    border-color: var(--color-danger);
+    background: var(--color-surface-container);
     color: var(--color-danger);
   }
 
+  .deny-button:hover {
+    background: var(--color-surface-container-high);
+  }
+
   .approve-button {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+
+  .approve-button:hover {
+    background: color-mix(in srgb, var(--color-on-primary) 8%, var(--color-primary));
   }
 </style>

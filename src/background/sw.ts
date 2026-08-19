@@ -51,6 +51,14 @@ void chrome.sidePanel
 
 interface RegistryEntry {
   origin: string;
+  /**
+   * Whether `document.modelContext` exists on this tab at all
+   * (decisions/16-native-webmcp-client.md, card 43) — distinct from `tools`
+   * being empty. `false` means WebMCP is off in this browser/for this
+   * origin; `true` with `tools: []` means the feature is on and this page
+   * simply hasn't registered anything.
+   */
+  available: boolean;
   tools: SerializedTool[];
 }
 
@@ -191,6 +199,7 @@ function isToolsUpdatedMessage(v: unknown): v is RuntimeToolsUpdatedMessage {
     v !== null &&
     (v as Record<string, unknown>).type === "runtime:tools-updated" &&
     typeof (v as Record<string, unknown>).origin === "string" &&
+    typeof (v as Record<string, unknown>).available === "boolean" &&
     Array.isArray((v as Record<string, unknown>).tools)
   );
 }
@@ -207,24 +216,27 @@ function isCallToolResponse(v: unknown): v is RuntimeCallToolResponse {
 const PULL_TIMEOUT_MS = 3000;
 
 // Round-trip budget for a worker-initiated tool call, the OUTERMOST layer of
-// a deliberate 3-layer timeout ladder (call chain: worker -> relay -> bridge,
-// so the worker wraps the relay, which wraps the bridge):
+// a deliberate 2-layer timeout ladder (call chain: worker -> relay). The
+// ladder lost its innermost rung in decisions/16-native-webmcp-client.md: the
+// relay now executes tools directly against `document.modelContext`
+// (`executeTool`) instead of round-tripping to a separate MAIN-world bridge,
+// so there is no third, page-side timeout to nest inside any more.
 //
-//   src/inject/bridge.ts  EXECUTE_TIMEOUT_MS    = 20_000  (innermost)
-//   src/content/relay.ts  RELAY_CALL_TIMEOUT_MS = 25_000
-//   src/background/sw.ts  CALL_TIMEOUT_MS       = 30_000  (this constant)
+//   src/content/relay.ts   EXECUTE_TIMEOUT_MS = 20_000  (innermost)
+//   src/background/sw.ts   CALL_TIMEOUT_MS    = 30_000  (this constant, outermost)
 //
-// Each layer must exceed the one it wraps with a comfortable margin so the
-// innermost, most specific error (the bridge's) wins the race under real
-// scheduling jitter instead of being masked by an outer layer's generic
-// "did not respond in time". Do not shrink this below the relay's budget —
-// and if you touch any one of the three, re-check the other two.
+// This layer must exceed the relay's with a comfortable margin so the
+// relay's own, more specific timeout error wins the race under real
+// scheduling jitter instead of being masked by this layer's generic "did not
+// respond in time". Do not shrink this below the relay's budget — and if you
+// touch either one, re-check the other.
 //
 // Note: the side panel's own request-level timeout
 // (TOOL_CALL_TIMEOUT_MS in src/sidepanel/services/agentLoop.ts, 20_000 as of
 // this writing) sits OUTSIDE this whole ladder for real UI-driven calls, and
 // is currently *shorter* than this chain's total budget — that's a separate
-// concern for whoever owns src/sidepanel/**, not fixed here.
+// concern for whoever owns src/sidepanel/**, not fixed here
+// (boards/project-backlog/30-panel-timeout-outside-ladder.md).
 const CALL_TIMEOUT_MS = 30_000;
 
 /** Rebuild-on-restart: ask the relay in `tabId` for its current tools right now. */
@@ -243,7 +255,11 @@ async function pullToolsFromRelay(tabId: number): Promise<RegistryEntry | null> 
     );
     return null;
   }
-  return { origin: result.response.origin, tools: result.response.tools };
+  return {
+    origin: result.response.origin,
+    available: result.response.available,
+    tools: result.response.tools,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +291,12 @@ async function handleGetTools(
 ): Promise<RuntimeGetToolsResponse> {
   const cached = registry.get(req.tabId);
   if (cached) {
-    return { type: "runtime:get-tools-response", tabId: req.tabId, tools: cached.tools };
+    return {
+      type: "runtime:get-tools-response",
+      tabId: req.tabId,
+      available: cached.available,
+      tools: cached.tools,
+    };
   }
 
   // Cache miss — either this tab never announced tools, or (far more likely
@@ -284,15 +305,21 @@ async function handleGetTools(
   const pulled = await pullToolsFromRelay(req.tabId);
   if (pulled) {
     setRegistryEntry(req.tabId, pulled);
-    return { type: "runtime:get-tools-response", tabId: req.tabId, tools: pulled.tools };
+    return {
+      type: "runtime:get-tools-response",
+      tabId: req.tabId,
+      available: pulled.available,
+      tools: pulled.tools,
+    };
   }
 
-  // No relay reachable (or it didn't answer in time) — report an empty tool
-  // list rather than hanging or throwing. RuntimeGetToolsResponse has no
-  // error field, so this is the correct "nothing here" signal; the specific
-  // reason is logged above and surfaces with detail on the call-tool path,
-  // which does have an error field.
-  return { type: "runtime:get-tools-response", tabId: req.tabId, tools: [] };
+  // No relay reachable at all (or it didn't answer in time) — e.g. a
+  // chrome://, Web Store, or PDF-viewer tab with no content script. We have
+  // no way to know whether WebMCP would even be available there, so this
+  // reports `available: false` rather than claiming a definite "yes" or
+  // "no" — the specific unreachable-reason is logged above and surfaces with
+  // detail on the call-tool path, which does have an error field.
+  return { type: "runtime:get-tools-response", tabId: req.tabId, available: false, tools: [] };
 }
 
 async function handleCallTool(
@@ -344,7 +371,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return false;
       }
       const tabId = sender.tab.id;
-      setRegistryEntry(tabId, { origin: message.origin, tools: message.tools });
+      setRegistryEntry(tabId, { origin: message.origin, available: message.available, tools: message.tools });
       broadcastToolsUpdated({ ...message, tabId });
       return false;
     }

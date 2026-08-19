@@ -1,74 +1,134 @@
 # WebMCP compatibility
 
 [WebMCP](https://github.com/webmachinelearning/webmcp) lets a web page
-register tools an AI agent can call, on `navigator.modelContext`. Browser
-support for it is not universal, and a page's own JavaScript can either use
-a native implementation, load a polyfill, or just assume support exists and
-call into it blind. This extension is built to work across all three —
-that's the entire purpose of the MAIN-world bridge described in
-[docs/01-architecture.md](01-architecture.md#the-adopt-or-provide-shim) — but
-the three cases behave differently and are worth knowing apart.
+register tools an AI agent can call, on `document.modelContext`. There is
+exactly one case this extension supports: **the browser itself implements
+`document.modelContext` natively, and the page registers tools directly
+against it.** That's it. There is no polyfill support and no fallback
+implementation any more — see
+[decisions/16](../decisions/16-native-webmcp-client.md).
 
-## Native
+This is a hard trade, not an incremental one, and it's worth stating plainly
+what it costs and what it buys, since it reverses an earlier design
+(`decisions/02-mainworld-webmcp-bridge.md`, superseded).
 
-If the browser itself implements `navigator.modelContext` (currently an
-origin trial / flagged feature in Chrome, not on by default), the page
-registers tools directly against that real implementation. The bridge
-**adopts** it: registrations are recorded for our own bookkeeping, then
-forwarded to the native implementation unchanged, so the page behaves exactly
-as it would with no extension installed. Tools discovered this way are
-tagged `source: "native"`.
+## What changed, and why
 
-## Polyfilled
+The extension used to inject a MAIN-world script (`src/inject/bridge.ts`,
+555 lines, now deleted) that installed an "adopt-or-provide" shim on
+`navigator.modelContext`: adopt whatever was already there (native or a
+polyfill), or provide an implementation itself if nothing was. The
+justification at the time was that there was no way to *read* a native
+implementation's registered tools from outside the page's own JS world.
 
-Many pages that want WebMCP today, ahead of native support, ship a polyfill
-such as [`@mcp-b/global`](https://github.com/webmachinelearning/webmcp) that
-assigns an implementation onto `navigator.modelContext` itself. Two
-sub-cases:
+That premise stopped being true. `document.modelContext` — the API moved
+from `navigator.modelContext` in a 2026-05-27 spec migration — is a genuine
+`Document`-scoped WebIDL attribute, which means an ISOLATED-world content
+script (the kind every other browser extension uses, including the official
+WebMCP inspector) can read it directly, with `getTools()`, `ontoolchange`,
+and `executeTool()`. This was measured directly against Chrome 151/152, not
+assumed from the spec text — see
+[decisions/16](../decisions/16-native-webmcp-client.md) for the full list of
+places Chrome's shipped behaviour disagrees with the published IDL.
 
-- **Polyfill runs before the bridge's shim is read** — behaves like the
-  native case: adopt, forward, tag `source: "polyfill"`.
-- **Polyfill runs after** — this is the case that actually needs the bridge's
-  accessor-property trick. Because the bridge redefined
-  `navigator.modelContext` as an accessor at `document_start`, a later
-  `navigator.modelContext = new SomePolyfill()` assignment from the page is
-  intercepted by the shim's setter rather than silently replacing it. The
-  setter adopts the newly-assigned object, migrates over anything registered
-  in the meantime, and re-emits the current tool list. `demo/late.html`
-  exists specifically to exercise this path — it deliberately waits two
-  seconds (or a button click) before assigning a hand-written fake polyfill,
-  and `npm run verify` asserts against it for real in a running browser.
+Reading the same registry the browser itself maintains, instead of running a
+parallel implementation next to it, is what makes the extension
+**interoperable**: this extension and the official WebMCP inspector, loaded
+in the same browser on the same page, see the identical tool set — verified
+directly, both extensions live at once, in card 43's journal. Under the old
+shim, the inspector saw nothing on pages this extension found six tools on,
+because the inspector reads the native registry and the shim was a separate
+object entirely.
 
-## Unsupported (the common case today)
+## What this costs
 
-Most pages neither ship a polyfill nor run in a browser with native support.
-If such a page's own script calls `navigator.modelContext.registerTool(...)`
-expecting WebMCP to exist, it would normally throw a `TypeError` on
-`undefined`. Because the bridge has already installed itself as
-`navigator.modelContext` before any page script runs (`document_start`,
-before the page's own scripts execute), the shim **provides** the
-implementation instead — the page's call just works, tagged
-`source: "shim"`, with no polyfill or native browser support required at
-all. This is the biggest practical compatibility win: the extension can
-discover tools from a page's own bespoke WebMCP-style code with nothing
-extra installed on that page.
+**Pages relying on a JS polyfill are now invisible to us.** A polyfill such
+as `@mcp-b/global` installs `document.modelContext` in the page's own MAIN
+world. An ISOLATED-world content script — which is all this extension is,
+now — cannot see anything installed in the MAIN world; there is no bridge
+left to cross that boundary. A page that used to work through the shim's
+"adopt" path now shows no tools at all. Reintroducing support would mean
+reintroducing a MAIN-world script, which is exactly what decisions/16
+deliberately chose not to do.
 
-If a page publishes no WebMCP tools at all — the overwhelming majority of the
-web — the side panel simply has no tools to attach to that tab's chat and the
-model answers from its own knowledge, same as a plain chat session.
+**Pages with no WebMCP support of their own are no longer given one.** The
+old shim's "provide" mode meant a page could call
+`navigator.modelContext.registerTool(...)` blind, with no polyfill and no
+native support, and it would just work — the shim silently became the
+implementation. That mode is gone. A page like that now throws, exactly as
+it would with no extension installed at all. This is treated as correct
+behaviour, not a regression to route around: the extension no longer
+provides an implementation to any page, it only reads one the browser
+already provides.
+
+**Native WebMCP is a hard requirement**, and it is off by default. See
+[Turning it on](#turning-it-on) below.
+
+## Turning it on
+
+`document.modelContext` does not exist in a stock installation of Chrome
+today. It's enabled one of three ways:
+
+1. **The `chrome://flags/#enable-webmcp-testing` toggle** ("WebMCP for
+   testing"), then relaunch Chrome. `npm run launch` opens this flags page
+   for you on first run — see the README.
+2. **`--enable-features=WebMCP`** as a Chrome launch flag. This is how
+   `npm run verify` runs its harness (on Chrome for Testing, since branded
+   Google Chrome ignores `--load-extension` outright).
+3. **A WebMCP origin-trial (OT) token embedded in the page itself**, as a
+   `<meta http-equiv="origin-trial" content="...">` tag or an equivalent
+   response header. A site carrying a valid token gets `document.modelContext`
+   in any visitor's stock Chrome within the trial's window, no flag needed on
+   the visitor's end at all.
+
+Case 3 explains an observation that looks confusing until you know it: the
+Chrome team's own demo pages at
+[googlechromelabs.github.io/webmcp-tools](https://googlechromelabs.github.io/webmcp-tools)
+work in a completely stock Chrome, flag off, while a local demo page does
+not. Their HTML carries an origin-trial token — decoded, it reads
+`{"origin":"https://googlechromelabs.github.io:443","feature":"WebMCP","expiry":1794873600}`
+— scoped to that exact origin. It is not that WebMCP is broadly available and
+your local setup is missing something; it's that this one origin has a token
+and yours doesn't. This was the original source of confusion that started
+this whole migration: the extension looked broken on a local demo page while
+appearing to work fine on Google's own demos, and the actual difference was
+never the extension at all.
+
+The origin trial itself runs Chrome 149–156. `manifest.config.ts`'s
+`minimum_chrome_version` is set to `149` to match.
+
+## The "WebMCP unavailable" state
+
+Because native WebMCP is a hard requirement now, a disabled flag needs to
+look different in the UI from a page that simply has no tools — otherwise
+every user without the flag on would see an ordinary-looking empty state and
+have no idea anything was even missing.
+
+The relay (`src/content/relay.ts`) checks `document.modelContext !==
+undefined` once, at load, and reports that as `available: boolean` alongside
+the tool list. This is threaded end to end: relay →
+`runtime:tools-updated`/`runtime:get-tools-response` → the service worker's
+per-tab registry (`src/background/sw.ts`) → the panel's `PageInfo.webmcpAvailable`.
+The panel's tools view (`src/sidepanel/components/ToolsPanel.svelte`) branches
+on it first: `webmcpAvailable === false` shows an explanatory message naming
+the flag and the origin-trial alternative, distinct from the ordinary "this
+page hasn't published any tools" copy shown when `webmcpAvailable === true`
+and the list is simply empty.
 
 ## Out of scope: iframes
 
-The bridge only injects into the **top frame** (`all_frames: false` in
+The relay only injects into the **top frame** (`all_frames: false` in
 `manifest.config.ts`). A page that publishes tools from an embedded
 iframe — a checkout widget, an embedded dashboard — is invisible to the
 extension entirely; there is no fallback or partial support for this case.
 
-Extending to `all_frames: true` isn't a flag flip: it requires deciding how
-tool identity is namespaced across frames, what a tool-name collision between
-two frames means, how a call gets routed back to the specific frame that
-registered it, and whether it's worth the cost of injecting a content script
-into every ad iframe on the web. This is tracked as deferred work — see
-`boards/project-backlog/18-iframe-tool-discovery.md` and
-`decisions/02-mainworld-webmcp-bridge.md` — not implemented in any partial
-form.
+Unlike when this was originally deferred, the *platform* question — what
+tool identity means across frames — is no longer open. The native API
+defines it: `registerTool`'s `exposedTo` option and `getTools`'s
+`fromOrigins` filter control cross-frame visibility, and each
+`RegisteredTool` carries its own `origin` and `window` identifying the frame
+that registered it (this relay already uses the latter to scope its own
+top-frame lookups — see [Architecture](01-architecture.md)). What's still
+undecided is whether it's worth injecting into every frame on every page to
+use those primitives. See
+`boards/project-backlog/18-iframe-tool-discovery.md`.

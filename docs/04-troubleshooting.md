@@ -80,11 +80,37 @@ ignores every WebMCP tool and looks broken
 
 ## A tab shows no tools / "no relay in this tab"
 
-Two different situations produce this:
+Three different situations produce this, and telling them apart matters —
+they have three different (non-)fixes.
 
+- **WebMCP is not enabled in this Chrome.** This is the most common cause
+  today, and the one most likely to be mistaken for a genuine bug, because
+  native WebMCP is now a hard requirement
+  ([decisions/16](../decisions/16-native-webmcp-client.md)) but ships off by
+  default. The panel tells these two apart explicitly: if
+  `document.modelContext` doesn't exist in the tab at all, the tools view
+  shows a distinct **"WebMCP isn't available in this browser (or on this
+  page)"** message (`src/sidepanel/components/ToolsPanel.svelte`) rather than
+  the ordinary "this page has no tools" empty state — if you're seeing the
+  ordinary empty state, WebMCP itself is working and the page really just has
+  no tools; if you're seeing the "unavailable" message, fix it one of three
+  ways:
+  1. Turn on `chrome://flags/#enable-webmcp-testing` ("WebMCP for testing")
+     and relaunch Chrome. `npm run launch` opens this page for you on first
+     run.
+  2. Launch Chrome with `--enable-features=WebMCP`.
+  3. Visit a page carrying a WebMCP origin-trial token — these work without
+     any flag at all. See
+     [docs/02-webmcp-compatibility.md](02-webmcp-compatibility.md#turning-it-on)
+     for why Google's own `googlechromelabs.github.io/webmcp-tools` demos
+     work on a stock Chrome while a local page doesn't: the demo pages carry
+     a token scoped to that origin, nothing about your setup is missing.
+  Also check that the extension itself is built against a new enough
+  `minimum_chrome_version` (`manifest.config.ts`) — WebMCP requires
+  Chrome 149+.
 - **The page genuinely publishes no WebMCP tools.** The overwhelming
-  majority of sites — this isn't an error, the model just has nothing to
-  call and answers from its own knowledge. See
+  majority of sites, even with WebMCP enabled — this isn't an error, the
+  model just has nothing to call and answers from its own knowledge. See
   [docs/02-webmcp-compatibility.md](02-webmcp-compatibility.md).
 - **The page is one Chrome doesn't allow content scripts on at all** —
   `chrome://` pages, the Chrome Web Store, the built-in PDF viewer, and
@@ -93,18 +119,28 @@ Two different situations produce this:
   tab" error (`src/background/sw.ts`) rather than a silent empty tool list.
   There is no way to make WebMCP tools work on these pages — it's a Chrome
   platform restriction, not something this extension can route around.
+- **A page relying on a JS polyfill instead of native support.** As of
+  [decisions/16](../decisions/16-native-webmcp-client.md) this extension only
+  reads `document.modelContext` from the ISOLATED world, so a polyfill that
+  installs its implementation in the page's own MAIN world (e.g.
+  `@mcp-b/global`) is invisible to us — this looks identical to "page
+  publishes no tools" from the panel's side, since there's no separate signal
+  for "a polyfill is here but we can't see it." See
+  [docs/02-webmcp-compatibility.md](02-webmcp-compatibility.md) for why this
+  is accepted, not a bug.
 
 ## A tool call hangs, or its error looks generic instead of specific
 
-Tool calls pass through four layers (panel → worker → relay → bridge; see
-[docs/01-architecture.md](01-architecture.md#the-four-rung-timeout-ladder)),
-each with its own timeout, deliberately laddered innermost-shortest (bridge
-20s < relay 25s < worker 30s < panel 35s) so the most specific error — the
-one from the layer actually next to the page's `execute` call — is the one
-that reaches you. If you see a generic "tool call timed out" / "tab did not
-respond in time" message instead of one naming the actual tool, that ladder
-has regressed (it has happened twice before —
-`boards/project-backlog/28-fix-inverted-tool-call-timeout-ladder.md`,
+Tool calls pass through three layers (panel → worker → relay, with the
+relay calling `document.modelContext.executeTool()` directly; see
+[docs/01-architecture.md](01-architecture.md#the-timeout-ladder)), each with
+its own timeout, deliberately laddered innermost-shortest (relay 20s < worker
+30s < panel 35s) so the most specific error — the one from the layer
+actually next to the native `executeTool` call — is the one that reaches
+you. If you see a generic "tool call timed out" / "tab did not respond in
+time" message instead of one naming the actual tool, that ladder has
+regressed (it has happened twice before, on the older four-layer version of
+it — `boards/project-backlog/28-fix-inverted-tool-call-timeout-ladder.md`,
 `boards/project-backlog/30-panel-timeout-outside-ladder.md`) and is worth
 filing as a bug rather than working around.
 

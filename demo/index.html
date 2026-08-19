@@ -3,16 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebMCP Demo — Shim / Native Discovery</title>
+  <title>WebMCP Demo</title>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
   <header>
-    <h1>WebMCP demo — shim / native discovery</h1>
-    <nav>
-      <a href="./late.html">Late-polyfill variant &rarr;</a>
-    </nav>
-    <span id="status" data-kind="pending">checking navigator.modelContext&hellip;</span>
+    <h1>WebMCP demo</h1>
+    <span id="status" data-kind="pending">checking document.modelContext&hellip;</span>
   </header>
 
   <main>
@@ -39,7 +36,12 @@
 
     <section class="panel">
       <h2>Registered tools</h2>
-      <p class="hint">What this page believes is registered. Compare against the extension's inspector for this tab.</p>
+      <p class="hint">
+        What this page believes is registered. Compare against the extension's
+        inspector, or the official
+        <a href="https://github.com/beaufortfrancois/model-context-tool-inspector" target="_blank" rel="noopener">
+          model-context-tool-inspector</a>, for this tab.
+      </p>
       <ul id="tools-list"><li class="empty">Not registered yet.</li></ul>
     </section>
 

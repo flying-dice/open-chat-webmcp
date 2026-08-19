@@ -1,90 +1,113 @@
 # Architecture
 
-The extension is split across four separate JavaScript execution contexts
+The extension is split across three separate JavaScript execution contexts
 that cannot see each other's variables and can only talk over explicit
 message-passing. This split is invisible from the file tree unless you
 already know MV3, so this page exists to make it explicit.
 
 ```
-┌─────────────────────────────┐        DOM CustomEvents          ┌──────────────────────────────┐
-│  MAIN-world bridge           │  webmcp-bridge:out / :in        │  ISOLATED-world relay         │
-│  src/inject/bridge.ts        │ ───────────────────────────────▶│  src/content/relay.ts         │
-│  runs IN the page's own      │◀─────────────────────────────── │  runs alongside the page,     │
-│  JS world; can see           │                                  │  can see chrome.runtime but   │
-│  navigator.modelContext      │                                  │  NOT page globals             │
-└──────────────┬───────────────┘                                  └───────────────┬───────────────┘
-               │ page's own execute() closures,                                    │ chrome.runtime.sendMessage /
-               │ same-origin privileges, never                                     │ onMessage
-               │ leave this world                                                  │
-                                                                                     ▼
-                                                                    ┌──────────────────────────────┐
-                                                                    │  Service worker (background)  │
-                                                                    │  src/background/sw.ts         │
-                                                                    │  per-tab tool registry,       │
-                                                                    │  message broker only —        │
-                                                                    │  never talks to a chat         │
-                                                                    │  backend itself                │
-                                                                    └───────────────┬───────────────┘
-                                                                                     │ chrome.runtime messaging
-                                                                                     ▼
-                                                                    ┌──────────────────────────────┐
-                                                                    │  Side panel                    │
-                                                                    │  src/sidepanel/**              │
-                                                                    │  owns the HTTP/streaming        │
-                                                                    │  connection to the active       │
-                                                                    │  provider directly; the sole    │
-                                                                    │  in-memory ChatSession owner    │
-                                                                    └──────────────────────────────┘
+┌──────────────────────────────┐
+│  ISOLATED-world relay          │
+│  src/content/relay.ts          │
+│  runs alongside the page,      │
+│  reads document.modelContext   │
+│  DIRECTLY (a real Document-    │
+│  scoped IDL attribute — visible│
+│  from ISOLATED even though the │
+│  page registered tools in its  │
+│  own MAIN world)               │
+└───────────────┬────────────────┘
+                │ chrome.runtime.sendMessage / onMessage
+                ▼
+┌──────────────────────────────┐
+│  Service worker (background)   │
+│  src/background/sw.ts          │
+│  per-tab tool registry,        │
+│  message broker only —         │
+│  never talks to a chat         │
+│  backend itself                │
+└───────────────┬────────────────┘
+                │ chrome.runtime messaging
+                ▼
+┌──────────────────────────────┐
+│  Side panel                    │
+│  src/sidepanel/**               │
+│  owns the HTTP/streaming        │
+│  connection to the active       │
+│  provider directly; the sole    │
+│  in-memory ChatSession owner    │
+└──────────────────────────────┘
 ```
 
-## The four contexts
+There used to be a fourth context: a MAIN-world bridge
+(`src/inject/bridge.ts`) that installed an "adopt-or-provide" shim on
+`navigator.modelContext` so the extension could discover tools regardless of
+whether the browser itself, a polyfill, or neither implemented WebMCP. It is
+**deleted**. See [decisions/16](../decisions/16-native-webmcp-client.md) for
+why: the premise that discovery required injecting into the page's own JS
+world turned out to be wrong — `document.modelContext` is a genuine
+`Document`-scoped IDL attribute, so the ISOLATED-world relay can read it
+directly, with no MAIN-world script needed at all. The practical trade this
+bought: the extension is now interoperable with the WebMCP ecosystem (the
+official inspector extension and this extension see the identical tool set on
+the same page — verified, see card
+[43](../boards/project-backlog/43-native-modelcontext-client.md)'s journal),
+at the cost of no longer working on a browser without native WebMCP support.
+See [Compatibility](02-webmcp-compatibility.md) for what that trade means in
+practice.
 
-### 1. MAIN-world bridge — `src/inject/bridge.ts`
+## The three contexts
 
-Injected at `document_start` with `world: "MAIN"` (manifest content script,
-`manifest.config.ts`), so it runs *in the page's own JavaScript world* — the
-only place that can see `navigator.modelContext` as a live object, since an
-extension's ordinary (ISOLATED-world) content script cannot see page
-globals at all. This is why a MAIN-world script exists instead of just
-reading the property from the relay (see
-`decisions/02-mainworld-webmcp-bridge.md`).
+### 1. ISOLATED-world relay — `src/content/relay.ts`
 
-Its entire job is to install a shim on `navigator.modelContext` that handles
-three situations a WebMCP page can be in — see
-[Compatibility](02-webmcp-compatibility.md) for the page-facing view, and
-[The adopt-or-provide shim](#the-adopt-or-provide-shim) below for how it
-works internally.
+Injected at `document_start`, in the default ISOLATED world, into every page
+(`content_scripts` in `manifest.config.ts`) — but into the **top frame only**
+(`all_frames: false`; see [Compatibility](02-webmcp-compatibility.md#out-of-scope-iframes)).
+It talks to `document.modelContext` directly, no bridge in between:
 
-Everything it hands across the world boundary is serialized to a **JSON
-string** on a `CustomEvent` — live objects, closures, and functions never
-cross (`window.__webmcpBridgeInstalled` is the one exception: a plain marker
-object stamped on `window` purely so the relay/verification harness can
-confirm the bridge actually landed in this world, per
-`boards/project-backlog/25-in-browser-verification-harness.md`).
+- **Discovery**: `await document.modelContext.getTools()`. Tools are scoped
+  to `t.window === window` (mirroring the official inspector) so a tool
+  registered by a subframe can't shadow a same-named top-frame tool, even
+  though `getTools()` can return entries from other frames on the page.
+- **Live updates**: `document.modelContext.ontoolchange` fires on both
+  registration and abort-driven unregistration; the relay debounces it
+  ~100ms (`TOOLCHANGE_DEBOUNCE_MS`) before re-fetching and pushing an updated
+  list to the service worker as `runtime:tools-updated`.
+- **Invocation**: `executeTool(tool, input)`, called on the tool `object`
+  returned by `getTools()` — not by name. The worker calls tools by name, so
+  the relay keeps the live objects from the last `getTools()` around and
+  resolves name → object itself, re-fetching once on a cache miss before
+  reporting "Unknown tool".
+- **Availability**: read once at module load
+  (`document.modelContext !== undefined`) rather than polled, since an
+  origin-trial token is evaluated at parse time and doesn't change mid-page.
+  This produces a distinct `available: boolean` that's threaded all the way
+  to the panel — see
+  [Compatibility](02-webmcp-compatibility.md#the-webmcp-unavailable-state).
 
-### 2. ISOLATED-world relay — `src/content/relay.ts`
+Chrome's shipped behaviour disagrees with the published WebMCP spec IDL in
+several places that will bite anyone modifying this file — see
+[decisions/16](../decisions/16-native-webmcp-client.md#context) for the full,
+measured list. Two worth knowing up front:
 
-Also injected at `document_start`, but in the default ISOLATED world. This
-is the only context that can see *both* the bridge's `CustomEvent`s (DOM
-events cross worlds even though objects don't) and `chrome.runtime` (page
-scripts cannot reach `chrome.runtime` at all). It exists purely to ferry
-messages between the two:
+- `RegisteredTool.inputSchema` is a **JSON string**, not an object — the
+  relay `JSON.parse`s it defensively before it reaches `SerializedTool`.
+- `executeTool`'s second argument is **mid-migration in Chrome itself**: the
+  official inspector tries the object form first and falls back to a
+  JSON-string form only on the exact error `"Failed to parse input"`,
+  carrying a TODO to drop the fallback once Chrome Stable stops accepting a
+  string. The relay's `callExecuteTool` (`src/content/relay.ts`) mirrors that
+  same try/fallback shape rather than hardcoding either form, so this file
+  doesn't silently break when Chrome finishes the migration.
 
-- Listens for `webmcp-bridge:out` events (tool list announcements, call
-  results) and forwards tool lists up to the service worker as
-  `runtime:tools-updated`.
-- Listens for `runtime:call-tool` from the service worker, dispatches a
-  `bridge:call-request` `CustomEvent` into the page, and resolves the
-  matching pending call by id when `bridge:call-result` comes back.
-- Re-requests the current tool list (`bridge:get-tools`) on its own startup
-  and on `pageshow` with `persisted: true` (a back/forward-cache restore),
-  since either the relay or the bridge can come up first and a panel opened
-  after both need the current list rather than nothing.
-- Fails every outstanding pending call on `pagehide` (`persisted: false`,
-  i.e. a real navigation away), so the service worker is never left hanging
-  on a call whose page no longer exists.
+One easy mistake, hit and fixed while building the verify harness (card 46's
+journal): detaching `document.modelContext.executeTool` into a bare function
+reference before calling it drops the `this` binding a native WebIDL method
+requires and throws `Illegal invocation`. It must be called as
+`mc.executeTool.call(mc, ...)` (or through `mc.executeTool(...)` directly),
+never as a standalone reference.
 
-### 3. Service worker — `src/background/sw.ts`
+### 2. Service worker — `src/background/sw.ts`
 
 The MV3 background service worker. Deliberately small
 (`decisions/04-ollama-transport.md`, generalized by
@@ -94,9 +117,13 @@ Ollama, OpenAI, or any chat backend. Its three jobs:
 - `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` —
   the toolbar icon opens the panel directly, no popup.
 - Holds the **authoritative per-tab tool registry**, a `Map<tabId, {origin,
-  tools}>`, updated from the relay's `runtime:tools-updated` pushes and
-  cleared on `chrome.tabs.onUpdated` (navigation) and `chrome.tabs.onRemoved`
-  (tab close) — see `decisions/07-session-state-and-persistence.md`.
+  tools, available}>`, updated from the relay's `runtime:tools-updated`
+  pushes and cleared on `chrome.tabs.onUpdated` (navigation) and
+  `chrome.tabs.onRemoved` (tab close) — see
+  `decisions/07-session-state-and-persistence.md`. The `available` flag
+  (added by [decisions/16](../decisions/16-native-webmcp-client.md)) carries
+  whether `document.modelContext` exists in that tab at all, distinct from a
+  page genuinely publishing zero tools.
 - Brokers tool calls: relays `runtime:call-tool` from the panel to the right
   tab's relay and returns the result, and reports a clear, specific error
   ("no relay in this tab") for pages a content script can't run on at all —
@@ -106,9 +133,10 @@ Because MV3 service workers are killed after ~30s idle, the in-memory
 registry can be wiped at any time. Nothing treats that as fatal: a cache miss
 falls back to a live pull from the tab's relay (`runtime:refresh-tools`), so
 the registry self-heals after a restart instead of silently reporting zero
-tools.
+tools. This recovery path is exercised directly by `npm run verify` (card
+46's journal: "Registry recovers after the MV3 service worker is killed").
 
-### 4. Side panel — `src/sidepanel/**`
+### 3. Side panel — `src/sidepanel/**`
 
 A Svelte 5 app that is the *only* chat surface (no popup, no injected
 in-page UI — `decisions/01-side-panel-as-primary-ui.md`). It owns the
@@ -130,106 +158,77 @@ generation.** The request is tied to the panel's lifetime via an
    conversation plus the active tab's tool list to the active provider's
    `chat()` and streams the reply into the transcript.
 2. The model's response includes a `tool_calls` entry. The agent loop checks
-   the approval policy (`decisions/05-tool-approval-policy.md`): a call whose
-   `annotations.readOnlyHint === true` runs immediately; anything else —
-   including a tool with no annotations at all — blocks on an approve/deny
-   card in the UI.
+   the approval policy (`decisions/05-tool-approval-policy.md`,
+   [decisions/17](../decisions/17-spec-annotations-and-untrusted-content.md)):
+   a call whose `annotations.readOnlyHint === true` runs immediately;
+   anything else — including a tool with no annotations at all — blocks on
+   an approve/deny card in the UI.
 3. Once cleared to run, the panel sends `runtime:call-tool` to the service
    worker.
 4. The service worker looks up which tab owns the session, forwards the call
    to that tab's relay as `runtime:call-tool` over `chrome.runtime`
    messaging.
-5. The relay dispatches a `bridge:call-request` `CustomEvent` into the page.
-6. The bridge looks up the tool, invokes its (page-supplied) `execute` with
-   the given arguments, and returns `{ id, ok, result | error }` — after a
-   JSON round-trip, so a non-serializable or exception-throwing `execute`
-   still produces a clean result rather than crashing anything.
-7. The result travels back up the same chain: bridge → relay → service
-   worker → panel. The panel appends it as a `role: "tool"` message and the
-   loop continues until the model stops calling tools or an 8-iteration cap
-   trips.
+5. The relay resolves the tool by name against its cached `getTools()`
+   objects and calls `document.modelContext.executeTool(tool, input)`
+   directly — no further hop into the page.
+6. The result — an MCP-shaped `{ content: [...] }`, or `{ isError: true }` —
+   travels back up: relay → service worker → panel. If the tool's
+   `annotations.untrustedContentHint === true`, the agent loop fences the
+   result in an explicit delimiter before it re-enters the model's context
+   (see [decisions/17](../decisions/17-spec-annotations-and-untrusted-content.md));
+   the transcript also marks such results visibly. The panel appends the
+   (unfenced) result as a `role: "tool"` message and the loop continues
+   until the model stops calling tools or an 8-iteration cap trips.
 
-## The adopt-or-provide shim
+## The timeout ladder
 
-Full rationale: `decisions/02-mainworld-webmcp-bridge.md`. The mechanics,
-because they're easy to get subtly wrong:
-
-`install()` (`src/inject/bridge.ts`) checks whatever is currently at
-`navigator.modelContext`:
-
-- **Nothing there → provide.** The shim itself becomes the implementation,
-  serving pages that assume `navigator.modelContext` exists.
-- **Something already there → adopt.** The shim records bound references to
-  the existing implementation's methods (not the live object itself — see
-  below) and forwards every registration to it, so the page's own behavior
-  (native Chrome support, or a polyfill like `@mcp-b/global` that already
-  ran) is untouched. Tools are tagged with a `source` of `"native"` or
-  `"polyfill"` (a `[native code]` `toString()` heuristic distinguishes them)
-  so downstream UI can show provenance.
-- Either way, `navigator.modelContext` is then redefined as an **accessor
-  property**: the getter always returns the shim, and the **setter** is what
-  makes **late adoption** work — if a polyfill script runs *after* the
-  bridge and assigns `navigator.modelContext = new SomePolyfill()`, the
-  setter intercepts that assignment, adopts the new object as the
-  underlying implementation, migrates across any tools that were registered
-  in provide-mode before the polyfill showed up, and re-emits the tool list.
-  This is the exact scenario `demo/late.html` exercises — see
-  [Compatibility](02-webmcp-compatibility.md).
-
-One implementation detail worth knowing if you're modifying the bridge: the
-adopt path snapshots *bound references* to the original object's methods
-rather than holding onto the live object, specifically so a fallback path
-(`patchInPlace`, used only when `Object.defineProperty` itself throws because
-the property is non-configurable) can safely overwrite the existing object's
-own methods without infinitely recursing into itself.
-
-Every tool call runs through `callWithTimeout` with its own timeout (see
-below) and every result is passed through a JSON round-trip before being
-emitted — a throwing, hanging, or non-serializable `execute` always produces
-a clean `{ ok: false, error }`, never a wedged bridge or an uncaught
-exception that could take the page down.
-
-## The four-rung timeout ladder
-
-A tool call passes through four layers before a result (or timeout) reaches
-the user: **panel → worker → relay → bridge**, and back. Each layer sets its
-own timeout on the call it's waiting on, and the ladder only works if the
-budgets are ordered **innermost-shortest**:
+A tool call passes through two layers before a result (or timeout) reaches
+the relay's own `executeTool` call, and a third layer — the panel — sits
+outside that as the overall UI budget: **relay → worker**, with the **panel**
+watching the whole round trip from outside. Each layer sets its own timeout,
+ordered **innermost-shortest**:
 
 | Layer | Constant | Value | File |
 |---|---|---|---|
-| Bridge (innermost) | `EXECUTE_TIMEOUT_MS` | 20s | `src/inject/bridge.ts` |
-| Relay | `RELAY_CALL_TIMEOUT_MS` | 25s | `src/content/relay.ts` |
+| Relay (innermost) | `EXECUTE_TIMEOUT_MS` | 20s | `src/content/relay.ts` |
 | Service worker | `CALL_TIMEOUT_MS` | 30s | `src/background/sw.ts` |
 | Side panel (outermost) | `TOOL_CALL_TIMEOUT_MS` | 35s | `src/sidepanel/services/agentLoop.ts` |
 
-The reasoning: the bridge is the only layer that actually knows *what*
-timed out (it's sitting right next to the page's `execute` call) and can
-produce a specific, useful error. Every layer further out is waiting on the
-layer inside it, so if an outer layer's timeout is shorter, it fires first
-and replaces that specific error with its own generic "didn't respond in
-time" message — the useful information is there, but never reaches the
-user. Getting this backwards is easy because the four constants live in four
-different files, written at different times, with no shared constant or
-compile-time link between them; each site now carries a comment naming the
-other three so a future edit can see it's part of a ladder rather than an
-independent, arbitrary timeout.
+[decisions/16](../decisions/16-native-webmcp-client.md) deleted the ladder's
+former innermost rung: the MAIN-world bridge used to own execution and set
+its own 20s `EXECUTE_TIMEOUT_MS`. The relay now owns execution directly
+against `document.modelContext.executeTool()` and inherited that same 20s
+budget and constant name, one layer further out than before. The ladder is
+two layers deep now (relay → worker), plus the panel's own outer budget,
+rather than the original four (bridge → relay → worker → panel).
 
-This is not a hypothetical concern — it happened twice on this project.
+The reasoning for keeping budgets ordered innermost-shortest is unchanged:
+the relay is the layer closest to the actual `executeTool` call and can
+produce a specific, useful error ("Timed out after 20000ms running the
+tool."). Every layer further out is waiting on the layer inside it, so if an
+outer layer's timeout is shorter, it fires first and replaces that specific
+error with its own generic "didn't respond in time" message — the useful
+information is there, but never reaches the user. Getting this backwards is
+easy because the constants live in different files, written at different
+times, with no shared constant or compile-time link between them; each site
+carries a comment naming the other layers so a future edit can see it's part
+of a ladder rather than an independent, arbitrary timeout.
+
+This is not a hypothetical concern — it happened twice on this project, on
+the old four-layer version of the ladder.
 `boards/project-backlog/28-fix-inverted-tool-call-timeout-ladder.md` describes
 the verification harness (card 25) catching a real hang test
 (`hangs-forever`, one of the demo tools) coming back with the worker's
-generic message instead of the bridge's specific 20s-timeout message,
-because the worker's `CALL_TIMEOUT_MS` had originally been set to 15s —
-shorter than the bridge and relay both — by an agent working on the worker
-without visibility into the ladder the bridge/relay agent had already
-established. `boards/project-backlog/30-panel-timeout-outside-ladder.md` is
-the sequel: once the worker was fixed, it turned out the side panel had its
-*own* 20s timeout that nobody had counted as part of the ladder at all,
-sitting outside all three other layers yet no longer than the innermost one
-— fixed by raising it to 35s. If you touch any of these four constants,
-update the comments at the other three sites, and if you add a fifth layer,
-give it the widest margin and document it the same way.
+generic message instead of the innermost layer's specific timed-out message,
+because the worker's `CALL_TIMEOUT_MS` had originally been set shorter than
+the layer inside it by an agent working on the worker without visibility
+into the ladder already established elsewhere.
+`boards/project-backlog/30-panel-timeout-outside-ladder.md` is the sequel:
+once the worker was fixed, it turned out the side panel had its *own*
+timeout that nobody had counted as part of the ladder at all — fixed by
+raising it to 35s, still the case today. If you touch any of these three
+constants, update the comments at the other two sites, and if you add a
+fourth layer, give it the widest margin and document it the same way.
 
 ## Session ownership: one `ChatSession`, one owner
 

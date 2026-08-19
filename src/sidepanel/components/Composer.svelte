@@ -28,16 +28,30 @@
    *     (`!panel.selectionExplicit`, see panel.svelte.ts) — offers a direct
    *     one-click "Use it" via `confirmSelection`, plus a "Change" link
    *     into the picker for anyone who wants something else.
+   *
+   * Shape (decisions/18): one outlined, rounded box containing the textarea
+   * on top and an action row beneath it — a "+" affordance on the left, the
+   * provider/model chip and the send button on the right. The model picker
+   * lives HERE rather than in the header because which model answers is a
+   * property of the message you are about to send, not of the window.
    */
+  import type { Snippet } from "svelte";
+  import IconButton from "./IconButton.svelte";
   import { selection, openPicker, confirmSelection, openOptionsPage } from "../stores/selection.svelte";
 
   interface Props {
     streaming: boolean;
     onSend: (text: string) => void;
     onStop: () => void;
+    /**
+     * The provider/model picker, mounted into the action row. A snippet
+     * because the picker owns its own open state and anchors its sheet to
+     * itself — the composer only decides where in the row it sits.
+     */
+    picker?: Snippet;
   }
 
-  let { streaming, onSend, onStop }: Props = $props();
+  let { streaming, onSend, onStop, picker }: Props = $props();
 
   let value = $state("");
   let textarea: HTMLTextAreaElement | undefined = $state();
@@ -103,93 +117,166 @@
   }
 </script>
 
-{#if blocked}
-  <div class="composer composer--blocked">
-    {#if blocked.kind === "providers-loading"}
-      <p class="blocked-text text-small">Loading providers…</p>
-    {:else if blocked.kind === "providers-error"}
-      <p class="blocked-text text-small">Couldn't load your providers.</p>
-      <button type="button" onclick={openOptionsPage}>Open options</button>
-    {:else if blocked.kind === "no-providers"}
-      <p class="blocked-text text-small">
-        No provider is registered yet — add one on the options page to start chatting.
-      </p>
-      <button type="button" onclick={openOptionsPage}>Open options to add a provider</button>
-    {:else if blocked.kind === "unselected"}
-      <p class="blocked-text text-small">
-        {#if blocked.dangling}
-          The provider this chat was using has been removed. Choose a replacement to continue —
-          your conversation is kept.
-        {:else}
-          Choose a provider and model before sending your first message.
-        {/if}
-      </p>
-      <button type="button" onclick={openPicker}>Choose provider &amp; model</button>
-    {:else if blocked.kind === "needs-confirmation"}
-      <p class="blocked-text text-small">This chat will use <strong>{blocked.label}</strong>.</p>
-      <div class="blocked-actions">
-        <button type="button" disabled={confirming} onclick={handleConfirm}>
-          {confirming ? "Confirming…" : `Use ${blocked.label}`}
-        </button>
-        <button type="button" class="link-btn" onclick={openPicker}>Change</button>
-      </div>
-    {/if}
-  </div>
-{:else}
-  <form class="composer" onsubmit={(e) => (e.preventDefault(), send())}>
+<form class="composer" data-blocked={blocked !== undefined} onsubmit={(e) => (e.preventDefault(), send())}>
+  {#if blocked}
+    <!-- Card 35's blocked state: the box stays, and its top half says what
+         is missing and offers the one action that fixes it. The action row
+         below survives too, because the model chip in it is usually the
+         very thing being asked for. -->
+    <div class="blocked-body">
+      {#if blocked.kind === "providers-loading"}
+        <p class="blocked-text text-small">Loading providers…</p>
+      {:else if blocked.kind === "providers-error"}
+        <p class="blocked-text text-small">Couldn't load your providers.</p>
+        <button type="button" onclick={openOptionsPage}>Open options</button>
+      {:else if blocked.kind === "no-providers"}
+        <p class="blocked-text text-small">
+          No provider is registered yet — add one on the options page to start chatting.
+        </p>
+        <button type="button" onclick={openOptionsPage}>Open options to add a provider</button>
+      {:else if blocked.kind === "unselected"}
+        <p class="blocked-text text-small">
+          {#if blocked.dangling}
+            The provider this chat was using has been removed. Choose a replacement to continue —
+            your conversation is kept.
+          {:else}
+            Choose a provider and model before sending your first message.
+          {/if}
+        </p>
+        <button type="button" onclick={openPicker}>Choose provider &amp; model</button>
+      {:else if blocked.kind === "needs-confirmation"}
+        <p class="blocked-text text-small">This chat will use <strong>{blocked.label}</strong>.</p>
+        <div class="blocked-actions">
+          <button type="button" disabled={confirming} onclick={handleConfirm}>
+            {confirming ? "Confirming…" : `Use ${blocked.label}`}
+          </button>
+          <button type="button" class="link-btn" onclick={openPicker}>Change</button>
+        </div>
+      {/if}
+    </div>
+  {:else}
     <textarea
       bind:this={textarea}
       bind:value
       onkeydown={handleKeydown}
-      placeholder="Ask about this page… (Enter to send, Shift+Enter for a new line)"
+      placeholder="Ask about this page…"
       rows="1"
       disabled={streaming}
+      aria-label="Message"
+      aria-describedby="composer-hint"
     ></textarea>
+    <!-- The Enter/Shift+Enter hint used to live in the placeholder, where it
+         pushed the actual prompt off the end of a 320px panel. It is still
+         announced, just not drawn. -->
+    <p id="composer-hint" class="visually-hidden">
+      Press Enter to send, Shift and Enter for a new line.
+    </p>
+  {/if}
 
-    {#if streaming}
-      <button type="button" class="stop-button" onclick={onStop}> Stop </button>
-    {:else}
-      <button type="submit" disabled={!value.trim()}> Send </button>
-    {/if}
-  </form>
-{/if}
+  <!-- The reference has a leading "+" for attachments here. We support
+       none, and a permanently disabled button is worse than an absent one —
+       same reasoning that kept thumbs up/down out of the reply actions. The
+       row is right-aligned until there is something true to put on the
+       left. -->
+  <div class="composer-actions">
+    <div class="composer-actions__end">
+      <!-- Rendered in the blocked state too, and not only for symmetry:
+           `openPicker` sets `selection.pickerOpen`, which does nothing
+           unless a ProviderPicker is actually mounted to read it. The
+           blocked state's own "Choose provider & model" button depends on
+           this being here. -->
+      {#if picker}{@render picker()}{/if}
+
+      {#if streaming}
+        <IconButton icon="stop" label="Stop generating" tone="danger" variant="filled" onclick={onStop} />
+      {:else if !blocked}
+        <IconButton
+          icon="arrow_upward"
+          label="Send"
+          tone="primary"
+          variant="filled"
+          tooltip={false}
+          disabled={!value.trim()}
+          onclick={send}
+        />
+      {/if}
+    </div>
+  </div>
+</form>
 
 <style>
   /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+     and src/sidepanel/chat-theme.css (decisions/18). */
 
   .composer {
     display: flex;
-    align-items: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-top: 1px solid var(--color-outline);
+    flex-direction: column;
+    /* `position: relative` is load-bearing: the model picker's sheet
+       anchors to this box (bottom: 100%), and it must escape the
+       transcript's scroller, not be clipped by it. */
+    position: relative;
+    gap: var(--space-1);
+    margin: var(--space-2) var(--space-3) var(--space-3);
+    padding: var(--space-3) var(--space-2) var(--space-2);
+    border: 1px solid var(--color-outline);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
+    flex: none;
   }
 
   textarea {
-    flex: 1 1 auto;
+    /* The box IS the input; the textarea inside it draws nothing. */
+    width: 100%;
     min-width: 0;
     max-height: 8lh;
+    padding: 0 var(--space-2);
+    border: none;
+    background: transparent;
+    /* field-sizing is Chrome 123+; max-height and rows="1" are the floor
+       for anything older (manifest minimum is 116). */
     field-sizing: content;
   }
 
-  button {
-    flex: 0 0 auto;
+  textarea:hover {
+    border: none;
   }
 
-  .stop-button {
-    border-color: var(--color-danger);
-    color: var(--color-danger);
-  }
-
-  /* Card 35's blocked-composer empty state: replaces the form entirely, so
-     it has to do real work rather than just sit there disabled — a short
-     explanation plus a one-click way forward. */
-  .composer--blocked {
-    flex-direction: column;
-    align-items: stretch;
+  .composer-actions {
+    display: flex;
+    align-items: center;
     gap: var(--space-2);
+  }
+
+  .composer-actions__end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+    min-width: 0;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Card 35's blocked-composer state: it has to do real work rather than
+     just sit there disabled — a short explanation plus a one-click way
+     forward — but it stays inside the composer's own box, so it reads as
+     "the composer, currently saying something" rather than as a banner
+     that replaced it. */
+  .blocked-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: 0 var(--space-2) var(--space-1);
   }
 
   .blocked-text {

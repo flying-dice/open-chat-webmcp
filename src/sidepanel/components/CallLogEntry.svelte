@@ -169,7 +169,7 @@
   }
 
   .call-name {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: var(--font-size-small);
     overflow: hidden;
     text-overflow: ellipsis;

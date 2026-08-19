@@ -1,28 +1,49 @@
 <script lang="ts">
   /**
    * Tools view (card 11): everything the active page has actually
-   * published on `navigator.modelContext`, live — this list is exactly
+   * published on `document.modelContext`, live — this list is exactly
    * `panel.tools`, which src/sidepanel/services/activeTab.ts keeps in step
    * with the worker's registry as the page registers/unregisters tools, so
    * nothing here needs its own polling or subscription.
    *
-   * The empty state is deliberately not a bare "No tools" line: most pages
-   * on the web today don't speak WebMCP at all, so this is the FIRST thing
-   * most users of this panel will ever see here, and it's worth explaining
-   * rather than looking broken (decisions/02-mainworld-webmcp-bridge.md).
+   * There are two distinct empty states (decisions/16-native-webmcp-client.md,
+   * card 43) — neither is a bare "No tools" line, since either way this is
+   * the FIRST thing most users of this panel will ever see here, and it's
+   * worth explaining rather than looking broken:
+   *   - `webmcpAvailable === false`: WebMCP itself is unavailable in this
+   *     browser/for this page (the feature is off, or this origin has no
+   *     origin-trial token) — `document.modelContext` doesn't exist at all,
+   *     so there was nothing to even ask.
+   *   - `webmcpAvailable === true` and `tools.length === 0`: the feature
+   *     works here, this particular page just hasn't registered anything —
+   *     expected, since most sites don't speak WebMCP yet.
    */
   import type { SerializedTool } from "../../lib/protocol";
   import ToolListItem from "./ToolListItem.svelte";
 
   interface Props {
     tools: SerializedTool[];
+    webmcpAvailable: boolean;
   }
 
-  let { tools }: Props = $props();
+  let { tools, webmcpAvailable }: Props = $props();
 </script>
 
 <div class="tools-panel">
-  {#if tools.length === 0}
+  {#if !webmcpAvailable}
+    <div class="empty-state">
+      <p><strong>WebMCP isn't available in this browser (or on this page).</strong></p>
+      <p class="text-small">
+        <code>document.modelContext</code> doesn't exist here — WebMCP is
+        off by default in Chrome and needs
+        <code>--enable-features=WebMCP</code>, the
+        <code>chrome://flags/#enable-webmcp-testing</code> toggle, or a
+        per-origin origin-trial token before a page can use it at all. This
+        is different from a page simply not registering any tools — there
+        was nothing here to even ask.
+      </p>
+    </div>
+  {:else if tools.length === 0}
     <div class="empty-state">
       <p>
         This page hasn't published any WebMCP tools, which is expected — most
@@ -31,7 +52,7 @@
       <p class="text-small">
         WebMCP is a proposed web standard that lets a page expose specific
         actions and page-state readers — "add a note", "read the cart
-        total" — on <code>navigator.modelContext</code>, so an AI agent can
+        total" — on <code>document.modelContext</code>, so an AI agent can
         call them directly instead of a human clicking through the UI. It's
         the same idea as MCP, but for what a <em>website</em> itself
         chooses to offer, rather than a separate server.
@@ -71,7 +92,7 @@
   }
 
   .empty-state code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     background: var(--color-surface-container);
     border-radius: var(--radius-sm);
     padding: 0 3px;

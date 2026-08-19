@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
    * Two-level provider/model picker (card 23) — mounted into
-   * src/sidepanel/components/Header.svelte's `picker` snippet slot. A
-   * single compact trigger chip (per Header's slot contract) that opens a
-   * popover with level 1 (provider `<select>`) and level 2 (model list,
-   * partitioned tool-capable / no-tools / unknown per
-   * decisions/11-provider-capability-detection.md).
+   * src/sidepanel/components/Composer.svelte's `picker` snippet slot
+   * (decisions/18 moved it out of the header: which model answers is a
+   * property of the message you are about to send). A compact chip in the
+   * composer's action row opens a sheet ABOVE it, with level 1 (provider
+   * `<select>`) and level 2 (model list, partitioned tool-capable /
+   * no-tools / unknown per decisions/11-provider-capability-detection.md).
    *
    * All the actual state — providers, the active tab's persisted
    * selection, the browsed provider's model list and capability lookups —
@@ -28,6 +29,7 @@
   } from "../stores/selection.svelte";
   import { panel } from "../stores/panel.svelte";
   import Markdown from "../../lib/components/Markdown.svelte";
+  import Icon from "./Icon.svelte";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
@@ -102,6 +104,18 @@
     return { label: `${r.config.name} · ${r.model}`, variant: "normal" };
   });
 
+  /**
+   * What the chip actually prints. The chip lives in a crowded action row
+   * at 320px, so it shows the MODEL — the part that changes and the part a
+   * user scans for — while `triggerInfo.label` (provider · model, or the
+   * whole warning sentence) stays as the accessible name and tooltip.
+   */
+  const triggerText = $derived.by((): string => {
+    const r = selection.resolution;
+    if (r.status === "ok" && !selection.needsConfirmation) return r.model;
+    return triggerInfo.label;
+  });
+
   function capabilityBadge(status: "tool-capable" | "no-tools" | "unknown"): { icon: string; label: string } {
     switch (status) {
       case "no-tools":
@@ -144,12 +158,15 @@
     aria-expanded={selection.pickerOpen}
     onclick={togglePicker}
     title={triggerInfo.label}
+    aria-label={triggerInfo.label}
   >
-    {triggerInfo.label}
+    <span class="picker__trigger-label">{triggerText}</span>
+    <Icon name="expand_more" size={18} />
   </button>
 
   {#if selection.pickerOpen}
     <div class="picker__panel" role="dialog" aria-label="Choose provider and model">
+      <p class="picker__title">Choose your model</p>
       {#if selection.providersStatus === "loading"}
         <p class="hint">Loading providers…</p>
       {:else if selection.providers.length === 0}
@@ -210,14 +227,16 @@
                   disabled={entry.capability?.status !== "tool-capable"}
                   onclick={() => handlePickModel(entry)}
                 >
-                  <span class="model-row__name">{entry.model.name}</span>
+                  <span class="model-row__text">
+                    <span class="model-row__name">{entry.model.name}</span>
+                    {#if reasonFor(entry)}
+                      <span class="model-row__reason">{reasonFor(entry)}</span>
+                    {/if}
+                  </span>
                   {#if badge}
                     <span class="model-row__badge">{badge.icon} {badge.label}</span>
                   {/if}
                 </button>
-                {#if reasonFor(entry)}
-                  <p class="model-row__reason">{reasonFor(entry)}</p>
-                {/if}
               </li>
             </ul>
           {/if}
@@ -250,16 +269,23 @@
                     disabled={entry.capability?.status !== "tool-capable"}
                     onclick={() => handlePickModel(entry)}
                   >
-                    <span class="model-row__name">{entry.model.name}</span>
-                    {#if badge}
+                    <span class="model-row__text">
+                      <span class="model-row__name">{entry.model.name}</span>
+                      {#if reasonFor(entry)}
+                        <span class="model-row__reason">{reasonFor(entry)}</span>
+                      {/if}
+                    </span>
+                    {#if isActive}
+                      <!-- The selected row is marked by a filled check, not
+                           only by its outline: a 1px border is easy to miss
+                           in a list where every row is a box. -->
+                      <span class="model-row__check"><Icon name="check_circle" size={20} /></span>
+                    {:else if badge}
                       <span class="model-row__badge">{badge.icon} {badge.label}</span>
                     {:else}
                       <span class="model-row__badge">…</span>
                     {/if}
                   </button>
-                  {#if reasonFor(entry)}
-                    <p class="model-row__reason">{reasonFor(entry)}</p>
-                  {/if}
                 </li>
               {/each}
             </ul>
@@ -291,28 +317,36 @@
 
 <style>
   /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+     and src/sidepanel/chat-theme.css (decisions/18). */
 
   .picker {
     position: relative;
     min-width: 0;
   }
 
+  /* The chip in the composer's action row. Clamped to whichever is
+     smaller: a 180px cap, or whatever width the row actually shrank
+     `.picker` to — a plain <button> doesn't inherit a flex item's shrunk
+     width on its own, so without this it sizes up to the flat cap and
+     overflows instead of ellipsizing within it. */
   .picker__trigger {
-    /* Clamp to whichever is smaller: the usual 160px cap, or whatever
-       width the header's flex row actually shrank `.picker` down to (e.g.
-       once card 36's "New chat" button is sharing the row) — `.picker`
-       itself already shrinks correctly (min-width: 0 below), but a plain
-       <button> doesn't inherit a flex item's shrunk width on its own, so
-       without this it kept sizing up to the flat 160px and overflowing
-       past its now-narrower parent instead of ellipsizing within it. */
-    max-width: min(160px, 100%);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: min(180px, 100%);
     border-radius: var(--radius-pill);
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    background: var(--color-surface-container-high);
+    color: var(--color-on-surface);
     font-size: var(--font-size-small);
+    min-width: 0;
+  }
+
+  .picker__trigger-label {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .picker__trigger[data-variant="muted"] {
@@ -320,27 +354,35 @@
   }
 
   .picker__trigger[data-variant="warning"] {
-    border-color: var(--color-danger);
     color: var(--color-danger);
   }
 
+  /* The sheet opens UPWARDS: the chip sits at the bottom of the panel, and
+     a menu dropping down from it would have nowhere to go. It anchors to
+     `.picker`, which is inside the composer — deliberately outside the
+     transcript's scroller, so nothing clips it. */
   .picker__panel {
     position: absolute;
-    top: calc(100% + var(--space-1));
+    bottom: calc(100% + var(--space-2));
     right: 0;
     z-index: 10;
-    width: 260px;
+    width: 320px;
     max-width: calc(100vw - var(--space-4));
     max-height: 60vh;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    background: var(--color-surface);
-    border: 1px solid var(--color-outline);
-    border-radius: var(--radius-card);
-    padding: var(--space-3);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+    background: var(--color-surface-container);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    box-shadow: var(--elevation-3);
+  }
+
+  .picker__title {
+    margin: 0 0 var(--space-1);
+    font-size: var(--font-size-heading);
+    color: var(--color-on-surface-variant);
   }
 
   .field {
@@ -417,20 +459,31 @@
     justify-content: space-between;
     gap: var(--space-2);
     text-align: left;
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-2);
-    background: var(--color-surface-container);
+    border-radius: var(--radius-card);
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    /* Transparent rather than absent so selecting a row doesn't shift the
+       list by 2px. */
     border: 1px solid transparent;
     min-width: 0;
   }
 
-  .model-row[data-active="true"] {
-    border-color: var(--color-primary);
+  .model-row:hover:not(:disabled) {
+    background: var(--state-hover);
   }
 
-  .model-row[data-status="no-tools"],
-  .model-row[data-status="unknown"] {
-    background: transparent;
+  .model-row[data-active="true"],
+  .model-row[data-active="true"]:hover {
+    border-color: var(--color-primary);
+    background: var(--state-hover);
+  }
+
+  .model-row__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .model-row__name {
@@ -438,7 +491,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-    flex: 1 1 auto;
+    color: var(--color-on-surface);
+  }
+
+  .model-row:disabled .model-row__name {
+    color: var(--color-on-surface-variant);
   }
 
   .model-row__badge {
@@ -452,10 +509,18 @@
     color: var(--color-primary);
   }
 
+  .model-row__check {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--color-primary);
+  }
+
+  /* The row's second line: why this model is or isn't usable. Wraps rather
+     than ellipsizing — a truncated reason is no reason at all. */
   .model-row__reason {
-    margin: 2px 0 0 var(--space-2);
     font-size: var(--font-size-small);
     color: var(--color-on-surface-variant);
+    overflow-wrap: anywhere;
   }
 
   .manual-entry {
@@ -473,7 +538,8 @@
     justify-content: space-between;
     gap: var(--space-2);
     border-top: 1px solid var(--color-outline-variant);
-    padding-top: var(--space-2);
+    padding-top: var(--space-3);
+    margin-top: var(--space-1);
   }
 
   .link-btn {

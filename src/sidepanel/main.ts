@@ -1,5 +1,8 @@
 import { mount } from "svelte";
 import "../lib/theme.css";
+// Material 3 expressive tokens for the panel only — layered over theme.css,
+// never loaded by the options page. See decisions/18.
+import "./chat-theme.css";
 import App from "./App.svelte";
 
 // `createProviderClient` (src/lib/providers/registry.ts) dispatches by

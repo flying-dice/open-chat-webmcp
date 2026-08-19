@@ -105,17 +105,26 @@
 </div>
 
 <style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+  /* All colour/spacing/radius values come from src/lib/theme.css and
+     src/sidepanel/chat-theme.css (decisions/18). */
 
+  /* Since decisions/18 this is a full-panel view reached from the overflow
+     menu rather than a pane under a tab strip, so it owns its own scroller
+     and padding — previously it had neither and relied on the shell. */
   .history-panel {
+    flex: 1 1 auto;
+    min-height: 0;
     min-width: 0;
+    overflow-y: auto;
+    padding: var(--space-2) var(--space-3) var(--space-4);
   }
 
   .empty-state {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    padding: var(--space-2) var(--space-1);
+    color: var(--color-on-surface-variant);
   }
 
   .empty-state p {
@@ -128,7 +137,9 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    /* Rows, not cards: they carry their own hover/active fill and need no
+       gutter between them. */
+    gap: 0;
     min-width: 0;
   }
 </style>

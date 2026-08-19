@@ -1,86 +1,77 @@
-// Variant 1 — "shim / native discovery" (decisions/02-mainworld-webmcp-bridge.md).
+// WebMCP demo — registers tools against the real `document.modelContext`
+// (decisions/16-native-webmcp-client.md). This is the page the extension is
+// developed and tested against (demo/vite.config.ts), and the API it targets
+// is the ISOLATED-world content script's own dependency — if tools
+// registered here aren't visible to the official inspector, the extension
+// won't see them either.
 //
-// This page does the boring, correct thing a real WebMCP site does: it
-// feature-detects `navigator.modelContext` and calls `registerTool` on
-// whatever it finds there. If the extension is loaded, its MAIN-world bridge
-// runs at document_start — before this module ever executes — and has
-// already either provided a shim (nothing was there) or adopted whatever
-// was. This page never assigns navigator.modelContext itself; that's what
-// late.html is for.
+// WebMCP is OFF by default in Chrome. `document.modelContext` is simply
+// undefined unless the user enabled chrome://flags/#enable-webmcp-testing
+// (or launched with --enable-features=WebMCP), or the page carries an
+// origin-trial token. There is nothing to poll for — the feature is either
+// compiled in and enabled at load, or it isn't — so this checks once and
+// tells the user exactly what to do instead of spinning.
 
-import type { ToolDescriptor, ToolHandle } from "./types";
-import { createDemoTools, createDynamicTool } from "./tools";
+import { createDemoTools, createDynamicTool, type Fixture } from "./tools";
 import { renderToolsList, setStatus, withLogging } from "./ui";
 
-const registered = new Map<string, ToolDescriptor>();
-const handles = new Map<string, ToolHandle>();
+const ENABLE_FLAG_URL = "chrome://flags/#enable-webmcp-testing";
 
-function registerTool(tool: ToolDescriptor): void {
-  const handle = navigator.modelContext!.registerTool(withLogging(tool));
+const registered = new Map<string, Fixture>();
+
+async function registerTool(tool: Fixture, signal?: AbortSignal): Promise<void> {
+  await document.modelContext.registerTool(withLogging(tool), signal ? { signal } : undefined);
   registered.set(tool.name, tool);
-  handles.set(tool.name, handle);
   renderToolsList(registered);
 }
 
-function unregisterTool(name: string): void {
-  handles.get(name)?.destroy();
-  handles.delete(name);
+/** There is no `unregisterTool` in the real API — unregistration is
+ * `AbortController.abort()` on the signal passed at registration time. This
+ * only updates the page's own bookkeeping map; the actual removal already
+ * happened the moment `abort()` was called above it in the caller. */
+function forgetTool(name: string): void {
   registered.delete(name);
   renderToolsList(registered);
 }
 
-function waitForModelContext(timeoutMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      if (navigator.modelContext) {
-        resolve(true);
-        return;
-      }
-      if (Date.now() - started > timeoutMs) {
-        resolve(false);
-        return;
-      }
-      setTimeout(tick, 50);
-    };
-    tick();
-  });
-}
-
 async function main(): Promise<void> {
-  setStatus("checking navigator.modelContext…", "pending");
-
-  const found = await waitForModelContext(5000);
-  if (!found) {
+  if (!document.modelContext) {
     setStatus(
-      "navigator.modelContext not found — install/enable the extension, then reload this page.",
+      `document.modelContext not found — enable WebMCP via ${ENABLE_FLAG_URL} ` +
+        `(or launch Chrome with --enable-features=WebMCP), then reload this page.`,
       "error",
     );
     return;
   }
 
-  setStatus("navigator.modelContext found — registering demo tools…", "pending");
+  setStatus("document.modelContext found — registering demo tools…", "pending");
 
   const notesEl = document.getElementById("notes-list") as HTMLUListElement;
   const tasksEl = document.getElementById("tasks-list") as HTMLUListElement;
   for (const tool of createDemoTools({ notesEl, tasksEl })) {
-    registerTool(tool);
+    await registerTool(tool);
   }
 
-  setStatus("ready — tools registered against navigator.modelContext", "ok");
+  setStatus("ready — tools registered against document.modelContext", "ok");
 
   // --- dynamic register/unregister controls, for live tool-list updates ---
   const counterEl = document.getElementById("dynamic-counter") as HTMLElement;
   const registerBtn = document.getElementById("register-dynamic") as HTMLButtonElement;
   const unregisterBtn = document.getElementById("unregister-dynamic") as HTMLButtonElement;
 
+  let dynamicController: AbortController | null = null;
+
   registerBtn.addEventListener("click", () => {
-    registerTool(createDynamicTool(counterEl));
+    dynamicController = new AbortController();
     registerBtn.disabled = true;
-    unregisterBtn.disabled = false;
+    void registerTool(createDynamicTool(counterEl), dynamicController.signal).then(() => {
+      unregisterBtn.disabled = false;
+    });
   });
   unregisterBtn.addEventListener("click", () => {
-    unregisterTool("dynamic-echo");
+    dynamicController?.abort();
+    dynamicController = null;
+    forgetTool("dynamic-echo");
     registerBtn.disabled = false;
     unregisterBtn.disabled = true;
   });

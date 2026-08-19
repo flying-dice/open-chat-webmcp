@@ -12,7 +12,8 @@
  *
  * Naming convention (flat, Material-3-flavoured):
  *   --color-<role>            surface / text / border colours
- *   --font-family-ui          the one font stack
+ *   --font-family-ui          the one UI font stack
+ *   --font-family-mono        the one monospace stack
  *   --font-size-*, --line-height-body   type scale
  *   --space-1 .. --space-6    4/8px spacing rhythm (space-1 = 4px)
  *   --radius-*                corner radii
@@ -36,6 +37,8 @@
   /* ---- Type -------------------------------------------------------- */
   /* The literal stack Chrome's own UI uses, not a web-page default. */
   --font-family-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* The one monospace stack, for tool names, JSON payloads and code blocks. */
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --font-size-body: 13px; /* Chrome UI body size, not the 16px web default */
   --font-size-small: 11px; /* captions / secondary metadata */

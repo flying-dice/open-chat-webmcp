@@ -67,7 +67,7 @@
   .arg-string,
   .arg-number,
   .arg-bool {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     overflow-wrap: anywhere;
     white-space: pre-wrap;
   }
@@ -105,7 +105,7 @@
   .arg-key {
     font-size: var(--font-size-small);
     color: var(--color-on-surface-variant);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
   }
 
   .arg-value {

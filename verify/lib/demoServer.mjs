@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const DEMO_ORIGIN = "http://localhost:5175";
 export const DEMO_INDEX_URL = `${DEMO_ORIGIN}/index.html`;
-export const DEMO_LATE_URL = `${DEMO_ORIGIN}/late.html`;
 
 async function isUp() {
   try {

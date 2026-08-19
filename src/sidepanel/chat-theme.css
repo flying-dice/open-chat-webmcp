@@ -1,0 +1,175 @@
+/*
+ * Side-panel design tokens — Material 3 expressive
+ * (decisions/18-side-panel-material-expressive.md,
+ *  boards/project-backlog/48-side-panel-material-expressive-system.md).
+ *
+ * This file is imported ONLY by src/sidepanel/main.ts, immediately after
+ * ../lib/theme.css. The side panel and the options page are separate HTML
+ * entry points with separate CSS bundles — the shared theme chunk is linked
+ * by both, this one only by the panel — so redefining roles here cannot
+ * reach the options page. That isolation is structural, not a convention:
+ * decisions/08-native-chrome-design-language.md still governs options in
+ * full, unchanged.
+ *
+ * The selector is `html:root` (specificity 0,1,1) rather than `:root`
+ * (0,1,0) so these values win on specificity and do not depend on the
+ * bundler's CSS chunk emission order.
+ *
+ * Dark values are sampled from Chrome's own Gemini side panel. Light values
+ * are a hand-derived Material 3 counterpart, NOT sampled — the same
+ * approximation caveat theme.css carries applies here, more so for light.
+ *
+ * Everything theme.css declares that is not re-declared below still applies
+ * (spacing rhythm, motion, the base reset, native control styles). Only the
+ * handful of base rules that actively fight this design are overridden, at
+ * the bottom of this file.
+ */
+
+html:root {
+  /* ---- Type ----------------------------------------------------------
+     Notably larger than theme.css's 13px Chrome-UI scale. The reference
+     panel reads ~16px body at a ~480px panel width: this is a chat surface
+     you read paragraphs in, not a row of browser chrome. */
+  --font-size-body: 16px; /* transcript, menu rows, composer */
+  --font-size-small: 13px; /* secondary text, meta, badges, code */
+  --font-size-caption: 12px; /* tooltips, tiny labels */
+  --font-size-heading: 16px; /* conversation title, sheet title */
+  --line-height-body: 1.5;
+
+  /* ---- Radius ---------------------------------------------------------
+     Material 3 expressive is much rounder than the 8px/16px of decision 08. */
+  --radius-sm: 8px; /* badges, small chips */
+  --radius-card: 12px; /* tool cards, send button, selected model row */
+  --radius-lg: 16px; /* notice cards, menus, composer, sheets */
+  --radius-xl: 20px; /* user message bubble */
+  --radius-pill: 999px; /* chips are true pills now, not 16px rects */
+  --radius-full: 999px; /* alias, for circular icon buttons */
+
+  /* ---- Metrics --------------------------------------------------------
+     Shared geometry for the icon-button / menu-row system, so a 40px hit
+     target is one value rather than a number repeated in six components. */
+  --icon-size: 24px;
+  --icon-button-size: 40px;
+  --menu-row-height: 48px;
+  --menu-width: 335px;
+
+  /* ---- Elevation ------------------------------------------------------
+     Decision 08 banned shadows in favour of 1px outlines; Material 3 floats
+     menus and sheets instead. These are the M3 elevation ramps. */
+  --elevation-1:
+    0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --elevation-2:
+    0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --elevation-3:
+    0 4px 8px 3px rgb(0 0 0 / 0.15), 0 1px 3px rgb(0 0 0 / 0.3);
+
+  /* ---- State layers ---------------------------------------------------
+     M3 draws hover/press as a translucent on-surface layer over whatever
+     colour is underneath, so one pair of tokens works on every surface.
+     color-mix() is Chrome 111+; the manifest floor is 116. */
+  --state-hover: color-mix(in srgb, var(--color-on-surface) 8%, transparent);
+  --state-pressed: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+
+  /* =====================================================================
+   * Light palette (default). Derived counterpart to the sampled dark one
+   * below — this is the least verified block in the file.
+   * ===================================================================== */
+  --color-surface: #ffffff; /* page background */
+  --color-surface-container-low: #f8fafd;
+  --color-surface-container: #f0f4f9; /* cards, bubbles, menus, chip */
+  --color-surface-container-high: #e9eef6; /* chips, hover fill */
+  --color-surface-container-highest: #dde3ea; /* send button, pressed */
+  --color-secondary-container: #d3e3fd; /* active menu row */
+  --color-on-secondary-container: #041e49;
+  --color-on-surface: #1f1f1f;
+  --color-on-surface-variant: #444746;
+  --color-outline: #c4c7c5; /* composer box, 1px outlines */
+  --color-outline-variant: #e1e3e1; /* menu dividers */
+  --color-primary: #0b57d0;
+  --color-on-primary: #ffffff;
+  --color-inverse-surface: #303030; /* tooltip background */
+  --color-inverse-on-surface: #f2f2f2; /* tooltip text */
+  --color-accent-sparkle: #1a73e8; /* the assistant-turn glyph */
+  --color-success: #1e8e3e; /* connected state; was hardcoded in Header */
+  --color-danger: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:root {
+    /* =====================================================================
+     * Dark palette, sampled pixel-by-pixel from Chrome's Gemini side panel.
+     * These are measured values, not approximations.
+     * ===================================================================== */
+    --color-surface: #141414; /* page background */
+    --color-surface-container-low: #1a1a1a;
+    --color-surface-container: #1c1d1d; /* cards, bubbles, menus, chip */
+    --color-surface-container-high: #242424; /* chips, hover fill */
+    --color-surface-container-highest: #292a2a; /* send button, pressed */
+    --color-secondary-container: #213053; /* active menu row */
+    --color-on-secondary-container: #d3e3fd;
+    --color-on-surface: #e3e3e3;
+    --color-on-surface-variant: #c4c7c5;
+    --color-outline: #3c3e3d;
+    --color-outline-variant: #2e3030;
+    --color-primary: #a8c7fa;
+    --color-on-primary: #062e6f;
+    --color-inverse-surface: #e3e3e3;
+    --color-inverse-on-surface: #303030;
+    --color-accent-sparkle: #4285f4;
+    --color-success: #6dd58c;
+    --color-danger: #f2b8b5;
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Base-rule overrides.
+ *
+ * Only the rules in theme.css that actively fight this design are
+ * overridden. Deliberately NOT a global `button { all: unset }` reset:
+ * ApprovalCard, HistoryListItem, Composer's blocked states, ProviderPicker's
+ * Retry and the Markdown copy button all rely on a sane default button look,
+ * and they should inherit the new one rather than each rebuild it.
+ *
+ * Components that need something other than a tonal button (icon buttons,
+ * menu rows) reset the four properties they care about inside their own
+ * scoped <style>; Svelte scoping already outranks these element selectors,
+ * so none of them needs !important.
+ * ---------------------------------------------------------------------- */
+
+button {
+  /* Material 3 tonal button: no border, a filled container, a full pill. */
+  border: none;
+  background: var(--color-surface-container-high);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-small);
+}
+
+button:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-on-surface) 8%,
+    var(--color-surface-container-high)
+  );
+}
+
+button:active {
+  /* theme.css also set border-color here; there is no border to colour now. */
+  background: color-mix(
+    in srgb,
+    var(--color-on-surface) 12%,
+    var(--color-surface-container-high)
+  );
+}
+
+textarea {
+  /* The composer auto-grows; a drag handle would fight it. */
+  resize: none;
+}
+
+h3 {
+  /* --font-size-heading is now 16px, which is a page-level title size. The
+     h3s in tool cards ("Arguments", "Result") are labels, not titles. */
+  font-size: var(--font-size-small);
+  font-weight: 600;
+}

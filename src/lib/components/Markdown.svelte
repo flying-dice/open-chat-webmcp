@@ -143,7 +143,7 @@
 
   /* Inline code */
   .markdown-body :global(code) {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: var(--font-size-small);
     background: var(--color-surface-container);
     border-radius: var(--radius-sm);

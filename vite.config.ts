@@ -9,13 +9,12 @@ export default defineConfig({
     svelte(),
     crx({
       manifest,
-      contentScripts: {
-        // The MAIN-world bridge must be a standalone IIFE with no CRXJS
-        // loader/HMR shim in front of it — a loader script would be what
-        // actually executes in MAIN world instead of our code. See
-        // decisions/03-vite-svelte-build.md for why this matters.
-        standaloneFiles: ["src/inject/bridge.ts"],
-      },
+      // No `contentScripts.standaloneFiles` carve-out any more: that existed
+      // only for the MAIN-world bridge (src/inject/bridge.ts), which needed
+      // to be a standalone IIFE with no CRXJS loader/HMR shim in front of it.
+      // decisions/16-native-webmcp-client.md deleted that file — the
+      // ISOLATED-world relay (src/content/relay.ts) is the only content
+      // script left, and it has no such constraint.
     }),
   ],
   build: {

@@ -1,15 +1,25 @@
 <script lang="ts">
   /**
-   * One tool card in the Tools view (card 11): name, description,
-   * annotations, and the tool's `source` — native / polyfill / our shim
-   * (decisions/02-mainworld-webmcp-bridge.md), the single most useful thing
-   * for debugging why a WebMCP site does or doesn't work as expected. The
-   * input schema is collapsed by default (it's the least-often-needed
-   * detail) behind the same chevron-button pattern ToolCallCard.svelte uses.
+   * One tool card in the Tools view (card 11): name, description, and
+   * annotations — the single most useful thing for debugging why a WebMCP
+   * site does or doesn't work as expected. The input schema is collapsed by
+   * default (it's the least-often-needed detail) behind the same
+   * chevron-button pattern ToolCallCard.svelte uses.
    *
-   * Per decisions/05, `annotations` are reported by the page itself and are
-   * not a security guarantee — the badges here say only what the page
-   * claims, same wording discipline as ApprovalCard.svelte/ToolCallCard.svelte.
+   * There is no `source` badge any more (native / polyfill / our shim):
+   * decisions/16-native-webmcp-client.md deleted the MAIN-world bridge that
+   * made that distinction meaningful. Every tool that reaches this view came
+   * straight from `document.modelContext.getTools()` — it's native or it
+   * isn't shown at all.
+   *
+   * Per decisions/05 and decisions/17, `annotations` are reported by the page
+   * itself and are not a security guarantee — the badges here say only what
+   * the page claims, same wording discipline as
+   * ApprovalCard.svelte/ToolCallCard.svelte. `ToolAnnotations` is exactly
+   * `{ readOnlyHint, untrustedContentHint }` — there is no `destructiveHint`
+   * (decisions/17): it isn't in the WebMCP IDL, and Chrome's WebIDL
+   * dictionary conversion silently drops any unknown member a page sets, so
+   * it's a field that's always absent, not merely unused.
    */
   import type { SerializedTool } from "../../lib/protocol";
   import ToolSchema from "./ToolSchema.svelte";
@@ -23,32 +33,19 @@
   let expanded = $state(false);
 
   const readOnly = $derived(tool.annotations?.readOnlyHint === true);
-  const destructive = $derived(tool.annotations?.destructiveHint === true);
-  const unannotated = $derived(!tool.annotations || (!readOnly && !destructive));
-
-  const sourceLabel: Record<SerializedTool["source"], string> = {
-    native: "native",
-    polyfill: "polyfill",
-    shim: "our shim",
-  };
-
-  const sourceTitle: Record<SerializedTool["source"], string> = {
-    native: "Registered against Chrome's built-in navigator.modelContext.",
-    polyfill: "Registered against a polyfill the page shipped itself (e.g. @mcp-b/global).",
-    shim: "The page assumed WebMCP support; our bridge is providing navigator.modelContext for it.",
-  };
+  const untrustedContent = $derived(tool.annotations?.untrustedContentHint === true);
+  const unannotated = $derived(!tool.annotations || (!readOnly && !untrustedContent));
 </script>
 
-<div class="tool-item" data-destructive={destructive}>
+<div class="tool-item">
   <div class="tool-item-head">
     <span class="tool-name">{tool.name}</span>
     <span class="badges">
-      <span class="badge badge-source" title={sourceTitle[tool.source]}>{sourceLabel[tool.source]}</span>
-      {#if destructive}
-        <span class="badge badge-destructive">destructive</span>
-      {/if}
       {#if readOnly}
         <span class="badge badge-readonly">read-only</span>
+      {/if}
+      {#if untrustedContent}
+        <span class="badge badge-untrusted">untrusted content</span>
       {/if}
       {#if unannotated}
         <span class="badge badge-unannotated">unannotated</span>
@@ -88,10 +85,6 @@
     gap: var(--space-1);
   }
 
-  .tool-item[data-destructive="true"] {
-    border-color: var(--color-danger);
-  }
-
   .tool-item-head {
     display: flex;
     align-items: baseline;
@@ -102,7 +95,7 @@
   }
 
   .tool-name {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-weight: 600;
     overflow-wrap: anywhere;
     min-width: 0;
@@ -124,20 +117,16 @@
     white-space: nowrap;
   }
 
-  .badge-source {
-    color: var(--color-on-surface-variant);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-
-  .badge-destructive {
-    background: var(--color-danger);
-    border-color: var(--color-danger);
-    color: var(--color-on-primary);
-    font-weight: 600;
-  }
-
   .badge-readonly {
     color: var(--color-on-surface-variant);
+  }
+
+  /* theme.css has no separate "warning" token (decisions/08) — this reuses
+     --color-danger, the only attention colour available, purely to catch
+     the eye; it does not imply the call itself is dangerous to make. */
+  .badge-untrusted {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
   }
 
   .badge-unannotated {

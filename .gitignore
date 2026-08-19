@@ -24,6 +24,11 @@ verify/output
 # between runs.
 .chrome-profile
 
+# npm run verify (boards/project-backlog/46-verify-harness-on-chrome-for-testing.md):
+# Chrome for Testing, resolved/installed via @puppeteer/browsers and cached
+# here so repeat runs don't re-download it.
+.chrome-for-testing
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

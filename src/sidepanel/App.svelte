@@ -17,14 +17,22 @@
   // transcript and the tools/call-log inspector — purely local UI state,
   // not persisted, since it's a view choice rather than session content
   // (panel.svelte.ts's SINGLE OWNER note is about `ChatSession`, not this).
+  // Since decisions/18 there is no permanent view switcher: the two
+  // non-chat views are entered from the overflow menu and left by a "Back"
+  // row, so chat — which is where you are nearly always — gets the whole
+  // panel instead of paying a tab strip for the other two.
   import { onMount } from "svelte";
   import Header from "./components/Header.svelte";
   import Transcript from "./components/Transcript.svelte";
   import Composer from "./components/Composer.svelte";
   import ProviderPicker from "./components/ProviderPicker.svelte";
-  import SegmentedControl from "./components/SegmentedControl.svelte";
+  import ContextChip from "./components/ContextChip.svelte";
+  import NoticeCard from "./components/NoticeCard.svelte";
+  import OverflowMenu from "./components/OverflowMenu.svelte";
+  import IconButton from "./components/IconButton.svelte";
   import Inspector from "./components/Inspector.svelte";
   import HistoryPanel from "./components/HistoryPanel.svelte";
+  import { titleFromMessages } from "./lib/chatTitle";
   import { initActiveTabSync } from "./services/activeTab";
   import { runAgentTurn } from "./services/agentLoop";
   import { createProviderClient } from "../lib/providers/registry";
@@ -33,11 +41,20 @@
   import { dismissAllPending, initApprovalPolicySync, requestApproval } from "./stores/approvals.svelte";
 
   let view = $state<"chat" | "inspector" | "history">("chat");
-  const viewOptions = [
-    { value: "chat", label: "Chat" },
-    { value: "inspector", label: "Tools & Log" },
-    { value: "history", label: "History" },
-  ];
+
+  /** The header's title: the conversation's own name in chat, the view's name elsewhere, so the header always says where you are. */
+  const headerTitle = $derived(
+    view === "inspector"
+      ? "Tools & call log"
+      : view === "history"
+        ? "Chat history"
+        : titleFromMessages(panel.messages),
+  );
+
+  /** The model answering in this chat, shown on each assistant turn. `undefined` until something is actually resolved. */
+  const modelLabel = $derived(
+    selection.resolution.status === "ok" ? selection.resolution.model : undefined,
+  );
 
   /**
    * Card 34/decisions/13's cross-origin-open honesty notice: set whenever
@@ -56,6 +73,21 @@
     if (!chatOrigin || !pageOrigin || chatOrigin === pageOrigin) return undefined;
     return { chatOrigin, pageOrigin };
   });
+
+  /**
+   * The cross-origin notice is an announcement — read once, then out of the
+   * way — so it can be dismissed. Keyed by chat id rather than a plain
+   * boolean: dismissing it for THIS chat must not silence it for the next
+   * one opened against a different origin.
+   *
+   * The restricted-page notice deliberately has no dismiss: it reflects
+   * live capability, not an announcement, and it has to come back every
+   * time the state does.
+   */
+  let dismissedMismatchFor = $state<string | undefined>(undefined);
+  const showMismatchNotice = $derived(
+    chatOriginMismatch !== undefined && dismissedMismatchFor !== panel.activeChatId,
+  );
 
   /** The last user turn actually sent — card 14's Retry action chip resends this rather than requiring the user to retype it. Updated on every send, including a retry, so retrying twice in a row still resends the same original text. */
   let lastSentText = $state("");
@@ -179,44 +211,40 @@
     });
   }
 
-  /** Card 14's Retry action chip: resend the last user turn exactly as if retyped. Never touches the failed turn's messages — the partial reply and the error note both stay on screen; this only starts a new one below them. */
+  /**
+   * Card 14's Retry chip and the per-reply Regenerate action: resend the
+   * last user turn exactly as if retyped. Never touches the failed turn's
+   * messages — the partial reply and the error note both stay on screen;
+   * this only starts a new one below them.
+   *
+   * Sourced from the transcript rather than from `lastSentText`, which is
+   * only populated by a send in THIS panel lifetime: after the panel is
+   * closed and reopened (or reloaded) the in-memory copy is empty while the
+   * message itself is still right there in the restored session, and Retry
+   * would silently do nothing. The in-memory value is still preferred when
+   * present, so retrying twice resends the same original text.
+   */
   function handleRetry(): void {
-    if (!lastSentText) return;
-    handleSend(lastSentText);
+    const text = lastSentText || panel.messages.findLast((m) => m.role === "user")?.content;
+    if (!text) return;
+    handleSend(text);
   }
 </script>
 
 <div class="app">
   <Header
-    pageInfo={panel.pageInfo}
-    connectionStatus={panel.connectionStatus}
+    title={headerTitle}
     newChatDisabled={!panel.pageInfo || panel.isStreaming}
     onNewChat={handleNewChat}
   >
-    {#snippet picker()}
-      <ProviderPicker />
+    {#snippet menu()}
+      <OverflowMenu
+        connectionStatus={panel.connectionStatus}
+        onOpenHistory={() => (view = "history")}
+        onOpenTools={() => (view = "inspector")}
+      />
     {/snippet}
   </Header>
-  {#if panel.pageInfo?.restrictedReason}
-    <p class="restricted-banner text-small">{panel.pageInfo.restrictedReason}</p>
-  {/if}
-  {#if chatOriginMismatch}
-    <p class="cross-origin-banner text-small">
-      This chat was started on <strong>{chatOriginMismatch.chatOrigin}</strong>. You're viewing it
-      from <strong>{chatOriginMismatch.pageOrigin}</strong> — the transcript stays readable, but
-      page tools come from THIS tab only, and any tool calls above belong to the original page and
-      can't be re-run here.
-    </p>
-  {/if}
-
-  <div class="view-switch">
-    <SegmentedControl
-      options={viewOptions}
-      value={view}
-      ariaLabel="Panel view"
-      onSelect={(v) => (view = v as "chat" | "inspector" | "history")}
-    />
-  </div>
 
   {#if view === "chat"}
     <Transcript
@@ -224,12 +252,69 @@
       streamingMessageId={panel.streamingMessageId}
       onRetry={handleRetry}
       {toolsNotice}
-    />
-    <Composer bind:this={composerRef} streaming={panel.isStreaming} onSend={handleSend} onStop={handleStop} />
-  {:else if view === "inspector"}
-    <Inspector tools={panel.tools} toolCalls={panel.toolCalls} />
+      {modelLabel}
+    >
+      {#snippet notices()}
+        {#if panel.pageInfo?.restrictedReason}
+          <NoticeCard>
+            <p>{panel.pageInfo.restrictedReason}</p>
+          </NoticeCard>
+        {/if}
+        {#if showMismatchNotice && chatOriginMismatch}
+          <NoticeCard
+            dismissLabel="Dismiss origin notice"
+            onDismiss={() => (dismissedMismatchFor = panel.activeChatId)}
+          >
+            <p>
+              This chat was started on <strong>{chatOriginMismatch.chatOrigin}</strong>. You're
+              viewing it from <strong>{chatOriginMismatch.pageOrigin}</strong> — the transcript
+              stays readable, but page tools come from THIS tab only, and any tool calls above
+              belong to the original page and can't be re-run here.
+            </p>
+          </NoticeCard>
+        {/if}
+      {/snippet}
+    </Transcript>
+
+    <div class="composer-dock">
+      <ContextChip
+        pageInfo={panel.pageInfo}
+        connectionStatus={panel.connectionStatus}
+        onOpenTools={() => (view = "inspector")}
+      />
+      <Composer
+        bind:this={composerRef}
+        streaming={panel.isStreaming}
+        onSend={handleSend}
+        onStop={handleStop}
+      >
+        {#snippet picker()}
+          <ProviderPicker />
+        {/snippet}
+      </Composer>
+    </div>
   {:else}
-    <HistoryPanel />
+    <!-- Non-chat views take the whole panel below the header, and are left
+         the way the reference's submenus are: by a Back row, not by a tab
+         strip that would have to sit there permanently. -->
+    <div class="subview-bar">
+      <IconButton
+        icon="arrow_back"
+        label="Back to chat"
+        onclick={() => (view = "chat")}
+        tooltipPlacement="bottom"
+      />
+    </div>
+
+    {#if view === "inspector"}
+      <Inspector
+        tools={panel.tools}
+        toolCalls={panel.toolCalls}
+        webmcpAvailable={panel.pageInfo?.webmcpAvailable ?? true}
+      />
+    {:else}
+      <HistoryPanel />
+    {/if}
   {/if}
 </div>
 
@@ -241,32 +326,25 @@
     min-width: 320px;
   }
 
-  .view-switch {
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-outline);
-    background: var(--color-surface-container);
+  /* The context chip and the composer are one unit: the chip's bottom edge
+     sits flush on the composer's top edge, so a negative margin closes the
+     gap the composer's own margin would otherwise leave. */
+  .composer-dock {
+    display: flex;
+    flex-direction: column;
+    flex: none;
   }
 
-  /* Restricted-page notice (card 14): visible above the view switch so it
-     applies to both Chat and Tools & Log, since a restricted tab affects
-     both the same way. Calm, not alarming — an ordinary configuration
-     state, styled like any other secondary-text banner, no danger colour. */
-  .restricted-banner {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-surface-container);
-    border-bottom: 1px solid var(--color-outline);
-    color: var(--color-on-surface-variant);
+  .composer-dock > :global(.context-chip) + :global(.composer) {
+    margin-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
   }
 
-  /* Cross-origin-open notice (card 34, decisions/13): calm like the
-     restricted-page banner above, not alarming — this is an allowed,
-     expected state, not an error, so no danger colour here either. */
-  .cross-origin-banner {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-surface-container);
-    border-bottom: 1px solid var(--color-outline);
-    color: var(--color-on-surface-variant);
+  .subview-bar {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-2) var(--space-1);
+    flex: none;
   }
 </style>

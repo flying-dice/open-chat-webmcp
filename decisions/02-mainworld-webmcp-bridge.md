@@ -1,8 +1,14 @@
 ---
-status: Accepted
+status: Superseded
 date: 2026-08-19
 ---
 # Decision 02 — Discover WebMCP tools via a MAIN-world adopt-or-provide bridge
+
+> **Superseded by [decisions/16](16-native-webmcp-client.md).** The API this
+> decision targets (`navigator.modelContext`, `provideContext`,
+> `unregisterTool`, `callTool`) no longer exists, and its central premise —
+> that there is no read API for a page's registered tools — is false: the spec
+> now has `getTools()` and `ontoolchange`. Kept for history.
 
 ## Context
 

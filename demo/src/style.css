@@ -9,6 +9,7 @@
   --ok: #4caf6f;
   --error: #e5534b;
   --warn: #d99a30;
+  --untrusted: #b56be0;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -162,8 +163,8 @@ button.secondary {
   border: 1px solid var(--border);
 }
 .badge-readonly { color: var(--ok); border-color: var(--ok); }
-.badge-destructive { color: var(--error); border-color: var(--error); }
 .badge-mutating { color: var(--warn); border-color: var(--warn); }
+.badge-untrusted { color: var(--untrusted); border-color: var(--untrusted); }
 
 #log {
   max-height: 480px;

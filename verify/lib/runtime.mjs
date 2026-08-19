@@ -37,11 +37,20 @@ export async function sendRuntimeMessage(extPage, msg) {
   );
 }
 
-export async function getTools(extPage, tabId) {
+/** Full runtime:get-tools-response — `{ tabId, available, tools }`
+ * (src/lib/protocol.ts). Use this when a check cares about `available`
+ * (e.g. the WebMCP-unavailable case); {@link getTools} below is a
+ * tools-only convenience wrapper for checks that don't. */
+export async function getToolsResponse(extPage, tabId) {
   const res = await sendRuntimeMessage(extPage, { type: "runtime:get-tools", tabId });
   if (!res || res.type !== "runtime:get-tools-response") {
     throw new Error(`unexpected response to runtime:get-tools: ${JSON.stringify(res)}`);
   }
+  return res;
+}
+
+export async function getTools(extPage, tabId) {
+  const res = await getToolsResponse(extPage, tabId);
   return res.tools;
 }
 

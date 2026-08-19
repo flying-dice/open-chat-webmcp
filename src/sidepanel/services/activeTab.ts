@@ -5,7 +5,7 @@
 // result off src/sidepanel/stores/panel.svelte.ts instead.
 //
 // Tool counts (and, for card 11's inspector, the full descriptors — name,
-// description, annotations, inputSchema, source) come from the background
+// description, annotations, inputSchema) come from the background
 // service worker's registry (src/background/sw.ts) via the shared
 // request/response pair in src/lib/protocol.ts (`runtime:get-tools` /
 // `runtime:get-tools-response`), never by talking to a tab's content script
@@ -102,15 +102,31 @@ async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
 
 /** Exported for src/sidepanel/services/agentLoop.ts, which needs the same tab-tools lookup to attach page tools to a provider call. */
 export async function getToolsForTab(tabId: number): Promise<SerializedTool[]> {
+  return (await getToolsAndAvailabilityForTab(tabId)).tools;
+}
+
+/**
+ * Same lookup as {@link getToolsForTab}, but also reports whether
+ * `document.modelContext` exists on the tab at all (decisions/16, card 43) —
+ * `refreshActiveTab` below needs both to fill in `PageInfo.webmcpAvailable`
+ * distinctly from an ordinary zero-tool page.
+ */
+async function getToolsAndAvailabilityForTab(
+  tabId: number,
+): Promise<{ tools: SerializedTool[]; available: boolean }> {
   try {
     const response = (await chrome.runtime.sendMessage({
       type: "runtime:get-tools",
       tabId,
     })) as RuntimeGetToolsResponse | undefined;
-    return response?.tools ?? [];
+    // Worker not reachable yet, or answered with an unexpected shape — default
+    // `available: true` so a transient startup gap doesn't flash "WebMCP
+    // unavailable" for an ordinary page (see PageInfo.webmcpAvailable's doc
+    // comment).
+    return { tools: response?.tools ?? [], available: response?.available ?? true };
   } catch {
     // No listener yet (worker still starting) — treat as "no tools known".
-    return [];
+    return { tools: [], available: true };
   }
 }
 
@@ -131,7 +147,7 @@ async function refreshActiveTab(tabId: number, opts: { isNewTab: boolean }): Pro
 
   const origin = originOf(tab.url);
   const previousOrigin = opts.isNewTab ? undefined : panel.pageInfo?.origin;
-  const tools = await getToolsForTab(tabId);
+  const { tools, available } = await getToolsAndAvailabilityForTab(tabId);
 
   if (opts.isNewTab) {
     await syncSessionToTab(tabId, origin);
@@ -143,8 +159,10 @@ async function refreshActiveTab(tabId: number, opts: { isNewTab: boolean }): Pro
     tabId,
     title: tab.title ?? "",
     origin,
+    favIconUrl: tab.favIconUrl,
     toolCount: tools.length,
     restrictedReason: restrictedPageReason(tab.url),
+    webmcpAvailable: available,
   });
   // card 11's Tools view needs the full descriptors, not just the count.
   setTools(tabId, tools);
@@ -186,8 +204,17 @@ export function initActiveTabSync(): () => void {
       void refreshActiveTab(tabId, { isNewTab: false });
       return;
     }
-    if (changeInfo.title !== undefined && panel.pageInfo) {
-      setPageInfo({ ...panel.pageInfo, title: tab.title ?? "" });
+    // A favicon can arrive after the title (or replace it later), and both
+    // land here as a bare update with no URL change.
+    if (
+      (changeInfo.title !== undefined || changeInfo.favIconUrl !== undefined) &&
+      panel.pageInfo
+    ) {
+      setPageInfo({
+        ...panel.pageInfo,
+        title: tab.title ?? "",
+        favIconUrl: tab.favIconUrl,
+      });
     }
   };
 
@@ -197,7 +224,7 @@ export function initActiveTabSync(): () => void {
   const onMessage = (message: unknown) => {
     if (!isRuntimeMessage(message) || message.type !== "runtime:tools-updated") return;
     if (message.tabId !== activeTabId) return;
-    setToolCount(message.tabId, message.tools.length);
+    setToolCount(message.tabId, message.tools.length, message.available);
     setTools(message.tabId, message.tools);
   };
 

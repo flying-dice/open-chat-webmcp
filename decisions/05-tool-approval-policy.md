@@ -1,8 +1,13 @@
 ---
-status: Accepted
+status: Superseded
 date: 2026-08-19
 ---
 # Decision 05 — Approval policy is derived from `annotations.readOnlyHint`
+
+> **Superseded by [decisions/17](17-spec-annotations-and-untrusted-content.md).**
+> The `readOnlyHint` rule below survives unchanged; `destructiveHint` does not
+> exist in the WebMCP IDL and is silently dropped by Chrome, and
+> `untrustedContentHint` handling has been added. Kept for history.
 
 ## Context
 

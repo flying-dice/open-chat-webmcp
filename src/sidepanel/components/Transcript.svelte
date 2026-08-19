@@ -10,13 +10,24 @@
    * always an obvious way back. Scroll position is the single source of
    * truth for `atBottom` (via the `scroll` listener below) — there is no
    * separate "user is reading" flag to fall out of sync with it.
+   *
+   * Message shape (decisions/18): a user turn is a right-aligned pill; an
+   * assistant turn has NO bubble at all — it is bare text on the panel
+   * surface, headed by a sparkle + model row and followed by copy/regenerate
+   * actions. Only one side of the conversation is boxed, so the reply (the
+   * long-form half) gets the full panel width and reads like a document
+   * rather than a chat log.
    */
   import Markdown from "../../lib/components/Markdown.svelte";
   import ToolCallCard from "./ToolCallCard.svelte";
   import ApprovalCard from "./ApprovalCard.svelte";
+  import Icon from "./Icon.svelte";
+  import IconButton from "./IconButton.svelte";
+  import MessageActions from "./MessageActions.svelte";
   import type { PanelMessage } from "../stores/panel.svelte";
   import { approvals } from "../stores/approvals.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
+  import type { Snippet } from "svelte";
 
   interface Props {
     messages: PanelMessage[];
@@ -30,9 +41,34 @@
      * dead end. `undefined` when there's nothing to add.
      */
     toolsNotice?: string;
+    /**
+     * Notices that belong at the TOP of the thread (the restricted-page and
+     * cross-origin notices App.svelte owns), rendered above the first
+     * message and scrolling with it. A snippet rather than a data prop
+     * because their wording is App.svelte's business, not this component's.
+     */
+    notices?: Snippet;
+    /** Label for the model that produced the replies, shown in each assistant turn's header row. `undefined` when nothing is selected yet. */
+    modelLabel?: string;
   }
 
-  let { messages, streamingMessageId, onRetry, toolsNotice }: Props = $props();
+  let {
+    messages,
+    streamingMessageId,
+    onRetry,
+    toolsNotice,
+    notices,
+    modelLabel,
+  }: Props = $props();
+
+  /**
+   * The id of the last assistant message, so only it offers "Regenerate".
+   * Regenerating an earlier turn would append a reply at the bottom of the
+   * transcript that appears to answer a message far above it.
+   */
+  const lastAssistantId = $derived(
+    messages.findLast((m) => m.role === "assistant")?.id,
+  );
 
   let container: HTMLDivElement | undefined = $state();
   let atBottom = $state(true);
@@ -68,6 +104,10 @@
 
 <div class="transcript-viewport">
   <div class="transcript" bind:this={container} onscroll={handleScroll}>
+    {#if notices}
+      <div class="notices">{@render notices()}</div>
+    {/if}
+
     {#if messages.length === 0}
       <div class="empty-block">
         <p class="empty text-small">
@@ -82,15 +122,28 @@
     {#each messages as message (message.id)}
       <div class="message" data-role={message.role}>
         {#if message.role === "user"}
-          <div class="bubble user-bubble">{message.content}</div>
+          <div class="user-bubble">{message.content}</div>
         {:else if message.role === "assistant"}
-          <div class="bubble assistant-bubble">
+          <div class="assistant-turn">
+            <!-- The reference puts a "Show thinking" disclosure here. We
+                 capture no reasoning tokens, so this row says what is
+                 actually true instead: which model is answering. -->
+            <div class="turn-header">
+              <span class="sparkle" aria-hidden="true"><Icon name="sparkle" size={20} /></span>
+              {#if modelLabel}<span class="turn-model">{modelLabel}</span>{/if}
+            </div>
+
             <Markdown source={message.content} />
             {#if message.id === streamingMessageId}
               <span class="cursor" aria-hidden="true"></span>
             {/if}
+
             {#if message.actions && message.actions.length > 0}
-              <div class="message-actions">
+              <!-- Note actions (Retry, Open options) belong to an error note
+                   and are not the same thing as the per-reply icon row
+                   below: these are the way OUT of a failed turn, so they
+                   stay full labelled buttons. -->
+              <div class="note-actions">
                 {#each message.actions as action, i (i)}
                   {#if action.kind === "retry"}
                     <button type="button" class="action-chip" onclick={onRetry}>Retry</button>
@@ -101,6 +154,13 @@
                   {/if}
                 {/each}
               </div>
+            {/if}
+
+            {#if message.content && message.id !== streamingMessageId}
+              <MessageActions
+                content={message.content}
+                onRegenerate={message.id === lastAssistantId ? onRetry : undefined}
+              />
             {/if}
           </div>
         {:else}
@@ -114,18 +174,34 @@
         <ApprovalCard {request} />
       </div>
     {/each}
+
+    {#if messages.length > 0}
+      <!-- Once per thread, at the end rather than pinned above the
+           composer: it is a standing caveat, not a warning about the
+           message you are typing, and pinning it would cost a row of a
+           320px panel forever. -->
+      <p class="disclaimer">
+        Replies come from the provider you configured and can be wrong — check anything that
+        matters. Tool calls act on the page in front of you.
+      </p>
+    {/if}
   </div>
 
   {#if !atBottom}
-    <button class="jump-to-latest" onclick={() => scrollToBottom("smooth")}>
-      ↓ Jump to latest
-    </button>
+    <div class="jump-to-latest">
+      <IconButton
+        icon="arrow_downward"
+        label="Jump to latest"
+        variant="filled"
+        onclick={() => scrollToBottom("smooth")}
+      />
+    </div>
   {/if}
 </div>
 
 <style>
   /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+     and src/sidepanel/chat-theme.css (decisions/18). */
 
   .transcript-viewport {
     position: relative;
@@ -139,10 +215,18 @@
     min-height: 0;
     min-width: 0;
     overflow-y: auto;
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-4) var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    /* Wider than the old 12px: turns need to read as separate blocks now
+       that the assistant's half has no border to separate it. */
+    gap: var(--space-5);
+  }
+
+  .notices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   .empty-block {
@@ -172,24 +256,47 @@
     justify-content: flex-start;
   }
 
-  .bubble {
-    max-width: 100%;
+  /* The user's turn is the only boxed one. It is short, it is the thing
+     being answered, and a right-aligned pill is the cheapest way to say
+     "you said this" without a label or an avatar. */
+  .user-bubble {
+    max-width: 85%;
     min-width: 0;
-    border-radius: var(--radius-card);
-    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-xl);
+    padding: var(--space-3) var(--space-5);
+    background: var(--color-surface-container);
+    color: var(--color-on-surface);
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
 
-  .user-bubble {
-    background: var(--color-primary);
-    color: var(--color-on-primary);
-    white-space: pre-wrap;
+  /* No background, no border, no padding: the reply is the page. */
+  .assistant-turn {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
-  .assistant-bubble {
-    background: var(--color-surface-container);
-    border: 1px solid var(--color-outline-variant);
-    position: relative;
+  .turn-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .sparkle {
+    display: inline-flex;
+    color: var(--color-accent-sparkle);
+  }
+
+  .turn-model {
+    font-size: var(--font-size-small);
+    color: var(--color-on-surface-variant);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .cursor {
@@ -208,13 +315,17 @@
     }
   }
 
-  .message-actions {
+  .disclaimer {
+    margin: 0;
+    font-size: var(--font-size-small);
+    color: var(--color-on-surface-variant);
+  }
+
+  .note-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    margin-top: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-outline-variant);
+    margin-top: var(--space-3);
   }
 
   .action-chip {
@@ -233,7 +344,13 @@
     bottom: var(--space-3);
     left: 50%;
     transform: translateX(-50%);
-    font-size: var(--font-size-small);
-    box-shadow: none;
+    border-radius: var(--radius-full);
+    /* The one thing in the transcript that genuinely floats over content,
+       so it is the one thing that gets a shadow. */
+    box-shadow: var(--elevation-2);
+  }
+
+  .jump-to-latest :global(.icon-button) {
+    border-radius: var(--radius-full);
   }
 </style>

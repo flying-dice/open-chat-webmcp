@@ -39,15 +39,15 @@
 
 <style>
   /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+     and src/sidepanel/chat-theme.css (decisions/18). */
 
   .segmented {
     display: flex;
     gap: var(--space-1);
     padding: var(--space-1);
     background: var(--color-surface-container);
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--color-outline);
+    border-radius: var(--radius-full);
+    border: none;
     min-width: 0;
   }
 
@@ -56,8 +56,8 @@
     min-width: 0;
     background: transparent;
     border: none;
-    border-radius: var(--radius-pill);
-    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    padding: var(--space-1) var(--space-3);
     font-size: var(--font-size-small);
     color: var(--color-on-surface-variant);
     white-space: nowrap;
@@ -67,12 +67,12 @@
   }
 
   .segmented button.active {
-    background: var(--color-surface);
-    color: var(--color-on-surface);
-    font-weight: 600;
+    background: var(--color-secondary-container);
+    color: var(--color-on-secondary-container);
+    font-weight: 500;
   }
 
   .segmented button:hover:not(.active) {
-    background: var(--color-surface-container-high);
+    background: var(--state-hover);
   }
 </style>

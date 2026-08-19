@@ -1,20 +1,31 @@
 #!/usr/bin/env node
 // npm run verify — in-browser verification harness.
 // boards/project-backlog/25-in-browser-verification-harness.md
+// boards/project-backlog/46-verify-harness-on-chrome-for-testing.md
 //
 // Builds the extension into its own output dir (dist-verify/, never dist/,
 // so a concurrent `npm run build` elsewhere cannot corrupt this run),
-// launches real Chromium with it loaded unpacked via a persistent context,
-// and exercises the claims listed on the card against the demo fixtures.
+// launches Chrome for Testing with it loaded unpacked via a persistent
+// context (verify/lib/browser.mjs — decisions/16-native-webmcp-client.md),
+// and exercises the real native-WebMCP client against the demo fixtures.
 // Every check is a real, observable browser behaviour — not a re-read of
 // build output.
+//
+// This suite used to test a MAIN-world "adopt-or-provide" bridge
+// (src/inject/bridge.ts) that decisions/16 deleted: world-isolation
+// assertions, a `source: "shim"|"polyfill"|"native"` field, and a
+// late.html/polyfill-adoption fixture. All three are gone along with the
+// architecture they tested — the assertions below exercise the real thing
+// that replaced it: native `document.modelContext`, read via
+// `getTools()`/`ontoolchange`/`executeTool()` directly from the ISOLATED
+// world (src/content/relay.ts).
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildExtension } from "./lib/build.mjs";
-import { startDemoServer, stopDemoServer, DEMO_INDEX_URL, DEMO_LATE_URL } from "./lib/demoServer.mjs";
+import { startDemoServer, stopDemoServer, DEMO_INDEX_URL } from "./lib/demoServer.mjs";
 import { launchExtension, sidepanelUrl } from "./lib/browser.mjs";
-import { findTabId, getTools, callTool } from "./lib/runtime.mjs";
+import { findTabId, getTools, getToolsResponse, callTool } from "./lib/runtime.mjs";
 import { attachServiceWorkerCdp, stopWorker } from "./lib/serviceWorker.mjs";
 import { createReport } from "./lib/report.mjs";
 import { assert, assertSetEqual, pollUntil } from "./lib/assert.mjs";
@@ -23,8 +34,13 @@ import { screenshotSidepanel } from "./checks/screenshots.mjs";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCREENSHOT_DIR = path.join(ROOT, "verify", "output", "screenshots");
 
+// The 7 fixed fixtures demo/src/tools.ts registers on load. "dynamic-echo"
+// is deliberately excluded — it's registered/unregistered at runtime via the
+// page's #register-dynamic/#unregister-dynamic buttons, exercised in its own
+// check below.
 const EXPECTED_FIXED_TOOLS = [
   "read-page-state",
+  "read-notes-content",
   "add-note",
   "clear-notes",
   "create-task",
@@ -32,10 +48,38 @@ const EXPECTED_FIXED_TOOLS = [
   "hangs-forever",
 ];
 
+// src/content/relay.ts's own executeTool timeout (EXECUTE_TIMEOUT_MS) — the
+// innermost rung of the (now two-layer) timeout ladder decisions/16
+// describes. Kept in sync manually with that constant; if you change one,
+// change the other.
+const RELAY_EXECUTE_TIMEOUT_MS = 20_000;
+
+/**
+ * Unwraps the MCP-shaped `CallToolResult` a demo fixture's `execute()`
+ * returns (`demo/src/tools.ts`'s `ok()` helper: `{ content: [{ type: "text",
+ * text: JSON.stringify(data) }] }`) — this is what actually crosses the wire
+ * from `document.modelContext.executeTool()` through src/content/relay.ts,
+ * not a bare value. Returns the parsed `data`.
+ */
+function parseMcpContent(result) {
+  assert(
+    result && Array.isArray(result.content),
+    `expected an MCP-shaped CallToolResult ({content: [...]}), got: ${JSON.stringify(result)}`,
+  );
+  const textPart = result.content.find((c) => c.type === "text" && typeof c.text === "string");
+  assert(textPart, `expected a {type:"text"} content part, got: ${JSON.stringify(result.content)}`);
+  try {
+    return JSON.parse(textPart.text);
+  } catch {
+    return textPart.text;
+  }
+}
+
 async function main() {
   const report = createReport();
   let demoHandle = null;
   let ext = null;
+  let unavailableExt = null;
 
   console.log("Building extension -> dist-verify/ ...");
   await buildExtension();
@@ -46,9 +90,9 @@ async function main() {
   console.log(demoHandle.alreadyRunning ? "Demo server already running." : "Demo server started.");
 
   try {
-    console.log("Launching Chromium with dist-verify/ loaded unpacked ...");
-    ext = await launchExtension();
-    console.log(`Extension id resolved at runtime: ${ext.extensionId}`);
+    console.log("Resolving Chrome for Testing and launching it with dist-verify/ loaded unpacked, WebMCP enabled ...");
+    ext = await launchExtension({ enableWebMcp: true });
+    console.log(`Chrome for Testing ${ext.buildId}; extension id resolved at runtime: ${ext.extensionId}`);
 
     const { context, extensionId } = ext;
 
@@ -59,104 +103,79 @@ async function main() {
     const controlPage = await context.newPage();
     await controlPage.goto(sidepanelUrl(extensionId));
 
-    // ---------------------------------------------------------------------
-    // 1. MAIN-world execution + ISOLATED-world isolation
-    // ---------------------------------------------------------------------
     const demoPage = await context.newPage();
-    const demoConsoleErrors = [];
-    demoPage.on("console", (msg) => {
-      if (msg.type() === "error") demoConsoleErrors.push(msg.text());
-    });
 
-    await report.run("MAIN-world bridge executes in the page world, ISOLATED relay cannot see its globals", async () => {
+    // ---------------------------------------------------------------------
+    // Tool discovery via getTools(), against the real document.modelContext
+    // ---------------------------------------------------------------------
+    let tabId = null;
+    await report.run("Tool discovery works against demo/index.html via native getTools()", async () => {
       await demoPage.goto(DEMO_INDEX_URL);
       await demoPage.waitForFunction(
         () => document.getElementById("status")?.dataset.kind === "ok",
         { timeout: 10000 },
       );
-      const stamp = await demoPage.evaluate(() => window.__webmcpBridgeInstalled);
-      assert(
-        stamp && stamp.source === "main-world-bridge" && typeof stamp.at === "number",
-        `window.__webmcpBridgeInstalled was not set in the page's MAIN world (got ${JSON.stringify(stamp)})`,
-      );
-      const leak = demoConsoleErrors.find((t) => t.includes("WORLD ISOLATION BROKEN"));
-      assert(
-        !leak,
-        `the ISOLATED-world relay logged a world-isolation breach: ${leak}`,
-      );
-      return { mainWorldStamp: stamp, isolationErrorsSeen: demoConsoleErrors.filter((t) => t.includes("ISOLATION")).length };
-    });
-
-    // ---------------------------------------------------------------------
-    // 2a. Tool discovery against demo/index.html
-    // ---------------------------------------------------------------------
-    let tabId = null;
-    await report.run("Tool discovery works against demo/index.html (shim-provided)", async () => {
       tabId = await findTabId(controlPage, DEMO_INDEX_URL);
       assert(tabId !== null, `could not find an open tab for ${DEMO_INDEX_URL}`);
-      const tools = await pollUntil(
-        () => getTools(controlPage, tabId),
-        (t) => t.length === EXPECTED_FIXED_TOOLS.length,
-        { timeoutMs: 5000, label: "worker registry to report all 6 fixed demo tools" },
+      const res = await pollUntil(
+        () => getToolsResponse(controlPage, tabId),
+        (r) => r.tools.length === EXPECTED_FIXED_TOOLS.length,
+        { timeoutMs: 5000, label: "worker registry to report all 7 fixed demo tools" },
       );
-      assertSetEqual(tools.map((t) => t.name), EXPECTED_FIXED_TOOLS, "tool set from demo/index.html");
+      assert(res.available === true, `expected available:true on a page with document.modelContext, got ${res.available}`);
+      assertSetEqual(res.tools.map((t) => t.name), EXPECTED_FIXED_TOOLS, "tool set from demo/index.html");
+
+      const readNotes = res.tools.find((t) => t.name === "read-notes-content");
+      assert(readNotes, "read-notes-content tool missing from discovery");
       assert(
-        tools.every((t) => t.source === "shim"),
-        `expected all tools to report source "shim" on the plain shim page, got: ${tools.map((t) => `${t.name}=${t.source}`).join(", ")}`,
+        readNotes.annotations?.readOnlyHint === true && readNotes.annotations?.untrustedContentHint === true,
+        `expected read-notes-content annotations {readOnlyHint:true, untrustedContentHint:true}, got ${JSON.stringify(readNotes.annotations)}`,
       );
-      return { tabId, tools: tools.map((t) => t.name) };
+      return { tabId, tools: res.tools.map((t) => t.name) };
     });
 
     // ---------------------------------------------------------------------
-    // 2b + 3. Navigate to late.html: registry must clear, then late-adopt
-    //         the fake polyfill assigned ~2s after load.
+    // Registry clears on navigation (kept from the pre-46 suite — still the
+    // right behaviour under the native client, since sw.ts clears its
+    // per-tab registry entry on any URL change regardless of what API
+    // produced the tools).
     // ---------------------------------------------------------------------
-    await report.run("Registry clears on navigation (before late.html's polyfill has loaded)", async () => {
+    await report.run("Registry clears on navigation", async () => {
       assert(tabId !== null, "no tabId from the previous check");
-      await demoPage.goto(DEMO_LATE_URL);
-      // late.html deliberately waits 2s before auto-loading its fake
-      // polyfill (demo/src/late-main.ts) — query well inside that window so
-      // an empty result is unambiguous evidence of a clear, not a race.
-      const tools = await getTools(controlPage, tabId);
-      assert(
-        tools.length === 0,
-        `expected the tab's registry to be empty right after navigating to late.html (before its 2s-delayed polyfill loads), got: ${tools.map((t) => t.name).join(", ")}`,
+      await demoPage.goto("about:blank");
+      const res = await pollUntil(
+        () => getToolsResponse(controlPage, tabId),
+        (r) => r.tools.length === 0,
+        { timeoutMs: 5000, label: "worker registry to clear after navigating away from demo/index.html" },
       );
-      return { toolsImmediatelyAfterNav: tools.length };
+      assert(res.tools.length === 0, `expected an empty tool list after navigation, got: ${res.tools.map((t) => t.name).join(", ")}`);
+      return { toolsAfterNav: res.tools.length };
     });
 
-    await report.run(
-      "Tool discovery works against demo/late.html (late navigator.modelContext assignment)",
-      async () => {
-        // Trigger deterministically rather than racing the page's own 2s
-        // auto-timer; loadPolyfillAndRegisterTools() guards against a
-        // double-fire either way.
-        const loadBtn = demoPage.locator("#load-polyfill");
-        if (await loadBtn.isEnabled().catch(() => false)) {
-          await loadBtn.click().catch(() => {});
-        }
-        await demoPage.waitForFunction(
-          () => document.getElementById("status")?.dataset.kind === "ok",
-          { timeout: 8000 },
-        );
-        const tools = await pollUntil(
-          () => getTools(controlPage, tabId),
-          (t) => t.length === EXPECTED_FIXED_TOOLS.length,
-          { timeoutMs: 5000, label: "worker registry to report all 6 tools after late adoption" },
-        );
-        assertSetEqual(tools.map((t) => t.name), EXPECTED_FIXED_TOOLS, "tool set from demo/late.html");
-        assert(
-          tools.every((t) => t.source === "polyfill"),
-          `expected all tools to report source "polyfill" once the accessor setter adopted the fake polyfill, got: ${tools.map((t) => `${t.name}=${t.source}`).join(", ")}`,
-        );
-        return { tools: tools.map((t) => t.name) };
-      },
+    // Navigate back so the remaining demo-page checks have a live tab again.
+    await demoPage.goto(DEMO_INDEX_URL);
+    await demoPage.waitForFunction(
+      () => document.getElementById("status")?.dataset.kind === "ok",
+      { timeout: 10000 },
+    );
+    tabId = await pollUntil(
+      () => findTabId(controlPage, DEMO_INDEX_URL),
+      (id) => id !== null,
+      { timeoutMs: 5000, label: "tab id for demo/index.html to reappear after navigating back" },
+    );
+    await pollUntil(
+      () => getTools(controlPage, tabId),
+      (t) => t.length === EXPECTED_FIXED_TOOLS.length,
+      { timeoutMs: 5000, label: "worker registry to re-report all 7 tools after navigating back to demo/index.html" },
     );
 
     // ---------------------------------------------------------------------
-    // 6. Dynamic register/unregister propagates as a live tool-list update
+    // Live add/remove propagates through document.modelContext.ontoolchange
+    // (dynamic-echo, driven by the page's own #register-dynamic /
+    // #unregister-dynamic buttons and a real AbortController —
+    // demo/src/main.ts).
     // ---------------------------------------------------------------------
-    await report.run("Dynamic register/unregister propagates as a live tool-list update", async () => {
+    await report.run("Dynamic register/unregister propagates through ontoolchange", async () => {
       await demoPage.locator("#register-dynamic").click();
       const afterRegister = await pollUntil(
         () => getTools(controlPage, tabId),
@@ -172,7 +191,7 @@ async function main() {
       const afterUnregister = await pollUntil(
         () => getTools(controlPage, tabId),
         (t) => !t.some((x) => x.name === "dynamic-echo"),
-        { timeoutMs: 3000, label: '"dynamic-echo" to disappear from the registry after unregisterTool()' },
+        { timeoutMs: 3000, label: '"dynamic-echo" to disappear from the registry after AbortController.abort()' },
       );
       assert(
         !afterUnregister.some((t) => t.name === "dynamic-echo"),
@@ -182,49 +201,75 @@ async function main() {
     });
 
     // ---------------------------------------------------------------------
-    // 5. Tool call end to end, including throwing and hanging tools
+    // Tool call end to end: success, error, and timeout paths, all through
+    // the real executeTool() round trip (src/content/relay.ts).
     // ---------------------------------------------------------------------
-    await report.run("Tool call end-to-end: read-page-state succeeds with a real result", async () => {
+    await report.run("Tool call end-to-end: read-page-state round-trips through executeTool with parsed MCP content", async () => {
       const res = await callTool(controlPage, tabId, "read-page-state", {});
       assert(res.ok === true, `expected ok:true, got ${JSON.stringify(res)}`);
+      const data = parseMcpContent(res.result);
       assert(
-        res.result && typeof res.result.title === "string" && typeof res.result.url === "string",
-        `unexpected result shape: ${JSON.stringify(res.result)}`,
+        typeof data.title === "string" && typeof data.url === "string",
+        `unexpected parsed content shape: ${JSON.stringify(data)}`,
       );
-      return res.result;
+      return data;
     });
 
-    await report.run("Tool call end-to-end: always-throws returns a clean error, not a hang or crash", async () => {
+    await report.run("Tool call end-to-end: add-note mutates the page and create-task accepts a rich schema", async () => {
+      const addRes = await callTool(controlPage, tabId, "add-note", { text: "verify harness note" });
+      assert(addRes.ok === true, `expected ok:true from add-note, got ${JSON.stringify(addRes)}`);
+      const addData = parseMcpContent(addRes.result);
+      assert(addData.added === "verify harness note", `unexpected add-note result: ${JSON.stringify(addData)}`);
+
+      const taskRes = await callTool(controlPage, tabId, "create-task", {
+        title: "Ship it",
+        priority: "high",
+        assignee: { name: "Jonathan" },
+      });
+      assert(taskRes.ok === true, `expected ok:true from create-task, got ${JSON.stringify(taskRes)}`);
+      const taskData = parseMcpContent(taskRes.result);
+      assert(taskData.priority === "high", `unexpected create-task result: ${JSON.stringify(taskData)}`);
+      return { addData, taskData };
+    });
+
+    await report.run("Tool call end-to-end: always-throws surfaces a clean error, not a hang or crash", async () => {
       const res = await callTool(controlPage, tabId, "always-throws", {});
       assert(res.ok === false, `expected ok:false, got ${JSON.stringify(res)}`);
+      // Chrome's native executeTool() does not propagate the thrown Error's
+      // own message text across the WebIDL boundary — it reports its own
+      // generic wording instead. Measured directly against Chrome for
+      // Testing 152.0.7977.54 while building this harness (card 46); the
+      // check is that a throwing tool cleanly surfaces AS an error (ok:false,
+      // some message), not that the original "Deliberate failure..." text
+      // survives.
       assert(
-        typeof res.error === "string" && res.error.includes("Deliberate failure"),
-        `unexpected error message: ${res.error}`,
+        typeof res.error === "string" && res.error.length > 0,
+        `expected a non-empty error message for a throwing tool, got: ${res.error}`,
       );
       return { error: res.error };
     });
 
     await report.run(
-      "Tool call end-to-end: hangs-forever hits the bridge's 20s timeout and returns a clean error",
+      "Tool call end-to-end: hangs-forever hits the relay's own executeTool timeout and returns a clean error",
       async () => {
         const startedAt = Date.now();
         const res = await callTool(controlPage, tabId, "hangs-forever", {});
         const elapsedMs = Date.now() - startedAt;
         assert(res.ok === false, `expected ok:false, got ${JSON.stringify(res)}`);
         assert(
-          typeof res.error === "string" && res.error.includes("Timed out after 20000ms"),
-          `expected the bridge's own 20s EXECUTE_TIMEOUT_MS error, got: ${res.error}`,
+          typeof res.error === "string" && res.error.includes(`Timed out after ${RELAY_EXECUTE_TIMEOUT_MS}ms`),
+          `expected the relay's own EXECUTE_TIMEOUT_MS=${RELAY_EXECUTE_TIMEOUT_MS} error (src/content/relay.ts), got: ${res.error}`,
         );
         assert(
-          elapsedMs >= 19000 && elapsedMs < 25000,
-          `expected the timeout to fire close to 20s (bridge timeout, not the relay's 25s backstop), took ${elapsedMs}ms`,
+          elapsedMs >= RELAY_EXECUTE_TIMEOUT_MS - 1000 && elapsedMs < RELAY_EXECUTE_TIMEOUT_MS + 5000,
+          `expected the timeout to fire close to the relay's ${RELAY_EXECUTE_TIMEOUT_MS}ms (not the worker's 30s CALL_TIMEOUT_MS backstop in src/background/sw.ts), took ${elapsedMs}ms`,
         );
         return { error: res.error, elapsedMs };
       },
     );
 
     // ---------------------------------------------------------------------
-    // 4. Registry recovery after the MV3 worker is killed
+    // Registry recovery after the MV3 worker is killed
     // ---------------------------------------------------------------------
     await report.run(
       "Registry recovers after the MV3 service worker is killed (runtime:refresh-tools path)",
@@ -245,7 +290,9 @@ async function main() {
           // (MV3 workers fully re-execute their top-level module on the next
           // wake — no persisted heap across a stop). Asking for this tab's
           // tools forces a cache miss -> pullToolsFromRelay ->
-          // runtime:refresh-tools round trip to the content relay.
+          // runtime:refresh-tools round trip to the content relay, which now
+          // reads document.modelContext.getTools() directly (no MAIN-world
+          // bridge to wait out any more).
           const recovered = await getTools(controlPage, tabId);
 
           const restarted = await cdp.waitForStatus(running.versionId, "running", 8000);
@@ -272,19 +319,65 @@ async function main() {
     );
 
     // ---------------------------------------------------------------------
-    // 7. Screenshots — BEST EFFORT (panel is being actively edited elsewhere)
+    // Screenshots — BEST EFFORT (panel is being actively edited elsewhere)
     // ---------------------------------------------------------------------
     await report.runBestEffort(
-      "Side panel screenshot at 320px width, light and dark (human eyeball check)",
+      "Side panel screenshots: 320/400px x light/dark, plus the overflow menu and model sheet (human eyeball check)",
       async () => {
-        const { lightPath, darkPath } = await screenshotSidepanel(context, extensionId, SCREENSHOT_DIR);
-        return { lightPath, darkPath };
+        const { files } = await screenshotSidepanel(context, extensionId, SCREENSHOT_DIR);
+        return { files };
+      },
+    );
+
+    // ---------------------------------------------------------------------
+    // The ABSENT case: a second, separate browser launched WITHOUT
+    // --enable-features=WebMCP. document.modelContext is genuinely undefined
+    // there, and src/content/relay.ts must report that as the distinct
+    // available:false state (card 43 / decisions/16), never an empty tool
+    // list indistinguishable from "this page just has zero tools".
+    // ---------------------------------------------------------------------
+    await report.run(
+      "WebMCP-unavailable: without --enable-features=WebMCP the extension reports available:false, not an empty tool list",
+      async () => {
+        unavailableExt = await launchExtension({ enableWebMcp: false });
+        const unavailControlPage = await unavailableExt.context.newPage();
+        await unavailControlPage.goto(sidepanelUrl(unavailableExt.extensionId));
+
+        const unavailDemoPage = await unavailableExt.context.newPage();
+        await unavailDemoPage.goto(DEMO_INDEX_URL);
+        // main.ts checks `document.modelContext` once, synchronously, and
+        // sets #status to "error" immediately when it's missing — no
+        // polling needed, but wait for that terminal state defensively.
+        await unavailDemoPage.waitForFunction(
+          () => document.getElementById("status")?.dataset.kind === "error",
+          { timeout: 10000 },
+        );
+        const modelContextIsUndefined = await unavailDemoPage.evaluate(() => document.modelContext === undefined);
+        assert(modelContextIsUndefined, "expected document.modelContext to be undefined without --enable-features=WebMCP");
+
+        const unavailTabId = await pollUntil(
+          () => findTabId(unavailControlPage, DEMO_INDEX_URL),
+          (id) => id !== null,
+          { timeoutMs: 5000, label: "tab id for demo/index.html in the no-WebMCP browser" },
+        );
+        const res = await pollUntil(
+          () => getToolsResponse(unavailControlPage, unavailTabId),
+          (r) => r.available === false,
+          { timeoutMs: 5000, label: "runtime:get-tools-response to report available:false" },
+        );
+        assert(res.available === false, `expected available:false, got ${JSON.stringify(res)}`);
+        assert(
+          res.tools.length === 0,
+          `expected an empty tool list alongside available:false, got: ${res.tools.map((t) => t.name).join(", ")}`,
+        );
+        return { available: res.available, toolCount: res.tools.length };
       },
     );
 
     const ok = report.print();
     process.exitCode = ok ? 0 : 1;
   } finally {
+    if (unavailableExt) await unavailableExt.close();
     if (ext) await ext.close();
     stopDemoServer(demoHandle);
   }

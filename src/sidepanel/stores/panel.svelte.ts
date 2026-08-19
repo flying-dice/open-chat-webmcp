@@ -179,6 +179,13 @@ export interface PageInfo {
   tabId: number;
   title: string;
   origin: string;
+  /**
+   * The tab's own favicon, shown by ContextChip so the page the panel is
+   * attached to is recognisable at a glance rather than only by its title.
+   * Often absent (a tab that hasn't loaded one, a restricted page) — the
+   * chip falls back to a generic globe glyph, never to a broken image.
+   */
+  favIconUrl?: string;
   toolCount: number;
   /**
    * Set when src/sidepanel/services/activeTab.ts's URL-based heuristic
@@ -190,6 +197,17 @@ export interface PageInfo {
    * leaving the user to guess why nothing works on this tab.
    */
   restrictedReason?: string;
+  /**
+   * Whether `document.modelContext` exists on this tab at all
+   * (decisions/16-native-webmcp-client.md, card 43). `false` means WebMCP is
+   * off in this browser (no `--enable-features=WebMCP`, flag, or
+   * origin-trial token) — a DISTINCT state from `true` + `toolCount: 0`,
+   * which means the feature works here and this particular page simply
+   * hasn't registered anything. Defaults to `true` when it can't be
+   * determined yet (worker not reachable), so a transient startup gap never
+   * flashes the "WebMCP unavailable" messaging for an ordinary page.
+   */
+  webmcpAvailable: boolean;
 }
 
 function makeId(): string {
@@ -612,8 +630,10 @@ export function setPageInfo(info: PageInfo): void {
   pageInfo = info;
 }
 
-export function setToolCount(tabId: number, count: number): void {
-  if (pageInfo && pageInfo.tabId === tabId) pageInfo = { ...pageInfo, toolCount: count };
+export function setToolCount(tabId: number, count: number, available: boolean): void {
+  if (pageInfo && pageInfo.tabId === tabId) {
+    pageInfo = { ...pageInfo, toolCount: count, webmcpAvailable: available };
+  }
 }
 
 /** Sets the active tab's full tool list (card 11's Tools view) — same `tabId` guard as {@link setToolCount} so a late response for a tab that's no longer active can't clobber what's on screen. */

@@ -4,6 +4,10 @@ date: 2026-08-19
 ---
 # Decision 08 — The UI adopts Chrome's own design language, not a custom brand
 
+Revised for the side panel by
+[decisions/18](18-side-panel-material-expressive.md); still current for the
+options page, and still the shared base both surfaces build on.
+
 ## Context
 
 The side panel sits inside Chrome's chrome, docked next to the browser's own

@@ -18,9 +18,11 @@
   interface Props {
     tools: SerializedTool[];
     toolCalls: ToolCallLogEntry[];
+    /** See PageInfo.webmcpAvailable's doc comment (decisions/16, card 43) — distinguishes "WebMCP unavailable in this browser" from "this page has no tools" in the empty state below. */
+    webmcpAvailable: boolean;
   }
 
-  let { tools, toolCalls }: Props = $props();
+  let { tools, toolCalls, webmcpAvailable }: Props = $props();
 
   let section = $state<"tools" | "log">("tools");
 
@@ -42,7 +44,7 @@
 
   <div class="section-body">
     {#if section === "tools"}
-      <ToolsPanel {tools} />
+      <ToolsPanel {tools} {webmcpAvailable} />
     {:else}
       <CallLogPanel {toolCalls} />
     {/if}
@@ -50,8 +52,8 @@
 </div>
 
 <style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+  /* All colour/spacing/radius values come from src/lib/theme.css and
+     src/sidepanel/chat-theme.css (decisions/18). */
 
   .inspector-viewport {
     flex: 1 1 auto;
@@ -62,8 +64,7 @@
   }
 
   .section-switch {
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-outline-variant);
+    padding: 0 var(--space-3) var(--space-2);
   }
 
   .section-body {

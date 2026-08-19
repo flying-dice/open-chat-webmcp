@@ -60,7 +60,7 @@
     font-weight: 600;
     font-size: var(--font-size-small);
     color: var(--color-on-surface-variant);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
   }
 
   .arg-value {

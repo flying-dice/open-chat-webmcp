@@ -16,9 +16,17 @@
    *
    * `toolAnnotations` is a snapshot taken at call time (panel.svelte.ts),
    * not a live lookup — see that field's doc comment for why. Per
-   * decisions/05, annotations are page-supplied UX guidance, not a security
-   * boundary; the destructive badge below says only "the page marked this
-   * destructive," never "this call was safe."
+   * decisions/05 and decisions/17, annotations are page-supplied UX
+   * guidance, not a security boundary; the badges below say only what the
+   * page claimed, never that a call was verified safe.
+   *
+   * `ToolAnnotations` is exactly `{ readOnlyHint, untrustedContentHint }` —
+   * there is no `destructiveHint` (decisions/17). When `toolAnnotations`
+   * carries `untrustedContentHint: true`, the result below is the same
+   * fenced text sent to the model (src/sidepanel/services/agentLoop.ts's
+   * `fenceUntrustedContent`) — the badge just calls out why it reads that
+   * way, so a human scanning the transcript can tell an untrusted-source
+   * result apart from an ordinary one.
    */
   import { untrack } from "svelte";
   import type { PanelMessage } from "../stores/panel.svelte";
@@ -36,11 +44,11 @@
   // as `message.toolStatus` changes underneath it (e.g. pending -> success).
   let expanded = $state(untrack(() => message.toolMode !== "auto"));
 
-  const destructive = $derived(message.toolAnnotations?.destructiveHint === true);
   const readOnly = $derived(message.toolAnnotations?.readOnlyHint === true);
+  const untrustedContent = $derived(message.toolAnnotations?.untrustedContentHint === true);
 </script>
 
-<div class="tool-card" data-status={message.toolStatus} data-destructive={destructive}>
+<div class="tool-card" data-status={message.toolStatus}>
   <button
     type="button"
     class="tool-card-header"
@@ -50,8 +58,8 @@
     <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
     <span class="tool-name">{message.toolName}</span>
     <span class="header-badges">
-      {#if destructive}
-        <span class="badge badge-destructive">destructive</span>
+      {#if untrustedContent}
+        <span class="badge badge-untrusted">untrusted content</span>
       {/if}
       {#if message.toolMode === "auto"}
         <span class="badge badge-auto">{readOnly ? "auto · read-only" : "auto-run"}</span>
@@ -69,8 +77,13 @@
 
       {#if message.content}
         <div class="result-section">
-          <h3>{message.toolStatus === "error" || message.toolStatus === "denied" ? "Error" : "Result"}</h3>
-          <div class="tool-content text-small">{message.content}</div>
+          <h3>
+            {message.toolStatus === "error" || message.toolStatus === "denied" ? "Error" : "Result"}
+            {#if untrustedContent && message.toolStatus === "success"}
+              <span class="untrusted-note">— page-authored, treated as untrusted data</span>
+            {/if}
+          </h3>
+          <div class="tool-content text-small" data-untrusted={untrustedContent && message.toolStatus === "success"}>{message.content}</div>
         </div>
       {/if}
     </div>
@@ -79,19 +92,19 @@
 
 <style>
   /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+     and src/sidepanel/chat-theme.css (decisions/18). */
 
+  /* Filled and borderless. The assistant's reply is now bare text on the
+     panel surface, so an outlined card sitting on that same surface would
+     read as a foreign object; a filled block reads as an inset within the
+     turn, which is what it is. */
   .tool-card {
     width: 100%;
     min-width: 0;
-    border: 1px solid var(--color-outline);
-    border-radius: var(--radius-card);
-    background: var(--color-surface);
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-container);
     overflow: hidden;
-  }
-
-  .tool-card[data-destructive="true"] {
-    border-color: var(--color-danger);
   }
 
   .tool-card-header {
@@ -99,11 +112,15 @@
     align-items: center;
     gap: var(--space-2);
     width: 100%;
-    padding: var(--space-1) var(--space-2);
-    background: var(--color-surface-container);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface-container-high);
     border: none;
     border-radius: 0;
     text-align: left;
+  }
+
+  .tool-card-header:hover {
+    background: var(--color-surface-container-highest);
   }
 
   .chevron {
@@ -119,7 +136,7 @@
 
   .tool-name {
     flex: 1 1 auto;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: var(--font-size-small);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -142,11 +159,12 @@
     white-space: nowrap;
   }
 
-  .badge-destructive {
-    background: var(--color-danger);
+  /* theme.css has no separate "warning" token (decisions/08) — this reuses
+     --color-danger, the only attention colour available, purely to catch
+     the eye; it does not imply the call itself is dangerous to make. */
+  .badge-untrusted {
+    color: var(--color-danger);
     border-color: var(--color-danger);
-    color: var(--color-on-primary);
-    font-weight: 600;
   }
 
   .badge-auto {
@@ -178,12 +196,26 @@
     margin-bottom: var(--space-1);
   }
 
+  .untrusted-note {
+    font-size: var(--font-size-small);
+    font-weight: 400;
+    color: var(--color-danger);
+  }
+
   .tool-content {
     padding: var(--space-2);
     background: var(--color-surface-container);
     border-radius: var(--radius-sm);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  /* Marks the exact block of text that came back from an
+     `untrustedContentHint` tool (decisions/17) — the same fenced text sent
+     to the model, minus the delimiters themselves (see
+     src/sidepanel/services/agentLoop.ts's `fenceUntrustedContent`). */
+  .tool-content[data-untrusted="true"] {
+    border: 1px dashed var(--color-danger);
   }
 
   .tool-card[data-status="error"] .tool-content,

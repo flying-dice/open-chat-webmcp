@@ -1,6 +1,5 @@
-// Shared message/type contracts used across all four extension contexts:
+// Shared message/type contracts used across all three extension contexts:
 //
-//   - MAIN-world bridge      (src/inject/bridge.ts)
 //   - ISOLATED-world relay   (src/content/relay.ts)
 //   - background service worker (src/background/sw.ts)
 //   - side panel / options Svelte apps (src/sidepanel, src/options)
@@ -11,90 +10,64 @@
 // an existing message without updating every consumer, and keep the `Msg`
 // union exhaustive so a mismatch is a compile error rather than a silent
 // no-op at runtime.
+//
+// There used to be a fourth context, a MAIN-world bridge (src/inject/bridge.ts)
+// that provided/adopted `navigator.modelContext`, and a CustomEvent transport
+// (BRIDGE_OUT_EVENT/BRIDGE_IN_EVENT) connecting it to the relay. Both are gone
+// as of decisions/16-native-webmcp-client.md: the relay now reads
+// `document.modelContext` directly from the ISOLATED world, which decisions/16
+// confirmed against real Chrome builds is enough on its own — no page-world
+// script required.
 
 // ---------------------------------------------------------------------------
-// Tool descriptors (decisions/02-mainworld-webmcp-bridge.md)
+// Tool descriptors (decisions/16-native-webmcp-client.md)
 // ---------------------------------------------------------------------------
 
-/** Where a tool descriptor originated from. */
-export type ToolSource = "native" | "polyfill" | "shim";
-
+/**
+ * The WebMCP `ToolAnnotations` dictionary has exactly these two members,
+ * both defaulting to `false` — confirmed against Chrome 151/152's actual
+ * `getTools()` output (decisions/16, decisions/17-spec-annotations-and-untrusted-content.md).
+ * There is no `destructiveHint`: it is not in the IDL, and because
+ * `ToolAnnotations` is a WebIDL dictionary, WebIDL conversion silently
+ * discards any unknown member a page sets — so a page-set `destructiveHint`
+ * never reaches us, it isn't merely unused. Do not re-add it.
+ */
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
-  destructiveHint?: boolean;
+  /**
+   * True when this tool's results may contain attacker-influenced content
+   * (e.g. text authored by another user of the page) that gets fed straight
+   * back into the model's context. Consumers must fence such results rather
+   * than trusting them as instructions — see
+   * src/sidepanel/services/agentLoop.ts's `fenceUntrustedContent` and
+   * decisions/17. Like `readOnlyHint`, this is page-supplied and not a
+   * security guarantee: a hostile page can omit it.
+   */
+  untrustedContentHint?: boolean;
   [key: string]: unknown;
 }
 
 /**
- * A WebMCP tool descriptor as serialized across a world/context boundary.
- * Payloads are JSON — never a live object/closure — because the bridge and
- * relay live in different JS worlds and only DOM events cross that boundary.
+ * A WebMCP tool descriptor as reported to the rest of the extension.
+ *
+ * This is always plain JSON — never a live object/closure. The relay builds
+ * it from the native `ModelContextToolInfo` Chrome hands back from
+ * `document.modelContext.getTools()`, which additionally carries a live
+ * `window` reference and a JSON-*string* `inputSchema`
+ * (decisions/16-native-webmcp-client.md); the relay strips the former and
+ * parses the latter before anything crosses to the service worker, since
+ * `window` is not structured-cloneable.
+ *
+ * There is no `source` field any more (native/polyfill/shim) — decision 16
+ * deleted the MAIN-world bridge that made that distinction meaningful. Every
+ * tool reported from here on is native, or it isn't reported at all.
  */
 export interface SerializedTool {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
   annotations?: ToolAnnotations;
-  source: ToolSource;
 }
-
-// ---------------------------------------------------------------------------
-// Bridge (MAIN world) <-> Relay (ISOLATED world)
-//
-// These cross via `CustomEvent<string>` on `document`, detail is a JSON
-// string (`JSON.stringify(...)`), never a live object:
-//   BRIDGE_OUT_EVENT ("webmcp-bridge:out") — bridge -> relay
-//   BRIDGE_IN_EVENT  ("webmcp-bridge:in")  — relay -> bridge
-// ---------------------------------------------------------------------------
-
-export const BRIDGE_OUT_EVENT = "webmcp-bridge:out";
-export const BRIDGE_IN_EVENT = "webmcp-bridge:in";
-
-/** Bridge -> Relay: the page's current tool list changed. */
-export interface BridgeToolsEvent {
-  type: "bridge:tools";
-  tools: SerializedTool[];
-}
-
-/** Bridge -> Relay: the bridge has installed itself and is ready to receive calls. */
-export interface BridgeReadyEvent {
-  type: "bridge:ready";
-}
-
-/** Relay -> Bridge: ask the bridge to invoke a tool in the page world. */
-export interface BridgeCallRequestEvent {
-  type: "bridge:call-request";
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-}
-
-/**
- * Relay -> Bridge: ask the bridge to resend its current tool list. Used on
- * relay startup (the bridge may have already announced before the relay's
- * listener was attached) and after a bfcache restore.
- */
-export interface BridgeGetToolsRequestEvent {
-  type: "bridge:get-tools";
-}
-
-/** Bridge -> Relay: result of a call the relay asked the bridge to make. */
-export interface BridgeCallResultEvent {
-  type: "bridge:call-result";
-  id: string;
-  ok: boolean;
-  result?: unknown;
-  error?: string;
-}
-
-/** Events dispatched on {@link BRIDGE_OUT_EVENT} (bridge -> relay). */
-export type BridgeOutEvent =
-  | BridgeToolsEvent
-  | BridgeReadyEvent
-  | BridgeCallResultEvent;
-
-/** Events dispatched on {@link BRIDGE_IN_EVENT} (relay -> bridge). */
-export type BridgeInEvent = BridgeCallRequestEvent | BridgeGetToolsRequestEvent;
 
 // ---------------------------------------------------------------------------
 // Relay / side panel <-> background service worker (chrome.runtime messaging)
@@ -105,6 +78,17 @@ export interface RuntimeToolsUpdatedMessage {
   type: "runtime:tools-updated";
   tabId: number;
   origin: string;
+  /**
+   * Whether `document.modelContext` exists on this page at all
+   * (decisions/16-native-webmcp-client.md). WebMCP is off by default in
+   * Chrome — no `--enable-features=WebMCP`/flag/origin-trial token means
+   * `document.modelContext` is `undefined`, not an empty implementation.
+   * That is a DISTINCT state from "the browser supports WebMCP and this page
+   * simply hasn't registered any tools" (`available: true`, `tools: []`),
+   * and the panel must be able to tell the two apart (card 43) rather than
+   * showing an identical empty tool list either way.
+   */
+  available: boolean;
   tools: SerializedTool[];
 }
 
@@ -118,10 +102,12 @@ export interface RuntimeGetToolsRequest {
 export interface RuntimeGetToolsResponse {
   type: "runtime:get-tools-response";
   tabId: number;
+  /** See {@link RuntimeToolsUpdatedMessage.available}. */
+  available: boolean;
   tools: SerializedTool[];
 }
 
-/** Panel -> Worker (-> Relay -> Bridge): invoke a tool in a given tab. */
+/** Panel -> Worker (-> Relay): invoke a tool in a given tab. */
 export interface RuntimeCallToolRequest {
   type: "runtime:call-tool";
   tabId: number;
@@ -137,10 +123,6 @@ export interface RuntimeCallToolRequest {
  * on the same channel with a {@link RuntimeToolsUpdatedMessage}. The worker
  * applies its own ~3s budget and falls back to an empty tool list if the
  * relay doesn't answer in time.
- *
- * NOTE: `src/background/sw.ts` currently defines an equivalent type locally
- * (`WorkerRefreshToolsRequest`) — it should switch to importing this shared
- * one instead of keeping its own copy.
  */
 export interface RuntimeRefreshToolsRequest {
   type: "runtime:refresh-tools";
@@ -177,7 +159,7 @@ export type RuntimeMessage =
 // message kinds — never invent an ad hoc message shape elsewhere.
 // ---------------------------------------------------------------------------
 
-export type Msg = BridgeOutEvent | BridgeInEvent | RuntimeMessage;
+export type Msg = RuntimeMessage;
 
 // ---------------------------------------------------------------------------
 // Type guards
@@ -185,22 +167,6 @@ export type Msg = BridgeOutEvent | BridgeInEvent | RuntimeMessage;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
-}
-
-export function isBridgeOutEvent(v: unknown): v is BridgeOutEvent {
-  return (
-    isRecord(v) &&
-    (v.type === "bridge:tools" ||
-      v.type === "bridge:ready" ||
-      v.type === "bridge:call-result")
-  );
-}
-
-export function isBridgeInEvent(v: unknown): v is BridgeInEvent {
-  return (
-    isRecord(v) &&
-    (v.type === "bridge:call-request" || v.type === "bridge:get-tools")
-  );
 }
 
 export function isRuntimeMessage(v: unknown): v is RuntimeMessage {

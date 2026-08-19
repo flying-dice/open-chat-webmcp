@@ -2,16 +2,20 @@
   /**
    * One entry in the History view (card 34, decisions/13-global-tab-aware-
    * chat-history.md): enough to recognise a past chat without opening it —
-   * the origin it was started against, when it was last active, and a
-   * preview of its first message — plus open/delete actions. The whole row
-   * is a button (opens the chat); delete is a second, smaller button inside
-   * it that stops the click from bubbling to the row.
+   * its title (derived from the first message, see lib/chatTitle.ts), the
+   * origin it was started against, and when it was last active — plus
+   * open/delete actions. The whole row is a button (opens the chat); delete
+   * is a second, smaller button inside it that stops the click from
+   * bubbling to the row.
    *
    * `active` highlights the chat currently open in this tab
    * (`panel.activeChatId`, compared by the parent) so it's obvious which
    * entry the transcript view would show if you switched back to it.
    */
   import type { ChatSummary } from "../../lib/session";
+  import Icon from "./Icon.svelte";
+  import IconButton from "./IconButton.svelte";
+  import { titleFromSummary } from "../lib/chatTitle";
 
   interface Props {
     summary: ChatSummary;
@@ -46,81 +50,109 @@
     disabled={opening || deleting}
     aria-current={active}
   >
-    <div class="history-item-head">
-      <span class="history-origin">{formatOrigin(summary.origin)}</span>
-      {#if active}
-        <span class="badge badge-active">current</span>
-      {/if}
-    </div>
+    <span class="row-icon" aria-hidden="true"><Icon name="subject" size={20} /></span>
 
-    <p class="history-preview">
-      {summary.preview ?? "(no messages yet)"}
-    </p>
+    <span class="history-item-text">
+      <span class="history-item-head">
+        <!-- Titled by its first message, exactly as the overflow menu's
+             recent-chats rows are, so the same chat is called the same
+             thing in both places. The origin moves down to the meta line —
+             it identifies the chat, but it isn't its name. -->
+        <span class="history-title">{titleFromSummary(summary)}</span>
+        {#if active}
+          <span class="badge badge-active">current</span>
+        {/if}
+      </span>
 
-    <span class="history-meta text-small">
-      {formatTime(summary.updatedAt)} ·
-      {summary.messageCount} message{summary.messageCount === 1 ? "" : "s"}
-      {#if summary.toolCallCount > 0}
-        · {summary.toolCallCount} tool call{summary.toolCallCount === 1 ? "" : "s"}
-      {/if}
+      <span class="history-meta text-small">
+        {formatOrigin(summary.origin)} · {formatTime(summary.updatedAt)} ·
+        {summary.messageCount} message{summary.messageCount === 1 ? "" : "s"}
+        {#if summary.toolCallCount > 0}
+          · {summary.toolCallCount} tool call{summary.toolCallCount === 1 ? "" : "s"}
+        {/if}
+      </span>
     </span>
   </button>
 
-  <button
-    type="button"
-    class="delete-button text-small"
-    onclick={handleDeleteClick}
-    disabled={opening || deleting}
-    aria-label={`Delete chat from ${formatOrigin(summary.origin)}`}
-  >
-    {deleting ? "Deleting…" : "Delete"}
-  </button>
+  <span class="delete-slot">
+    <IconButton
+      icon="delete"
+      label={deleting ? "Deleting…" : `Delete chat from ${formatOrigin(summary.origin)}`}
+      tone="danger"
+      disabled={opening || deleting}
+      onclick={handleDeleteClick}
+    />
+  </span>
 </div>
 
 <style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+  /* All colour/spacing/radius values come from src/lib/theme.css and
+     src/sidepanel/chat-theme.css (decisions/18). */
 
+  /* A row, not a card: the history view is a list of one kind of thing, and
+     boxing each entry at this width wastes most of it on borders. The
+     active entry is tinted the same way the overflow menu tints it. */
   .history-item {
     width: 100%;
     min-width: 0;
     display: flex;
-    align-items: stretch;
-    gap: var(--space-1);
-    border: 1px solid var(--color-outline);
+    align-items: center;
+    border: none;
     border-radius: var(--radius-card);
-    background: var(--color-surface);
+    background: transparent;
     overflow: hidden;
   }
 
+  .history-item:hover {
+    background: var(--state-hover);
+  }
+
   .history-item[data-active="true"] {
-    border-color: var(--color-primary);
+    background: var(--color-secondary-container);
+    color: var(--color-on-secondary-container);
   }
 
   .history-item-main {
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    align-items: center;
+    gap: var(--space-4);
     background: transparent;
     border: none;
     border-radius: 0;
-    padding: var(--space-2);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
     text-align: left;
+    color: inherit;
+  }
+
+  .history-item-main:hover {
+    background: transparent;
+  }
+
+  .row-icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--color-on-surface-variant);
+  }
+
+  .history-item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .history-item-head {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--space-2);
     min-width: 0;
     width: 100%;
   }
 
-  .history-origin {
-    font-weight: 600;
+  .history-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -138,25 +170,22 @@
     white-space: nowrap;
   }
 
-  .history-preview {
-    margin: 0;
-    width: 100%;
+  .history-meta {
     color: var(--color-on-surface-variant);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 
-  .history-meta {
-    color: var(--color-on-surface-variant);
+  .history-item[data-active="true"] .history-meta {
+    color: inherit;
+    opacity: 0.75;
   }
 
-  .delete-button {
-    flex: 0 0 auto;
-    align-self: center;
-    margin-right: var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    color: var(--color-danger);
-    white-space: nowrap;
+  .delete-slot {
+    display: inline-flex;
+    flex: none;
+    margin-right: var(--space-1);
   }
 </style>

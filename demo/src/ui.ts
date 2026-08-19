@@ -1,11 +1,12 @@
-// Shared DOM plumbing for both demo variants (index.html and late.html).
+// Shared DOM plumbing for the demo page (demo/index.html).
 //
 // The point of this page is to be useful while debugging the extension: it
 // shows, in the page itself, exactly what a developer should also see in the
 // extension's side panel inspector — the live tool list, and every call with
-// its arguments and result. If the two disagree, that's a bridge bug.
+// its arguments and result. If the two disagree, that's a relay bug.
 
-import type { ToolAnnotations, ToolDescriptor } from "./types";
+import type { CallToolResult, ToolAnnotations, ToolDescriptor } from "@mcp-b/webmcp-types";
+import type { Fixture } from "./tools";
 
 export type StatusKind = "pending" | "ok" | "error";
 
@@ -16,12 +17,19 @@ export function setStatus(text: string, kind: StatusKind): void {
   el.dataset.kind = kind;
 }
 
+// Annotations are exactly `{ readOnlyHint, untrustedContentHint }`
+// (decisions/17-spec-annotations-and-untrusted-content.md) — there is no
+// `destructiveHint`. The two badges are independent: a tool can be
+// read-only AND flagged as returning untrusted content at the same time.
 function annotationBadges(annotations?: ToolAnnotations): string {
   const badges: string[] = [];
-  if (annotations?.readOnlyHint === true) badges.push('<span class="badge badge-readonly">read-only</span>');
-  if (annotations?.destructiveHint === true) badges.push('<span class="badge badge-destructive">destructive</span>');
-  if (!annotations || (annotations.readOnlyHint !== true && annotations.destructiveHint !== true)) {
+  if (annotations?.readOnlyHint === true) {
+    badges.push('<span class="badge badge-readonly">read-only</span>');
+  } else {
     badges.push('<span class="badge badge-mutating">mutating (no hint)</span>');
+  }
+  if (annotations?.untrustedContentHint === true) {
+    badges.push('<span class="badge badge-untrusted">untrusted content</span>');
   }
   return badges.join(" ");
 }
@@ -32,8 +40,9 @@ function escapeHtml(s: string): string {
 
 /** Renders the "currently registered tools" panel from a live registry map.
  * This is the page's own bookkeeping — a developer compares it against what
- * the extension's inspector reports for the same tab. */
-export function renderToolsList(tools: Map<string, ToolDescriptor>): void {
+ * the extension's inspector (or the official model-context-tool-inspector)
+ * reports for the same tab. */
+export function renderToolsList(tools: Map<string, Fixture>): void {
   const el = document.getElementById("tools-list");
   if (!el) return;
   if (tools.size === 0) {
@@ -48,7 +57,7 @@ export function renderToolsList(tools: Map<string, ToolDescriptor>): void {
           <code class="tool-name">${escapeHtml(t.name)}</code>
           ${annotationBadges(t.annotations)}
         </div>
-        <div class="tool-desc">${escapeHtml(t.description ?? "")}</div>
+        <div class="tool-desc">${escapeHtml(t.description)}</div>
       </li>`,
     )
     .join("");
@@ -77,20 +86,20 @@ export function logPending(name: string, args: unknown): number {
 }
 
 /** Wraps a tool's execute() so every call — success, throw, or hang — is
- * logged to the on-page activity log with its arguments and result. */
-export function withLogging(tool: ToolDescriptor): ToolDescriptor {
+ * logged to the on-page activity log with its arguments and MCP-shaped
+ * result (`{ content, isError? }` — decisions/16-native-webmcp-client.md). */
+export function withLogging<T extends Fixture>(tool: T): T {
   const rawExecute = tool.execute;
-  if (!rawExecute) return tool;
   return {
     ...tool,
-    execute: (args: Record<string, unknown>) => {
+    execute: (args: Record<string, unknown>, client) => {
       const pendingId = logPending(tool.name, args);
       try {
-        const result = rawExecute(args);
+        const result = rawExecute(args, client);
         if (result instanceof Promise) {
           return result.then(
             (value) => {
-              replacePending(pendingId, { ok: true, result: value });
+              replacePending(pendingId, { ok: true, result: value as CallToolResult });
               return value;
             },
             (err: unknown) => {
@@ -99,7 +108,7 @@ export function withLogging(tool: ToolDescriptor): ToolDescriptor {
             },
           );
         }
-        replacePending(pendingId, { ok: true, result });
+        replacePending(pendingId, { ok: true, result: result as CallToolResult });
         return result;
       } catch (err) {
         replacePending(pendingId, { ok: false, error: describeError(err) });
@@ -113,10 +122,19 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function replacePending(id: number, outcome: { ok: true; result: unknown } | { ok: false; error: string }): void {
+function replacePending(
+  id: number,
+  outcome: { ok: true; result: CallToolResult } | { ok: false; error: string },
+): void {
   const entry = document.querySelector(`.log-entry[data-id="${id}"] .log-outcome`);
   if (!entry) return;
-  entry.innerHTML = outcome.ok
-    ? `<span class="outcome-ok">ok</span> <code>${escapeHtml(JSON.stringify(outcome.result))}</code>`
-    : `<span class="outcome-error">error</span> ${escapeHtml(outcome.error)}`;
+  if (outcome.ok) {
+    const text = outcome.result.content.map((c) => ("text" in c ? c.text : JSON.stringify(c))).join(" ");
+    const badge = outcome.result.isError
+      ? '<span class="outcome-error">isError</span>'
+      : '<span class="outcome-ok">ok</span>';
+    entry.innerHTML = `${badge} <code>${escapeHtml(text)}</code>`;
+  } else {
+    entry.innerHTML = `<span class="outcome-error">threw</span> ${escapeHtml(outcome.error)}`;
+  }
 }

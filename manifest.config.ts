@@ -1,15 +1,23 @@
 import { defineManifest } from "@crxjs/vite-plugin";
 import pkg from "./package.json" with { type: "json" };
 
-// Manifest shape per boards/project-backlog/01-scaffold-vite-svelte-mv3.md
-// and decisions/01-side-panel-as-primary-ui.md /
-// decisions/02-mainworld-webmcp-bridge.md.
+// Manifest shape per boards/project-backlog/01-scaffold-vite-svelte-mv3.md,
+// decisions/01-side-panel-as-primary-ui.md, and
+// decisions/16-native-webmcp-client.md (deleted the MAIN-world bridge
+// content script; only the ISOLATED-world relay remains).
 export default defineManifest({
   manifest_version: 3,
   name: "OpenChat (WebMCP)",
   description: pkg.description,
   version: pkg.version,
-  minimum_chrome_version: "116",
+  // 149, not 116: native WebMCP (document.modelContext) is a hard
+  // requirement as of decisions/16-native-webmcp-client.md, and it only
+  // exists from Chrome 149 onward — the origin trial runs 149-156. The old
+  // value of 116 was justified by chrome.sidePanel and `world: "MAIN"`
+  // content scripts; the latter no longer exist (the MAIN-world bridge is
+  // deleted), and chrome.sidePanel's own minimum (114) is below 149 anyway,
+  // so WebMCP is now the binding constraint.
+  minimum_chrome_version: "149",
 
   permissions: ["sidePanel", "storage", "tabs", "scripting"],
   host_permissions: ["http://localhost/*", "http://127.0.0.1/*"],
@@ -47,8 +55,11 @@ export default defineManifest({
 
   options_page: "src/options/index.html",
 
-  // Both content scripts: document_start, all URLs, top frame only (iframe
-  // tool discovery is out of scope for v1, see decisions/02).
+  // ISOLATED-world relay only: document_start, all URLs, top frame only
+  // (iframe tool discovery is out of scope for v1). It reads
+  // `document.modelContext` directly — no MAIN-world content script is
+  // injected any more (decisions/16-native-webmcp-client.md deleted the
+  // adopt-or-provide bridge that used to run there).
   content_scripts: [
     {
       matches: ["<all_urls>"],
@@ -56,13 +67,6 @@ export default defineManifest({
       run_at: "document_start",
       all_frames: false,
       world: "ISOLATED",
-    },
-    {
-      matches: ["<all_urls>"],
-      js: ["src/inject/bridge.ts"],
-      run_at: "document_start",
-      all_frames: false,
-      world: "MAIN",
     },
   ],
 });

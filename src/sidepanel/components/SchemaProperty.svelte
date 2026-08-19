@@ -109,13 +109,13 @@
   }
 
   .prop-name {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-weight: 600;
     overflow-wrap: anywhere;
   }
 
   .prop-type {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: var(--font-size-small);
     color: var(--color-on-surface-variant);
   }

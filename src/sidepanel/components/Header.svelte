@@ -1,218 +1,104 @@
 <script lang="ts">
   /**
-   * Panel header: current-page indicator, connection status, and the SLOT
-   * card 23 (decisions/11-provider-capability-detection.md) mounts its
-   * provider/model picker into.
+   * Panel header (decisions/18): one row, flush with the page background,
+   * no divider — the conversation title on the left, icon actions on the
+   * right, exactly the silhouette Chrome's own Gemini panel uses.
    *
-   * HEADER SLOT CONTRACT for card 23:
-   *   Pass a `picker` snippet prop, e.g.:
+   * Everything this header used to carry has moved:
+   *   - the page indicator and tool count → ContextChip, above the composer
+   *   - the connection dot                → ContextChip, on the favicon
+   *   - the provider/model picker         → the composer's action row
+   * A chat panel's header should say which chat you are in, not restate the
+   * page you are on; the page belongs next to the box you type into,
+   * because that is where it affects what happens.
    *
-   *     <Header {pageInfo} {connectionStatus}>
-   *       {#snippet picker()}
-   *         <ProviderPicker />
-   *       {/snippet}
-   *     </Header>
-   *
-   *   It renders inline in the header's right-hand cluster, next to the
-   *   connection dot. It should be a single compact control (native
-   *   <select>/<button> per decisions/08) that degrades gracefully at
-   *   ~320px — give it `min-width: 0` and let long labels ellipsis rather
-   *   than forcing the header to grow. Until card 23 passes one, a plain
-   *   placeholder chip renders in its place so the layout is already
-   *   correct to build against.
+   * Deliberately NOT copied from the reference: its picture-in-picture and
+   * close buttons. There is no chrome.sidePanel.close() API and no document
+   * PiP path worth faking here, and Chrome already draws its own close
+   * control above ours — a button that sometimes does nothing is worse than
+   * no button.
    */
   import type { Snippet } from "svelte";
-  import type { ConnectionStatus, PageInfo } from "../stores/panel.svelte";
+  import IconButton from "./IconButton.svelte";
 
   interface Props {
-    pageInfo: PageInfo | undefined;
-    connectionStatus: ConnectionStatus;
-    picker?: Snippet;
+    /** The conversation title, or the name of the view currently open. */
+    title: string;
     /**
-     * Card 36 (boards/project-backlog/36-new-chat-action.md): retires the
-     * current chat to history and starts a fresh one, keeping the
-     * provider/model selection. Omitted entirely (button doesn't render)
-     * until App.svelte passes a handler, mirroring how `picker` degrades.
+     * Card 36: retires the current chat to history and starts a fresh one,
+     * keeping the provider/model selection.
      */
     onNewChat?: () => void;
     /** True while there's no page to start a fresh chat against, or a reply is currently streaming (swapping the live session mid-stream would silently orphan it — see App.svelte's `handleNewChat`). */
     newChatDisabled?: boolean;
+    /**
+     * The kebab overflow menu (recent chats, tools & call log, settings).
+     * Rendered as a snippet because the menu owns its own open state and
+     * anchoring — the header only decides where in the row it sits.
+     */
+    menu?: Snippet;
   }
 
-  let { pageInfo, connectionStatus, picker, onNewChat, newChatDisabled }: Props = $props();
-
-  const statusLabel: Record<ConnectionStatus, string> = {
-    unknown: "Not connected",
-    connecting: "Connecting…",
-    connected: "Connected",
-    disconnected: "Disconnected",
-    error: "Connection error",
-  };
+  let { title, onNewChat, newChatDisabled, menu }: Props = $props();
 </script>
 
 <header>
-  <div class="page-row">
-    <div class="page-info" title={pageInfo ? `${pageInfo.title} — ${pageInfo.origin}` : undefined}>
-      <span class="page-title">{pageInfo?.title || "No active tab"}</span>
-      {#if pageInfo?.origin}
-        <span class="page-origin">{pageInfo.origin}</span>
-      {/if}
-    </div>
-    {#if pageInfo}
-      <span class="tool-count" title="Tools available on this page">
-        {pageInfo.toolCount} {pageInfo.toolCount === 1 ? "tool" : "tools"}
-      </span>
-    {/if}
+  <h1 class="chat-title" {title}>{title}</h1>
+
+  <div class="actions">
     {#if onNewChat}
-      <button
-        type="button"
-        class="new-chat-btn"
+      <IconButton
+        icon="edit_square"
+        label="New chat"
         onclick={onNewChat}
         disabled={newChatDisabled}
-        title="Start a new chat — keeps your provider/model selection, previous chat stays in History"
-      >
-        New chat
-      </button>
+        tooltipPlacement="bottom"
+      />
     {/if}
-  </div>
-
-  <div class="control-row">
-    <span class="connection" data-status={connectionStatus} title={statusLabel[connectionStatus]}>
-      <span class="dot" aria-hidden="true"></span>
-      {statusLabel[connectionStatus]}
-    </span>
-
-    <div class="picker-slot">
-      {#if picker}
-        {@render picker()}
-      {:else}
-        <span class="picker-placeholder">Provider — (card 23)</span>
-      {/if}
-    </div>
+    {#if menu}
+      {@render menu()}
+    {/if}
   </div>
 </header>
 
 <style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+  /* All colour/spacing/radius/motion values come from src/lib/theme.css and
+     src/sidepanel/chat-theme.css (decisions/18). */
 
   header {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-outline);
-    background: var(--color-surface-container);
+    align-items: center;
+    gap: var(--space-2);
+    /* Vertical padding is small because the 40px icon buttons already set
+       the row height; this only stops the title touching the panel edge. */
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+    /* No border and no container colour: the header is part of the same
+       surface as the transcript, not a bar sitting on top of it. */
+    background: var(--color-surface);
+    flex: none;
   }
 
-  .page-row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .page-info {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-width: 0;
+  .chat-title {
     flex: 1 1 auto;
-    overflow: hidden;
-  }
-
-  .page-title {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     min-width: 0;
-  }
-
-  .page-origin {
-    font-size: var(--font-size-small);
+    margin: 0;
+    /* Regular weight, secondary colour: the title labels the panel, it
+       isn't the loudest thing in it. The messages are. */
+    font-size: var(--font-size-heading);
+    font-weight: 400;
+    line-height: var(--line-height-heading);
     color: var(--color-on-surface-variant);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-width: 0;
-    flex-shrink: 1;
   }
 
-  .tool-count {
-    flex: 0 0 auto;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    background: var(--color-surface-container-high);
-    border-radius: var(--radius-sm);
-    padding: 0 var(--space-1);
-    white-space: nowrap;
-  }
-
-  .control-row {
+  .actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .connection {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-  }
-
-  .dot {
-    flex: 0 0 auto;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-on-surface-variant);
-    transition: background-color var(--transition-fast);
-  }
-
-  .connection[data-status="connected"] .dot {
-    background: #1e8e3e; /* approximation: Chrome's own "on" green, used sparingly per decisions/08 */
-  }
-
-  .connection[data-status="connecting"] .dot {
-    background: var(--color-primary);
-  }
-
-  .connection[data-status="error"] .dot {
-    background: var(--color-danger);
-  }
-
-  .new-chat-btn {
-    flex: 0 0 auto;
-    font-size: var(--font-size-small);
-    padding: var(--space-1) var(--space-2);
-    white-space: nowrap;
-  }
-
-  .picker-slot {
-    flex: 0 1 auto;
-    min-width: 0;
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .picker-placeholder {
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    border: 1px dashed var(--color-outline);
-    border-radius: var(--radius-pill);
-    padding: var(--space-1) var(--space-2);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 140px;
+    /* No gap: 40px targets around 24px glyphs already carry their own
+       optical spacing, and closing it up keeps the cluster from pushing the
+       title into an ellipsis at 320px. */
+    flex: none;
   }
 </style>
