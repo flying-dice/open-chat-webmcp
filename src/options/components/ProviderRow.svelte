@@ -4,6 +4,7 @@
   // parent (ProvidersSection.svelte), passed in as callbacks, so this
   // component never touches chrome.storage or chrome.permissions directly.
   import type { ProviderConfig } from "../../lib/providers/registry";
+  import { getPreset } from "../../lib/providers/presets";
   import type { TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
   import Markdown from "../../lib/components/Markdown.svelte";
@@ -67,6 +68,18 @@
     ollama: "Ollama",
     openai: "OpenAI-compatible",
   };
+
+  /**
+   * Card 50 (decisions/21-provider-presets.md): label a provider by the
+   * backend it was added from, not just its wire type — "Groq" reads better
+   * than "OpenAI-compatible" for a row that came from the Groq preset.
+   * Falls back to the type label for a provider with no `presetId` (Custom,
+   * or anything stored before this card) or one whose preset id no longer
+   * matches the catalog (`getPreset` returns `undefined` for both — a
+   * missing preset is treated exactly like "no preset was ever set", never
+   * an error).
+   */
+  let backendLabel = $derived(getPreset(provider.presetId)?.label ?? TYPE_LABELS[provider.type]);
 </script>
 
 <div class="provider-row">
@@ -85,7 +98,7 @@
       <div class="provider-row__url">{provider.baseUrl}</div>
     </div>
 
-    <span class="badge">{TYPE_LABELS[provider.type]}</span>
+    <span class="badge">{backendLabel}</span>
     {#if isDefault}
       {#if defaultInvalidReason}
         <span class="badge badge--danger" title={defaultInvalidReason}>Default — needs attention</span>

@@ -22,6 +22,7 @@
   import type { ProviderConfig } from "../../lib/providers/registry";
   import { reservedHeaderReason, type ProviderType } from "../../lib/provider";
   import { DEFAULT_OPENAI_BASE_URL } from "../../lib/providers/openai";
+  import { getPreset, type ProviderPreset } from "../../lib/providers/presets";
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
@@ -44,11 +45,35 @@
   interface Props {
     mode: "add" | "edit";
     initial?: ProviderConfig;
+    /**
+     * The backend chosen in the "add" flow's picker step (card 50,
+     * decisions/21-provider-presets.md) — `undefined` means either "Custom
+     * (OpenAI-compatible)" was chosen, or (in "edit" mode) this prop simply
+     * isn't passed; edit mode instead re-derives the preset this provider
+     * was originally added from via `initial.presetId` (see `activePreset`
+     * below), since re-editing shouldn't require the caller to look that up
+     * itself.
+     */
+    preset?: ProviderPreset;
+    /** "add" mode only: lets the user back out to the picker and choose a different backend without cancelling the whole flow. */
+    onChangeBackend?: () => void;
     onSubmit: (data: Omit<ProviderConfig, "id">) => Promise<void>;
     onCancel: () => void;
   }
 
-  let { mode, initial, onSubmit, onCancel }: Props = $props();
+  let { mode, initial, preset, onChangeBackend, onSubmit, onCancel }: Props = $props();
+
+  /**
+   * The preset this form is currently acting on, from whichever mode
+   * supplied it — the `preset` prop in "add" mode, or a lookup from the
+   * saved `presetId` in "edit" mode (`getPreset` returns `undefined` for a
+   * missing/unrecognised id exactly like "no preset was ever set", per
+   * decisions/21: absence is a valid state, never an error). Drives the
+   * backend banner, whether the API key field is shown by default, and the
+   * "get a key" / setup link — never anything that would make a filled-in
+   * field un-editable.
+   */
+  let activePreset = $derived(mode === "add" ? preset : getPreset(initial?.presetId));
 
   const PROVIDER_TYPES: {
     value: ProviderType;
@@ -64,9 +89,11 @@
   // once, at mount — the form is deliberately "uncontrolled" after that, so
   // every read below is wrapped in `untrack` to tell svelte-check this is
   // an intentional one-time snapshot, not a missed reactive dependency.
-  let name = $state(untrack(() => initial?.name ?? ""));
-  let type = $state<ProviderType>(untrack(() => initial?.type ?? "ollama"));
-  let baseUrl = $state(untrack(() => initial?.baseUrl ?? PROVIDER_TYPES[0].defaultBaseUrl));
+  let name = $state(untrack(() => initial?.name ?? preset?.label ?? ""));
+  let type = $state<ProviderType>(untrack(() => initial?.type ?? preset?.type ?? "ollama"));
+  let baseUrl = $state(
+    untrack(() => initial?.baseUrl ?? preset?.baseUrl ?? PROVIDER_TYPES[0].defaultBaseUrl),
+  );
   let apiKey = $state(untrack(() => initial?.apiKey ?? ""));
   let defaultModel = $state(untrack(() => initial?.defaultModel ?? ""));
   let showApiKey = $state(false);
@@ -140,6 +167,22 @@
 
   let typeInfo = $derived(PROVIDER_TYPES.find((t) => t.value === type) ?? PROVIDER_TYPES[0]);
 
+  /**
+   * Whether to show the API key field at all — hidden by default for a
+   * "local" preset (decisions/21: local runtimes need no key) UNLESS a key
+   * is already present (edit mode on a local backend someone put behind an
+   * authenticated gateway) or there simply is no active preset (Custom, or
+   * an existing provider with no `presetId`), in which case this falls back
+   * to today's type-only rule. Never hides a field that already has a
+   * value — hiding is a default-visibility choice, not a way to make a
+   * filled-in field un-editable.
+   */
+  let forceShowApiKeyField = $state(false);
+  let showApiKeyField = $derived(
+    typeInfo.needsApiKey &&
+      (!activePreset?.local || apiKey.trim().length > 0 || forceShowApiKeyField),
+  );
+
   // Switching provider type in "add" mode swaps the base-URL placeholder to
   // that type's default only while the field is still untouched — never
   // overwrites a URL the user already typed.
@@ -190,6 +233,13 @@
       apiKey: apiKey.trim() ? apiKey.trim() : undefined,
       headers: cleanHeaders.length > 0 ? cleanHeaders : undefined,
       defaultModel: defaultModel.trim() ? defaultModel.trim() : undefined,
+      // "add" mode: whichever preset the picker step chose (undefined for
+      // Custom). "edit" mode: always resubmitted unchanged — which preset a
+      // provider was originally added from doesn't change just because its
+      // fields did (decisions/21: a preset is a starting point, and editing
+      // away from its defaults doesn't retroactively make it "not that
+      // preset" for labelling purposes).
+      presetId: mode === "add" ? preset?.id : initial?.presetId,
     };
   }
 
@@ -262,6 +312,19 @@
 </script>
 
 <form class="form" onsubmit={handleSubmit}>
+  {#if mode === "add" && preset}
+    <div class="preset-banner">
+      <span class="badge badge--primary">{preset.label}</span>
+      {#if onChangeBackend}
+        <button type="button" class="btn-plain" onclick={onChangeBackend}>Change backend</button>
+      {/if}
+    </div>
+  {/if}
+
+  {#if activePreset?.note}
+    <p class="note">{activePreset.note}</p>
+  {/if}
+
   <div class="field-row">
     <div class="field">
       <label for="pf-name">Display name</label>
@@ -293,9 +356,9 @@
     {/if}
   </div>
 
-  {#if typeInfo.needsApiKey}
+  {#if showApiKeyField}
     <div class="field">
-      <label for="pf-key">API key (optional)</label>
+      <label for="pf-key">API key{activePreset && !activePreset.requiresKey ? "" : " (optional)"}</label>
       <div class="api-key-field">
         <input
           id="pf-key"
@@ -308,7 +371,21 @@
           {showApiKey ? "Hide" : "Show"}
         </button>
       </div>
+      {#if activePreset?.docsUrl && activePreset.requiresKey}
+        <p class="hint">
+          Get an API key from <a href={activePreset.docsUrl} target="_blank" rel="noreferrer"
+            >{activePreset.label}</a
+          >.
+        </p>
+      {/if}
     </div>
+  {:else if typeInfo.needsApiKey && activePreset?.local}
+    <p class="hint">
+      {activePreset.label} doesn't need an API key by default.
+      <button type="button" class="btn-plain" onclick={() => (forceShowApiKeyField = true)}
+        >Add one anyway</button
+      >
+    </p>
   {/if}
 
   <div class="field">
