@@ -41,7 +41,7 @@ awaits, not a separate mode.
   `chrome.runtime.sendMessage("runtime:call-tool")` with a 20s timeout race
   (`callToolWithTimeout`, agentLoop.ts:349-398), appends `role:"tool"`
   results and re-enters the loop (`runLoop`, agentLoop.ts:184-237), caps at
-  `MAX_ITERATIONS = 8` (agentLoop.ts:94) with a clear transcript note when
+  `MAX_ITERATIONS = 50` (agentLoop.ts) with a clear transcript note when
   it trips (agentLoop.ts:234-236), and never throws — a throwing/timing-out
   tool or a malformed stream both resolve to a tool-result string, never an
   exception (`streamOneTurn`'s catch, agentLoop.ts:239-277;

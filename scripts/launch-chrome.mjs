@@ -140,7 +140,17 @@ function isWebMcpFlagEnabledInProfile() {
 
 function build() {
   console.log("Building extension -> dist/ (always rebuilt on launch, so this is never stale) ...");
-  const res = spawnSync("npm", ["run", "build"], { cwd: ROOT, stdio: "inherit" });
+  // shell: true is REQUIRED on Windows, where `npm` is the npm.cmd shim and
+  // spawnSync can't exec .cmd files directly (fails with ENOENT, status null).
+  const res = spawnSync("npm", ["run", "build"], {
+    cwd: ROOT,
+    stdio: "inherit",
+    shell: true,
+  });
+  if (res.error) {
+    console.error(`Build failed to start: ${res.error.code ?? res.error}`);
+    process.exit(1);
+  }
   if (res.status !== 0) {
     console.error("Build failed; not launching Chrome.");
     process.exit(res.status ?? 1);

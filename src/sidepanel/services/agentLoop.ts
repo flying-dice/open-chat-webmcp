@@ -167,8 +167,8 @@ export const denyByDefaultApprovalRequester: ApprovalRequester = async () => "de
 // Tuning
 // ---------------------------------------------------------------------------
 
-/** One iteration = one `provider.chat()` turn. Caps a runaway call/observe chain rather than streaming forever. */
-export const MAX_ITERATIONS = 8;
+/** One iteration = one `provider.chat()` turn. Caps a runaway call/observe chain rather than streaming forever. Set high on purpose: this is a safety valve, not a workflow budget. */
+export const MAX_ITERATIONS = 50;
 
 // Round-trip budget for a side-panel-initiated tool call, the OUTERMOST layer of
 // a deliberate 3-layer timeout ladder (call chain: side panel -> worker -> relay).
