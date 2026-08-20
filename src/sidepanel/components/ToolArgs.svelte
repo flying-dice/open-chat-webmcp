@@ -2,7 +2,7 @@
   /**
    * Top-level "arguments" display for a tool call (card 09) — used by both
    * ApprovalCard.svelte (before the call runs, the one moment a user can
-   * catch a hallucinated or dangerous parameter) and ToolCallCard.svelte's
+   * catch a hallucinated or dangerous parameter) and ToolCallRow.svelte's
    * expanded view (after, for the record). Deliberately NOT a
    * `JSON.stringify`'d blob: every top-level argument gets its own labeled
    * row, formatted by ToolArgValue.svelte, which recurses into nested

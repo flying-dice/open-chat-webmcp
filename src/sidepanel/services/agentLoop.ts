@@ -47,6 +47,37 @@
 // real inline approve/deny UI and passes its own requester into
 // `runAgentTurn`; this file only calls the seam and reads the policy, it
 // never renders approval UI itself.
+//
+// A TURN BELONGS TO A CHAT, NOT TO WHICHEVER TAB IS VISIBLE (decisions/25 §3,
+// card 58, boards/project-backlog/58-turn-belongs-to-a-chat-not-the-visible-tab.md).
+// `runAgentTurn` captures its `ChatSession` ONCE, via panel.svelte.ts's
+// `getActiveSession`, immediately after the user's message is added to it —
+// and every mutator call for the rest of the turn (`runLoop`,
+// `streamOneTurn`, `executeToolCall`, and their `addAssistantNote`/
+// `addToolCall`/`updateToolCallResult` calls) takes that captured session as
+// an explicit `target` parameter. `conversation` (in `runLoop`) is likewise
+// built from `target.messages`, never from `panel.messages` — the latter is
+// display state for whatever chat happens to be VISIBLE right now, which
+// may no longer be this turn's chat by the time this runs. The turn is
+// registered into panel.svelte.ts's live-session registry
+// (`registerLiveSession`/`unregisterLiveSession`) for its whole lifetime, so
+// switching back to its chat mid-generation re-attaches the panel to this
+// SAME in-memory object rather than a stale storage read.
+//
+// One consequence, decided honestly rather than left to hang invisibly
+// (card 58 item 6): decisions/25's own consequences section states "the
+// approval UI remains tied to the visible chat... a background turn that
+// needs approval will wait." `executeToolCall` below enforces exactly that
+// via `waitUntilVisible` — a background turn's approval prompt is deferred
+// until its OWN chat is the one on screen, rather than shown looking like it
+// belongs to whatever other chat the user happens to be viewing right now
+// (which would let a human approve a call for a page they are not even
+// looking at, without realising it). Generation itself is NOT paused by
+// this — only the point where a human decision is required blocks; content
+// deltas and tool calls that don't need approval keep flowing regardless of
+// which chat is visible. Generation still dies if the panel document itself
+// closes (the loop lives in the panel's JS context, not the background
+// worker) — that limit is unchanged and out of scope here.
 
 import {
   describeProviderError,
@@ -57,7 +88,7 @@ import {
   type ToolCall,
 } from "../../lib/provider";
 import type { RuntimeCallToolRequest, RuntimeCallToolResponse } from "../../lib/protocol";
-import type { ToolCallMode } from "../../lib/session";
+import type { ChatSession, ToolCallMode } from "../../lib/session";
 import { getApprovalPolicy, getMcpApprovalPolicy } from "../../lib/settings";
 import { getToolsForTab } from "./activeTab";
 import { getMergedToolsForTab } from "./mcpTools";
@@ -74,8 +105,13 @@ import {
   appendAssistantDelta,
   beginAssistantMessage,
   endAssistantMessage,
+  getActiveSession,
+  onVisibleChatChange,
   panel,
+  registerLiveSession,
   setStopHandler,
+  setTurnPhase,
+  unregisterLiveSession,
   updateToolCallResult,
   type PanelMessage,
   type PanelMessageAction,
@@ -180,7 +216,7 @@ const UNTRUSTED_CONTENT_END = "<<<END_UNTRUSTED_TOOL_RESULT>>>";
  * a `role:"tool"` message is turned into the `ChatMessage` sent to
  * `provider.chat()` (see `toModelMessage` below) — NEVER applied to what's
  * stored on `PanelMessage.content` or shown in the transcript
- * (ToolCallCard.svelte renders the plain, unfenced result and marks it with
+ * (ToolCallRow.svelte renders the plain, unfenced result and marks it with
  * its own `untrusted content` badge instead). Keeping the two separate means
  * a human reading the transcript sees the tool's actual output, while the
  * model sees it wrapped and labelled.
@@ -251,33 +287,73 @@ export interface RunAgentTurnOptions {
  * error/timeout, a denial, an abort) is handled internally and surfaced
  * either as a `role:"tool"` result the model can read on the next turn, or
  * a plain assistant-role note in the transcript for the user.
+ *
+ * Captures its `target` ChatSession ONCE here, right after `addUserMessage`
+ * writes the user's turn into whichever chat is visible at that instant
+ * (decisions/25 §3, card 58 — see the module doc comment's "A TURN BELONGS
+ * TO A CHAT" section). Everything from here on — `runLoop`, `streamOneTurn`,
+ * `executeToolCall`, and every mutator any of them call — takes `target`
+ * explicitly, so a tab switch that happens a microtask later can change
+ * what the panel is SHOWING without ever changing what this turn is
+ * WRITING to. `target` is registered as live for the turn's entire
+ * lifetime, unregistered in the `finally` below on every exit path
+ * (success, the iteration cap, an abort, a terminal provider error) so the
+ * registry never leaks an entry for a turn that has actually ended.
  */
 export async function runAgentTurn(userText: string, opts: RunAgentTurnOptions): Promise<void> {
   addUserMessage(userText);
 
-  // The merged list is built ONCE here, per turn (decisions/19 §5): page
-  // tools from the worker's live registry, combined with whatever server
-  // tools src/sidepanel/services/mcpTools.ts currently has cached (never a
-  // fresh network round trip on this turn's critical path — decisions/19
-  // §4). `attachTools` gates the whole mechanism, not just page tools: it
-  // reflects whether the SELECTED MODEL supports tool calling at all
-  // (decisions/11), so when it's false neither kind is offered, exactly as
-  // before this card.
-  const pageTools = opts.attachTools ? await getToolsForTab(opts.tabId) : [];
-  const tools = opts.attachTools
-    ? getMergedToolsForTab(pageTools, (name, args, execOpts) =>
-        callPageTool(opts.tabId, name, args, execOpts),
-      )
-    : [];
-  const requestApproval = opts.requestApproval ?? denyByDefaultApprovalRequester;
-
-  const controller = new AbortController();
-  setStopHandler(() => controller.abort());
+  const target = getActiveSession();
+  // No session loaded yet — shouldn't happen in practice (the initial tab
+  // sync completes well before a user can type and hit send, same
+  // assumption `addUserMessage`'s own doc comment already makes), but if it
+  // somehow did, `addUserMessage` above already no-op'd and there is no
+  // chat to run a turn against at all.
+  if (!target) return;
+  registerLiveSession(target);
+  // decisions/26, card 60: the turn's very first phase, set before the
+  // service-worker round trip below (`getToolsForTab`) — today a dead
+  // interval with zero UI signal of its own. Every phase set anywhere below
+  // this line is a REPLACEMENT of this one, never a clear; see the outer
+  // `finally` below for the one place that clears it.
+  setTurnPhase({ kind: "waiting" }, target);
 
   try {
-    await runLoop(opts, tools, requestApproval, controller.signal);
+    // The merged list is built ONCE here, per turn (decisions/19 §5): page
+    // tools from the worker's live registry, combined with whatever server
+    // tools src/sidepanel/services/mcpTools.ts currently has cached (never a
+    // fresh network round trip on this turn's critical path — decisions/19
+    // §4). `attachTools` gates the whole mechanism, not just page tools: it
+    // reflects whether the SELECTED MODEL supports tool calling at all
+    // (decisions/11), so when it's false neither kind is offered, exactly as
+    // before this card.
+    const pageTools = opts.attachTools ? await getToolsForTab(opts.tabId) : [];
+    const tools = opts.attachTools
+      ? getMergedToolsForTab(pageTools, (name, args, execOpts) =>
+          callPageTool(opts.tabId, name, args, execOpts),
+        )
+      : [];
+    const requestApproval = opts.requestApproval ?? denyByDefaultApprovalRequester;
+
+    const controller = new AbortController();
+    setStopHandler(target.id, () => controller.abort());
+
+    try {
+      await runLoop(opts, tools, requestApproval, controller.signal, target);
+    } finally {
+      setStopHandler(target.id, null);
+    }
   } finally {
-    setStopHandler(null);
+    // decisions/26, card 60: the ONLY place a `TurnPhase` is cleared to
+    // `null`. Every exit path a turn can take unwinds through here — a
+    // clean finish, no further tool calls, a terminal provider error, the
+    // "aborted" branch, the MAX_ITERATIONS note, the two `signal.aborted`
+    // early returns in `runLoop`, and an unexpected throw — so clearing it
+    // here, and ONLY here, is what guarantees the indicator can never blink
+    // off mid-turn. Do not add a per-return clear anywhere else: it would
+    // duplicate this and silently drift the day a seventh return is added.
+    setTurnPhase(null, target);
+    unregisterLiveSession(target.id);
   }
 }
 
@@ -352,6 +428,7 @@ async function runLoop(
   tools: MergedTool[],
   requestApproval: ApprovalRequester,
   signal: AbortSignal,
+  target: ChatSession,
 ): Promise<void> {
   const systemPrompt = buildSystemPrompt(opts.pageTitle, opts.pageOrigin, tools);
 
@@ -359,17 +436,24 @@ async function runLoop(
     if (signal.aborted) return;
 
     // Snapshot the history BEFORE starting the new assistant message below
-    // — `panel.messages` would otherwise include that message's own
-    // (still-empty) placeholder. Each message runs through `toModelMessage`
-    // so an `untrustedContentHint` tool result is fenced for the model here
-    // — the stored/displayed `PanelMessage.content` the transcript renders
-    // is untouched (decisions/17).
+    // — `target.messages` would otherwise include that message's own
+    // (still-empty) placeholder. Built from `target`, NOT `panel.messages`
+    // (decisions/25 §3, card 58): `panel.messages` is whatever chat is
+    // VISIBLE right now, which is no longer guaranteed to be this turn's
+    // chat once a tab switch can happen mid-generation. Each message runs
+    // through `toModelMessage` so an `untrustedContentHint` tool result is
+    // fenced for the model here — the stored/displayed `PanelMessage.content`
+    // the transcript renders is untouched (decisions/17).
     const conversation: ChatMessage[] = [
       { role: "system", content: systemPrompt },
-      ...panel.messages.map(toModelMessage),
+      ...(target.messages as PanelMessage[]).map(toModelMessage),
     ];
 
-    const assistantId = beginAssistantMessage();
+    const assistantId = beginAssistantMessage(target);
+    // decisions/26, card 60: back to `waiting` at the start of every
+    // iteration — a round after the first one begins with a fresh request to
+    // the provider, not a continuation of the previous round's `calling`.
+    setTurnPhase({ kind: "waiting" }, target);
     const { toolCalls, terminalError } = await streamOneTurn(
       opts.provider,
       {
@@ -379,8 +463,13 @@ async function runLoop(
         signal,
       },
       assistantId,
+      target,
     );
-    endAssistantMessage(assistantId, toolCalls.length > 0 ? toolCalls : undefined);
+    endAssistantMessage(assistantId, toolCalls.length > 0 ? toolCalls : undefined, target);
+    // Deliberately NOT cleared here (decisions/26's anti-flicker rule): the
+    // gap between this round's assistant message closing and either the
+    // next tool call or the next provider request must not blink the
+    // indicator off. `runAgentTurn`'s outer `finally` is the only clear.
 
     if (terminalError) {
       // "aborted" is the user hitting Stop — leave the partial reply as-is,
@@ -390,7 +479,7 @@ async function runLoop(
       // message out untouched, so this only ever ADDS a new note, offering
       // Retry rather than silently reporting failure or auto-retrying.
       if (terminalError.kind !== "aborted") {
-        addAssistantNote(noteForStreamError(terminalError), actionsForStreamError(terminalError));
+        addAssistantNote(noteForStreamError(terminalError), actionsForStreamError(terminalError), target);
       }
       return;
     }
@@ -399,13 +488,15 @@ async function runLoop(
 
     for (const call of toolCalls) {
       if (signal.aborted) return;
-      await executeToolCall(call, tools, requestApproval, signal);
+      await executeToolCall(call, tools, requestApproval, signal, target);
     }
   }
 
   addAssistantNote(
     `⚠️ Stopped after ${MAX_ITERATIONS} tool-call rounds without a final answer. ` +
       "Ask again, or narrow the request, to continue.",
+    undefined,
+    target,
   );
 }
 
@@ -413,15 +504,25 @@ async function streamOneTurn(
   provider: ChatProvider,
   params: ChatParams,
   assistantId: string,
+  target: ChatSession,
 ): Promise<{ toolCalls: ToolCall[]; terminalError: ProviderError | undefined }> {
   let toolCalls: ToolCall[] = [];
   let terminalError: ProviderError | undefined;
+  // decisions/26, card 60: flips the phase from `waiting` to `streaming` the
+  // moment the first actual token lands — not on every "content" event,
+  // which some providers can emit with an empty delta before real text
+  // starts.
+  let sawContent = false;
 
   try {
     for await (const event of provider.chat(params)) {
       switch (event.type) {
         case "content":
-          appendAssistantDelta(assistantId, event.delta);
+          if (!sawContent && event.delta.length > 0) {
+            sawContent = true;
+            setTurnPhase({ kind: "streaming" }, target);
+          }
+          appendAssistantDelta(assistantId, event.delta, target);
           break;
         case "tool-calls":
           toolCalls = toolCalls.concat(event.toolCalls);
@@ -488,11 +589,21 @@ async function executeToolCall(
   tools: MergedTool[],
   requestApproval: ApprovalRequester,
   signal: AbortSignal,
+  target: ChatSession,
 ): Promise<void> {
   // ONE lookup resolves the model's requested name to its merged entry —
   // page or server, this call site never asks which (decisions/19 §5). The
   // list itself was already built once for the whole turn, in runAgentTurn.
   const tool = tools.find((t) => t.name === call.name);
+
+  // decisions/26, card 60: `calling` from the moment this call is resolved,
+  // before the (possibly slow) policy check below even starts — the human
+  // watching the panel should see something is happening the instant the
+  // model asked for a tool, not only once a decision is made. Re-set with a
+  // fresh `startedAt` below if this call turns out to need an approval wait
+  // first, so an elapsed-time indicator (card 61) measures the CALL, not the
+  // human's deliberation.
+  setTurnPhase({ kind: "calling", toolName: call.name, origin: tool?.origin, startedAt: Date.now() }, target);
 
   // decisions/20: resolve the tool's SOURCE, then hand off to THAT source's
   // own policy unit — a thin dispatcher, never a branch inside a shared
@@ -508,43 +619,107 @@ async function executeToolCall(
   if (mayAutoRun) {
     mode = "auto";
   } else {
+    // Card 58 item 6: don't show (and risk a human approving) a prompt that
+    // visually looks like it belongs to whatever OTHER chat is on screen
+    // right now — wait until `target`'s chat is actually visible first. See
+    // `waitUntilVisible`'s doc comment and the module doc comment's
+    // "A TURN BELONGS TO A CHAT" section.
+    setTurnPhase({ kind: "awaiting-approval", toolName: call.name, origin: tool?.origin }, target);
+    await waitUntilVisible(target, signal);
     const decision = await raceApproval(requestApproval({ call, tool }), signal);
     if (decision !== "approved") {
-      const id = addToolCall(call, "denied", tool?.annotations, tool?.origin, tool?.mcpAnnotations);
-      updateToolCallResult(id, {
-        status: "denied",
-        content: "The user denied this tool call.",
-      });
+      const id = addToolCall(call, "denied", tool?.annotations, tool?.origin, tool?.mcpAnnotations, target);
+      updateToolCallResult(
+        id,
+        {
+          status: "denied",
+          content: "The user denied this tool call.",
+        },
+        target,
+      );
       return;
     }
     mode = "approved";
+    // decisions/26, card 60: back to `calling` now that the human has
+    // decided — a FRESH `startedAt` so the elapsed counter measures the
+    // call itself, not however long the approval sat waiting for a decision.
+    setTurnPhase({ kind: "calling", toolName: call.name, origin: tool?.origin, startedAt: Date.now() }, target);
   }
 
-  const id = addToolCall(call, mode, tool?.annotations, tool?.origin, tool?.mcpAnnotations);
+  const id = addToolCall(call, mode, tool?.annotations, tool?.origin, tool?.mcpAnnotations, target);
 
   if (!tool) {
     // A hallucinated/no-longer-registered name — nothing to invoke. Report
     // it as a clean tool-result error rather than guessing at an executor.
-    updateToolCallResult(id, {
-      status: "error",
-      content: `"${call.name}" isn't in this turn's tool list — it may be a name the model made up, or a tool that changed since the turn started.`,
-    });
+    updateToolCallResult(
+      id,
+      {
+        status: "error",
+        content: `"${call.name}" isn't in this turn's tool list — it may be a name the model made up, or a tool that changed since the turn started.`,
+      },
+      target,
+    );
     return;
   }
 
   const outcome = await raceToolCall(tool.call(call.arguments, { signal }), signal);
 
   if (!outcome.ok) {
-    updateToolCallResult(id, {
-      status: "error",
-      content: outcome.error,
-    });
+    updateToolCallResult(
+      id,
+      {
+        status: "error",
+        content: outcome.error,
+      },
+      target,
+    );
     return;
   }
 
-  updateToolCallResult(id, {
-    status: "success",
-    content: truncate(stringifyResult(outcome.result)),
+  updateToolCallResult(
+    id,
+    {
+      status: "success",
+      content: truncate(stringifyResult(outcome.result)),
+    },
+    target,
+  );
+}
+
+/**
+ * Resolves once `target`'s chat is the one actually visible in the panel
+ * (`panel.activeChatId === target.id`) — immediately if it already is.
+ * Card 58 item 6: decisions/25's own consequences section accepts that "a
+ * background turn that needs approval will wait" — this is that wait, made
+ * real rather than left implicit. Without it, `requestApproval`
+ * (src/sidepanel/stores/approvals.svelte.ts) would push a pending request
+ * onto its single, chat-UNAWARE queue immediately, and
+ * Transcript.svelte would render it over whatever chat the user happens to
+ * be looking at — a real surprise, not just a cosmetic one: approving it
+ * would run a tool call against a page the user may not even realise this
+ * request is for. Waiting here means the prompt only ever appears once the
+ * user has actually navigated back to the chat it belongs to.
+ *
+ * Also resolves if `signal` aborts, so a Stop on a still-invisible
+ * background turn doesn't leave this wait dangling forever — `raceApproval`
+ * right after this already treats an aborted signal as "denied".
+ */
+function waitUntilVisible(target: ChatSession, signal: AbortSignal): Promise<void> {
+  if (panel.activeChatId === target.id || signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const unsubscribe = onVisibleChatChange((chatId) => {
+      if (chatId === target.id) finish();
+    });
+    const onAbort = () => finish();
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

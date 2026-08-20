@@ -34,8 +34,11 @@
 // Every mutator that changes the transcript also persists it:
 //   - `addUserMessage`, `beginAssistantMessage`, `endAssistantMessage`,
 //     `addToolCall`, `updateToolCallResult` write immediately
-//     (`saveSession(session, {immediate: true})`) — none of these happen
+//     (`saveSession(target, {immediate: true})`) — none of these happen
 //     token-by-token, so there is no debounce reason to delay them.
+//     `beginAssistantMessage` persisting (card 58) means an in-flight reply
+//     is durable from the moment it starts streaming, not only once its
+//     first debounced delta lands.
 //   - `appendAssistantDelta` (the token-by-token one) calls the plain,
 //     debounced `saveSession(session)` — see src/lib/session.ts's own
 //     DEBOUNCE_MS/MAX_WAIT_MS tuning. No per-token writes happen here.
@@ -55,6 +58,48 @@
 // Both funnel through `startNewChat`, exported as the SEAM card 36 ("New
 // Chat" button) needs — see its doc comment below.
 //
+// A TURN BELONGS TO A CHAT, NOT TO WHICHEVER TAB IS VISIBLE (decisions/25 §3,
+// card 58, boards/project-backlog/58-turn-belongs-to-a-chat-not-the-visible-tab.md).
+// Before this card, every mutator below wrote to the module-level `session`
+// var AS IT STOOD AT THE MOMENT OF THE CALL — so a tab switch mid-generation
+// would silently redirect a running turn's deltas, tool calls, and log
+// entries into whatever chat the panel had since swapped to. Two things fix
+// that:
+//   - Every mutator that used to write unconditionally to `session` now
+//     takes an explicit `target: ChatSession` parameter, DEFAULTING to the
+//     live `session` so a one-shot caller (e.g. App.svelte's `addUserMessage`/
+//     `addAssistantNote` calls, which only ever act on whatever chat is on
+//     screen right now) is unchanged. `runAgentTurn`
+//     (src/sidepanel/services/agentLoop.ts) captures its target ONCE, via
+//     {@link getActiveSession}, immediately after the user's message lands,
+//     and threads that exact object through every mutator call for the rest
+//     of the turn — so a later tab switch can change what `session` points
+//     to without ever redirecting where THIS turn's output goes.
+//   - `liveSessions` below is a registry of every `ChatSession` object with
+//     a turn currently in flight, keyed by chat id. `syncSessionToTab`/
+//     `openChatInTab` consult it before falling back to a fresh read from
+//     storage, so switching back to a chat mid-generation re-attaches
+//     `session` to the SAME in-memory object the turn has been mutating —
+//     not a stale, half-written snapshot read back from
+//     `chrome.storage.local`. This is also what makes the Svelte 5
+//     reactivity work out: `session` is `$state`, so once an object has
+//     been assigned to it, THAT SPECIFIC object (not a structurally-equal
+//     copy) is the reactive proxy every mutation must go through for the
+//     UI to notice it later. Reassigning `session` to that same proxy
+//     object is exactly how a background turn's accumulated deltas become
+//     visible the instant the user tabs back — nothing further to do.
+// `streamingMessageId`/the stop-handler seam are consequently per-chat too
+// (`streamingByChat`/`stopHandlers` below, both keyed by chat id) rather
+// than a single global either of them could clobber on a swap — `panel.
+// streamingMessageId` and `requestStop` still report/act on the VISIBLE
+// chat only, by reading `session.id` into that chat's own entry.
+// `onVisibleChatChange` is the one further piece this enables: agentLoop.ts
+// uses it to defer showing a background turn's tool-approval prompt until
+// the chat it belongs to is actually the one on screen — see that module's
+// `waitUntilVisible` for why (a human approving what looks like a request
+// for the current page, when it is actually for a different, invisible
+// chat, is a real surprise worth avoiding, not just a cosmetic one).
+//
 // `openChatInTab` is the third entry point: resuming a chat from the
 // History view (card 34), including one started against a different origin
 // than the current tab — allowed, but the UI must stay honest about it
@@ -66,7 +111,7 @@
 // anything chat-specific — that separation already existed and needs no
 // change here.
 //
-// `streamingMessageId`, `connectionStatus`, `pageInfo`, and the stop-handler
+// `streamingByChat`, `connectionStatus`, `pageInfo`, and the stop-handler
 // seam stay in-memory/ephemeral — they were never part of the swap.
 //
 // SINGLE OWNER (card 29, boards/project-backlog/29-selection-store-stale-session-write.md):
@@ -83,6 +128,16 @@
 // only the tab-identity guard they use changed, from comparing the tab id
 // stored ON the session to comparing against this module's own
 // `activeTabId` (see the two functions' bodies).
+//
+// Card 58 generalises "single owner" from ONE `ChatSession` to POSSIBLY
+// SEVERAL at once: `liveSessions` below means this module can be holding
+// the visible chat AND one or more backgrounded, still-generating chats in
+// memory simultaneously. The invariant itself is unchanged — this is still
+// the only module that ever loads or holds one — it now just owns more
+// than one at a time. Nothing outside this file is allowed to hold onto a
+// `ChatSession` reference across an `await` either; `getActiveSession`
+// exists for exactly one sanctioned exception (agentLoop.ts's one-shot
+// capture at the top of a turn — see its own doc comment below).
 
 import type { ChatMessage, ToolCall } from "../../lib/provider";
 import type { ProviderSelection } from "../../lib/providers/registry";
@@ -142,11 +197,12 @@ export interface PanelMessage extends ChatMessage {
    * ran under (card 09, decisions/05): `"auto"` for a call the policy let
    * through without a human decision (a `readOnlyHint` call under the
    * default policy, or ANY call under "auto-run-all"), `"approved"`/`"denied"`
-   * for one a human decided. The approval UI (src/sidepanel/components/
-   * ToolCallCard.svelte) uses this — not `tool.annotations` — to decide
-   * whether a completed card starts collapsed: a call nobody had to review
-   * stays out of the way; one a human actually approved or denied stays
-   * visible, since that was a deliberate decision worth seeing.
+   * for one a human decided. The transcript's timeline row
+   * (src/sidepanel/components/ToolCallRow.svelte) and the call log
+   * (CallLogEntry.svelte) both use this — not `tool.annotations` — to
+   * decide what's worth flagging: a call nobody had to review stays out of
+   * the way; one a human actually approved or denied stays visible, since
+   * that was a deliberate decision worth seeing.
    */
   toolMode?: ToolCallMode;
   /**
@@ -248,7 +304,167 @@ let session = $state<ChatSession | undefined>(undefined);
 let activeTabId: number | undefined = undefined;
 /** `activeTabId`'s REAL current origin — updated only by {@link syncSessionToTab} and {@link applyPanelNavigation}, never by {@link openChatInTab}, so a later actual navigation is detected against the tab's true history regardless of which chat happens to be open. */
 let activeTabOrigin = "";
-let streamingMessageId = $state<string | null>(null);
+
+/**
+ * Storage key for card 59 item 1's sync-path tracing runtime override — see
+ * {@link isTracingEnabled}'s doc comment for why a plain `import.meta.env.DEV`
+ * gate is not enough on its own.
+ */
+const TRACE_FLAG_KEY = "debug:tab-sync-tracing";
+
+/**
+ * Whether sync-path tracing (`[webmcp][tab-sync]`-prefixed logs: this
+ * module's own `syncSessionToTab` log below, and
+ * `src/sidepanel/services/activeTab.ts`'s `trace()` helper, which reads this
+ * via the exported getter below since it already imports FROM this module
+ * and a reverse import would be circular) is currently active.
+ *
+ * Defaults to `import.meta.env.DEV` (on while developing, off in a shipped
+ * build) — but that default alone is exactly wrong for this feature's whole
+ * purpose. `import.meta.env.DEV` is tied to Vite's SERVE-vs-BUILD *command*,
+ * never to `--mode` (confirmed empirically while building this card): it is
+ * `false` in EVERY artifact that can be loaded unpacked, including
+ * `npm run build`'s `dist/` — which is exactly what `npm run launch`
+ * (scripts/launch-chrome.mjs) builds and opens in Jonathan's real,
+ * day-to-day Chrome. A DEV-only gate would make this tracing permanently
+ * dead in the one browser "make the next occurrence self-explaining" is
+ * actually for.
+ *
+ * So this is ALSO a runtime override, stored in `chrome.storage.local`
+ * (deliberately not a `globalThis`/in-memory flag) so it survives the side
+ * panel being closed and reopened — its whole JS context is destroyed and
+ * recreated on every open/close, which would silently reset an in-memory
+ * toggle back to the DEV default. Read once at module load and kept live
+ * via `chrome.storage.onChanged` below, so flipping it takes effect
+ * immediately in every already-open panel/options page instance — no
+ * rebuild, no reload.
+ *
+ * TO TURN TRACING ON in a real installed build, without editing any code:
+ * right-click the side panel → Inspect → paste into that devtools console:
+ *
+ *   window.__webmcpPanelDebug.enableTracing()
+ *
+ * (equivalently: `chrome.storage.local.set({ "debug:tab-sync-tracing": true })`
+ * — see {@link setTracingEnabled}). `window.__webmcpPanelDebug.disableTracing()`
+ * turns it back off. scripts/dump-chat-storage.js's header comment repeats
+ * this exact one-liner, since that script is what actually gets pasted into
+ * that same console when this bites again — the two are meant to be found
+ * together.
+ */
+let tracingEnabled = import.meta.env.DEV;
+
+void chrome.storage.local.get(TRACE_FLAG_KEY).then((stored) => {
+  if (typeof stored[TRACE_FLAG_KEY] === "boolean") tracingEnabled = stored[TRACE_FLAG_KEY];
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !(TRACE_FLAG_KEY in changes)) return;
+  const next = changes[TRACE_FLAG_KEY].newValue;
+  tracingEnabled = typeof next === "boolean" ? next : import.meta.env.DEV;
+});
+
+/** Read access to {@link tracingEnabled} — see its doc comment. The one thing `src/sidepanel/services/activeTab.ts`'s `trace()` helper needs from this module. */
+export function isTracingEnabled(): boolean {
+  return tracingEnabled;
+}
+
+/** Writes the runtime tracing override (see {@link isTracingEnabled}) through `chrome.storage.local`, so the `chrome.storage.onChanged` listener above — running in every open panel/options page instance, not just the caller's — picks it up immediately. */
+export async function setTracingEnabled(enabled: boolean): Promise<void> {
+  await chrome.storage.local.set({ [TRACE_FLAG_KEY]: enabled });
+}
+
+/**
+ * Every chat with a turn currently in flight, keyed by chat id (decisions/25
+ * §3, card 58) — see the module doc comment's "A TURN BELONGS TO A CHAT"
+ * section. Populated/cleared only by {@link registerLiveSession}/
+ * {@link unregisterLiveSession}, which `runAgentTurn` (agentLoop.ts) calls at
+ * the start and end (every end: success, abort, error) of a turn. Consulted
+ * by {@link syncSessionToTab}/{@link openChatInTab} so re-visiting a
+ * mid-generation chat re-attaches to the SAME object the turn is mutating.
+ */
+const liveSessions = new Map<string, ChatSession>();
+
+/** Streaming assistant-message id per chat with an active stream, keyed by chat id (decisions/25 §3, card 58) — a single global here was exactly what let `syncSessionToTab` stomp a background turn's stream state on every swap. `$state`-backed so `panel.streamingMessageId` (which reports the VISIBLE chat's entry only, via `session.id`) stays reactive across a tab switch. */
+let streamingByChat = $state<Record<string, string | null>>({});
+
+/**
+ * The four phases a turn can be in (decisions/26, card 60), written by
+ * agentLoop.ts as the loop progresses through one round:
+ *   - `waiting`: a request is open with the provider but no token has
+ *     arrived yet (also covers the service-worker round trip a tool-capable
+ *     turn makes before its first `provider.chat()` call).
+ *   - `streaming`: tokens are landing in the current assistant message.
+ *   - `awaiting-approval`: the loop is blocked on a human decision for
+ *     `toolName` (card 09) — `origin` says where it would run.
+ *   - `calling`: `toolName` is actually executing (page or MCP server,
+ *     `origin` says which) — `startedAt` is the call's own start time (NOT
+ *     the turn's), so an elapsed-time indicator (card 61) measures the call
+ *     itself, freshly reset after an approval wait rather than including the
+ *     time a human spent deciding.
+ */
+export type TurnPhase =
+  | { kind: "waiting" }
+  | { kind: "streaming" }
+  | { kind: "awaiting-approval"; toolName: string; origin?: ToolOrigin }
+  | { kind: "calling"; toolName: string; origin?: ToolOrigin; startedAt: number };
+
+/**
+ * `TurnPhase` per chat with a turn in flight, keyed by chat id — same shape
+ * and same reason as `streamingByChat` above (decisions/25 §3): a turn
+ * belongs to a chat, not to whichever tab is visible. `$state`-backed so
+ * `panel.turnPhase`/`panel.isTurnActive` (VISIBLE chat only, via
+ * `session.id`) stay reactive across a tab switch.
+ *
+ * Deliberately NOT persisted — same class as `streamingByChat` — since a
+ * stored "calling…" would be a lie the moment the panel reopens (decisions/26
+ * §2). The honest consequence: a tool row still `pending` when the panel
+ * reopens (or after a browser restart) renders as "no result recorded", per
+ * card 61 — never as a spinner that will never resolve, because there is no
+ * live phase left to say otherwise.
+ */
+let turnPhaseByChat = $state<Record<string, TurnPhase | null>>({});
+
+/**
+ * Set (or clear, passing `null`) `target`'s current `TurnPhase`
+ * (decisions/26, card 60). `target` defaults to the live `session`, payload
+ * first, matching the house style of `addToolCall`/`endAssistantMessage`/
+ * `addAssistantNote` above. agentLoop.ts is the only caller, and every call
+ * it makes except the outer `finally`'s is a REPLACEMENT of the previous
+ * phase, never a clear — see that module for why (the anti-flicker
+ * invariant decisions/26 exists to guarantee).
+ */
+export function setTurnPhase(phase: TurnPhase | null, target: ChatSession | undefined = session): void {
+  if (!target) return;
+  if (phase) turnPhaseByChat[target.id] = phase;
+  else delete turnPhaseByChat[target.id];
+}
+
+/**
+ * Stop handlers per chat with a turn in flight, keyed by chat id (decisions/25
+ * §3, card 58) — replaces a single global `stopHandler` a second turn (or a
+ * tab switch mid-turn) could otherwise silently clobber. {@link requestStop}
+ * looks up the VISIBLE chat's entry only, so Stop always cancels the turn
+ * for the chat the user is actually looking at.
+ */
+const stopHandlers = new Map<string, () => void>();
+
+/**
+ * Listeners notified whenever the VISIBLE chat changes — i.e. every time
+ * {@link syncSessionToTab}, {@link openChatInTab}, or {@link startNewChat}
+ * reassigns `session` (called AFTER the reassignment, with the new active
+ * chat id, or `undefined` if none is loaded). The one consumer today is
+ * agentLoop.ts's `waitUntilVisible`: a background turn defers showing its
+ * tool-approval prompt until its own chat is what's on screen, rather than
+ * showing (and risking a human approving) a request that visually looks
+ * like it belongs to whatever OTHER chat happens to be visible right now —
+ * see that function's doc comment.
+ */
+const visibilityListeners = new Set<(chatId: string | undefined) => void>();
+
+function notifyVisibilityChange(): void {
+  for (const fn of visibilityListeners) fn(session?.id);
+}
+
 let connectionStatus = $state<ConnectionStatus>("unknown");
 let pageInfo = $state<PageInfo | undefined>(undefined);
 /** The active tab's current published tool list (card 11's inspector) — kept in sync by src/sidepanel/services/activeTab.ts, same source (`runtime:get-tools`/`runtime:tools-updated`) that already drives `pageInfo.toolCount`. */
@@ -256,25 +472,38 @@ let tools = $state<SerializedTool[]>([]);
 /** Every currently-cached MCP server tool (card 38's Tools view, decisions/19 §6) — kept in sync by src/sidepanel/services/mcpTools.ts's background discovery refresh, independent of which tab is active (server tools aren't per-page). Unlike `tools` above this is never network-blocking to read: it's always whatever that module's cache currently holds. */
 let serverTools = $state<MergedTool[]>([]);
 
-/**
- * Registered by whoever owns the live generation (the agent loop,
- * src/sidepanel/services/agentLoop.ts). The composer's stop button calls
- * {@link requestStop}; it never touches an `AbortController` directly, so
- * the panel shell has no dependency on how generation is actually
- * implemented.
- */
-let stopHandler: (() => void) | null = null;
-
 export const panel = {
   /** A view over the active tab's `ChatSession.messages` — see module doc comment. Empty until a session has been loaded via {@link syncSessionToTab}. */
   get messages(): PanelMessage[] {
     return (session?.messages as PanelMessage[] | undefined) ?? [];
   },
+  /** The VISIBLE chat's streaming assistant-message id, or `null` if it has none in flight — read from {@link streamingByChat} by `session.id` (decisions/25 §3, card 58), so a background chat's own stream state is never reported here, and switching TO a mid-generation chat picks its entry back up correctly. */
   get streamingMessageId() {
-    return streamingMessageId;
+    return session ? (streamingByChat[session.id] ?? null) : null;
   },
-  get isStreaming() {
-    return streamingMessageId !== null;
+  /** The VISIBLE chat's current `TurnPhase`, or `null` if it has no turn in flight — read from {@link turnPhaseByChat} by `session.id` (decisions/25 §3, decisions/26), same shape as {@link streamingMessageId} above. */
+  get turnPhase(): TurnPhase | null {
+    return session ? (turnPhaseByChat[session.id] ?? null) : null;
+  },
+  /**
+   * True from the moment a turn starts to the moment it fully ends —
+   * INCLUDING tool execution and approval waits, unlike `streamingMessageId`,
+   * which is non-`null` only while "tokens are landing in message X" and
+   * goes `null` the instant `runLoop` closes the assistant message to run
+   * its tool calls (decisions/26). This is the broader "a turn is in
+   * flight" predicate the Stop button and the new-chat guard should have
+   * been reading all along — `streamingMessageId` itself stays narrow,
+   * unchanged, still what suppresses `MessageActions` mid-reply.
+   *
+   * Card 61: this getter used to have a sibling, `isStreaming` (a plain
+   * boolean view of `streamingMessageId`), which card 60 emptied of every
+   * call site — everything that read it was moved to `isTurnActive` here.
+   * Removed rather than kept as unused API; `streamingMessageId` itself is
+   * still very much alive (Transcript.svelte gates `MessageActions` on it
+   * directly) and covers the same narrow "tokens are landing" meaning.
+   */
+  get isTurnActive(): boolean {
+    return session !== undefined && (turnPhaseByChat[session.id] ?? null) !== null;
   },
   get connectionStatus() {
     return connectionStatus;
@@ -319,6 +548,32 @@ export const panel = {
   get selectionExplicit(): boolean {
     return (session as SessionWithSelectionMeta | undefined)?.selectionExplicit === true;
   },
+  /**
+   * The active chat's explicit, user-set name (decisions/24), or `undefined`
+   * if it has none — in which case the header/menu/history derive one from
+   * the transcript instead (src/sidepanel/lib/chatTitle.ts). `undefined`
+   * both when no session is loaded and when the loaded one was never
+   * renamed; callers don't need to distinguish those two.
+   */
+  get activeChatTitle(): string | undefined {
+    return session?.title;
+  },
+  /**
+   * The active tab's REAL current origin (decisions/25 §2, card 57) — read
+   * access to the module-level `activeTabOrigin` var above, kept in step
+   * only by {@link syncSessionToTab}/{@link applyPanelNavigation}, never by
+   * {@link openChatInTab}. `src/sidepanel/services/activeTab.ts` reads this
+   * (not `panel.pageInfo?.origin`) to decide whether a tab actually
+   * navigated: `pageInfo` is display state written AFTER the swap already
+   * happened, so it lags by one microtask and a same-tab `onUpdated`
+   * arriving mid-activation could otherwise compare against a stale value
+   * and fabricate a spurious empty chat. Not `$state`-backed — this exists
+   * for that one internal caller's identity check, not for reactive UI
+   * display.
+   */
+  get activeTabOrigin(): string {
+    return activeTabOrigin;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -333,13 +588,50 @@ export const panel = {
  * live target for every mutator below. Call on initial mount and on every
  * real tab switch — never for a same-tab navigation, see
  * {@link applyPanelNavigation}.
+ *
+ * Skips the `setCurrentChatForTab` write when `getOrCreateChatForTab`
+ * reports `resolved: true` (decisions/25 §2, card 57): a pointer that
+ * already resolved to a real chat is correct by construction, so rewriting
+ * it on every sync is pure churn — and for a chat currently mid-generation
+ * (card 58: a turn keeps running after the panel tabs away) it would be
+ * actively wrong, re-stamping a pointer that a background turn may be about
+ * to need untouched. Only a freshly minted chat (`resolved: false`) needs
+ * its pointer written here.
+ *
+ * Consults {@link liveSessions} (decisions/25 §3, card 58) before accepting
+ * the plain object `getOrCreateChatForTab` just read back from storage: if
+ * that chat id has a turn in flight, this re-attaches `session` to the SAME
+ * in-memory object the turn has been mutating instead — the freshly-read
+ * one may already be stale by the time this `await` resolves, and even if
+ * it weren't, it's a structurally-equal but DIFFERENT object, which matters
+ * for Svelte 5's `$state` proxy identity (see module doc comment). Does NOT
+ * reset any chat's streaming/stop state — that's per-chat now
+ * (`streamingByChat`/`stopHandlers`), so a background chat's turn is
+ * completely unaffected by this tab becoming visible or not.
  */
 export async function syncSessionToTab(tabId: number, origin: string): Promise<void> {
   activeTabId = tabId;
   activeTabOrigin = origin;
-  session = await getOrCreateChatForTab(tabId, origin);
-  streamingMessageId = null;
-  await setCurrentChatForTab(tabId, session.id, origin);
+  const { chat, resolved } = await getOrCreateChatForTab(tabId, origin);
+  const reattachedLive = liveSessions.has(chat.id);
+  session = liveSessions.get(chat.id) ?? chat;
+  if (!resolved) await setCurrentChatForTab(tabId, session.id, origin);
+  // Sync-path tracing (card 59, item 1) — see activeTab.ts's `trace` helper
+  // doc comment for the full rationale; this is the one outcome that lives
+  // in THIS module rather than that one, since it needs `chat`/`resolved`/
+  // `liveSessions`, none of which activeTab.ts has visibility into. Gated
+  // on {@link isTracingEnabled}, not a bare `import.meta.env.DEV` check —
+  // see that function's doc comment for why the DEV-only version was wrong.
+  if (isTracingEnabled()) {
+    console.log("[webmcp][tab-sync] syncSessionToTab", {
+      tabId,
+      chatId: session.id,
+      messageCount: session.messages.length,
+      resolved,
+      reattachedLive,
+    });
+  }
+  notifyVisibilityChange();
 }
 
 /**
@@ -352,9 +644,19 @@ export async function syncSessionToTab(tabId: number, origin: string): Promise<v
  * can legitimately differ already if a history entry was opened
  * cross-origin (see `openChatInTab`), so this must not mistake "the user
  * opened an old chat from a different site" for "the tab just navigated".
+ *
+ * Tab-scoped (decisions/25 §2, card 57): takes the `tabId` the caller is
+ * acting for and refuses to act — WITHOUT touching `activeTabOrigin` — when
+ * it no longer matches `activeTabId`. `src/sidepanel/services/activeTab.ts`
+ * serializes its own calls into this module, but the underlying
+ * `chrome.tabs`/`chrome.runtime` events it reacts to are not serialized by
+ * Chrome itself; without this guard a navigation event for a tab the user
+ * has since switched away from could still retire whatever chat happens to
+ * be current at the time it finally runs, which may by then belong to a
+ * different tab entirely.
  */
-export async function applyPanelNavigation(newOrigin: string): Promise<void> {
-  if (!session || activeTabId === undefined) return;
+export async function applyPanelNavigation(tabId: number, newOrigin: string): Promise<void> {
+  if (!session || activeTabId === undefined || activeTabId !== tabId) return;
   if (activeTabOrigin === newOrigin) return;
   activeTabOrigin = newOrigin;
   await startNewChat(newOrigin);
@@ -397,8 +699,8 @@ export async function startNewChat(origin: string): Promise<void> {
   const priorExplicit = (session as SessionWithSelectionMeta | undefined)?.selectionExplicit === true;
   session = createChat(origin, session?.selection);
   if (session.selection) (session as SessionWithSelectionMeta).selectionExplicit = priorExplicit;
-  streamingMessageId = null;
   await setCurrentChatForTab(activeTabId, session.id, origin);
+  notifyVisibilityChange();
 }
 
 /**
@@ -411,14 +713,20 @@ export async function startNewChat(origin: string): Promise<void> {
  * still measured against the tab's actual history (see module doc
  * comment). Returns `false` (no-op) if no tab is loaded yet or `chatId`
  * doesn't resolve to a stored chat (e.g. it was just deleted).
+ *
+ * Also consults {@link liveSessions} (decisions/25 §3, card 58) the same
+ * way {@link syncSessionToTab} does: opening a History entry that happens
+ * to have a turn in flight (e.g. it was left generating in another tab)
+ * re-attaches to that SAME live object rather than a stale storage read.
  */
 export async function openChatInTab(chatId: string): Promise<boolean> {
   if (activeTabId === undefined) return false;
-  const chat = await getChat(chatId);
+  const live = liveSessions.get(chatId);
+  const chat = live ?? (await getChat(chatId));
   if (!chat) return false;
   session = chat;
-  streamingMessageId = null;
   await setCurrentChatForTab(activeTabId, chat.id, activeTabOrigin);
+  notifyVisibilityChange();
   return true;
 }
 
@@ -437,9 +745,139 @@ export async function discardActiveChatIfDeleted(chatId: string): Promise<void> 
   await startNewChat(activeTabOrigin);
 }
 
-function findMessage(id: string): PanelMessage | undefined {
-  return (session?.messages as PanelMessage[] | undefined)?.find((m) => m.id === id);
+/**
+ * Fire-and-forget wrapper around `saveSession` (card 59 item 3). Every
+ * transcript mutator below used to call `void saveSession(...)` directly —
+ * a rejected write (a `chrome.storage.local` quota error, the extension
+ * context being invalidated mid-write, etc.) became an unhandled promise
+ * rejection with no UI signal at all and no record of which chat or which
+ * write it was, exactly the kind of silent failure this card exists to
+ * close (see decisions/25 and the card's own framing: "every write that can
+ * fail does so into a `void`"). Still genuinely fire-and-forget — these
+ * callers must stay synchronous-feeling for streaming, so this does not
+ * block or retry — it only makes a failure visible in the console, tagged
+ * with the chat id so it is traceable back to a specific conversation.
+ */
+function saveSessionLogged(
+  target: ChatSession,
+  opts?: { immediate?: boolean; touch?: boolean },
+): void {
+  void saveSession(target, opts).catch((err: unknown) => {
+    console.error(`[webmcp][panel] saveSession failed for chat ${target.id}`, err);
+  });
 }
+
+/** Looks up a message by id within `target`'s own messages (card 58: NOT necessarily `session` — see the mutators below, which all take an explicit `target`). */
+function findMessage(id: string, target: ChatSession | undefined): PanelMessage | undefined {
+  return (target?.messages as PanelMessage[] | undefined)?.find((m) => m.id === id);
+}
+
+/**
+ * Registers `target` as having a turn in flight — see {@link liveSessions}'s
+ * doc comment. Call once, at the very top of a turn (agentLoop.ts's
+ * `runAgentTurn`, immediately after capturing `target` via
+ * {@link getActiveSession}).
+ */
+export function registerLiveSession(target: ChatSession): void {
+  liveSessions.set(target.id, target);
+}
+
+/**
+ * The counterpart to {@link registerLiveSession} — call when a turn ends, on
+ * EVERY path a turn can end (a clean finish, the iteration cap, an abort, a
+ * terminal provider error). Safe to call for an id that was never
+ * registered, or already removed.
+ */
+export function unregisterLiveSession(chatId: string): void {
+  liveSessions.delete(chatId);
+}
+
+/**
+ * Returns the CURRENTLY VISIBLE session object itself — not a copy, not a
+ * view — for agentLoop.ts's `runAgentTurn` to capture ONCE, at the very top
+ * of a turn, as the specific `ChatSession` every mutator call for the rest
+ * of that turn must target explicitly (decisions/25 §3, card 58): whichever
+ * chat is on screen at the moment the user's message just landed on it via
+ * `addUserMessage`, before anything can tab-switch out from under it. A
+ * one-shot capture, never meant to be re-read across an `await` — by
+ * definition `session` may have moved on to a different chat by then; hold
+ * onto the RETURNED value instead, exactly as `runAgentTurn` does.
+ * `undefined` only in the same no-session-loaded-yet edge case every mutator
+ * below already tolerates.
+ */
+export function getActiveSession(): ChatSession | undefined {
+  return session;
+}
+
+/**
+ * Registers `fn` to be called every time the visible chat changes (see
+ * {@link visibilityListeners}'s doc comment above `session`'s declaration).
+ * Returns an unsubscribe function.
+ */
+export function onVisibleChatChange(fn: (chatId: string | undefined) => void): () => void {
+  visibilityListeners.add(fn);
+  return () => visibilityListeners.delete(fn);
+}
+
+/**
+ * Card 59 item 6 (boards/project-backlog/59-sync-path-diagnostics-and-durability.md):
+ * a snapshot of what THIS module currently holds in memory, for
+ * scripts/dump-chat-storage.js to report next to what's on disk. The card
+ * 57 dump proved storage was healthy while the panel showed the wrong
+ * chat — but only by inference, since nothing could see the panel's memory
+ * at the time. This closes that gap directly.
+ *
+ * Deliberately NOT gated behind `import.meta.env.DEV`/{@link isTracingEnabled}
+ * itself — this is a single cheap snapshot function that needs to work
+ * against a real installed extension the next time this bites in practice,
+ * not just in a dev server. Same privacy guarantee as the dump script
+ * itself (id + counts only — never message text, tool arguments, or
+ * results, see that script's header comment).
+ *
+ * Also the ONE debug surface for the tracing runtime override (card 59,
+ * revised after review): `enableTracing`/`disableTracing` sit as properties
+ * on this same callable rather than a second `window.*` global, and the
+ * snapshot itself reports `tracingEnabled` so a paste of
+ * `window.__webmcpPanelDebug()` shows whether tracing is currently on
+ * alongside everything else. See {@link isTracingEnabled}'s doc comment for
+ * why a runtime toggle (not just `import.meta.env.DEV`) is needed at all.
+ *
+ * Attached to `window` because the dump script is a devtools-console paste
+ * with no module import path into this closure — see that script for the
+ * guard it uses when this isn't present at all (e.g. pasted into the
+ * OPTIONS page's console instead, which never loads this module).
+ */
+declare global {
+  interface Window {
+    __webmcpPanelDebug?: (() => {
+      chatId: string | undefined;
+      messageCount: number;
+      toolCallCount: number;
+      streamingMessageId: string | null;
+      turnPhaseByChat: Record<string, TurnPhase | null>;
+      liveSessionIds: string[];
+      tracingEnabled: boolean;
+    }) & {
+      enableTracing: () => Promise<void>;
+      disableTracing: () => Promise<void>;
+    };
+  }
+}
+
+function webmcpPanelDebugSnapshot() {
+  return {
+    chatId: session?.id,
+    messageCount: session?.messages.length ?? 0,
+    toolCallCount: session?.toolCalls.length ?? 0,
+    streamingMessageId: session ? (streamingByChat[session.id] ?? null) : null,
+    turnPhaseByChat: { ...turnPhaseByChat },
+    liveSessionIds: [...liveSessions.keys()],
+    tracingEnabled,
+  };
+}
+webmcpPanelDebugSnapshot.enableTracing = () => setTracingEnabled(true);
+webmcpPanelDebugSnapshot.disableTracing = () => setTracingEnabled(false);
+window.__webmcpPanelDebug = webmcpPanelDebugSnapshot;
 
 // ---------------------------------------------------------------------------
 // Selection field (owned in storage by this session, read/written on behalf
@@ -486,8 +924,8 @@ type SessionWithSelectionMeta = ChatSession & { selectionExplicit?: boolean };
  * the caller should not assume the write took effect.
  *
  * `explicit` records whether this write represents a deliberate user
- * choice (card 35) — `true` from the picker's `selectModel`/`confirmSelection`,
- * `false` from `syncToTab`'s silent default-seed. See
+ * choice (card 35) — `true` from the picker's `selectModel`, `false` from
+ * `syncToTab`'s silent default-seed. See
  * `panel.selectionExplicit`.
  */
 export async function setSessionSelection(
@@ -512,43 +950,61 @@ export function addUserMessage(content: string): string {
   const id = makeId();
   const message: PanelMessage = { id, role: "user", content, createdAt: Date.now() };
   session.messages.push(message);
-  void saveSession(session, { immediate: true });
+  saveSessionLogged(session, { immediate: true });
   return id;
-}
-
-/** Starts a streaming assistant message (empty content) and marks it as the active stream. */
-export function beginAssistantMessage(): string {
-  if (!session) return "";
-  const id = makeId();
-  const message: PanelMessage = { id, role: "assistant", content: "", createdAt: Date.now() };
-  session.messages.push(message);
-  streamingMessageId = id;
-  return id;
-}
-
-/** Append one token/delta to a streaming assistant message. Pass the WHOLE delta text (already-decoded), not raw wire bytes. Debounced write — see src/lib/session.ts's DEBOUNCE_MS/MAX_WAIT_MS; never called per-token without this debounce. */
-export function appendAssistantDelta(id: string, delta: string): void {
-  if (!session) return;
-  const msg = findMessage(id);
-  if (!msg) return;
-  msg.content += delta;
-  void saveSession(session);
 }
 
 /**
- * Marks a message's stream as finished. No-ops the `streamingMessageId`
- * clear if it wasn't the active stream (e.g. already stopped). Pass
- * `toolCalls` when the model's turn ended with `tool_calls` to attach — the
- * agent loop needs these persisted on the assistant message so the next
- * provider call can replay them correctly.
+ * Starts a streaming assistant message (empty content) and marks it as the
+ * active stream for `target`'s chat. `target` defaults to the live
+ * `session` so an existing call site (a one-shot note built outside any
+ * turn) is unchanged; `runAgentTurn` (agentLoop.ts) always passes its
+ * captured session explicitly (decisions/25 §3, card 58), so a mid-turn tab
+ * switch can never redirect where the new message is added.
+ *
+ * Persists immediately (card 58 item 4) — unlike the other transcript
+ * mutators, this used to be the ONE that never wrote to storage until its
+ * first debounced delta landed, so an in-flight reply that never got a
+ * chance to stream (panel closed immediately after) could be lost outright.
  */
-export function endAssistantMessage(id: string, toolCalls?: ToolCall[]): void {
-  if (streamingMessageId === id) streamingMessageId = null;
-  if (!session) return;
-  const msg = findMessage(id);
+export function beginAssistantMessage(target: ChatSession | undefined = session): string {
+  if (!target) return "";
+  const id = makeId();
+  const message: PanelMessage = { id, role: "assistant", content: "", createdAt: Date.now() };
+  target.messages.push(message);
+  streamingByChat[target.id] = id;
+  saveSessionLogged(target, { immediate: true });
+  return id;
+}
+
+/** Append one token/delta to a streaming assistant message on `target`'s chat (defaults to the live `session` — see {@link beginAssistantMessage}'s doc comment). Pass the WHOLE delta text (already-decoded), not raw wire bytes. Debounced write — see src/lib/session.ts's DEBOUNCE_MS/MAX_WAIT_MS; never called per-token without this debounce. */
+export function appendAssistantDelta(id: string, delta: string, target: ChatSession | undefined = session): void {
+  if (!target) return;
+  const msg = findMessage(id, target);
+  if (!msg) return;
+  msg.content += delta;
+  saveSessionLogged(target);
+}
+
+/**
+ * Marks a message's stream as finished on `target`'s chat (defaults to the
+ * live `session` — see {@link beginAssistantMessage}'s doc comment). No-ops
+ * the `streamingByChat` clear if it wasn't `target`'s active stream (e.g.
+ * already stopped). Pass `toolCalls` when the model's turn ended with
+ * `tool_calls` to attach — the agent loop needs these persisted on the
+ * assistant message so the next provider call can replay them correctly.
+ */
+export function endAssistantMessage(
+  id: string,
+  toolCalls?: ToolCall[],
+  target: ChatSession | undefined = session,
+): void {
+  if (target && streamingByChat[target.id] === id) delete streamingByChat[target.id];
+  if (!target) return;
+  const msg = findMessage(id, target);
   if (!msg) return;
   if (toolCalls && toolCalls.length > 0) msg.toolCalls = toolCalls;
-  void saveSession(session, { immediate: true });
+  saveSessionLogged(target, { immediate: true });
 }
 
 /**
@@ -568,6 +1024,13 @@ export function endAssistantMessage(id: string, toolCalls?: ToolCall[]): void {
  * the transcript and call log can say where the call ran, and (for a server
  * tool) show the MCP-specific display-only hints — both `undefined` for a
  * call whose tool wasn't found in the turn's merged list at all.
+ *
+ * `target` defaults to the live `session` (see {@link beginAssistantMessage}'s
+ * doc comment) — `runAgentTurn`'s tool-execution helpers (agentLoop.ts)
+ * always pass their captured session explicitly, which is what stops a
+ * mid-turn tab switch from filing a tool call and its log entry into
+ * whatever chat the panel happened to swap to (the exact bug decisions/25 §3
+ * and card 58 describe).
  */
 export function addToolCall(
   call: ToolCall,
@@ -575,8 +1038,9 @@ export function addToolCall(
   annotations?: ToolAnnotations,
   origin?: ToolOrigin,
   mcpAnnotations?: McpToolAnnotations,
+  target: ChatSession | undefined = session,
 ): string {
-  if (!session) return call.id;
+  if (!target) return call.id;
   const message: PanelMessage = {
     id: call.id,
     role: "tool",
@@ -591,29 +1055,30 @@ export function addToolCall(
     toolOrigin: origin,
     toolMcpAnnotations: mcpAnnotations,
   };
-  session.messages.push(message);
-  logToolCall(session, { id: call.id, name: call.name, arguments: call.arguments, mode, origin });
-  void saveSession(session, { immediate: true });
+  target.messages.push(message);
+  logToolCall(target, { id: call.id, name: call.name, arguments: call.arguments, mode, origin });
+  saveSessionLogged(target, { immediate: true });
   return call.id;
 }
 
-/** Records the outcome of a previously-added tool call — both the transcript's display copy and the session's tool-call log (via `completeToolCall`). No-op (log-only) if `id` isn't a tracked tool message. */
+/** Records the outcome of a previously-added tool call on `target`'s chat (defaults to the live `session` — see {@link addToolCall}'s doc comment) — both the transcript's display copy and the session's tool-call log (via `completeToolCall`). No-op (log-only) if `id` isn't a tracked tool message. */
 export function updateToolCallResult(
   id: string,
   outcome: { status: ToolCallStatus; content: string },
+  target: ChatSession | undefined = session,
 ): void {
-  if (!session) return;
-  const msg = findMessage(id);
+  if (!target) return;
+  const msg = findMessage(id, target);
   if (msg && msg.role === "tool") {
     msg.toolStatus = outcome.status;
     msg.content = outcome.content;
   }
   completeToolCall(
-    session,
+    target,
     id,
     outcome.status === "success" ? { result: outcome.content } : { error: outcome.content },
   );
-  void saveSession(session, { immediate: true });
+  saveSessionLogged(target, { immediate: true });
 }
 
 /**
@@ -624,30 +1089,76 @@ export function updateToolCallResult(
  * "retry"}]` on a note reporting a stream that failed mid-generation, so
  * the partial reply above it stays on screen exactly as it streamed and
  * this is the only new thing added, never a replacement for it.
+ *
+ * `target` defaults to the live `session` (see {@link beginAssistantMessage}'s
+ * doc comment) and is threaded through every one of the begin/append/end
+ * calls this makes internally, so a terminal-error note for a BACKGROUND
+ * turn (agentLoop.ts's `runLoop`) still lands in the chat that turn belongs
+ * to, not whatever chat happens to be visible when the note is added.
  */
-export function addAssistantNote(content: string, actions?: PanelMessageAction[]): string {
-  const id = beginAssistantMessage();
-  appendAssistantDelta(id, content);
-  endAssistantMessage(id);
+export function addAssistantNote(
+  content: string,
+  actions?: PanelMessageAction[],
+  target: ChatSession | undefined = session,
+): string {
+  const id = beginAssistantMessage(target);
+  appendAssistantDelta(id, content, target);
+  endAssistantMessage(id, undefined, target);
   if (actions && actions.length > 0) {
-    const msg = findMessage(id);
+    const msg = findMessage(id, target);
     if (msg) msg.actions = actions;
-    if (session) void saveSession(session, { immediate: true });
+    if (target) saveSessionLogged(target, { immediate: true });
   }
   return id;
+}
+
+/** Same cap as `computePreview`'s (src/lib/session.ts) — keeps a renamed chat's storage footprint bounded the same way an unrenamed one's derived title already is. */
+const TITLE_MAX_STORED = 120;
+
+/**
+ * Rename the active chat (decisions/24 §4, the header's inline-edit
+ * affordance). Collapses whitespace and trims; an empty result UNSETS
+ * `session.title` rather than storing `""`, so clearing the name reverts to
+ * the derived title. Persists immediately but WITHOUT stamping `updatedAt`
+ * (`saveSession(session, {immediate: true, touch: false})`) — renaming is
+ * not conversation activity, and jumping the chat to the top of History
+ * because it was relabelled would be surprising (decision 24 §5). No-op if
+ * no session is loaded yet, consistent with every other mutator here.
+ */
+export async function renameActiveChat(title: string): Promise<void> {
+  if (!session) return;
+  const collapsed = title.replace(/\s+/g, " ").trim();
+  const next = collapsed.length > TITLE_MAX_STORED ? collapsed.slice(0, TITLE_MAX_STORED) : collapsed;
+  if (next) {
+    session.title = next;
+  } else {
+    delete session.title;
+  }
+  await saveSession(session, { immediate: true, touch: false });
 }
 
 // ---------------------------------------------------------------------------
 // Stop handling
 // ---------------------------------------------------------------------------
 
-export function setStopHandler(fn: (() => void) | null): void {
-  stopHandler = fn;
+/**
+ * Registers (or clears, passing `null`) the stop handler for `chatId` — one
+ * entry per chat with a turn in flight (decisions/25 §3, card 58), so a
+ * background turn's handler can never be clobbered by a second turn
+ * starting elsewhere, and so {@link requestStop} can target the VISIBLE
+ * chat specifically. Called by `runAgentTurn` (agentLoop.ts) with its
+ * captured session's id at the start of a turn, and again with `null` in
+ * its `finally` when the turn ends.
+ */
+export function setStopHandler(chatId: string, fn: (() => void) | null): void {
+  if (fn) stopHandlers.set(chatId, fn);
+  else stopHandlers.delete(chatId);
 }
 
-/** Called by the composer's stop button. A no-op if nothing registered a handler (e.g. no generation in flight). */
+/** Called by the composer's stop button — cancels the VISIBLE chat's turn specifically (decisions/25 §3, card 58), never a background one. A no-op if nothing registered a handler for it (e.g. no generation in flight for this chat). */
 export function requestStop(): void {
-  stopHandler?.();
+  if (!session) return;
+  stopHandlers.get(session.id)?.();
 }
 
 // ---------------------------------------------------------------------------

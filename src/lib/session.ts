@@ -39,7 +39,7 @@
 // (`deleteChat`/`clearAllChats`) is now the deliberate, explicit way chats
 // go away. `MAX_RETAINED_CHATS` still exists as a much higher backstop cap,
 // purely to keep storage bounded if a user genuinely never deletes anything
-// — see `evictIfNeeded`'s doc comment.
+// — see `evictIfNeededLocked`'s doc comment.
 //
 // MIGRATION (decision 13's "real decision, not an accident"): sessions from
 // before this change are stored under the old `session:<tabId>` keyspace.
@@ -56,9 +56,11 @@
 // starving the debounce indefinitely) — see `saveSession`. The pending-write
 // map lives only in this module's memory, which lives only as long as the
 // panel does; `flushSession`/`flushAllSessions` are exposed so the panel can
-// force a synchronous write on unload/visibility-change and not lose the
-// tail of a streamed message. That wiring is the panel's job, not this
-// module's.
+// force a synchronous write on teardown and not lose the tail of a streamed
+// message. That wiring is the panel's job, not this module's — see card 59,
+// which is what actually wired `flushAllSessions` to `App.svelte`'s
+// `pagehide` listener; before that card this comment described intent that
+// had never actually been connected to anything.
 
 import type { ChatMessage } from "./provider";
 import type { ToolOrigin } from "./mcp/merge";
@@ -122,6 +124,15 @@ export interface ChatSession {
   toolCalls: ToolCallLogEntry[];
   createdAt: number;
   updatedAt: number;
+  /**
+   * An explicit, user-set name (decisions/24-explicit-chat-titles.md).
+   * Absent means "derived" — `src/sidepanel/lib/chatTitle.ts` takes over
+   * exactly as it always has. Set via `renameActiveChat`
+   * (src/sidepanel/stores/panel.svelte.ts); an empty/whitespace-only rename
+   * UNSETS this field rather than storing `""`, so clearing the name reverts
+   * to the derived title.
+   */
+  title?: string;
 }
 
 /** Lightweight view of a chat for a history list (the panel's History view and the options page's "clear history" section) — no message bodies, so listing every chat stays cheap even at a high retention cap. Sourced entirely from `chat:index`, never by reading every chat's full record. */
@@ -134,6 +145,8 @@ export interface ChatSummary {
   toolCallCount: number;
   /** The first user message's content, trimmed and truncated — enough to recognise the chat in a list. `undefined` if the chat has no user message yet (an empty or assistant-only chat). */
   preview?: string;
+  /** Explicit user-set name, mirrored from `ChatSession.title` (decisions/24) — see that field's doc comment. `undefined` means derived. */
+  title?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,8 +166,8 @@ const MAX_WAIT_MS = 2000;
  * away now; this cap only exists so storage stays bounded for a user who
  * never deletes anything. 20x the old per-tab cap (which was itself sized
  * for a handful of tabs, not a lifetime of history), so it should not be
- * something an ordinary user runs into in practice — `evictIfNeeded` only
- * fires past this as a last resort.
+ * something an ordinary user runs into in practice — `evictIfNeededLocked`
+ * only fires past this as a last resort.
  */
 export const MAX_RETAINED_CHATS = 400;
 
@@ -223,7 +236,8 @@ function isChatSession(v: unknown): v is ChatSession {
     Array.isArray(v.toolCalls) &&
     v.toolCalls.every(isToolCallLogEntry) &&
     typeof v.createdAt === "number" &&
-    typeof v.updatedAt === "number"
+    typeof v.updatedAt === "number" &&
+    (v.title === undefined || typeof v.title === "string")
   );
 }
 
@@ -235,6 +249,8 @@ interface ChatIndexEntry {
   messageCount: number;
   toolCallCount: number;
   preview?: string;
+  /** Mirrors `ChatSession.title` (decisions/24) — see that field's doc comment. */
+  title?: string;
 }
 
 function isChatIndexEntry(v: unknown): v is ChatIndexEntry {
@@ -246,7 +262,8 @@ function isChatIndexEntry(v: unknown): v is ChatIndexEntry {
     typeof v.updatedAt === "number" &&
     typeof v.messageCount === "number" &&
     typeof v.toolCallCount === "number" &&
-    (v.preview === undefined || typeof v.preview === "string")
+    (v.preview === undefined || typeof v.preview === "string") &&
+    (v.title === undefined || typeof v.title === "string")
   );
 }
 
@@ -281,11 +298,54 @@ async function writeChatIndex(list: ChatIndexEntry[]): Promise<void> {
   await chrome.storage.local.set({ [CHAT_INDEX_KEY]: list });
 }
 
+/**
+ * Names the first field that fails {@link isChatSession}'s validation, for
+ * {@link readChatRaw}'s warning (card 59 item 4). Mirrors `isChatSession`'s
+ * own checks, in the same order, so the two can never silently drift apart —
+ * only ever called after `isChatSession(v)` has already returned `false`,
+ * so falling through every check below is not expected in practice, but
+ * still returns a name rather than throwing: a diagnostic helper crashing
+ * would be worse than the silent loss this exists to replace.
+ */
+function firstInvalidChatSessionField(v: unknown): string {
+  if (!isRecord(v)) return "(not an object)";
+  if (typeof v.id !== "string") return "id";
+  if (typeof v.origin !== "string") return "origin";
+  if (!Array.isArray(v.messages)) return "messages (not an array)";
+  if (!v.messages.every(isChatMessageLike)) return "messages (an entry failed isChatMessageLike)";
+  if (v.selection !== undefined && !isProviderSelectionLike(v.selection)) return "selection";
+  if (!Array.isArray(v.toolCalls)) return "toolCalls (not an array)";
+  if (!v.toolCalls.every(isToolCallLogEntry)) return "toolCalls (an entry failed isToolCallLogEntry)";
+  if (typeof v.createdAt !== "number") return "createdAt";
+  if (typeof v.updatedAt !== "number") return "updatedAt";
+  if (v.title !== undefined && typeof v.title !== "string") return "title";
+  return "(unknown — isChatSession failed but no individual check here did; the two have drifted apart)";
+}
+
+/**
+ * `undefined` covers two very different situations that used to be
+ * indistinguishable to every caller (card 59 item 4): "no such chat" (never
+ * existed, or was legitimately deleted — expected, silent, fine) versus "a
+ * record exists but fails `isChatSession`" (a permanent, otherwise-silent
+ * loss — this is exactly what made `getOrCreateChatForTab`/`getChat` fall
+ * through to "not found" with zero trace before card 55's `toPlain` fix was
+ * even suspected, see decisions/25). The return value is unchanged
+ * (`undefined` either way, deliberately — see this function's callers, none
+ * of which are meant to treat "corrupt" differently from "absent" for
+ * control flow); only the SECOND case now logs a warning naming the chat id
+ * and the first field that failed, so a report can point at it instead of
+ * inferring it from a full storage dump.
+ */
 async function readChatRaw(chatId: string): Promise<ChatSession | undefined> {
   const key = chatStorageKey(chatId);
   const stored = await chrome.storage.local.get(key);
   const value = stored[key];
-  return isChatSession(value) ? value : undefined;
+  if (value === undefined) return undefined;
+  if (isChatSession(value)) return value;
+  console.warn(
+    `[webmcp][session] chat ${chatId} exists in storage but failed isChatSession validation (first bad field: ${firstInvalidChatSessionField(value)})`,
+  );
+  return undefined;
 }
 
 async function readTabPointer(tabId: number): Promise<TabPointer | undefined> {
@@ -307,12 +367,48 @@ async function removeTabPointersFor(chatIds: ReadonlySet<string>): Promise<void>
   if (stale.length > 0) await chrome.storage.local.remove(stale);
 }
 
+// ---------------------------------------------------------------------------
+// Index write serialization (card 55: `commitSession`'s `chat:index`
+// read-modify-write was unserialized — two concurrent commits for
+// DIFFERENT chats (routine on a tab switch: the outgoing tab's chat may
+// still have a debounced write in flight while the incoming tab's chat
+// commits immediately, see `ProviderPicker.svelte`/`selection.svelte.ts`)
+// both read the index before either wrote it back, so the second write
+// silently dropped the first chat's entry — its `chat:<id>` record
+// survived, but it became permanently invisible to `listChatSummaries`.
+// Every operation that reads-then-writes `chat:index` (commitSession's
+// index update + eviction, `deleteChat`, `clearAllChats`) now funnels
+// through this one in-memory queue so they can never interleave.
+// ---------------------------------------------------------------------------
+
+let indexQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Runs `fn` only after every previously queued index operation has settled
+ * (success or failure), and advances the queue regardless of `fn`'s own
+ * outcome so one rejected operation can never wedge every later one. NOT
+ * reentrant — never call this from inside another `withIndexLock` callback
+ * (that's exactly why {@link evictIfNeededLocked} exists: so `commitSession`
+ * can share ONE lock acquisition for both the index update and eviction
+ * instead of nesting two).
+ */
+function withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = indexQueue.then(fn, fn);
+  indexQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 /**
  * Backstop eviction (see {@link MAX_RETAINED_CHATS}'s doc comment): drops
  * the oldest chats (by `updatedAt`) only once the retained count exceeds
  * the cap. Not the primary way chats go away — explicit deletion is.
+ * Assumes the caller already holds the index lock ({@link withIndexLock}) —
+ * never call this directly outside one (see `commitSession`, its one caller).
  */
-async function evictIfNeeded(): Promise<void> {
+async function evictIfNeededLocked(): Promise<void> {
   const index = await readChatIndex();
   if (index.length <= MAX_RETAINED_CHATS) return;
 
@@ -326,24 +422,66 @@ async function evictIfNeeded(): Promise<void> {
   await removeTabPointersFor(new Set(toEvict.map((e) => e.id)));
 }
 
+/**
+ * Deep-clones `value` into plain data with no `Proxy` anywhere in its graph.
+ *
+ * CARD 55: `src/sidepanel/stores/panel.svelte.ts`'s live `session` is ALWAYS
+ * a Svelte 5 `$state` reactive Proxy (`session = $state<ChatSession |
+ * undefined>(undefined)`), and every write this module ever accepts is that
+ * same live object (never a copy — see panel.svelte.ts's SINGLE OWNER doc
+ * comment). `chrome.storage.local.set`'s own argument serializer does NOT
+ * spec-correctly unwrap a Proxy's array-ness the way `Array.isArray`/
+ * `JSON.stringify` do — verified empirically in a real built extension
+ * (Chrome for Testing): writing a `$state`-proxied `ChatSession` straight to
+ * `chrome.storage.local.set` round-trips its `messages`/`toolCalls` arrays
+ * back as numeric-keyed OBJECTS (`{"0": {...}}`), not arrays. That silently
+ * fails `isChatSession`'s `Array.isArray` checks on every later read —
+ * `getOrCreateChatForTab` and `getChat` then both fall through to "not a
+ * valid chat" for EVERY persisted chat, which is what actually produced
+ * both reported symptoms (history entries that do nothing when opened, and
+ * the transcript resetting to empty on every tab switch), not the origin/
+ * pointer mechanisms this card originally suspected.
+ *
+ * `JSON.stringify`/`JSON.parse` is the deliberate choice here, not
+ * `structuredClone`: `JSON.stringify` DOES correctly unwrap a Proxy's
+ * exotic array-ness (also verified against the same real Proxy), while
+ * `structuredClone` cannot clone a `$state` proxy at all — it throws
+ * "could not be cloned" outright. Every `ChatSession` field (and every
+ * UI-only extra `PanelMessage`/`selectionExplicit` field riding along on
+ * top, see panel.svelte.ts) is already JSON-safe (no `Date`/functions/
+ * `undefined`-meaningful fields), so this is lossless for real data.
+ *
+ * This is the single choke point: every writer (`saveSession`'s immediate
+ * path, the debounced `flushSession` path — which holds a reference to the
+ * same live proxy in its `pending` map — and migration's `commitSession`
+ * call) funnels through `commitSession`, so none of them can regress this
+ * by forgetting to snapshot first.
+ */
+function toPlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 async function commitSession(session: ChatSession): Promise<void> {
-  const key = chatStorageKey(session.id);
-  await chrome.storage.local.set({ [key]: session });
+  const plain = toPlain(session);
+  const key = chatStorageKey(plain.id);
+  await chrome.storage.local.set({ [key]: plain });
 
-  const index = await readChatIndex();
-  const nextIndex = index.filter((e) => e.id !== session.id);
-  nextIndex.push({
-    id: session.id,
-    origin: session.origin,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    messageCount: session.messages.length,
-    toolCallCount: session.toolCalls.length,
-    preview: computePreview(session.messages),
+  await withIndexLock(async () => {
+    const index = await readChatIndex();
+    const nextIndex = index.filter((e) => e.id !== plain.id);
+    nextIndex.push({
+      id: plain.id,
+      origin: plain.origin,
+      createdAt: plain.createdAt,
+      updatedAt: plain.updatedAt,
+      messageCount: plain.messages.length,
+      toolCallCount: plain.toolCalls.length,
+      preview: computePreview(plain.messages),
+      title: plain.title,
+    });
+    await writeChatIndex(nextIndex);
+    await evictIfNeededLocked();
   });
-  await writeChatIndex(nextIndex);
-
-  await evictIfNeeded();
 }
 
 // ---------------------------------------------------------------------------
@@ -469,19 +607,33 @@ export async function getChat(chatId: string): Promise<ChatSession | undefined> 
  * exists. Otherwise returns a fresh, unsaved {@link createChat} result —
  * this does NOT write anything; call {@link saveSession} once the chat has
  * content, and point the tab at it with `setCurrentChatForTab`.
+ *
+ * `resolved` (decisions/25 §2, card 57) reports whether the returned chat
+ * came from an ALREADY-CORRECT pointer, as opposed to a freshly minted one.
+ * A resolved pointer is correct by construction and the caller
+ * (`syncSessionToTab`, src/sidepanel/stores/panel.svelte.ts) should not
+ * rewrite it — doing so unconditionally on every tab sync is exactly the
+ * mechanism by which a spurious extra `setCurrentChatForTab` write could
+ * race a real one and orphan a chat that was never actually lost. This only
+ * NARROWS that window, it does not close it: when a pointer exists but its
+ * `tabOrigin` matches and yet the pointed-at record is missing or fails
+ * `isChatSession` validation, `resolved` is still `false` here (the branch
+ * above falls through to the fresh-chat return) — a fresh chat's pointer
+ * MUST be written in that case, or every subsequent message the tab sends
+ * has nowhere to be found and is silently lost too.
  */
 export async function getOrCreateChatForTab(
   tabId: number,
   currentOrigin: string,
-): Promise<ChatSession> {
+): Promise<{ chat: ChatSession; resolved: boolean }> {
   await migrateLegacySessionsOnce();
 
   const pointer = await readTabPointer(tabId);
   if (pointer && pointer.tabOrigin === currentOrigin) {
     const chat = await readChatRaw(pointer.chatId);
-    if (chat) return chat;
+    if (chat) return { chat, resolved: true };
   }
-  return createChat(currentOrigin);
+  return { chat: createChat(currentOrigin), resolved: false };
 }
 
 /** Point `tabId` at `chatId` as its current chat. `tabOrigin` should be the tab's actual current origin (not the chat's own `origin`, which may legitimately differ — decision 13's cross-origin-open case) — it exists purely to detect a recycled tab id on a later {@link getOrCreateChatForTab} call. A small, immediate write (not debounced) — safe to call on every tab switch/chat open. */
@@ -545,7 +697,7 @@ function clearPending(chatId: string): void {
 
 /**
  * Persist `session`, debounced. Stamps `session.updatedAt = Date.now()`
- * before scheduling.
+ * before scheduling, unless `opts.touch` is explicitly `false`.
  *
  * By default this only *schedules* a write: it resolves once the timer is
  * (re)armed, not once bytes hit `chrome.storage.local`. A write commits
@@ -557,12 +709,18 @@ function clearPending(chatId: string): void {
  * Pass `{immediate: true}` to bypass debouncing and write synchronously —
  * use for a chat's first save, or any point where losing the write to a
  * closed panel would be surprising rather than expected.
+ *
+ * Pass `{touch: false}` (decisions/24 §5) to persist WITHOUT stamping
+ * `updatedAt` — used by renaming, since History is ordered by `updatedAt`
+ * and relabelling a chat is not conversation activity; a rename jumping the
+ * chat to the top of the list would be surprising. Defaults to `true`
+ * (stamp), matching every caller before this option existed.
  */
 export async function saveSession(
   session: ChatSession,
-  opts: { immediate?: boolean } = {},
+  opts: { immediate?: boolean; touch?: boolean } = {},
 ): Promise<void> {
-  session.updatedAt = Date.now();
+  if (opts.touch ?? true) session.updatedAt = Date.now();
 
   if (opts.immediate) {
     clearPending(session.id);
@@ -610,8 +768,10 @@ export async function deleteChat(chatId: string): Promise<void> {
   clearPending(chatId);
   await chrome.storage.local.remove(chatStorageKey(chatId));
 
-  const index = await readChatIndex();
-  await writeChatIndex(index.filter((e) => e.id !== chatId));
+  await withIndexLock(async () => {
+    const index = await readChatIndex();
+    await writeChatIndex(index.filter((e) => e.id !== chatId));
+  });
 
   await removeTabPointersFor(new Set([chatId]));
 }
@@ -622,13 +782,15 @@ export async function clearAllChats(): Promise<void> {
 
   for (const chatId of pending.keys()) clearPending(chatId);
 
-  const all = await chrome.storage.local.get(null);
-  const keysToRemove = Object.keys(all).filter(
-    (k) =>
-      (k.startsWith(CHAT_KEY_PREFIX) || k.startsWith(TAB_POINTER_PREFIX)) &&
-      k !== MIGRATION_FLAG_KEY,
-  );
-  if (keysToRemove.length > 0) await chrome.storage.local.remove(keysToRemove);
+  await withIndexLock(async () => {
+    const all = await chrome.storage.local.get(null);
+    const keysToRemove = Object.keys(all).filter(
+      (k) =>
+        (k.startsWith(CHAT_KEY_PREFIX) || k.startsWith(TAB_POINTER_PREFIX)) &&
+        k !== MIGRATION_FLAG_KEY,
+    );
+    if (keysToRemove.length > 0) await chrome.storage.local.remove(keysToRemove);
+  });
 }
 
 /** Every stored chat's lightweight summary (decision 13's global history list), newest first. Reads only `chat:index` — never a full chat's message history — so this stays cheap at any retention size. */

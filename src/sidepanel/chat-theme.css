@@ -27,14 +27,29 @@
 
 html:root {
   /* ---- Type ----------------------------------------------------------
-     Notably larger than theme.css's 13px Chrome-UI scale. The reference
-     panel reads ~16px body at a ~480px panel width: this is a chat surface
-     you read paragraphs in, not a row of browser chrome. */
-  --font-size-body: 16px; /* transcript, menu rows, composer */
+     Still notably larger than theme.css's 13px Chrome-UI scale: this is a
+     chat surface you read paragraphs in, not a row of browser chrome. Sizes
+     below are pinned to a DOM-extracted style dump of the reference panel
+     (gds-body-l / gds-title-m), not eyeballed — 14px/22px for both body and
+     heading text, which is why --font-size-body and --font-size-heading are
+     now equal; the reference differentiates them by weight (title-m is 500)
+     rather than size, but Header.svelte keeps the chat title at regular
+     weight deliberately (decisions/18) so it doesn't outshout the messages.
+     --font-size-small (13px) and --font-size-caption (12px) are left as-is:
+     the reference's "helper text" measures 13.33px, an artifact of Chrome's
+     own default-16px `small` scaling rather than a deliberate value, not
+     worth chasing.
+     The reference also specifies "Google Sans Flex" for body/title/button
+     text and "Google Symbols" for icons. Neither is adopted: decision 08's
+     whole premise is the literal system-ui stack Chrome's own UI uses, not
+     a web-app font we'd have to bundle or fetch, so system-ui stays even
+     though it renders slightly differently than the reference. */
+  --font-size-body: 14px; /* transcript, menu rows, composer */
   --font-size-small: 13px; /* secondary text, meta, badges, code */
   --font-size-caption: 12px; /* tooltips, tiny labels */
-  --font-size-heading: 16px; /* conversation title, sheet title */
-  --line-height-body: 1.5;
+  --font-size-heading: 14px; /* conversation title, sheet title */
+  --line-height-body: 1.57; /* 22px at 14px, matching the reference's ratio */
+  --line-height-heading: 1.57;
 
   /* ---- Radius ---------------------------------------------------------
      Material 3 expressive is much rounder than the 8px/16px of decision 08. */
@@ -50,8 +65,20 @@ html:root {
      target is one value rather than a number repeated in six components. */
   --icon-size: 24px;
   --icon-button-size: 40px;
+  /* Compact pairing (18px glyph / 32px target) for secondary actions
+     inline with body text, e.g. the per-reply copy/regenerate row. */
+  --icon-button-size-compact: 32px;
   --menu-row-height: 48px;
   --menu-width: 335px;
+
+  /* ---- Motion ----------------------------------------------------------
+     Card 61: the shimmering status line and the pulsing activity dot.
+     theme.css's `--transition-fast` covers discrete state changes (hover,
+     expand/collapse); these two are continuous loop durations for a
+     different kind of motion, so they get their own tokens rather than
+     reusing that one. */
+  --duration-shimmer: 1800ms; /* ActivityIndicator's shimmering sentence */
+  --duration-pulse: 1200ms; /* ToolCallRow's pulsing "running" dot */
 
   /* ---- Elevation ------------------------------------------------------
      Decision 08 banned shadows in favour of 1px outlines; Material 3 floats
@@ -137,12 +164,14 @@ html:root {
  * ---------------------------------------------------------------------- */
 
 button {
-  /* Material 3 tonal button: no border, a filled container, a full pill. */
+  /* Material 3 tonal button: no border, a filled container, a full pill.
+     14px/500 matches the reference's own action-button styling. */
   border: none;
   background: var(--color-surface-container-high);
   border-radius: var(--radius-full);
   padding: var(--space-2) var(--space-4);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-body);
+  font-weight: 500;
 }
 
 button:hover {
@@ -168,8 +197,8 @@ textarea {
 }
 
 h3 {
-  /* --font-size-heading is now 16px, which is a page-level title size. The
-     h3s in tool cards ("Arguments", "Result") are labels, not titles. */
+  /* --font-size-heading is a page-level title size. The h3s in tool cards
+     ("Arguments", "Result") are labels, not titles. */
   font-size: var(--font-size-small);
   font-weight: 600;
 }

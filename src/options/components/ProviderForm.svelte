@@ -95,7 +95,6 @@
     untrack(() => initial?.baseUrl ?? preset?.baseUrl ?? PROVIDER_TYPES[0].defaultBaseUrl),
   );
   let apiKey = $state(untrack(() => initial?.apiKey ?? ""));
-  let defaultModel = $state(untrack(() => initial?.defaultModel ?? ""));
   let showApiKey = $state(false);
 
   /**
@@ -232,7 +231,6 @@
       baseUrl: baseUrl.trim(),
       apiKey: apiKey.trim() ? apiKey.trim() : undefined,
       headers: cleanHeaders.length > 0 ? cleanHeaders : undefined,
-      defaultModel: defaultModel.trim() ? defaultModel.trim() : undefined,
       // "add" mode: whichever preset the picker step chose (undefined for
       // Custom). "edit" mode: always resubmitted unchanged — which preset a
       // provider was originally added from doesn't change just because its
@@ -448,16 +446,6 @@
     (chrome.storage.local) and never synced to your Google account. Anyone with access to this
     browser profile can read them.
   </p>
-
-  <div class="field">
-    <label for="pf-model">Default model (optional)</label>
-    <input
-      id="pf-model"
-      type="text"
-      bind:value={defaultModel}
-      placeholder="e.g. llama3.1 — used when this provider is set as default"
-    />
-  </div>
 
   {#if formError}
     <p class="form__error">{formError}</p>

@@ -37,24 +37,42 @@
   import { initMcpToolsSync } from "./services/mcpTools";
   import { runAgentTurn } from "./services/agentLoop";
   import { createProviderClient } from "../lib/providers/registry";
+  import { iconForProvider } from "../lib/providers/presets";
+  import { flushAllSessions } from "../lib/session";
   import { selection } from "./stores/selection.svelte";
-  import { addAssistantNote, addUserMessage, panel, requestStop, startNewChat } from "./stores/panel.svelte";
+  import {
+    addAssistantNote,
+    addUserMessage,
+    panel,
+    renameActiveChat,
+    requestStop,
+    startNewChat,
+  } from "./stores/panel.svelte";
   import { dismissAllPending, initApprovalPolicySync, requestApproval } from "./stores/approvals.svelte";
 
   let view = $state<"chat" | "inspector" | "history">("chat");
 
-  /** The header's title: the conversation's own name in chat, the view's name elsewhere, so the header always says where you are. */
+  /**
+   * The header's title: the conversation's own name in chat (its explicit
+   * `title` when set — decisions/24 — else derived from the first message),
+   * the view's name elsewhere, so the header always says where you are.
+   */
   const headerTitle = $derived(
     view === "inspector"
       ? "Tools & call log"
       : view === "history"
         ? "Chat history"
-        : titleFromMessages(panel.messages),
+        : titleFromMessages(panel.messages, panel.activeChatTitle),
   );
 
   /** The model answering in this chat, shown on each assistant turn. `undefined` until something is actually resolved. */
   const modelLabel = $derived(
     selection.resolution.status === "ok" ? selection.resolution.model : undefined,
+  );
+
+  /** Which provider produced (or will produce) that reply — falls back to the generic `sparkle` glyph until a provider is actually resolved, same as `modelLabel` falling back to `undefined`. */
+  const modelIcon = $derived(
+    selection.resolution.status === "ok" ? iconForProvider(selection.resolution.config) : "sparkle",
   );
 
   /**
@@ -124,10 +142,28 @@
     // lifetime, so runAgentTurn's per-turn merge (agentLoop.ts) almost
     // always finds something already cached rather than starting cold.
     const teardownMcpToolsSync = initMcpToolsSync();
+
+    // Card 59 item 2: `chrome.storage.local` writes are debounced per chat
+    // (src/lib/session.ts's DEBOUNCE_MS/MAX_WAIT_MS), so the tail of a
+    // streamed reply can still be sitting unwritten when the panel closes.
+    // `flushAllSessions` forces every chat with a write in flight to commit
+    // synchronously — not just the visible one, since decisions/25 §3/card
+    // 58's `liveSessions` means more than one chat can be generating at
+    // once. `pagehide` (not `beforeunload`, which an MV3 extension page is
+    // not guaranteed to receive, and not `visibilitychange`, which also
+    // fires on an ordinary tab switch while the panel document stays open
+    // and mid-stream work is meant to keep running) is Chrome's reliable
+    // signal that this document is actually going away.
+    const handlePageHide = () => {
+      void flushAllSessions();
+    };
+    window.addEventListener("pagehide", handlePageHide);
+
     return () => {
       teardownTabSync();
       teardownPolicySync();
       teardownMcpToolsSync();
+      window.removeEventListener("pagehide", handlePageHide);
     };
   });
 
@@ -158,16 +194,19 @@
    * something in the current one to retire; either way, focus still lands
    * in the composer, since "start typing" is the point of the action.
    *
-   * Also refuses while a reply is streaming — swapping the live session out
+   * Also refuses while a turn is in flight — swapping the live session out
    * from under `panel.svelte.ts`'s in-flight mutators would silently orphan
-   * the stream (its deltas would keep looking up `streamingMessageId` in
-   * the OLD session's messages, but nothing reads that session anymore) —
-   * matches the Header button's own `disabled` guard below, this is the
-   * belt to that braces.
+   * it (its deltas/tool calls would keep looking up state in the OLD
+   * session's messages, but nothing reads that session anymore). Reads
+   * `panel.isTurnActive` (decisions/26, card 60), not `panel.isStreaming` —
+   * the latter goes false for the entire tool-execution round, which used
+   * to let a new chat be started mid-tool-round and orphan the turn exactly
+   * then. Matches the Header button's own `disabled` guard below, this is
+   * the belt to that braces.
    */
   async function handleNewChat(): Promise<void> {
     const info = panel.pageInfo;
-    if (!info || panel.isStreaming) return;
+    if (!info || panel.isTurnActive) return;
     if (panel.messages.length > 0) {
       await startNewChat(info.origin);
     }
@@ -236,19 +275,33 @@
     if (!text) return;
     handleSend(text);
   }
+
+  /**
+   * Card 56 (decisions/24-explicit-chat-titles.md): the header's inline
+   * rename. Passed to `Header` ONLY in chat view (see the template below) so
+   * the inspector/history titles stay non-editable — `renameActiveChat`
+   * itself already no-ops without a loaded session, but the header must
+   * never even offer the affordance outside chat, per the "opt-in per
+   * render, never inferred" rule.
+   */
+  function handleRename(title: string): void {
+    void renameActiveChat(title);
+  }
 </script>
 
 <div class="app">
   <Header
     title={headerTitle}
-    newChatDisabled={!panel.pageInfo || panel.isStreaming}
+    newChatDisabled={!panel.pageInfo || panel.isTurnActive}
     onNewChat={handleNewChat}
+    onRename={view === "chat" ? handleRename : undefined}
   >
     {#snippet menu()}
       <OverflowMenu
         connectionStatus={panel.connectionStatus}
         onOpenHistory={() => (view = "history")}
         onOpenTools={() => (view = "inspector")}
+        onOpenChat={() => (view = "chat")}
       />
     {/snippet}
   </Header>
@@ -257,9 +310,11 @@
     <Transcript
       messages={panel.messages}
       streamingMessageId={panel.streamingMessageId}
+      turnPhase={panel.turnPhase}
       onRetry={handleRetry}
       {toolsNotice}
       {modelLabel}
+      {modelIcon}
     >
       {#snippet notices()}
         {#if panel.pageInfo?.restricted}
@@ -294,7 +349,7 @@
       />
       <Composer
         bind:this={composerRef}
-        streaming={panel.isStreaming}
+        busy={panel.isTurnActive}
         onSend={handleSend}
         onStop={handleStop}
       >
@@ -325,7 +380,7 @@
         restricted={panel.pageInfo?.restricted ?? false}
       />
     {:else}
-      <HistoryPanel />
+      <HistoryPanel onOpenChat={() => (view = "chat")} />
     {/if}
   {/if}
 </div>

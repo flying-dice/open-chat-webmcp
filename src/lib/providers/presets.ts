@@ -31,6 +31,7 @@
 // provider from this preset and never edited the field themselves.
 
 import type { ProviderType } from "../provider";
+import type { IconName } from "../icons";
 
 export interface ProviderPreset {
   /** Stable; stored on `ProviderConfig.presetId` (registry.ts) when a provider is added from this preset. Never reuse an id for a different backend. */
@@ -54,6 +55,14 @@ export interface ProviderPreset {
   docsUrl: string;
   /** Anything surprising about this backend worth a one-line callout in the form (decisions/21). */
   note?: string;
+  /**
+   * Shown next to this backend's models (picker rows, transcript header) so
+   * a reply visibly comes from the vendor that answered it, not from
+   * whichever provider happens to be selected today. A deliberately generic
+   * glyph, not that vendor's real mark — same trademark-avoidance rule as
+   * `sparkle` in src/lib/icons.ts, just applied per-vendor instead of once.
+   */
+  icon: IconName;
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -67,6 +76,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: false,
     local: true,
     docsUrl: "https://ollama.com/download",
+    icon: "ollama",
   },
   {
     id: "lmstudio",
@@ -77,6 +87,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     local: true,
     docsUrl: "https://lmstudio.ai/docs/app/api",
     note: "Start LM Studio's local server (Developer tab → Start Server) before connecting.",
+    icon: "widgets",
   },
   {
     id: "llamacpp",
@@ -87,6 +98,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     local: true,
     docsUrl: "https://github.com/ggml-org/llama.cpp/tree/master/tools/server",
     note: "Start llama.cpp's server (llama-server) before connecting; it must already be running.",
+    icon: "terminal",
   },
 
   // ---- Hosted OpenAI-compatible backends ------------------------------
@@ -98,6 +110,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://platform.openai.com/api-keys",
+    icon: "hexagon",
   },
   {
     id: "anthropic",
@@ -108,6 +121,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     local: false,
     docsUrl: "https://platform.claude.com/settings/keys",
     note: "Uses Anthropic's OpenAI SDK compatibility layer — some OpenAI-only request fields (response_format, logprobs, and others) are silently ignored rather than erroring.",
+    icon: "diamond",
   },
   {
     id: "gemini",
@@ -118,6 +132,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     local: false,
     docsUrl: "https://aistudio.google.com/app/apikey",
     note: "Uses Gemini's OpenAI-compatible endpoint.",
+    icon: "sparkle",
   },
   {
     id: "openrouter",
@@ -127,6 +142,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://openrouter.ai/keys",
+    icon: "alt_route",
   },
   {
     id: "groq",
@@ -136,6 +152,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://console.groq.com/keys",
+    icon: "bolt",
   },
   {
     id: "mistral",
@@ -145,6 +162,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://console.mistral.ai/api-keys",
+    icon: "air",
   },
   {
     id: "deepseek",
@@ -154,6 +172,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://platform.deepseek.com/api_keys",
+    icon: "explore",
   },
   {
     id: "xai",
@@ -163,6 +182,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://console.x.ai/team/default/api-keys",
+    icon: "close",
   },
   {
     id: "together",
@@ -172,8 +192,25 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     requiresKey: true,
     local: false,
     docsUrl: "https://api.together.ai/settings/api-keys",
+    icon: "group",
   },
 ];
+
+/** Fallback for a provider with no matching preset — a hand-added "Custom (OpenAI-compatible)" provider, or a `presetId` that no longer matches this catalog. See {@link iconForProvider}. */
+const DEFAULT_PROVIDER_ICON: IconName = "smart_toy";
+
+/**
+ * The icon to show next to a provider's models (picker rows, transcript
+ * header) — {@link getPreset}'s icon when `presetId` still matches a known
+ * backend, else a type-appropriate fallback so an unrecognized provider
+ * still reads as "local runtime" vs. "some OpenAI-compatible API" rather
+ * than defaulting to one specific vendor's glyph.
+ */
+export function iconForProvider(provider: { type: ProviderType; presetId?: string }): IconName {
+  const preset = getPreset(provider.presetId);
+  if (preset) return preset.icon;
+  return provider.type === "ollama" ? "ollama" : DEFAULT_PROVIDER_ICON;
+}
 
 /** Look up a preset by its stored `ProviderConfig.presetId`. `undefined` for an id that doesn't (or no longer) matches any catalog entry — e.g. a since-removed preset, or absence meaning Custom (decisions/21: "no migration required, absence is a valid state"). Callers must treat that the same as "no preset" rather than erroring. */
 export function getPreset(id: string | undefined): ProviderPreset | undefined {

@@ -4,7 +4,7 @@
    * annotations — the single most useful thing for debugging why a WebMCP
    * site does or doesn't work as expected. The input schema is collapsed by
    * default (it's the least-often-needed detail) behind the same
-   * chevron-button pattern ToolCallCard.svelte uses.
+   * chevron-button pattern ToolCallRow.svelte uses.
    *
    * There is no `source` badge any more (native / polyfill / our shim):
    * decisions/16-native-webmcp-client.md deleted the MAIN-world bridge that
@@ -15,7 +15,7 @@
    * Per decisions/05 and decisions/17, `annotations` are reported by the page
    * itself and are not a security guarantee — the badges here say only what
    * the page claims, same wording discipline as
-   * ApprovalCard.svelte/ToolCallCard.svelte. `ToolAnnotations` is exactly
+   * ApprovalCard.svelte/ToolCallRow.svelte. `ToolAnnotations` is exactly
    * `{ readOnlyHint, untrustedContentHint }` — there is no `destructiveHint`
    * (decisions/17): it isn't in the WebMCP IDL, and Chrome's WebIDL
    * dictionary conversion silently drops any unknown member a page sets, so

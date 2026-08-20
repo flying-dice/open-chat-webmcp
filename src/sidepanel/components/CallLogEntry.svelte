@@ -4,11 +4,14 @@
    * decisions/05-tool-approval-policy.md: "nothing happens invisibly").
    * Reuses ToolArgs.svelte/ToolArgValue.svelte for arguments and results
    * rather than a third renderer, same as ApprovalCard.svelte/
-   * ToolCallCard.svelte do for the transcript.
+   * ToolCallRow.svelte do for the transcript.
    *
    * Starts expanded for anything a human had to decide on or that didn't
-   * simply succeed (`approved`, `denied`, or an error) — mirroring
-   * ToolCallCard.svelte's rule — because per decisions/05 "a denied call
+   * simply succeed (`approved`, `denied`, or an error) — the call log is
+   * the accountability surface (card 11) and keeps this rule even where
+   * card 61's transcript timeline (ActivityGroup.svelte/ToolCallRow.svelte)
+   * now defaults its own per-row payload closed and instead expands at the
+   * GROUP level for the same cases — because per decisions/05 "a denied call
    * must be as visible as a successful one": a denied entry gets the same
    * danger-coloured treatment a failed one does, never a quieter one.
    * Auto-run successes start collapsed since nobody had to review them.
@@ -21,6 +24,7 @@
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
   import { originLabel } from "../../lib/mcp/merge";
+  import { formatDuration } from "../lib/duration";
   import ToolArgs from "./ToolArgs.svelte";
   import ToolArgValue from "./ToolArgValue.svelte";
 
@@ -47,8 +51,7 @@
 
   const durationLabel = $derived.by(() => {
     if (entry.endedAt === undefined) return "running…";
-    const ms = entry.endedAt - entry.startedAt;
-    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+    return formatDuration(entry.endedAt - entry.startedAt);
   });
 
   const timeLabel = $derived(new Date(entry.startedAt).toLocaleTimeString());
@@ -221,7 +224,7 @@
   }
 
   /* Decisions/19 §6 — the origin badge, same tinted-primary treatment as
-     ToolListItem.svelte/ToolCallCard.svelte's so a remote call reads
+     ToolListItem.svelte/ToolCallRow.svelte's so a remote call reads
      consistently everywhere it's named. */
   .badge-server {
     color: var(--color-primary);

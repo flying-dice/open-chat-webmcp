@@ -28,6 +28,13 @@
     tone?: "default" | "primary" | "danger";
     /** Renders a filled container instead of a bare glyph (the send button). */
     variant?: "plain" | "filled";
+    /**
+     * "compact" shrinks the hit target and glyph together (32px / 18px)
+     * for secondary actions sitting inline with body text — e.g. the
+     * per-reply copy/regenerate row — where the default 40px/24px pairing
+     * reads as oversized against the surrounding content.
+     */
+    size?: "default" | "compact";
     title?: string;
   }
 
@@ -40,6 +47,7 @@
     tooltipPlacement = "top",
     tone = "default",
     variant = "plain",
+    size = "default",
     title,
   }: Props = $props();
 </script>
@@ -50,12 +58,13 @@
     class="icon-button"
     data-tone={tone}
     data-variant={variant}
+    data-size={size}
     aria-label={label}
     title={title ?? (tooltip ? undefined : label)}
     {disabled}
     {onclick}
   >
-    <Icon name={icon} />
+    <Icon name={icon} size={size === "compact" ? 18 : undefined} />
   </button>
 {/snippet}
 
@@ -100,6 +109,11 @@
   .icon-button:disabled {
     cursor: default;
     opacity: 0.38; /* M3 disabled content opacity */
+  }
+
+  .icon-button[data-size="compact"] {
+    width: var(--icon-button-size-compact);
+    height: var(--icon-button-size-compact);
   }
 
   .icon-button[data-tone="primary"] {

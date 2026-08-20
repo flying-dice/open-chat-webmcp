@@ -29,10 +29,12 @@
     onOpenHistory: () => void;
     /** Open the tools & call log view. */
     onOpenTools: () => void;
+    /** Switch back to the chat view — called only once a recent-chat open actually succeeds. */
+    onOpenChat: () => void;
     connectionStatus: ConnectionStatus;
   }
 
-  const { onOpenHistory, onOpenTools, connectionStatus }: Props = $props();
+  const { onOpenHistory, onOpenTools, onOpenChat, connectionStatus }: Props = $props();
 
   /** How many chats the top level lists before deferring to "More". Five is what fits above the divider without the menu needing to scroll at a typical panel height. */
   const RECENT_LIMIT = 5;
@@ -92,7 +94,7 @@
 
   async function handleOpenChat(id: string): Promise<void> {
     close();
-    await openChatInTab(id);
+    if (await openChatInTab(id)) onOpenChat();
   }
 </script>
 
@@ -100,6 +102,7 @@
   <IconButton
     icon="more_vert"
     label="More options"
+    size="compact"
     onclick={toggle}
     tooltipPlacement="bottom"
   />

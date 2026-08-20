@@ -1,10 +1,21 @@
 <script lang="ts">
   /**
    * Multiline composer: Enter sends, Shift+Enter inserts a newline, and the
-   * send button swaps for a stop button while a message is streaming
-   * (card 07 checklist). Sending itself is a stub — it hands the typed text
-   * to `onSend` and clears the textarea; wiring that to an actual model call
-   * is the card 08/09 agent loop's job, not this shell's.
+   * send button swaps for a stop button while `busy` is true (card 07
+   * checklist, revised by card 60/decisions/26). Sending itself is a stub —
+   * it hands the typed text to `onSend` and clears the textarea; wiring that
+   * to an actual model call is the card 08/09 agent loop's job, not this
+   * shell's.
+   *
+   * `busy` (renamed from `streaming` by card 60): true whenever a turn is in
+   * flight — streaming tokens, running a tool call, or waiting on approval —
+   * not just while tokens are landing. Before card 60 this prop was
+   * `panel.isStreaming`, which `runLoop` (agentLoop.ts) makes false for the
+   * ENTIRE tool-execution round (it closes the assistant message before
+   * running any tool calls) — so the Stop button vanished for exactly the
+   * part of a turn most likely to hang (a slow/misbehaving tool, up to the
+   * 35s tool timeout) and most in need of it. `panel.isTurnActive`
+   * (App.svelte) is what now feeds this prop.
    *
    * Card 35 (boards/project-backlog/35-force-explicit-model-selection.md):
    * the textarea/send form is replaced entirely by a `blocked` empty state
@@ -25,9 +36,12 @@
    *     35's checklist) — routes to the picker in one click.
    *   - `needs-confirmation` — a selection IS resolved, but only because
    *     `syncToTab` silently seeded it from the stored default
-   *     (`!panel.selectionExplicit`, see panel.svelte.ts) — offers a direct
-   *     one-click "Use it" via `confirmSelection`, plus a "Change" link
-   *     into the picker for anyone who wants something else.
+   *     (`!panel.selectionExplicit`, see panel.svelte.ts). Says so, and
+   *     leaves the confirming to the model chip in the action row below,
+   *     which is already showing the same provider/model and already opens
+   *     the picker. This state used to carry its own "Use <model>" button
+   *     and "Change" link as well; since decisions/18 put the chip inside
+   *     the composer, that was the same offer made twice in one box.
    *
    * Shape (decisions/18): one outlined, rounded box containing the textarea
    * on top and an action row beneath it — a "+" affordance on the left, the
@@ -37,10 +51,10 @@
    */
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
-  import { selection, openPicker, confirmSelection, openOptionsPage } from "../stores/selection.svelte";
+  import { selection, openPicker, openOptionsPage } from "../stores/selection.svelte";
 
   interface Props {
-    streaming: boolean;
+    busy: boolean;
     onSend: (text: string) => void;
     onStop: () => void;
     /**
@@ -51,11 +65,10 @@
     picker?: Snippet;
   }
 
-  let { streaming, onSend, onStop, picker }: Props = $props();
+  let { busy, onSend, onStop, picker }: Props = $props();
 
   let value = $state("");
   let textarea: HTMLTextAreaElement | undefined = $state();
-  let confirming = $state(false);
 
   type Blocked =
     | { kind: "providers-loading" }
@@ -64,12 +77,12 @@
     | { kind: "unselected"; dangling: boolean }
     | { kind: "needs-confirmation"; label: string };
 
-  // Never blocks mid-stream: the turn already committed to a resolved
+  // Never blocks mid-turn: the turn already committed to a resolved
   // selection when it started, and yanking the composer away to show a
-  // banner while a reply is still streaming would be confusing, not
-  // helpful.
+  // banner while a reply is streaming or a tool is running would be
+  // confusing, not helpful.
   const blocked = $derived.by((): Blocked | undefined => {
-    if (streaming) return undefined;
+    if (busy) return undefined;
     if (selection.providersStatus === "loading") return { kind: "providers-loading" };
     if (selection.providersStatus === "error") return { kind: "providers-error" };
     if (selection.providers.length === 0) return { kind: "no-providers" };
@@ -86,7 +99,7 @@
 
   function send(): void {
     const text = value.trim();
-    if (!text || streaming || blocked) return;
+    if (!text || busy || blocked) return;
     onSend(text);
     value = "";
     textarea?.focus();
@@ -99,16 +112,6 @@
     if (event.isComposing) return;
     event.preventDefault();
     send();
-  }
-
-  async function handleConfirm(): Promise<void> {
-    confirming = true;
-    try {
-      await confirmSelection();
-      textarea?.focus();
-    } finally {
-      confirming = false;
-    }
   }
 
   /** card 36: let App.svelte put focus here after starting a new chat. */
@@ -145,13 +148,9 @@
         </p>
         <button type="button" onclick={openPicker}>Choose provider &amp; model</button>
       {:else if blocked.kind === "needs-confirmation"}
-        <p class="blocked-text text-small">This chat will use <strong>{blocked.label}</strong>.</p>
-        <div class="blocked-actions">
-          <button type="button" disabled={confirming} onclick={handleConfirm}>
-            {confirming ? "Confirming…" : `Use ${blocked.label}`}
-          </button>
-          <button type="button" class="link-btn" onclick={openPicker}>Change</button>
-        </div>
+        <p class="blocked-text text-small">
+          This chat will use <strong>{blocked.label}</strong> — confirm it below to start.
+        </p>
       {/if}
     </div>
   {:else}
@@ -161,7 +160,7 @@
       onkeydown={handleKeydown}
       placeholder="Ask about this page…"
       rows="1"
-      disabled={streaming}
+      disabled={busy}
       aria-label="Message"
       aria-describedby="composer-hint"
     ></textarea>
@@ -187,14 +186,22 @@
            this being here. -->
       {#if picker}{@render picker()}{/if}
 
-      {#if streaming}
-        <IconButton icon="stop" label="Stop generating" tone="danger" variant="filled" onclick={onStop} />
+      {#if busy}
+        <IconButton
+          icon="stop"
+          label="Stop generating"
+          tone="danger"
+          variant="filled"
+          size="compact"
+          onclick={onStop}
+        />
       {:else if !blocked}
         <IconButton
           icon="arrow_upward"
           label="Send"
           tone="primary"
           variant="filled"
+          size="compact"
           tooltip={false}
           disabled={!value.trim()}
           onclick={send}
@@ -284,24 +291,4 @@
     color: var(--color-on-surface-variant);
   }
 
-  .blocked-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-
-  .link-btn {
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--color-primary);
-    font-size: var(--font-size-small);
-    flex: 0 0 auto;
-  }
-
-  .link-btn:hover {
-    background: transparent;
-    text-decoration: underline;
-  }
 </style>

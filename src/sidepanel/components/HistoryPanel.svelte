@@ -20,6 +20,13 @@
   import { discardActiveChatIfDeleted, openChatInTab, panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
 
+  interface Props {
+    /** Switch back to the chat view — called only once opening a chat actually succeeds. */
+    onOpenChat: () => void;
+  }
+
+  const { onOpenChat }: Props = $props();
+
   let summaries = $state<ChatSummary[]>([]);
   let status = $state<"loading" | "loaded">("loading");
   let openingId = $state<string | undefined>(undefined);
@@ -44,7 +51,7 @@
     if (openingId || deletingId) return;
     openingId = chatId;
     try {
-      await openChatInTab(chatId);
+      if (await openChatInTab(chatId)) onOpenChat();
     } finally {
       openingId = undefined;
     }

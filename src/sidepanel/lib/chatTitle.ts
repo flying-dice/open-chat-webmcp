@@ -2,14 +2,17 @@
  * Conversation titles for the panel header and the overflow menu's recent
  * chats list.
  *
- * Chats have no stored title. `ChatSummary.preview` (src/lib/session.ts)
- * already holds the first user message trimmed to 120 chars, and the live
- * session's messages hold the same text, so a title is a pure derivation
- * from what we already persist — no schema change, no migration, and no
- * extra provider round-trip to generate one.
+ * A chat may carry an explicit, user-set `title`
+ * (decisions/24-explicit-chat-titles.md) — set by renaming it from the
+ * header. When present, it always wins. When absent, the title is still a
+ * pure derivation from what we already persist: `ChatSummary.preview`
+ * (src/lib/session.ts) holds the first user message trimmed to 120 chars,
+ * and the live session's messages hold the same text — no schema change
+ * beyond the optional field itself, no migration, and no extra provider
+ * round-trip to generate one.
  *
- * Both call sites go through here so the header and the menu can never
- * disagree about what a chat is called.
+ * Every call site goes through here so the header, the overflow menu, and
+ * the History rows can never disagree about what a chat is called.
  */
 
 import type { ChatSummary } from "../../lib/session";
@@ -34,19 +37,31 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
-/** Title for the chat currently loaded in the panel, from its live messages. */
-export function titleFromMessages(messages: readonly PanelMessage[]): string {
+/**
+ * Title for the chat currently loaded in the panel. `explicitTitle` — the
+ * live session's own `title` (decisions/24) — wins when set; otherwise the
+ * title is derived from the first user message, exactly as before.
+ */
+export function titleFromMessages(
+  messages: readonly PanelMessage[],
+  explicitTitle?: string,
+): string {
+  if (explicitTitle) return truncate(firstLine(explicitTitle), TITLE_MAX);
   const firstUser = messages.find((m) => m.role === "user");
   const text = firstUser ? firstLine(firstUser.content) : "";
   return text ? truncate(text, TITLE_MAX) : UNTITLED_CHAT;
 }
 
 /**
- * Title for a chat in a list. Falls back to the origin rather than
- * "New chat" — in a list of many chats, knowing which site one belongs to
- * is more use than knowing it was never named.
+ * Title for a chat in a list (the overflow menu's recent chats and the
+ * History rows). An explicit `summary.title` (decisions/24) wins; otherwise
+ * falls back to the preview, then to the origin rather than "New chat" — in
+ * a list of many chats, knowing which site one belongs to is more use than
+ * knowing it was never named.
  */
 export function titleFromSummary(summary: ChatSummary, max = TITLE_MAX): string {
+  const title = summary.title ? firstLine(summary.title) : "";
+  if (title) return truncate(title, max);
   const preview = summary.preview ? firstLine(summary.preview) : "";
   if (preview) return truncate(preview, max);
   return summary.origin || UNTITLED_CHAT;

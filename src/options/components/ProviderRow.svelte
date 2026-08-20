@@ -3,8 +3,10 @@
   // storage mutation and the permission/test-connection flow live in the
   // parent (ProvidersSection.svelte), passed in as callbacks, so this
   // component never touches chrome.storage or chrome.permissions directly.
+  import { untrack } from "svelte";
   import type { ProviderConfig } from "../../lib/providers/registry";
   import { getPreset } from "../../lib/providers/presets";
+  import type { ProviderModel } from "../../lib/provider";
   import type { TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
   import Markdown from "../../lib/components/Markdown.svelte";
@@ -24,23 +26,30 @@
     testOutcome: TestOutcome | undefined;
     testing: boolean;
     /**
-     * Card 41 (decisions/11-provider-capability-detection.md): whether
-     * `provider.defaultModel`'s tool-capability is still being checked —
+     * Card 52 (decisions/23-default-model-from-known-list-not-free-text.md):
+     * whether this provider's tool-capable model list is still loading —
      * "Set as default" reads "Checking…" and stays disabled meanwhile,
-     * rather than flashing enabled before the answer is in.
+     * rather than flashing a dropdown/reason before the answer is in.
      */
-    checkingDefaultModel: boolean;
-    /** Whether `provider.defaultModel` is confirmed tool-capable — the same three-state rule (tool-capable / no-tools / unknown) the side panel's picker applies, computed once in the parent (src/options/components/ProvidersSection.svelte) via the shared src/lib/providers/capability.ts so both surfaces never disagree. */
-    canSetDefault: boolean;
-    /** The inline reason "Set as default" is disabled, in the picker's own wording — `undefined` once the model checks out (or while still checking). */
-    setDefaultBlockedReason: string | undefined;
+    defaultModelsLoading: boolean;
+    /**
+     * This provider's tool-capable models (already filtered by the parent,
+     * src/options/components/ProvidersSection.svelte, via the shared
+     * src/lib/providers/capability.ts — the same list the side panel's
+     * picker would offer). Empty means blocked; see
+     * `defaultModelBlockedReason` for why.
+     */
+    defaultModelOptions: ProviderModel[];
+    /** The inline reason "Set as default" is blocked, in the picker's own wording — `undefined` once at least one tool-capable model is available (or while still loading). */
+    defaultModelBlockedReason: string | undefined;
     /** Set only when `isDefault` and the STORED default no longer checks out (model removed, re-pulled without tools, provider deleted) — card 41's fourth checklist item: an already-stored invalid default must surface clearly, not silently. */
     defaultInvalidReason: string | undefined;
     onEdit: () => void;
     onRemove: () => void;
     onMoveUp: () => void;
     onMoveDown: () => void;
-    onSetDefault: () => void;
+    /** Card 52: the row picks which of `defaultModelOptions` to set, via its own local `selectedModelId` below. */
+    onSetDefault: (modelId: string) => void;
     onTest: () => void;
   }
 
@@ -52,9 +61,9 @@
     permissionGranted,
     testOutcome,
     testing,
-    checkingDefaultModel,
-    canSetDefault,
-    setDefaultBlockedReason,
+    defaultModelsLoading,
+    defaultModelOptions,
+    defaultModelBlockedReason,
     defaultInvalidReason,
     onEdit,
     onRemove,
@@ -63,6 +72,22 @@
     onSetDefault,
     onTest,
   }: Props = $props();
+
+  /**
+   * Card 52: the model currently chosen in this row's dropdown — defaults to
+   * the first tool-capable model, and resets whenever `defaultModelOptions`
+   * changes out from under it (a reload landing, or the selected model no
+   * longer being in the list) so the dropdown never holds a stale/invalid
+   * id. A provider (identity) change already gets a fresh instance of this
+   * component for free — `{#each ... (provider.id)}` in ProvidersSection.svelte
+   * keys on it, so Svelte remounts rather than reusing this state.
+   */
+  let selectedModelId = $state(untrack(() => defaultModelOptions[0]?.id ?? ""));
+  $effect(() => {
+    if (!defaultModelOptions.some((m) => m.id === selectedModelId)) {
+      selectedModelId = defaultModelOptions[0]?.id ?? "";
+    }
+  });
 
   const TYPE_LABELS: Record<ProviderConfig["type"], string> = {
     ollama: "Ollama",
@@ -130,19 +155,26 @@
         {testing ? "Testing…" : "Test connection"}
       </button>
       {#if !isDefault}
-        <button type="button" onclick={onSetDefault} disabled={checkingDefaultModel || !canSetDefault}>
-          {checkingDefaultModel ? "Checking…" : "Set as default"}
-        </button>
+        {#if defaultModelsLoading}
+          <button type="button" disabled>Checking…</button>
+        {:else if defaultModelOptions.length > 0}
+          <select bind:value={selectedModelId} aria-label={`Default model for ${provider.name}`}>
+            {#each defaultModelOptions as model (model.id)}
+              <option value={model.id}>{model.name}</option>
+            {/each}
+          </select>
+          <button type="button" onclick={() => onSetDefault(selectedModelId)}>Set as default</button>
+        {/if}
       {/if}
       <button type="button" onclick={onEdit}>Edit</button>
       <button type="button" onclick={onRemove}>Remove</button>
     </div>
   </div>
 
-  {#if !isDefault && !checkingDefaultModel && setDefaultBlockedReason}
-    <!-- Card 41: same treatment ProviderPicker.svelte gives a disabled
+  {#if !isDefault && !defaultModelsLoading && defaultModelOptions.length === 0 && defaultModelBlockedReason}
+    <!-- Card 41/52: same treatment ProviderPicker.svelte gives a disabled
          model row's reason — muted, explanatory text, not an alarm. -->
-    <p class="hint">{setDefaultBlockedReason}</p>
+    <p class="hint">{defaultModelBlockedReason}</p>
   {/if}
 
   {#if testOutcome}

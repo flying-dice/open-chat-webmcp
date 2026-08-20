@@ -58,15 +58,15 @@
          its tooltip changes with it so a screen reader hears it too. -->
     <Tooltip label="Copied">
       <span class="copied-badge" role="status">
-        <Icon name="check" />
+        <Icon name="check" size={18} />
       </span>
     </Tooltip>
   {:else}
-    <IconButton icon="content_copy" label="Copy response" onclick={copy} />
+    <IconButton icon="content_copy" label="Copy response" size="compact" onclick={copy} />
   {/if}
 
   {#if onRegenerate}
-    <IconButton icon="refresh" label="Regenerate" onclick={onRegenerate} />
+    <IconButton icon="refresh" label="Regenerate" size="compact" onclick={onRegenerate} />
   {/if}
 </div>
 
@@ -82,14 +82,14 @@
     margin-left: calc(var(--space-2) * -1);
   }
 
-  /* Matches IconButton's geometry so the row doesn't jump when the copy
-     button swaps to its confirmation. */
+  /* Matches IconButton's compact geometry so the row doesn't jump when the
+     copy button swaps to its confirmation. */
   .copied-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--icon-button-size);
-    height: var(--icon-button-size);
+    width: var(--icon-button-size-compact);
+    height: var(--icon-button-size-compact);
     color: var(--color-primary);
   }
 </style>

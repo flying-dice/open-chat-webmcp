@@ -69,8 +69,8 @@ import {
   type ProviderError,
   type ProviderModel,
 } from "../../lib/provider";
-import { isSelectable, resolveCapability } from "../../lib/providers/capability";
-import { flushSession, type SelectionResolution } from "../../lib/session";
+import { isSelectable, resolveCapabilities, resolveCapability } from "../../lib/providers/capability";
+import type { SelectionResolution } from "../../lib/session";
 import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
 
 export type { SelectionResolution } from "../../lib/session";
@@ -307,15 +307,6 @@ function buildClient(config: ProviderConfig): ChatProvider | undefined {
   }
 }
 
-/** Capability lookups run concurrently, one per model (decision 06's "issued concurrently and cached thereafter", carried into decision 11). A lookup failure resolves to `"unknown"` with the error as its reason — never dropped from the list (src/lib/providers/capability.ts's {@link resolveCapability}, shared with the options page's default-model check — card 41). */
-async function resolveCapabilities(
-  client: ChatProvider,
-  models: ProviderModel[],
-): Promise<ModelListEntry[]> {
-  const capabilities = await Promise.all(models.map((model) => resolveCapability(client, model)));
-  return models.map((model, i) => ({ model, capability: capabilities[i] }));
-}
-
 /**
  * Load (or reload) ONE provider's model list, writing only that provider's
  * slot in `providerModelsState`. This is the unit of "degrade per
@@ -454,22 +445,24 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   resolution = { status: "ok", config, model };
 }
 
-/**
- * Card 35's one-click confirmation for the "needs confirmation" empty
- * state (`selection.needsConfirmation`): the current chat's selection is
- * already resolved — `syncToTab` seeded it from the stored default — the
- * user just hasn't deliberately confirmed it for THIS chat yet. Marks it
- * explicit without changing provider or model (unlike {@link selectModel},
- * there's no different model to commit here — the whole point is this one
- * is already right, it just needed a nod). No-ops unless
- * `resolution.status === "ok"`.
+/*
+ * REMOVED: `confirmSelection`, card 35's one-click "Use <provider> · <model>"
+ * nod for the `needs-confirmation` state.
+ *
+ * Since decisions/18 the model chip lives inside the composer, right under
+ * that state's own explanatory line, so the composer was offering the same
+ * confirmation twice in one box. The chip won: it names the same
+ * provider/model and opens the picker, and picking the already-active row
+ * there goes through `selectModel` — which marks the selection explicit
+ * exactly as this did.
+ *
+ * Routing confirmation through `selectModel` also closes a hole this had:
+ * it only checked `resolution.status === "ok"`, never capability, so it
+ * could confirm a model that isn't tool-capable. `handlePickModel` in
+ * ProviderPicker.svelte refuses those rows (decisions/06, /11).
  */
-export async function confirmSelection(): Promise<void> {
-  if (resolution.status !== "ok" || tabId === undefined) return;
-  await setSessionSelection(tabId, { providerId: resolution.config.id, model: resolution.model }, true);
-}
 
-/** Card 35/36's shared picker popover — open it (e.g. from Composer's blocked-composer empty state), so ProviderPicker.svelte's already-mounted instance in the header shows up in exactly one click. */
+/** Card 35/36's shared picker popover — open it (e.g. from Composer's blocked-composer empty state), so ProviderPicker.svelte's already-mounted instance in the composer's action row shows up in exactly one click. */
 export function openPicker(): void {
   pickerOpen = true;
 }
@@ -497,13 +490,6 @@ export async function refresh(): Promise<void> {
   const currentOrigin = origin;
   tabId = undefined; // force syncToTab's changedTab branch
   await syncToTab(currentTabId, currentOrigin);
-}
-
-/** Flush any pending session write immediately — the picker component calls this from the panel's unload/visibility-change path if it owns one, mirroring `src/lib/session.ts`'s `flushSession` contract. Safe to call with nothing pending. `src/lib/session.ts`'s debounce map is keyed by chat id (decision 13), not tab id, so this flushes whichever chat `panel.svelte.ts` currently has loaded for this tab rather than `tabId` itself. */
-export async function flush(): Promise<void> {
-  const chatId = panel.activeChatId;
-  if (tabId === undefined || chatId === undefined) return;
-  await flushSession(chatId);
 }
 
 /** Open the extension's options page — the "no providers registered" and "provider deleted" empty states both link here (decisions/10: provider CRUD lives only in the options page). */

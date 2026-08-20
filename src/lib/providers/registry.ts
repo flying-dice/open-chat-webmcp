@@ -44,7 +44,6 @@ export interface ProviderConfig {
   apiKey?: string;
   /** Custom request headers sent on every call (decision 15). Values are credentials — see {@link ProviderHeader}. Empty/absent means none configured. */
   headers?: ProviderHeader[];
-  defaultModel?: string;
   /**
    * The `ProviderPreset.id` (src/lib/providers/presets.ts) this provider was
    * added from, if any (decisions/21-provider-presets.md). OPTIONAL, and
@@ -82,7 +81,6 @@ function isStoredProviderConfig(v: unknown): v is StoredProviderConfig {
     typeof v.baseUrl === "string" &&
     typeof v.type === "string" &&
     (PROVIDER_TYPES as readonly string[]).includes(v.type) &&
-    (v.defaultModel === undefined || typeof v.defaultModel === "string") &&
     (v.presetId === undefined || typeof v.presetId === "string")
   );
 }

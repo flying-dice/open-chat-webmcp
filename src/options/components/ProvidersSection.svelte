@@ -18,10 +18,11 @@
     type ProviderConfig,
     type ProviderSelection,
   } from "../../lib/providers/registry";
-  import type { ChatProvider, ModelCapabilities } from "../../lib/provider";
+  import { describeProviderError, type ChatProvider, type ModelCapabilities, type ProviderModel } from "../../lib/provider";
   import {
     isSelectable,
     reasonForCapability,
+    resolveCapabilities,
     resolveCapability,
   } from "../../lib/providers/capability";
   import { hasHostPermission, requestHostPermission } from "../lib/permissions";
@@ -36,17 +37,30 @@
   let loading = $state(true);
 
   /**
-   * Card 41: whether EACH provider's own `defaultModel` field (set in
-   * ProviderForm.svelte, "used when this provider is set as default") is
-   * actually tool-capable — computed the same way the side panel's picker
-   * computes it (src/lib/providers/capability.ts's `resolveCapability`,
-   * shared rather than a second copy). `"checking"` while providers are
-   * loading/reloading; `undefined` for a provider whose id hasn't been
-   * checked yet. Drives whether "Set as default" is enabled for that row and
-   * the inline reason shown when it isn't (decisions/11's three-state rule,
-   * matched exactly).
+   * Card 52: one provider's tool-capable model options for the "Set as
+   * default" dropdown — loaded the same way the side panel's picker loads a
+   * provider's model list (`client.listModels()` + `resolveCapabilities`,
+   * both shared via src/lib/providers/capability.ts), narrowed down to what
+   * a single dropdown needs rather than the panel's full grouped-list UI
+   * (decisions/23's accepted "options page duplicates a small slice of the
+   * side panel's per-provider model-loading shape").
+   *
+   * `"loaded"`'s `options` is PRE-FILTERED to tool-capable models only
+   * (`isSelectable`) — ProviderRow's `<select>` never has to re-check
+   * capability itself, and an empty `options` array is exactly the "loaded,
+   * but nothing tool-capable" blocked state (decisions/11, decisions/23).
    */
-  let defaultModelChecks = $state<Record<string, ModelCapabilities | "checking" | undefined>>({});
+  type DefaultModelOptionsState =
+    | { status: "loading" }
+    | { status: "loaded"; options: { model: ProviderModel; capability: ModelCapabilities }[] }
+    | { status: "error"; message: string }
+    | { status: "not-supported"; message: string };
+
+  /** Every provider's `DefaultModelOptionsState`, keyed by provider id — loaded in parallel, degrading independently per provider (decisions/22's discipline, same as src/sidepanel/stores/selection.svelte.ts's `providerModelsState`). Absent key = never (yet) requested. */
+  let defaultModelOptionsState = $state<Record<string, DefaultModelOptionsState>>({});
+
+  /** Per-provider load generation, guarding a stale response from a superseded reload for that SAME provider — mirrors src/sidepanel/stores/selection.svelte.ts's `providerTokens` doc comment: one token per provider id, never a single shared one, so reloading provider A can never discard an in-flight load for provider B. Not `$state` — internal bookkeeping only. */
+  const defaultModelOptionsTokens: Record<string, number> = {};
 
   /**
    * Card 41's fourth checklist item: an ALREADY-STORED default (set before
@@ -90,23 +104,55 @@
   }
 
   /**
-   * Card 41: recompute every provider's `defaultModel` capability so "Set as
-   * default" can be disabled (with the picker's exact inline reason) BEFORE
-   * the user clicks it, not just refused after — the same proactive
-   * treatment ProviderPicker.svelte gives every row in its model list.
+   * Load (or reload) ONE provider's tool-capable model options — the unit of
+   * "degrade per provider" (decisions/22, mirroring
+   * src/sidepanel/stores/selection.svelte.ts's `loadModelsForProvider`):
+   * callers fire this once per provider without awaiting each other, so a
+   * slow/unreachable provider's `listModels()` never delays another
+   * provider's write to `defaultModelOptionsState`.
    */
-  async function refreshDefaultModelChecks(): Promise<void> {
-    defaultModelChecks = Object.fromEntries(providers.map((p) => [p.id, "checking" as const]));
-    const entries = await Promise.all(
-      providers.map(async (p) => {
-        const model = p.defaultModel?.trim();
-        if (!model) return [p.id, undefined] as const;
-        const client = buildClient(p);
-        if (!client) return [p.id, undefined] as const;
-        return [p.id, await resolveCapability(client, { id: model, name: model })] as const;
-      }),
-    );
-    defaultModelChecks = Object.fromEntries(entries);
+  async function loadDefaultModelOptions(provider: ProviderConfig): Promise<void> {
+    const token = (defaultModelOptionsTokens[provider.id] =
+      (defaultModelOptionsTokens[provider.id] ?? 0) + 1);
+    defaultModelOptionsState[provider.id] = { status: "loading" };
+
+    const client = buildClient(provider);
+    if (!client) {
+      const message = `No client is registered for provider type "${provider.type}".`;
+      if (defaultModelOptionsTokens[provider.id] !== token) return;
+      defaultModelOptionsState[provider.id] = { status: "error", message };
+      return;
+    }
+
+    const result = await client.listModels();
+    if (defaultModelOptionsTokens[provider.id] !== token) return; // superseded by a later reload for this provider
+
+    if (!result.ok) {
+      if (result.error.kind === "not-supported") {
+        defaultModelOptionsState[provider.id] = {
+          status: "not-supported",
+          message: describeProviderError(result.error),
+        };
+        return;
+      }
+      defaultModelOptionsState[provider.id] = {
+        status: "error",
+        message: describeProviderError(result.error),
+      };
+      return;
+    }
+
+    const entries = await resolveCapabilities(client, result.value);
+    if (defaultModelOptionsTokens[provider.id] !== token) return; // superseded by a later reload for this provider
+    defaultModelOptionsState[provider.id] = {
+      status: "loaded",
+      options: entries.filter((e) => isSelectable(e.capability)),
+    };
+  }
+
+  /** Reload every currently-registered provider's model options, in parallel — each provider's fetch settles and writes its own slot independently (decisions/22). */
+  async function refreshDefaultModelOptions(): Promise<void> {
+    await Promise.all(providers.map((p) => loadDefaultModelOptions(p)));
   }
 
   /**
@@ -140,7 +186,16 @@
   async function refresh(): Promise<void> {
     providers = await listProviders();
     defaultSelection = await getDefaultSelection();
-    await Promise.all([refreshPermissions(), refreshDefaultModelChecks(), refreshStaleDefault()]);
+
+    // Drop model-option state for providers that no longer exist, so a
+    // deleted provider can't leave a stale entry behind if it's ever
+    // re-added under a reused id (mirrors selection.svelte.ts's `loadProviders`).
+    const liveIds = new Set(providers.map((p) => p.id));
+    for (const id of Object.keys(defaultModelOptionsState)) {
+      if (!liveIds.has(id)) delete defaultModelOptionsState[id];
+    }
+
+    await Promise.all([refreshPermissions(), refreshDefaultModelOptions(), refreshStaleDefault()]);
   }
 
   onMount(() => {
@@ -195,41 +250,55 @@
     await reorderProviders(next.map((p) => p.id));
   }
 
-  /** `defaultModelChecks[id]` narrowed to "is this actually settable" — `undefined` (no model configured, or not checked yet) and `"checking"` (still in flight) both count as not-yet-settable, same as an unresolved capability in the panel's picker. */
-  function canSetDefault(check: ModelCapabilities | "checking" | undefined): boolean {
-    return check !== undefined && check !== "checking" && isSelectable(check);
+  /** Whether `provider`'s model options are still loading — the row shows a loading state, no reason yet (card 52). */
+  function defaultModelsLoading(provider: ProviderConfig): boolean {
+    const state = defaultModelOptionsState[provider.id];
+    return state === undefined || state.status === "loading";
+  }
+
+  /** `provider`'s tool-capable model options, or `[]` while loading/blocked — exactly what ProviderRow's `<select>` renders. */
+  function defaultModelOptionsFor(provider: ProviderConfig): { model: ProviderModel; capability: ModelCapabilities }[] {
+    const state = defaultModelOptionsState[provider.id];
+    return state?.status === "loaded" ? state.options : [];
   }
 
   /**
-   * The inline reason "Set as default" is disabled for `provider` right now
-   * — same wording `reasonForCapability` gives the panel's picker for a
-   * disabled row, or a plain "configure one first" note when there's no
-   * `defaultModel` to check at all. `undefined` once the model checks out.
+   * The inline reason "Set as default" is blocked for `provider` right now —
+   * `undefined` while still loading (no verdict yet) or once at least one
+   * tool-capable model is available. A `not-supported` provider (no
+   * model-listing API) points at the side panel's existing seed-once
+   * behavior instead of reimplementing manual entry here (decisions/23); a
+   * `loaded` provider with zero tool-capable models gets decisions/11's
+   * plain "no tool-capable models" wording; any other `listModels()` failure
+   * surfaces its own message.
    */
   function setDefaultBlockedReason(provider: ProviderConfig): string | undefined {
-    if (!provider.defaultModel?.trim()) {
-      return "Set a default model below (Edit → Default model) before making this the default.";
+    const state = defaultModelOptionsState[provider.id];
+    if (!state || state.status === "loading") return undefined; // still resolving — no verdict to report yet
+    if (state.status === "not-supported") {
+      return "This provider can't list its models. Pick a model for it once in the side panel instead — that seeds the default automatically.";
     }
-    const check = defaultModelChecks[provider.id];
-    if (check === "checking" || check === undefined) return undefined; // still resolving — no verdict to report yet
-    return isSelectable(check) ? undefined : reasonForCapability(check);
+    if (state.status === "error") return state.message;
+    return state.options.length > 0 ? undefined : "No tool-capable models found on this provider.";
   }
 
   /**
-   * Card 41: apply the same three-state capability rule the side panel's
-   * picker applies (decisions/11) at the point the default is actually set,
-   * not just in the UI's disabled state — ProviderRow's button is already
-   * disabled whenever `defaultModelChecks[provider.id]` isn't settable, but
-   * this re-checks before writing so a stale/in-flight check can never let a
-   * no-tools/unknown model become the default (the same "second guard"
-   * `selectModel` keeps in src/sidepanel/stores/selection.svelte.ts).
+   * Card 52 (carrying forward card 41's discipline): apply the same
+   * three-state capability rule the side panel's picker applies
+   * (decisions/11) at the point the default is actually set, not just in the
+   * UI's disabled state — ProviderRow's dropdown only ever offers
+   * tool-capable models, but this re-checks `modelId` against the CURRENT
+   * `defaultModelOptionsState` before writing, so a stale/in-flight reload
+   * can never let a no-tools/unknown (or since-removed) model become the
+   * default (the same "second guard" `selectModel` keeps in
+   * src/sidepanel/stores/selection.svelte.ts).
    */
-  async function handleSetDefault(provider: ProviderConfig): Promise<void> {
-    const model = provider.defaultModel?.trim();
-    if (!model || !canSetDefault(defaultModelChecks[provider.id])) return;
+  async function handleSetDefault(provider: ProviderConfig, modelId: string): Promise<void> {
+    const options = defaultModelOptionsFor(provider);
+    if (!options.some((o) => o.model.id === modelId)) return;
 
-    await setDefaultSelection({ providerId: provider.id, model });
-    defaultSelection = { providerId: provider.id, model };
+    await setDefaultSelection({ providerId: provider.id, model: modelId });
+    defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }
 
@@ -327,15 +396,15 @@
               permissionGranted={permissionGranted[provider.id]}
               testOutcome={testOutcomes[provider.id]}
               testing={testingIds[provider.id] ?? false}
-              checkingDefaultModel={defaultModelChecks[provider.id] === "checking"}
-              canSetDefault={canSetDefault(defaultModelChecks[provider.id])}
-              setDefaultBlockedReason={setDefaultBlockedReason(provider)}
+              defaultModelsLoading={defaultModelsLoading(provider)}
+              defaultModelOptions={defaultModelOptionsFor(provider).map((o) => o.model)}
+              defaultModelBlockedReason={setDefaultBlockedReason(provider)}
               defaultInvalidReason={isDefault ? staleDefaultReason : undefined}
               onEdit={() => (editingId = provider.id)}
               onRemove={() => handleRemove(provider)}
               onMoveUp={() => handleMove(index, -1)}
               onMoveDown={() => handleMove(index, 1)}
-              onSetDefault={() => handleSetDefault(provider)}
+              onSetDefault={(modelId) => handleSetDefault(provider, modelId)}
               onTest={() => handleTest(provider)}
             />
           {/if}

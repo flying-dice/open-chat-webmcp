@@ -38,6 +38,23 @@ export async function resolveCapability(
 }
 
 /**
+ * Resolve every model's capability concurrently, one lookup per model
+ * (decision 06's "issued concurrently and cached thereafter", carried into
+ * decision 11). Moved here from the side panel's `selection.svelte.ts`
+ * (card 52) so the options page's per-provider model load
+ * (`ProvidersSection.svelte`) can share the exact same behavior instead of
+ * hand-rolling a second copy — the same "single copy both surfaces import"
+ * ethos this module's header comment already commits to.
+ */
+export async function resolveCapabilities(
+  client: ChatProvider,
+  models: ProviderModel[],
+): Promise<{ model: ProviderModel; capability: ModelCapabilities }[]> {
+  const capabilities = await Promise.all(models.map((model) => resolveCapability(client, model)));
+  return models.map((model, i) => ({ model, capability: capabilities[i] }));
+}
+
+/**
  * Whether a model with this capability can actually be selected — the ONE
  * place "tool-capable, and nothing else" is decided (decisions/06,
  * decisions/11). Both `"no-tools"` and `"unknown"` are refused; only a
