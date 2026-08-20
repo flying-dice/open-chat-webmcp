@@ -9,9 +9,10 @@
    * the other two views are somewhere you visit, not somewhere you switch
    * between.
    *
-   * Submenus replace the menu's contents IN PLACE behind a "Back" row
-   * rather than flying out sideways, because there is no sideways in a
-   * 320px panel.
+   * Flat, single-level menu: settings used to sit behind a "Back"-style
+   * submenu, but with exactly one action (open options) and one read-only
+   * status line under it, a second level bought nothing but an extra tap —
+   * both now live directly in the root list.
    *
    * Recent chats are re-listed every time the menu opens rather than kept
    * live: `listChatSummaries` reads `chat:index` only (no message bodies),
@@ -40,7 +41,6 @@
   const RECENT_LIMIT = 5;
 
   let open = $state(false);
-  let level = $state<"root" | "settings">("root");
   let summaries = $state<ChatSummary[]>([]);
   let rootEl: HTMLDivElement | undefined = $state();
 
@@ -57,12 +57,7 @@
 
   function toggle(): void {
     open = !open;
-    if (open) {
-      // Always reopen at the root: a menu that remembers it was left in a
-      // submenu makes the kebab unpredictable.
-      level = "root";
-      void listChatSummaries().then((s) => (summaries = s));
-    }
+    if (open) void listChatSummaries().then((s) => (summaries = s));
   }
 
   function close(): void {
@@ -109,65 +104,52 @@
 
   {#if open}
     <div class="menu" role="menu" aria-label="Panel menu">
-      {#if level === "root"}
-        <p class="menu-label">Recent chats</p>
+      <p class="menu-label">Recent chats</p>
 
-        {#if recent.length === 0}
-          <p class="menu-empty">No chats yet.</p>
-        {:else}
-          {#each recent as summary (summary.id)}
-            <button
-              type="button"
-              role="menuitem"
-              class="menu-row"
-              data-active={summary.id === panel.activeChatId}
-              onclick={() => void handleOpenChat(summary.id)}
-            >
-              <Icon name="subject" size={20} />
-              <span class="menu-row__label">{titleFromSummary(summary)}</span>
-            </button>
-          {/each}
-        {/if}
-
-        {#if hasMore || recent.length > 0}
-          <button type="button" role="menuitem" class="menu-row" onclick={() => run(onOpenHistory)}>
-            <Icon name="more_horiz" size={20} />
-            <span class="menu-row__label">More</span>
-            <Icon name="chevron_right" size={20} />
+      {#if recent.length === 0}
+        <p class="menu-empty">No chats yet.</p>
+      {:else}
+        {#each recent as summary (summary.id)}
+          <button
+            type="button"
+            role="menuitem"
+            class="menu-row"
+            data-active={summary.id === panel.activeChatId}
+            onclick={() => void handleOpenChat(summary.id)}
+          >
+            <Icon name="subject" size={20} />
+            <span class="menu-row__label">{titleFromSummary(summary)}</span>
           </button>
-        {/if}
+        {/each}
+      {/if}
 
-        <hr />
-
-        <button type="button" role="menuitem" class="menu-row" onclick={() => run(onOpenTools)}>
-          <Icon name="build" size={20} />
-          <span class="menu-row__label">Tools &amp; call log</span>
-        </button>
-
-        <button type="button" role="menuitem" class="menu-row" onclick={() => (level = "settings")}>
-          <Icon name="settings" size={20} />
-          <span class="menu-row__label">Settings and help</span>
+      {#if hasMore || recent.length > 0}
+        <button type="button" role="menuitem" class="menu-row" onclick={() => run(onOpenHistory)}>
+          <Icon name="more_horiz" size={20} />
+          <span class="menu-row__label">More</span>
           <Icon name="chevron_right" size={20} />
         </button>
-      {:else}
-        <button type="button" class="menu-row" onclick={() => (level = "root")}>
-          <Icon name="arrow_back" size={20} />
-          <span class="menu-row__label">Back</span>
-        </button>
-
-        <button type="button" role="menuitem" class="menu-row" onclick={() => run(openOptionsPage)}>
-          <Icon name="settings" size={20} />
-          <span class="menu-row__label">Open options</span>
-          <Icon name="open_in_new" size={20} />
-        </button>
-
-        <!-- Not a control: the connection state has no action attached to
-             it, it is just the one place in the menu you can read it. -->
-        <p class="menu-status">
-          <Icon name="info" size={20} />
-          <span class="menu-row__label">{statusLabel[connectionStatus]}</span>
-        </p>
       {/if}
+
+      <hr />
+
+      <button type="button" role="menuitem" class="menu-row" onclick={() => run(onOpenTools)}>
+        <Icon name="build" size={20} />
+        <span class="menu-row__label">Tools &amp; call log</span>
+      </button>
+
+      <button type="button" role="menuitem" class="menu-row" onclick={() => run(openOptionsPage)}>
+        <Icon name="settings" size={20} />
+        <span class="menu-row__label">Open options</span>
+        <Icon name="open_in_new" size={20} />
+      </button>
+
+      <!-- Not a control: the connection state has no action attached to it,
+           it is just the one place in the menu you can read it. -->
+      <p class="menu-status">
+        <Icon name="info" size={20} />
+        <span class="menu-row__label">{statusLabel[connectionStatus]}</span>
+      </p>
     </div>
   {/if}
 </div>

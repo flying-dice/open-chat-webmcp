@@ -166,7 +166,20 @@
       </div>
     {/if}
 
-    {#each groups as group (group.key)}
+    <!-- Keyed by index, not `group.key`: `group.key` is derived from a
+         message id (transcriptGroups.ts) and is normally unique, but a real
+         session with heavy tool use (confirmed: a turn against GitHub's MCP
+         server producing many tool-call messages) hit a Svelte
+         `each_key_duplicate` crash here, meaning two groups' keys collided —
+         evidence of a message-identity/duplication issue upstream (likely
+         related to the open tab-sync/session-restore cards) worth its own
+         investigation, not something to chase down inside this fix. Index is
+         safe here regardless: `messages` is append-only (transcriptGroups.ts's
+         own doc comment), so an existing group's POSITION in `groups` never
+         shifts as later messages stream in — the same component-identity
+         stability the original `group.key` choice was protecting stays
+         intact, it just can no longer crash on a collision. -->
+    {#each groups as group, groupIndex (groupIndex)}
       {#if group.kind === "user"}
         <div class="message" data-role="user">
           <div class="user-bubble">{group.message.content}</div>

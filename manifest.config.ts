@@ -19,7 +19,11 @@ export default defineManifest({
   // so WebMCP is now the binding constraint.
   minimum_chrome_version: "149",
 
-  permissions: ["sidePanel", "storage", "tabs", "scripting"],
+  // "identity" is for chrome.identity.launchWebAuthFlow/getRedirectURL only
+  // (decisions/27-oauth-for-http-mcp-servers.md) — the generic web-auth-flow
+  // API, not Chrome's Google-specific getAuthToken flow, so no `oauth2`
+  // manifest key is needed alongside it.
+  permissions: ["sidePanel", "storage", "tabs", "scripting", "identity"],
   host_permissions: ["http://localhost/*", "http://127.0.0.1/*"],
   optional_host_permissions: ["http://*/*", "https://*/*"],
 

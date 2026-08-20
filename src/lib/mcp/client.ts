@@ -52,6 +52,7 @@
 import pkg from "../../../package.json" with { type: "json" };
 import type { McpServerConfig } from "./registry";
 import { CLIENT_CONTROLLED_HEADERS } from "./registry";
+import * as oauth from "./oauth";
 import type {
   McpConnectionInfo,
   McpError,
@@ -320,11 +321,16 @@ function raceWithBudget<T>(promise: Promise<T>, budget: Budget): Promise<T> {
  * "refuse at edit time" UX decision 15 asks for is card 39's job; this is
  * the silent-drop safety net underneath it.
  */
+/** Whether resolving this config's auth will ever put an `Authorization` header on the wire — true for a non-empty bearer token, and unconditionally true for oauth (once resolved, it always contributes one; see `resolveAuthHeader`). Used only to decide whether a custom `authorization` header must be dropped as reserved, below — it does not itself produce the header. */
+function hasResolvableAuth(config: McpServerConfig): boolean {
+  if (!config.auth) return false;
+  return config.auth.type === "bearer" ? config.auth.token.length > 0 : true;
+}
+
 function effectiveCustomHeaders(config: McpServerConfig): Record<string, string> {
   const headers = config.headers ?? {};
-  const hasAuthToken = Boolean(config.auth?.token);
   const reserved = new Set<string>(CLIENT_CONTROLLED_HEADERS);
-  if (hasAuthToken) reserved.add("authorization");
+  if (hasResolvableAuth(config)) reserved.add("authorization");
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
     if (reserved.has(name.toLowerCase())) continue;
@@ -333,13 +339,34 @@ function effectiveCustomHeaders(config: McpServerConfig): Record<string, string>
   return out;
 }
 
+/** The bearer-token `Authorization` header, unchanged from before oauth support existed — a pure, synchronous mapping used only for `config.auth.type === "bearer"`. The oauth case is handled by `resolveAuthHeader`, below, which never calls this. */
 function authHeader(config: McpServerConfig): Record<string, string> {
-  return config.auth?.token ? { Authorization: `Bearer ${config.auth.token}` } : {};
+  return config.auth?.type === "bearer" && config.auth.token ? { Authorization: `Bearer ${config.auth.token}` } : {};
 }
 
-/** Every header this server's requests carry except the transport-controlled `Content-Type`/`Accept`, which each call site sets itself (GET vs. POST need different values) and which always wins by being spread last. */
-function buildBaseHeaders(config: McpServerConfig): Record<string, string> {
-  return { ...effectiveCustomHeaders(config), ...authHeader(config) };
+/**
+ * Resolve the `Authorization` header for either auth type ahead of a
+ * connect attempt. For a bearer config this is exactly `authHeader(config)`
+ * — a synchronous mapping simply wrapped in a resolved promise, so the
+ * bearer path's headers, and the order `connect()` builds them in, are
+ * unchanged from before oauth support existed. For an oauth config, calls
+ * oauth.ts's `getValidAuth` (refreshing the token if it's expired,
+ * persisting the refresh back to the registry) and maps success to a
+ * `Bearer` header or failure to an early `McpResult` error that `connect()`
+ * returns as-is, before ever attempting a request.
+ */
+async function resolveAuthHeader(config: McpServerConfig): Promise<McpResult<Record<string, string>>> {
+  if (config.auth?.type !== "oauth") {
+    return { ok: true, value: authHeader(config) };
+  }
+  const valid = await oauth.getValidAuth(config);
+  if (!valid.ok) return valid;
+  return { ok: true, value: { Authorization: `Bearer ${valid.value.accessToken}` } };
+}
+
+/** Every header this server's requests carry except the transport-controlled `Content-Type`/`Accept`, which each call site sets itself (GET vs. POST need different values) and which always wins by being spread last. `authHeaderValue` comes from `resolveAuthHeader` and is spread last here too, exactly where `authHeader(config)`'s result used to be spread directly. */
+function buildBaseHeaders(config: McpServerConfig, authHeaderValue: Record<string, string>): Record<string, string> {
+  return { ...effectiveCustomHeaders(config), ...authHeaderValue };
 }
 
 // ---------------------------------------------------------------------------
@@ -994,7 +1021,9 @@ async function connectLegacySse(
 // --- Transport selection -----------------------------------------------
 
 async function connect(config: McpServerConfig, budget: Budget): Promise<McpResult<McpWireSession>> {
-  const baseHeaders = buildBaseHeaders(config);
+  const resolvedAuth = await resolveAuthHeader(config);
+  if (!resolvedAuth.ok) return resolvedAuth;
+  const baseHeaders = buildBaseHeaders(config, resolvedAuth.value);
 
   if (config.transport !== "sse") {
     const attempt = await tryStreamableHttp(config, baseHeaders, budget);

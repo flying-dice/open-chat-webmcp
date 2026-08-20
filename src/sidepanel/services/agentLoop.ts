@@ -109,6 +109,7 @@ import {
   onVisibleChatChange,
   panel,
   registerLiveSession,
+  setConnectionStatus,
   setStopHandler,
   setTurnPhase,
   unregisterLiveSession,
@@ -514,6 +515,15 @@ async function streamOneTurn(
   // starts.
   let sawContent = false;
 
+  // The connection-status placeholder (src/sidepanel/stores/panel.svelte.ts)
+  // was never wired to anything real — it stayed "unknown" ("Not connected")
+  // forever regardless of whether the provider was reachable. This is the
+  // "real `ChatProvider` health check" the placeholder's own doc comment
+  // named as its intended owner: providers here are stateless HTTP requests,
+  // not a persistent connection, so "connected" means "the last request to
+  // the provider succeeded" — set around the one call site that actually
+  // talks to a provider.
+  setConnectionStatus("connecting");
   try {
     for await (const event of provider.chat(params)) {
       switch (event.type) {
@@ -546,6 +556,11 @@ async function streamOneTurn(
       message: err instanceof Error ? err.message : "Unknown streaming failure.",
     };
   }
+
+  // "aborted" is the user hitting Stop mid-stream, not a connection failure
+  // — a stream was live up to that point, so this reads as "connected",
+  // same as a clean finish. Anything else terminal is a real failure.
+  setConnectionStatus(terminalError && terminalError.kind !== "aborted" ? "error" : "connected");
 
   return { toolCalls, terminalError };
 }

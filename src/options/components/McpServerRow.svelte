@@ -39,6 +39,8 @@
   }: Props = $props();
 
   const headerCount = $derived(Object.keys(server.headers ?? {}).length);
+
+  let toolsExpanded = $state(false);
 </script>
 
 <div class="provider-row" class:provider-row--disabled={!server.enabled}>
@@ -62,11 +64,27 @@
         Disabled
       </span>
     {/if}
-    {#if server.auth?.token}
+    {#if server.auth?.type === "bearer" && server.auth.token}
       <span class="badge" title="A bearer token is configured — masked here, open Edit to view or change it.">
         Bearer token
       </span>
     {/if}
+    <!--
+      Card 62 widened McpServerAuth to a bearer/oauth union. Card 63 (this
+      badge): a best-known-state indicator checked against the stored
+      config's `expiresAt`/`refreshToken` on render — NOT a live network
+      probe (decisions/27's consequences: "the management UI ... needs a way
+      to show 'reconnect needed' distinctly from 'add a token'").
+    -->
+    {#if server.auth?.type === "oauth" && server.auth.expiresAt !== undefined && server.auth.expiresAt <= Date.now() && !server.auth.refreshToken}
+      <span
+        class="badge badge--danger"
+        title="This server's OAuth token has expired and there's no refresh token to renew it automatically — open Edit and sign in again."
+      >
+        Reconnect needed
+      </span>
+    {/if}
+
     {#if headerCount > 0}
       <span
         class="provider-row__headers"
@@ -100,11 +118,20 @@
     <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
     {#if testResultTools(testOutcome)}
       {@const tools = testResultTools(testOutcome) ?? []}
-      <ul class="mcp-tool-list">
-        {#each tools as tool (tool.name)}
-          <li><code>{tool.name}</code>{#if tool.description}<span> — {tool.description}</span>{/if}</li>
-        {/each}
-      </ul>
+      <button type="button" class="btn-plain" onclick={() => (toolsExpanded = !toolsExpanded)}>
+        {toolsExpanded ? "Hide" : "Show"} {tools.length} tool{tools.length === 1 ? "" : "s"}
+      </button>
+      {#if toolsExpanded}
+        <ul class="mcp-tool-list">
+          <!-- Keyed by index, not `tool.name` — see McpServerForm.svelte's
+               matching list for why: a raw, un-deduplicated server tool list
+               can have colliding display names (confirmed against GitHub's
+               real MCP server, which crashed this exact block otherwise). -->
+          {#each tools as tool, i (i)}
+            <li><code>{tool.name}</code>{#if tool.description}<span> — {tool.description}</span>{/if}</li>
+          {/each}
+        </ul>
+      {/if}
     {/if}
   {/if}
 </div>
