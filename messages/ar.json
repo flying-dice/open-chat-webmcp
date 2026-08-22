@@ -400,6 +400,7 @@
   "testResultDisplay_mcpProtocolMismatch": "يتحدث الخادم إصدارًا من بروتوكول MCP يختلف عمّا تدعمه هذه الإضافة. {message}",
   "testResultDisplay_mcpRpcError": "الخادم نقطة نهاية MCP، لكنه أبلغ عن خطأ في هذا الطلب. {message}",
   "testResultDisplay_mcpInvalidResponse": "استجاب الخادم، لكن بشيء لم تستطع الإضافة قراءته على أنه MCP. {message}",
+  "testResultDisplay_mcpProtocolLabel": "بروتوكول {version}",
   "testResultDisplay_mcpSuccessEmpty": "تم الاتصال{identity}، {protocol}. لا يقدّم الخادم أي أدوات، لذا لا يضيف شيئًا إلى قائمة أدوات النموذج.",
   "testResultDisplay_mcpSuccessWithTools": [
     {

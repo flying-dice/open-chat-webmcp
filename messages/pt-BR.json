@@ -367,6 +367,7 @@
   "testResultDisplay_mcpProtocolMismatch": "O servidor fala uma versão do protocolo MCP diferente da que esta extensão suporta. {message}",
   "testResultDisplay_mcpRpcError": "O servidor é um endpoint MCP, mas relatou um erro para esta solicitação. {message}",
   "testResultDisplay_mcpInvalidResponse": "O servidor respondeu, mas com algo que esta extensão não conseguiu ler como MCP. {message}",
+  "testResultDisplay_mcpProtocolLabel": "protocolo {version}",
   "testResultDisplay_mcpSuccessEmpty": "Conectado{identity}, {protocol}. O servidor não oferece ferramentas, então não acrescenta nada à lista de ferramentas do modelo.",
   "testResultDisplay_mcpSuccessWithTools": [
     {

@@ -13,11 +13,13 @@
   } = $props();
 </script>
 
+<!-- Local edit (card 108): `data-inset:pl-9.5`→`data-inset:ps-9.5` and
+     `data-[inset]:pl-8`→`data-[inset]:ps-8`, matching the item/sub-trigger fix. -->
 <div
 	bind:this={ref}
 	data-slot="dropdown-menu-label"
 	data-inset={inset}
-	class={cn("px-3 py-2.5 text-xs text-muted-foreground data-inset:pl-9.5 data-[inset]:pl-8", className)}
+	class={cn("px-3 py-2.5 text-xs text-muted-foreground data-inset:ps-9.5 data-[inset]:ps-8", className)}
 	{...restProps}
 >
 	{@render children?.()}

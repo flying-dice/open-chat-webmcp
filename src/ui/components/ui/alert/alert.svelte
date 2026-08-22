@@ -1,8 +1,11 @@
 <script lang="ts" module>
   import { type VariantProps, tv } from "tailwind-variants";
 
+  // Local edit (card 108): `text-left`→`text-start` and `pr-18`→`pe-18` —
+  // the generator emits physical utilities here, so under RTL the body stayed
+  // left-aligned and the action-button gutter reserved space on the wrong side.
   export const alertVariants = tv({
-    base: "grid gap-0.5 rounded-lg border px-4 py-3 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2.5 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4 group/alert relative w-full",
+    base: "grid gap-0.5 rounded-lg border px-4 py-3 text-start text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pe-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2.5 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4 group/alert relative w-full",
     variants: {
       variant: {
         default: "bg-card text-card-foreground",

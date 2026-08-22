@@ -345,6 +345,7 @@
   "testResultDisplay_mcpProtocolMismatch": "サーバーは、この拡張機能が対応していない MCP プロトコルのバージョンを使用しています。{message}",
   "testResultDisplay_mcpRpcError": "サーバーは MCP エンドポイントですが、このリクエストに対してエラーを返しました。{message}",
   "testResultDisplay_mcpInvalidResponse": "サーバーは応答しましたが、この拡張機能が MCP として読み取れない内容でした。{message}",
+  "testResultDisplay_mcpProtocolLabel": "プロトコル {version}",
   "testResultDisplay_mcpSuccessEmpty": "接続しました{identity}、{protocol}。このサーバーはツールを提供していないため、モデルのツール一覧には何も追加されません。",
   "testResultDisplay_mcpSuccessWithTools": [
     {

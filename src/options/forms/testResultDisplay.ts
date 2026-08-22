@@ -114,7 +114,9 @@ export function mcpTestResultMessage(outcome: McpTestOutcome): string {
   switch (outcome.kind) {
     case "success": {
       const identity = serverIdentity(outcome);
-      const protocol = `protocol ${outcome.connection.protocolVersion}`;
+      const protocol = m.testResultDisplay_mcpProtocolLabel({
+        version: outcome.connection.protocolVersion,
+      });
       if (outcome.tools.length === 0) {
         return m.testResultDisplay_mcpSuccessEmpty({ identity, protocol });
       }

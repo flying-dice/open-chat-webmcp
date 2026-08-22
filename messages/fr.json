@@ -367,6 +367,7 @@
   "testResultDisplay_mcpProtocolMismatch": "Le serveur parle une version du protocole MCP différente de celle que cette extension prend en charge. {message}",
   "testResultDisplay_mcpRpcError": "Le serveur est bien un point de terminaison MCP, mais il a signalé une erreur pour cette requête. {message}",
   "testResultDisplay_mcpInvalidResponse": "Le serveur a répondu, mais avec un contenu que cette extension n’a pas su lire comme du MCP. {message}",
+  "testResultDisplay_mcpProtocolLabel": "protocole {version}",
   "testResultDisplay_mcpSuccessEmpty": "Connexion établie{identity}, {protocol}. Le serveur n’offre aucun outil : il n’ajoute donc rien à la liste d’outils du modèle.",
   "testResultDisplay_mcpSuccessWithTools": [
     {

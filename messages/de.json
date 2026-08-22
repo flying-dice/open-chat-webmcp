@@ -356,6 +356,7 @@
   "testResultDisplay_mcpProtocolMismatch": "Der Server spricht eine andere MCP-Protokollversion, als diese Erweiterung unterstützt. {message}",
   "testResultDisplay_mcpRpcError": "Der Server ist ein MCP-Endpunkt, hat für diese Anfrage aber einen Fehler gemeldet. {message}",
   "testResultDisplay_mcpInvalidResponse": "Der Server hat geantwortet, aber mit etwas, das diese Erweiterung nicht als MCP lesen konnte. {message}",
+  "testResultDisplay_mcpProtocolLabel": "Protokoll {version}",
   "testResultDisplay_mcpSuccessEmpty": "Verbunden{identity}, {protocol}. Der Server bietet keine Tools an und ergänzt die Tool-Liste des Modells daher nicht.",
   "testResultDisplay_mcpSuccessWithTools": [
     {

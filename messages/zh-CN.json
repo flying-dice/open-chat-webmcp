@@ -345,6 +345,7 @@
   "testResultDisplay_mcpProtocolMismatch": "服务器使用的 MCP 协议版本与此扩展支持的版本不同。{message}",
   "testResultDisplay_mcpRpcError": "服务器是 MCP 端点，但对此请求报告了错误。{message}",
   "testResultDisplay_mcpInvalidResponse": "服务器有响应，但内容无法被此扩展当作 MCP 读取。{message}",
+  "testResultDisplay_mcpProtocolLabel": "协议 {version}",
   "testResultDisplay_mcpSuccessEmpty": "已连接{identity}，{protocol}。该服务器不提供工具，因此不会给模型的工具列表增加任何内容。",
   "testResultDisplay_mcpSuccessWithTools": [
     {

@@ -378,6 +378,7 @@
   "testResultDisplay_mcpProtocolMismatch": "Сервер использует версию протокола MCP, которую это расширение не поддерживает. {message}",
   "testResultDisplay_mcpRpcError": "Это MCP-эндпоинт, но он сообщил об ошибке для этого запроса. {message}",
   "testResultDisplay_mcpInvalidResponse": "Сервер ответил, но расширение не смогло прочитать ответ как MCP. {message}",
+  "testResultDisplay_mcpProtocolLabel": "протокол {version}",
   "testResultDisplay_mcpSuccessEmpty": "Подключено{identity}, {protocol}. Сервер не предлагает инструментов, поэтому ничего не добавляет в список инструментов модели.",
   "testResultDisplay_mcpSuccessWithTools": [
     {

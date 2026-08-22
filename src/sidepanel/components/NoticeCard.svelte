@@ -17,9 +17,10 @@
    * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
    * shadcn's Alert — `Alert.Action` is the primitive's own slot for exactly
    * this "optional trailing control" shape, and reserves its own padding
-   * automatically (`has-data-[slot=alert-action]:pr-18`) so the tighter
-   * right padding when a dismiss button is present needs no extra rule
-   * here, unlike the old hand-written `:not(:has(button))` selector.
+   * automatically (`has-data-[slot=alert-action]:pe-18`, logical since card
+   * 108) so the tighter end padding when a dismiss button is present needs
+   * no extra rule here, unlike the old hand-written `:not(:has(button))`
+   * selector.
    */
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
