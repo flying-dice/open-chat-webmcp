@@ -65,11 +65,14 @@
 // returns `Result<T, StorageError>` (../../domain/result), not a bare `T` a
 // caller could only get by awaiting successfully. A fake's SUCCESS arm is
 // built with `ok(...)` and its FAILURE arm (an override a test supplies) with
-// `fail(storageFailure())` — see that helper below for why. The two
-// `PageToolAccess`/`ChatService`/`ChatProvider`/`McpToolGateway` fakes further
-// down are untouched by this: they speak a DIFFERENT result vocabulary
-// (`McpResult`, `ProviderResult`, or plain values) that card 92 does not
-// govern — see each port's own module for why.
+// `fail(storageFailure())` — see that helper below for why.
+//
+// CARD 93 brought the `ChatProvider` fake onto the same tuple: its
+// `listModels`/`getCapabilities` now return `Result<T, ProviderError>` and
+// their success arms are `ok(...)` too. The remaining
+// `PageToolAccess`/`ChatService`/`McpToolGateway` fakes still speak their own
+// vocabularies (`McpResult`, or plain values) — see each port's own module
+// for why, and card 94/95 for when they follow.
 
 import { vi } from "vitest";
 import { initSidePanelServices } from "../app-services";
@@ -232,8 +235,8 @@ export function createFakeProviderRegistry(
 export function createFakeProviderClientFactory(
   factory: ProviderClientFactory = (config) => ({
     type: config.type,
-    listModels: async () => ({ ok: true, value: [] }),
-    getCapabilities: async () => ({ ok: true, value: { status: "unknown" } }),
+    listModels: async () => ok([]),
+    getCapabilities: async () => ok({ status: "unknown" }),
     // eslint-disable-next-line require-yield -- test stub, never actually iterated in these component tests
     chat: async function* () {
       return;
@@ -306,12 +309,9 @@ export function createFakeMcpServerRegistry(
 
 export function createFakeMcpToolGateway(overrides: Partial<McpToolGateway> = {}): McpToolGateway {
   return {
-    testServerConnection: async () => ({
-      ok: true,
-      value: { protocolVersion: "2025-06-18" },
-    }),
-    listServerTools: async () => ({ ok: true, value: [] }),
-    callServerTool: async () => ({ ok: true, value: { content: [], isError: false } }),
+    testServerConnection: async () => ok({ protocolVersion: "2025-06-18" }),
+    listServerTools: async () => ok([]),
+    callServerTool: async () => ok({ content: [], isError: false }),
     discoverAllServerTools: async () => [],
     ...overrides,
   };

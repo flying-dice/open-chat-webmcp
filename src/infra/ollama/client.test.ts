@@ -3,10 +3,20 @@
 // error mapping (including the 403 origin-rejection special case) (card 83).
 
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { ModelCapabilities, ModelCapabilityCache } from "../../domain/providers";
-import { ok } from "../../domain/result";
+import type {
+  ModelCapabilities,
+  ModelCapabilityCache,
+  ProviderError,
+} from "../../domain/providers";
+import { fail, ok, type Result } from "../../domain/result";
 import { createFakeChromeStorage } from "../chrome-storage/testing/fake-chrome-storage";
-import { chat, getCapabilities, listModels, type OllamaChatParams } from "./client";
+import {
+  chat,
+  getCapabilities,
+  listModels,
+  type OllamaChatParams,
+  type OllamaError,
+} from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -54,10 +64,9 @@ describe("listModels", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await listModels({ baseUrl: "http://localhost:11434" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value).toEqual([
+    const [models, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    expect(err).toBeUndefined();
+    expect(models).toEqual([
       {
         name: "llama3.1:8b",
         digest: "sha256:abc",
@@ -105,14 +114,12 @@ describe("error mapping", () => {
       vi.fn(async () => new Response("", { status: 403, statusText: "Forbidden" })),
     );
 
-    const result = await listModels({ baseUrl: "http://localhost:11434" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("unreachable-or-cors");
-    if (result.error.kind !== "unreachable-or-cors") return;
-    expect(result.error.message).toContain("rejected this request because of its");
-    expect(result.error.message).toContain("chrome-extension://fake-extension-id");
-    expect(result.error.fix).toEqual({
+    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    expect(err?.kind).toBe("unreachable-or-cors");
+    if (err?.kind !== "unreachable-or-cors") return;
+    expect(err.message).toContain("rejected this request because of its");
+    expect(err.message).toContain("chrome-extension://fake-extension-id");
+    expect(err.fix).toEqual({
       label: "Set OLLAMA_ORIGINS, then restart Ollama",
       command: 'launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"',
     });
@@ -126,10 +133,8 @@ describe("error mapping", () => {
       ),
     );
 
-    const result = await listModels({ baseUrl: "http://localhost:11434" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toEqual({
+    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    expect(err).toEqual({
       kind: "http",
       status: 500,
       statusText: "Internal Error",
@@ -145,12 +150,10 @@ describe("error mapping", () => {
       }),
     );
 
-    const result = await listModels({ baseUrl: "http://localhost:11434" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("unreachable-or-cors");
-    if (result.error.kind !== "unreachable-or-cors") return;
-    expect(result.error.fix?.command).toBe("OLLAMA_ORIGINS=chrome-extension://*");
+    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    expect(err?.kind).toBe("unreachable-or-cors");
+    if (err?.kind !== "unreachable-or-cors") return;
+    expect(err.fix?.command).toBe("OLLAMA_ORIGINS=chrome-extension://*");
   });
 
   it("maps a malformed JSON body to invalid-response", async () => {
@@ -158,10 +161,8 @@ describe("error mapping", () => {
       "fetch",
       vi.fn(async () => new Response("not json", { status: 200 })),
     );
-    const result = await listModels({ baseUrl: "http://localhost:11434" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("invalid-response");
+    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    expect(err?.kind).toBe("invalid-response");
   });
 });
 
@@ -201,7 +202,7 @@ describe("getCapabilities", () => {
       { name: "m", digest: "d1" },
       { baseUrl: "http://x", capabilityCache: cache },
     );
-    expect(result).toEqual({ ok: true, value: { status: "tool-capable", detail: [] } });
+    expect(result).toEqual(ok({ status: "tool-capable", detail: [] }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -217,10 +218,7 @@ describe("getCapabilities", () => {
       { baseUrl: "http://localhost:11434", capabilityCache: cache },
     );
 
-    expect(result).toEqual({
-      ok: true,
-      value: { status: "tool-capable", detail: ["completion", "tools"] },
-    });
+    expect(result).toEqual(ok({ status: "tool-capable", detail: ["completion", "tools"] }));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:11434/api/show");
     expect(init.method).toBe("POST");
@@ -237,7 +235,7 @@ describe("getCapabilities", () => {
       vi.fn(async () => jsonResponse({ capabilities: ["completion"] })),
     );
     const result = await getCapabilities({ name: "m", digest: "d2" }, { baseUrl: "http://x" });
-    expect(result).toEqual({ ok: true, value: { status: "no-tools", detail: ["completion"] } });
+    expect(result).toEqual(ok({ status: "no-tools", detail: ["completion"] }));
   });
 
   it("forceRefresh bypasses a cache hit and still calls fetch", async () => {
@@ -559,5 +557,32 @@ describe("chaos: stream faults", () => {
       { type: "content", delta: "partial" },
       { type: "error", error: { kind: "aborted" } },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OllamaError vs ProviderError (card 93, decisions/34)
+//
+// This module declares the NARROWER vocabulary — `Result<T, OllamaError>` —
+// while the `ChatProvider` interface ./adapter.ts implements declares
+// `Result<T, ProviderError>`. The two type tests below pin the property that
+// makes that free: `Result` is a union of READONLY tuples and so is covariant
+// in its error member, which is why ./adapter.ts's `listModels` can pass a
+// failure straight through with nothing to map. If `Result` ever stopped
+// being readonly, the first case would break and the adapter would silently
+// need a translation layer.
+// ---------------------------------------------------------------------------
+
+describe("OllamaError widens into ProviderError", () => {
+  it("a Result<T, OllamaError> failure is a Result<T, ProviderError> failure", () => {
+    const narrow: Result<string[], OllamaError> = fail({ kind: "aborted" });
+    const wide: Result<string[], ProviderError> = narrow;
+    expect(wide[1]).toEqual({ kind: "aborted" });
+  });
+
+  it("does NOT accept a ProviderError-only kind where an OllamaError is declared", () => {
+    // @ts-expect-error `"auth"` is not an OllamaError: Ollama has no concept of authentication, so this client can never produce one and its callers' switches must not have to handle it.
+    const bad: Result<string[], OllamaError> = fail({ kind: "auth", status: 401, message: "x" });
+    expect(bad[1]).toEqual({ kind: "auth", status: 401, message: "x" });
   });
 });

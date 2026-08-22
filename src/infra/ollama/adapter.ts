@@ -6,6 +6,8 @@
 // adapting here, not the other way round — see src/domain/providers/provider.ts's header
 // comment for why the interface is shaped the way it is.
 
+import type { Result } from "../../domain/result";
+import { fail, ok } from "../../domain/result";
 import type {
   ChatMessage,
   ChatParams,
@@ -14,8 +16,8 @@ import type {
   ModelCapabilityCache,
   ProviderConfig,
   ProviderDefaultsStore,
+  ProviderError,
   ProviderModel,
-  ProviderResult,
   ToolCall,
 } from "../../domain/providers";
 import {
@@ -148,10 +150,13 @@ export function createOllamaProvider(
   return {
     type: "ollama",
 
-    async listModels(opts): Promise<ProviderResult<ProviderModel[]>> {
-      const result = await ollamaListModels({ baseUrl, headers, signal: opts?.signal });
-      if (!result.ok) return result;
-      return { ok: true, value: result.value.map(toProviderModel) };
+    async listModels(opts): Promise<Result<ProviderModel[], ProviderError>> {
+      // `OllamaError` is a subset of `ProviderError` and `Result` is a
+      // readonly tuple, so the failure arm widens on its own — there is
+      // nothing to map at this boundary, only the value side to translate.
+      const [models, err] = await ollamaListModels({ baseUrl, headers, signal: opts?.signal });
+      if (err) return fail(err);
+      return ok(models.map(toProviderModel));
     },
 
     // Ollama's `ModelCapabilities` result is already the shared shape

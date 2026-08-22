@@ -145,25 +145,25 @@
       return;
     }
 
-    const result = await client.listModels();
+    const [models, listErr] = await client.listModels();
     if (defaultModelOptionsTokens[provider.id] !== token) return; // superseded by a later reload for this provider
 
-    if (!result.ok) {
-      if (result.error.kind === "not-supported") {
+    if (listErr) {
+      if (listErr.kind === "not-supported") {
         defaultModelOptionsState[provider.id] = {
           status: "not-supported",
-          message: describeProviderError(result.error),
+          message: describeProviderError(listErr),
         };
         return;
       }
       defaultModelOptionsState[provider.id] = {
         status: "error",
-        message: describeProviderError(result.error),
+        message: describeProviderError(listErr),
       };
       return;
     }
 
-    const entries = await resolveCapabilities(client, result.value);
+    const entries = await resolveCapabilities(client, models);
     if (defaultModelOptionsTokens[provider.id] !== token) return; // superseded by a later reload for this provider
     defaultModelOptionsState[provider.id] = {
       status: "loaded",

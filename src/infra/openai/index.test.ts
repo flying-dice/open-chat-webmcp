@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOpenAiProvider } from "./index";
 import type { ChatParams } from "../../domain/providers";
+import { fail, ok } from "../../domain/result";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -70,7 +71,7 @@ describe("listModels", () => {
       vi.fn(async () => jsonResponse({ data: [{ id: "gpt-4o" }, { no: "id" }] })),
     );
     const result = await provider().listModels();
-    expect(result).toEqual({ ok: true, value: [{ id: "gpt-4o", name: "gpt-4o" }] });
+    expect(result).toEqual(ok([{ id: "gpt-4o", name: "gpt-4o" }]));
   });
 
   it("404/405 map to not-supported (no /v1/models-equivalent)", async () => {
@@ -79,13 +80,12 @@ describe("listModels", () => {
       vi.fn(async () => new Response("", { status: 404 })),
     );
     const result = await provider().listModels();
-    expect(result).toEqual({
-      ok: false,
-      error: {
+    expect(result).toEqual(
+      fail({
         kind: "not-supported",
         message: "This endpoint does not expose a model-listing API. Enter a model id manually.",
-      },
-    });
+      }),
+    );
   });
 });
 

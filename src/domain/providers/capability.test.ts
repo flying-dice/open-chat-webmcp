@@ -15,9 +15,9 @@ import {
   type ModelCapabilities,
   type ProviderError,
   type ProviderModel,
-  type ProviderResult,
   type ProviderType,
 } from "./provider";
+import { fail, ok, type Result } from "../result";
 
 function model(id: string): ProviderModel {
   return { id, name: id };
@@ -25,7 +25,7 @@ function model(id: string): ProviderModel {
 
 /** A ChatProvider whose getCapabilities is driven by a fixed id -> result table. Every other method is unused by these tests and throws if called. */
 function fakeClient(
-  responses: Record<string, ProviderResult<ModelCapabilities>>,
+  responses: Record<string, Result<ModelCapabilities, ProviderError>>,
   type: ProviderType = "ollama",
 ): ChatProvider {
   return {
@@ -47,13 +47,13 @@ function fakeClient(
 describe("resolveCapability", () => {
   it("returns the resolved capability when the lookup succeeds", async () => {
     const capability: ModelCapabilities = { status: "tool-capable" };
-    const client = fakeClient({ llama3: { ok: true, value: capability } });
+    const client = fakeClient({ llama3: ok(capability) });
     await expect(resolveCapability(client, model("llama3"))).resolves.toEqual(capability);
   });
 
   it("folds a failed lookup into status 'unknown' carrying the described error as detail", async () => {
     const error: ProviderError = { kind: "http", status: 500, statusText: "Internal Server Error" };
-    const client = fakeClient({ llama3: { ok: false, error } });
+    const client = fakeClient({ llama3: fail(error) });
     await expect(resolveCapability(client, model("llama3"))).resolves.toEqual({
       status: "unknown",
       detail: [describeProviderError(error)],
@@ -62,7 +62,7 @@ describe("resolveCapability", () => {
 
   it("never treats a failed lookup as tool-capable or no-tools", async () => {
     const error: ProviderError = { kind: "aborted" };
-    const client = fakeClient({ m: { ok: false, error } });
+    const client = fakeClient({ m: fail(error) });
     const resolved = await resolveCapability(client, model("m"));
     expect(resolved.status).toBe("unknown");
   });
@@ -78,8 +78,8 @@ describe("resolveCapabilities", () => {
     const a: ModelCapabilities = { status: "tool-capable" };
     const b: ModelCapabilities = { status: "no-tools", detail: ["no tools field in /api/show"] };
     const client = fakeClient({
-      a: { ok: true, value: a },
-      b: { ok: true, value: b },
+      a: ok(a),
+      b: ok(b),
     });
     const result = await resolveCapabilities(client, [model("a"), model("b")]);
     expect(result).toEqual([
@@ -89,15 +89,15 @@ describe("resolveCapabilities", () => {
   });
 
   it("resolves a mix of successful and failed lookups independently, in list order", async () => {
-    const ok: ModelCapabilities = { status: "tool-capable" };
+    const toolCapable: ModelCapabilities = { status: "tool-capable" };
     const error: ProviderError = { kind: "auth", status: 401, message: "bad key" };
     const client = fakeClient({
-      good: { ok: true, value: ok },
-      bad: { ok: false, error },
+      good: ok(toolCapable),
+      bad: fail(error),
     });
     const result = await resolveCapabilities(client, [model("good"), model("bad")]);
     expect(result).toEqual([
-      { model: model("good"), capability: ok },
+      { model: model("good"), capability: toolCapable },
       {
         model: model("bad"),
         capability: { status: "unknown", detail: [describeProviderError(error)] },
@@ -108,8 +108,8 @@ describe("resolveCapabilities", () => {
   it("treats all-unselectable and all-selectable lists identically as far as resolution — every entry gets its own answer", async () => {
     const noTools: ModelCapabilities = { status: "no-tools" };
     const client = fakeClient({
-      a: { ok: true, value: noTools },
-      b: { ok: true, value: noTools },
+      a: ok(noTools),
+      b: ok(noTools),
     });
     const result = await resolveCapabilities(client, [model("a"), model("b")]);
     expect(result.every((r) => r.capability.status === "no-tools")).toBe(true);

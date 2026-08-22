@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOllamaProvider } from "./adapter";
+import { ok } from "../../domain/result";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,10 +40,9 @@ describe("createOllamaProvider", () => {
     });
 
     const result = await provider.listModels();
-    expect(result).toEqual({
-      ok: true,
-      value: [{ id: "llama3.1:8b", name: "llama3.1:8b", cacheKey: "sha256:abc" }],
-    });
+    expect(result).toEqual(
+      ok([{ id: "llama3.1:8b", name: "llama3.1:8b", cacheKey: "sha256:abc" }]),
+    );
   });
 
   it("chat() adapts an inbound tool call and a 'done' event's stats into the shared shape", async () => {

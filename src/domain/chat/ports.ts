@@ -32,8 +32,18 @@ import type { TurnPhase } from "./turn-phase";
  * shape to build.
  *
  * Never throws: every failure, including a request-setup failure, arrives as
- * a terminal `{type:"error"}` event. (./turn.ts still guards against a
- * violation of that contract — a stream that throws must not kill the loop.)
+ * a terminal `{type:"error"}` event carrying a typed `ProviderError`.
+ * (./turn.ts still guards against a violation of that contract — a stream
+ * that throws must not kill the loop.)
+ *
+ * Card 93 (decisions/34) settled this deliberately rather than by default:
+ * the rest of the provider surface moved onto `Result<T, ProviderError>`,
+ * and this one stayed an event. `ChatStreamEvent`'s doc in
+ * src/domain/providers/provider.ts carries the reasoning and the two shapes
+ * it was weighed against; what a consumer here may rely on is that the error
+ * event is TERMINAL and at most one is emitted. ./turn.ts reads it into
+ * `terminalError`, which is a `ProviderError` — so the same exhaustive
+ * `switch` a one-shot caller writes works over a stream failure too.
  */
 export interface ModelGateway {
   chat(params: ChatParams): AsyncIterable<ChatStreamEvent>;

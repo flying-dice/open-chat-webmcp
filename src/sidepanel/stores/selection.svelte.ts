@@ -380,27 +380,27 @@ async function loadModelsForProvider(config: ProviderConfig): Promise<void> {
     return;
   }
 
-  const result = await client.listModels();
+  const [models, listErr] = await client.listModels();
   if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
 
-  if (!result.ok) {
-    if (result.error.kind === "not-supported") {
+  if (listErr) {
+    if (listErr.kind === "not-supported") {
       providerModelsState[config.id] = {
         status: "not-supported",
-        message: describeProviderError(result.error),
+        message: describeProviderError(listErr),
         manualEntry: undefined,
       };
       return;
     }
     providerModelsState[config.id] = {
       status: "error",
-      message: describeProviderError(result.error),
-      error: result.error,
+      message: describeProviderError(listErr),
+      error: listErr,
     };
     return;
   }
 
-  const entries = await resolveCapabilities(client, result.value);
+  const entries = await resolveCapabilities(client, models);
   if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
   providerModelsState[config.id] = { status: "loaded", entries };
 }

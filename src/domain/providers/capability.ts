@@ -46,10 +46,8 @@ export async function resolveCapability(
   model: ProviderModel,
   opts?: { signal?: AbortSignal; forceRefresh?: boolean },
 ): Promise<ModelCapabilities> {
-  const result = await client.getCapabilities(model, opts);
-  return result.ok
-    ? result.value
-    : { status: "unknown", detail: [describeProviderError(result.error)] };
+  const [capability, err] = await client.getCapabilities(model, opts);
+  return err ? { status: "unknown", detail: [describeProviderError(err)] } : capability;
 }
 
 /**

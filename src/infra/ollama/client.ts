@@ -18,9 +18,16 @@
 //
 // Error handling: nothing in this module throws bare strings, and network
 // failures are never surfaced as generic "it broke" text. `listModels` and
-// `getCapabilities` return a `ProviderResult<T>` the caller must branch on;
-// `chat` is an async generator that yields a typed `{ type: "error" }` event
-// instead of throwing, since it may already be mid-stream. `OllamaError`
+// `getCapabilities` return a `Result<T, OllamaError>` (src/domain/result.ts,
+// card 93) the caller must destructure and branch on; `chat` is an async
+// generator that yields a typed `{ type: "error" }` event instead of
+// throwing, since it may already be mid-stream — see `ChatStreamEvent`'s doc
+// in src/domain/providers/provider.ts for why the streaming half of the
+// contract delivers the same vocabulary as an EVENT rather than a `Result`.
+// The fetch boundary is the only place in this module that catches: every
+// `catch` below sits directly on a `fetch`/`reader.read()`/`response.json()`
+// call and maps the platform's own exception into `OllamaError` (decisions/34
+// — an adapter never lets a platform exception escape). `OllamaError`
 // (a narrowed view of the shared `ProviderError` — Ollama has no `"auth"` or
 // `"not-supported"` failure mode) names a blocked CORS preflight and a dead
 // server as a shared, explicit discriminant rather than a generic network
@@ -29,6 +36,8 @@
 // `originRejectedError`'s doc comment below — instead of falling into the
 // generic `"http"` kind (card 33).
 
+import type { Result } from "../../domain/result";
+import { fail, ok } from "../../domain/result";
 import type { SerializedTool } from "../../domain/tools";
 import type {
   ModelCapabilities,
@@ -36,7 +45,6 @@ import type {
   ProviderDefaultsStore,
   ProviderError,
   ProviderHeader,
-  ProviderResult,
 } from "../../domain/providers";
 
 // ---------------------------------------------------------------------------
@@ -90,6 +98,17 @@ async function resolveBaseUrl(
  * `"not-supported"` (its endpoints are always either present or unreachable).
  * Structurally identical to those members of `ProviderError`, so values here
  * assign straight into it — nothing to convert at the adapter boundary.
+ *
+ * Card 93 made this the declared error vocabulary of every function below
+ * (`Result<T, OllamaError>`), rather than the wider `ProviderError` the old
+ * `ProviderResult<T>` alias carried. `Result` is a readonly tuple and so is
+ * covariant in its error member: a `Result<T, OllamaError>` still assigns
+ * straight into the `Result<T, ProviderError>` the `ChatProvider` interface
+ * declares, and ./adapter.ts passes one through untouched. What the narrower
+ * type buys is at the CALL sites inside this folder — an exhaustive `switch`
+ * on an Ollama failure has four arms, not six, and adding a `"tools-only"`
+ * kind to `ProviderError` for some future provider cannot silently make them
+ * non-exhaustive.
  */
 export type OllamaError = Extract<
   ProviderError,
@@ -205,52 +224,44 @@ async function ollamaFetchJson<T>(
   baseUrl: string,
   path: string,
   init: RequestInit,
-): Promise<ProviderResult<T>> {
+): Promise<Result<T, OllamaError>> {
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${path}`, init);
   } catch (err) {
-    return { ok: false, error: toOllamaError(err) };
+    return fail(toOllamaError(err));
   }
 
   if (!response.ok) {
     // See originRejectedError's doc comment: a 403 from this Ollama-specific
     // client always means an origin rejection, not a generic HTTP failure.
     if (response.status === 403) {
-      return { ok: false, error: originRejectedError() };
+      return fail(originRejectedError());
     }
     const body = await safeReadText(response);
-    return {
-      ok: false,
-      error: {
-        kind: "http",
-        status: response.status,
-        statusText: response.statusText,
-        // `ProviderError`'s `body` is `string | undefined`-less optional
-        // (src/domain/providers/provider.ts, not this folder's to widen) —
-        // conditional spread rather than assigning `body: undefined`
-        // directly, so an absent body omits the key instead of setting it.
-        ...(body !== undefined && { body }),
-      },
-    };
+    return fail({
+      kind: "http",
+      status: response.status,
+      statusText: response.statusText,
+      // `ProviderError`'s `body` is `string | undefined`-less optional
+      // (src/domain/providers/provider.ts, not this folder's to widen) —
+      // conditional spread rather than assigning `body: undefined`
+      // directly, so an absent body omits the key instead of setting it.
+      ...(body !== undefined && { body }),
+    });
   }
 
   let json: unknown;
   try {
     json = await response.json();
   } catch (err) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `Failed to parse JSON response: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: `Failed to parse JSON response: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 
-  return { ok: true, value: json as T };
+  return ok(json as T);
 }
 
 // TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, openai/index.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
@@ -325,9 +336,9 @@ export async function listModels(opts?: {
   headers?: ProviderHeader[] | undefined;
   /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
   defaults?: ProviderDefaultsStore | undefined;
-}): Promise<ProviderResult<OllamaModel[]>> {
+}): Promise<Result<OllamaModel[], OllamaError>> {
   const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
-  const result = await ollamaFetchJson<{ models?: unknown }>(baseUrl, "/api/tags", {
+  const [body, err] = await ollamaFetchJson<{ models?: unknown }>(baseUrl, "/api/tags", {
     method: "GET",
     headers: buildHeaders(opts?.headers),
     // `RequestInit.signal` (lib.dom.d.ts) is `AbortSignal | null`, not
@@ -335,12 +346,12 @@ export async function listModels(opts?: {
     // instead of assigning it `undefined`.
     ...(opts?.signal !== undefined && { signal: opts.signal }),
   });
-  if (!result.ok) return result;
+  if (err) return fail(err);
 
-  const rawModels = Array.isArray(result.value.models) ? result.value.models : [];
+  const rawModels = Array.isArray(body.models) ? body.models : [];
   const models = rawModels.map(normalizeModel).filter((m): m is OllamaModel => m !== null);
 
-  return { ok: true, value: models };
+  return ok(models);
 }
 
 // ---------------------------------------------------------------------------
@@ -378,28 +389,28 @@ interface OllamaCapabilityOptions {
 export async function getCapabilities(
   model: Pick<OllamaModel, "name" | "digest">,
   opts?: OllamaCapabilityOptions,
-): Promise<ProviderResult<ModelCapabilities>> {
+): Promise<Result<ModelCapabilities, OllamaError>> {
   if (!opts?.forceRefresh) {
     // A cache read that FAILED and one that missed are handled identically —
     // re-ask the provider — which is what dropping the error member says.
     // See ModelCapabilityCache's own doc (src/domain/providers): the cache
     // never has to be right, only consistent with the fingerprint.
     const cached = await opts?.capabilityCache?.get("ollama", model.digest);
-    if (cached?.[0]) return { ok: true, value: cached[0] };
+    if (cached?.[0]) return ok(cached[0]);
   }
 
   const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
-  const result = await ollamaFetchJson<{ capabilities?: unknown }>(baseUrl, "/api/show", {
+  const [body, err] = await ollamaFetchJson<{ capabilities?: unknown }>(baseUrl, "/api/show", {
     method: "POST",
     headers: buildHeaders(opts?.headers, "application/json"),
     body: JSON.stringify({ model: model.name }),
     // See listModels' matching comment on RequestInit.signal.
     ...(opts?.signal !== undefined && { signal: opts.signal }),
   });
-  if (!result.ok) return result;
+  if (err) return fail(err);
 
-  const capabilities = Array.isArray(result.value.capabilities)
-    ? result.value.capabilities.filter((c): c is string => typeof c === "string")
+  const capabilities = Array.isArray(body.capabilities)
+    ? body.capabilities.filter((c): c is string => typeof c === "string")
     : [];
   const value: ModelCapabilities = {
     status: capabilities.includes("tools") ? "tool-capable" : "no-tools",
@@ -411,7 +422,7 @@ export async function getCapabilities(
   // round trip next time and nothing else, so it is not worth failing a
   // capability lookup over.
   await opts?.capabilityCache?.set("ollama", model.digest, value);
-  return { ok: true, value };
+  return ok(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -610,6 +621,17 @@ function parseNdjsonLine(line: string): unknown | undefined {
  * body) or a mid-stream failure (abort, malformed JSON) is surfaced as a
  * single terminal `{ type: "error" }` event and the generator then returns.
  * On success the generator ends after the `{ type: "done" }` event.
+ *
+ * That is the shape decisions/34 lands on for streams (card 93), and the
+ * FIVE failures below are the concrete list of what arrives as data here:
+ * a `fetch` rejection (unreachable/blocked preflight), a non-2xx status
+ * (403 specially, see `originRejectedError`), a 2xx with no body, a
+ * malformed NDJSON line or aborted read mid-stream, and a connection that
+ * closed without ever sending `done:true` (card 90's truncation signal,
+ * below). None of them is a `throw`; each is an `OllamaError` in an event.
+ * `ChatStreamEvent`'s doc in src/domain/providers/provider.ts carries the
+ * full rationale for events-not-`Result`s and the terminality invariant
+ * this generator upholds: at most one error event, nothing after it.
  *
  * The NDJSON reader is partial-line safe: chunk boundaries never align with
  * line boundaries, and the final line commonly arrives without a trailing

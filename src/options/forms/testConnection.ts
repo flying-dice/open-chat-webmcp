@@ -54,12 +54,11 @@ export async function testProviderConnection(config: ProviderConfig): Promise<Te
   // `TestOutcome` for genuinely unanticipated failures elsewhere in this
   // module's callers.
   const client = optionsServices().createProviderClient(config);
-  const result = await client.listModels();
-  if (result.ok) {
-    return { kind: "success", modelCount: result.value.length };
+  const [models, error] = await client.listModels();
+  if (!error) {
+    return { kind: "success", modelCount: models.length };
   }
 
-  const error = result.error;
   switch (error.kind) {
     case "auth":
       return {

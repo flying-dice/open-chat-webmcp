@@ -21,6 +21,12 @@
 // undefined]` tuple, and the module-level `storageFailure()` helper below
 // (see its own comment) is what a test reaches for to make one FAIL.
 //
+// CARD 93 brought the `ChatProvider` fake onto the same tuple with the same
+// rule: `listModels`/`getCapabilities` return `Result<T, ProviderError>`, and
+// a test that wants a provider failure builds it with `fail({kind: ...})` —
+// the `ProviderError` vocabulary is a plain union, so there is no
+// `storageFailure()`-style helper to reach for.
+//
 // USAGE:
 //
 //   import { initFakeOptionsServices, createFakeOptionsServices, storageFailure } from "../testing/fake-services";
@@ -160,8 +166,8 @@ export function createFakeProviderRegistry(
 export function createFakeProviderClientFactory(
   factory: ProviderClientFactory = (config) => ({
     type: config.type,
-    listModels: async () => ({ ok: true, value: [] }),
-    getCapabilities: async () => ({ ok: true, value: { status: "unknown" } }),
+    listModels: async () => ok([]),
+    getCapabilities: async () => ok({ status: "unknown" }),
     // eslint-disable-next-line require-yield -- test stub, never actually iterated in these component tests
     chat: async function* () {
       return;
@@ -234,12 +240,9 @@ export function createFakeMcpServerRegistry(
 
 export function createFakeMcpToolGateway(overrides: Partial<McpToolGateway> = {}): McpToolGateway {
   return {
-    testServerConnection: async () => ({
-      ok: true,
-      value: { protocolVersion: "2025-06-18" },
-    }),
-    listServerTools: async () => ({ ok: true, value: [] }),
-    callServerTool: async () => ({ ok: true, value: { content: [], isError: false } }),
+    testServerConnection: async () => ok({ protocolVersion: "2025-06-18" }),
+    listServerTools: async () => ok([]),
+    callServerTool: async () => ok({ content: [], isError: false }),
     discoverAllServerTools: async () => [],
     ...overrides,
   };

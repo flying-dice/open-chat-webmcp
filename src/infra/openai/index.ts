@@ -21,9 +21,15 @@
 //     `ToolCall` (with `JSON.parse`d arguments) once the stream signals
 //     completion — never `JSON.parse`d while still partial.
 //
-// Never-throw discipline (decisions/09, carried from src/infra/ollama):
-// `listModels`/`getCapabilities` return a `ProviderResult`, and `chat` yields
-// a terminal `{ type: "error" }` event instead of throwing.
+// Never-throw discipline (decisions/09, and decisions/34 since card 93):
+// `listModels`/`getCapabilities` return a `Result<T, ProviderError>`
+// (src/domain/result.ts), and `chat` yields a terminal `{ type: "error" }`
+// event instead of throwing — see `ChatStreamEvent`'s doc in
+// src/domain/providers/provider.ts for why the streaming half of the contract
+// delivers the same vocabulary as an EVENT rather than a `Result`. Catching
+// happens at the fetch boundary only: every `catch` below sits directly on a
+// `fetch`, a `reader.read()`, a `response.json()`, or a `JSON.parse` of one
+// wire payload, and maps the platform's own exception into `ProviderError`.
 //
 // Card 75 (decisions/29): this used to self-register into the old
 // src/lib/providers/clients.ts locator (`registerProviderType("openai",
@@ -33,6 +39,8 @@
 // (src/sidepanel/main.ts, src/options/main.ts) imports `createOpenAiProvider`
 // directly and puts it in an exhaustive `Record<ProviderType, ...>` instead.
 
+import type { Result } from "../../domain/result";
+import { fail, ok } from "../../domain/result";
 import type { SerializedTool } from "../../domain/tools";
 import type {
   ChatMessage,
@@ -45,7 +53,6 @@ import type {
   ProviderHeader,
   ProviderConfig,
   ProviderModel,
-  ProviderResult,
   ToolCall,
 } from "../../domain/providers";
 import { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
@@ -211,7 +218,7 @@ async function listModels(
   apiKey: string | undefined,
   headers: ProviderHeader[] | undefined,
   opts?: { signal?: AbortSignal },
-): Promise<ProviderResult<ProviderModel[]>> {
+): Promise<Result<ProviderModel[], ProviderError>> {
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/v1/models`, {
@@ -223,35 +230,27 @@ async function listModels(
       ...(opts?.signal !== undefined && { signal: opts.signal }),
     });
   } catch (err) {
-    return { ok: false, error: toOpenAiError(err) };
+    return fail(toOpenAiError(err));
   }
 
   if (!response.ok) {
-    return {
-      ok: false,
-      error: await toHttpError(response, { treatMissingAsNotSupported: true }),
-    };
+    return fail(await toHttpError(response, { treatMissingAsNotSupported: true }));
   }
 
   let json: unknown;
   try {
     json = await response.json();
   } catch (err) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `Failed to parse JSON response: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: `Failed to parse JSON response: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 
   const rawModels = isRecord(json) && Array.isArray(json.data) ? json.data : [];
   const models = rawModels.map(normalizeModel).filter((m): m is ProviderModel => m !== null);
 
-  return { ok: true, value: models };
+  return ok(models);
 }
 
 // ---------------------------------------------------------------------------
@@ -508,6 +507,29 @@ function parseSseDataPayload(payload: string): unknown | typeof DONE {
 
 const DONE = Symbol("sse-done");
 
+/**
+ * Stream a chat completion from `POST /v1/chat/completions`, reading SSE off
+ * `response.body.getReader()`.
+ *
+ * Never throws (card 93, decisions/34): every known wire failure is DATA on
+ * the stream, delivered as a single terminal `{type:"error"}` event carrying
+ * a typed `ProviderError`, after which the generator returns. Concretely,
+ * that is a `fetch` rejection (unreachable host / permission not granted), a
+ * non-2xx status (401/403 classified as `"auth"` by `toHttpError`), a 2xx
+ * with no body, and an abort or read failure mid-stream. See
+ * `ChatStreamEvent`'s doc in src/domain/providers/provider.ts for why this
+ * half of the contract is an event rather than a `Result`, and for the
+ * invariant it upholds: at most one error event, and nothing after it.
+ *
+ * Two mid-stream faults are deliberately NOT errors here, unlike Ollama's
+ * client — they are recoverable, so the stream carries on rather than
+ * discarding a generation: a single malformed SSE payload is skipped (a
+ * later event, or the terminal usage frame, still carries the turn), and a
+ * close without the `[DONE]` sentinel finalizes normally, because unlike
+ * Ollama's NDJSON this format's last content event is complete on its own
+ * (card 90 chose the opposite for Ollama for exactly that reason: there,
+ * `done:true` is the ONLY completion signal, so its absence is truncation).
+ */
 async function* chat(
   baseUrl: string,
   apiKey: string | undefined,
@@ -748,11 +770,14 @@ export function createOpenAiProvider(config: ProviderConfig): ChatProvider {
     },
 
     // Static allowlist lookup (decisions/11) — never fails, so this always
-    // resolves `ok: true`; `forceRefresh`/`signal` are accepted for
+    // resolves to an `ok(...)`; `forceRefresh`/`signal` are accepted for
     // interface compatibility but unused, since there is no network call to
-    // skip or cancel.
-    async getCapabilities(model): Promise<ProviderResult<ModelCapabilities>> {
-      return { ok: true, value: getCapabilities(model) };
+    // skip or cancel. It still returns a `Result` rather than a bare
+    // `ModelCapabilities` because the INTERFACE is what callers code against
+    // (src/domain/providers/provider.ts) — Ollama's implementation of the
+    // same method does hit the network and can fail.
+    async getCapabilities(model): Promise<Result<ModelCapabilities, ProviderError>> {
+      return ok(getCapabilities(model));
     },
 
     chat(params: ChatParams) {

@@ -12,11 +12,18 @@
 // leaks NDJSON, Ollama's id-less tool calls, or Ollama's auth-free requests.
 //
 // Never-throw discipline (carried forward from src/infra/ollama/client.ts, which
-// predates this file): every method here returns a `ProviderResult` for a
-// one-shot call, or yields a terminal `{ type: "error" }` stream event for
-// `chat`, instead of throwing. A client that hits a failure mode not covered
-// by `ProviderError` should widen that union in an additive change, never
-// throw a bespoke error to route around it.
+// predates this file): every method here returns a `Result<T, ProviderError>`
+// for a one-shot call, or yields a terminal `{ type: "error" }` stream event
+// for `chat`, instead of throwing. A client that hits a failure mode not
+// covered by `ProviderError` should widen that union in an additive change,
+// never throw a bespoke error to route around it.
+//
+// Card 93 (decisions/34-errors-as-values.md) replaced this file's own
+// `ProviderResult<T>` record (`{ok: true, value} | {ok: false, error}`) with
+// the shared tuple in src/domain/result.ts. Same never-throw contract, one
+// shape across the whole repo — see `ChatStreamEvent` below for how the
+// STREAMING half of the contract delivers the same `ProviderError`, and why
+// it is an event rather than a `Result`.
 
 // Card 73 (decisions/29) moved this file from src/lib/provider.ts into the
 // `providers` bounded context. Its one cross-context dependency —
@@ -25,6 +32,7 @@
 // messaging adapter that used to declare it (src/lib/protocol.ts, now
 // src/infra/chrome-runtime/protocol.ts). Contexts
 // plug together through barrels, never by reaching into each other's files.
+import type { Result } from "../result";
 import type { SerializedTool } from "../tools";
 
 // ---------------------------------------------------------------------------
@@ -168,8 +176,14 @@ export function describeProviderError(error: ProviderError): string {
   }
 }
 
-/** Result of a non-streaming call: never throws, always branch on `ok`. */
-export type ProviderResult<T> = { ok: true; value: T } | { ok: false; error: ProviderError };
+// NO `ProviderResult<T>` ALIAS (card 93). A non-streaming call delivers this
+// vocabulary as the shared `Result<T, ProviderError>` (src/domain/result.ts)
+// and nothing else: decisions/34 asks for ONE result shape across the repo,
+// and a per-context alias over it is a second name for the same thing that
+// call sites then have to translate between. Spelling the vocabulary out at
+// every signature is also what makes the MIXED sites readable — a component
+// holding a `StorageError` from the registry and a `ProviderError` from the
+// client in the same function now says which is which.
 
 // ---------------------------------------------------------------------------
 // Models & capabilities (decisions/11-provider-capability-detection.md)
@@ -273,6 +287,38 @@ export interface ChatStats {
  * One event out of {@link ChatProvider.chat}'s stream. A tagged union (not a
  * callback per kind) so an agent loop can drive it with a single
  * `for await` + `switch`, the same shape src/infra/ollama/client.ts already used.
+ *
+ * STREAMING FAILURES ARE EVENTS, NOT `Result`s (card 93, decisions/34).
+ * `chat` is the one member of this contract whose failures are NOT delivered
+ * as `Result<T, ProviderError>`, and the reason is that a stream has already
+ * produced OUTPUT by the time most of its failures happen. Three shapes were
+ * on the table:
+ *
+ *  1. `AsyncGenerator<Result<ChatStreamEvent, ProviderError>>` — every
+ *     consumer unwraps a tuple on every content delta, thousands of times per
+ *     turn, to express something that can happen at most once.
+ *  2. `Promise<Result<AsyncGenerator<…>, ProviderError>>` — puts SETUP
+ *     failures (unreachable, 401, 404) in the return type but leaves
+ *     MID-STREAM ones (abort, malformed NDJSON/SSE, a connection that closed
+ *     before `done:true`) with nowhere to go, so the caller would need two
+ *     failure paths for one vocabulary.
+ *  3. This one: the generator never rejects, and every failure — setup or
+ *     mid-stream — arrives as a single terminal `{type:"error", error}`
+ *     carrying the same typed `ProviderError` a one-shot call would have
+ *     returned, after which the generator RETURNS.
+ *
+ * (3) is what the repo already had and what card 92 concluded should stay:
+ * the error is typed and exhaustively switchable exactly like the `Result`
+ * arm, the tokens already emitted before the fault stay in the transcript
+ * (a truncated reply plus a stated reason, rather than a discarded turn),
+ * and there is no per-delta unwrapping. The invariant a consumer may rely on
+ * is: **`{type:"error"}` is terminal and at most one is emitted; nothing
+ * follows it.** `src/domain/chat/turn.ts` consumes it that way, and its
+ * `for await` is still wrapped in a `try` — not because a compliant client
+ * can throw, but because a non-compliant one must not kill the loop.
+ *
+ * A failure that is NOT in `ProviderError` remains a `throw`, as everywhere
+ * else in decisions/34: it is a bug, not a wire outcome.
  */
 export type ChatStreamEvent =
   | { type: "content"; delta: string }
@@ -309,14 +355,14 @@ export interface ChatProvider {
    * callers should fall back to a user-entered model id in that case, never
    * treat it as a hard failure.
    */
-  listModels(opts?: { signal?: AbortSignal }): Promise<ProviderResult<ProviderModel[]>>;
+  listModels(opts?: { signal?: AbortSignal }): Promise<Result<ProviderModel[], ProviderError>>;
 
   /** Resolve tool-calling support for one model (decisions/11). Never guesses: returns `"unknown"` rather than assuming either way when the provider can't say. */
   getCapabilities(
     model: ProviderModel,
     opts?: { signal?: AbortSignal; forceRefresh?: boolean },
-  ): Promise<ProviderResult<ModelCapabilities>>;
+  ): Promise<Result<ModelCapabilities, ProviderError>>;
 
-  /** Stream a chat completion. Never throws — every failure, including a request-setup failure, surfaces as a terminal `{type:"error"}` event. */
+  /** Stream a chat completion. Never throws — every failure, including a request-setup failure, surfaces as a single terminal `{type:"error"}` event carrying a typed {@link ProviderError}; see {@link ChatStreamEvent} for why this half of the contract is an event rather than a `Result`. */
   chat(params: ChatParams): AsyncGenerator<ChatStreamEvent, void, void>;
 }
