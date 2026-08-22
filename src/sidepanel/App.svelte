@@ -341,9 +341,7 @@
       {/snippet}
     </Transcript>
 
-    <div
-      class="flex flex-none flex-col [&>.context-chip+.composer]:mt-0 [&>.context-chip+.composer]:rounded-t-none"
-    >
+    <div class="flex flex-none flex-col gap-0 px-3 pt-2 pb-3">
       <ContextChip
         pageInfo={panel.pageInfo}
         connectionStatus={panel.connectionStatus}

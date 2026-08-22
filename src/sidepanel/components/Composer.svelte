@@ -43,14 +43,23 @@
    *     and "Change" link as well; since decisions/18 put the chip inside
    *     the composer, that was the same offer made twice in one box.
    *
-   * Shape (decisions/18): one outlined, rounded box containing the textarea
-   * on top and an action row beneath it — a "+" affordance on the left, the
+   * Shape (decisions/18, re-skinned onto shadcn Textarea/Button by
+   * decisions/28): one outlined, rounded box containing the textarea on top
+   * and an action row beneath it — a "+" affordance on the left, the
    * provider/model chip and the send button on the right. The model picker
    * lives HERE rather than in the header because which model answers is a
    * property of the message you are about to send, not of the window.
+   *
+   * This component is only ever mounted directly under ContextChip in
+   * App.svelte's composer dock (never standalone), so its top corners are
+   * hard-coded square rather than negotiated with a sibling selector — see
+   * App.svelte's dock markup, which stacks the two with no gap so the
+   * chip's rounded top and this box's rounded bottom read as one unit.
    */
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
+  import { Textarea } from "$lib/components/ui/textarea";
+  import { Button } from "$lib/components/ui/button";
   import { selection, openPicker, openOptionsPage } from "../stores/selection.svelte";
 
   interface Props {
@@ -68,7 +77,11 @@
   let { busy, onSend, onStop, picker }: Props = $props();
 
   let value = $state("");
-  let textarea: HTMLTextAreaElement | undefined = $state();
+  // Bound to shadcn's Textarea via `bind:ref`, whose `ref` prop is
+  // `$bindable(null)` — initializing to `undefined` here throws Svelte's
+  // props_invalid_value at mount (bind: to a fallback-having prop can't
+  // start out `undefined`), so this has to start `null`, not bare `$state()`.
+  let textarea: HTMLTextAreaElement | null = $state(null);
 
   type Blocked =
     | { kind: "providers-loading" }
@@ -120,25 +133,31 @@
   }
 </script>
 
-<form class="composer" data-blocked={blocked !== undefined} onsubmit={(e) => (e.preventDefault(), send())}>
+<form
+  class="composer relative flex flex-none flex-col gap-1 rounded-2xl rounded-t-none border border-border bg-card px-2 pt-3 pb-2"
+  data-blocked={blocked !== undefined}
+  onsubmit={(e) => (e.preventDefault(), send())}
+>
   {#if blocked}
     <!-- Card 35's blocked state: the box stays, and its top half says what
          is missing and offers the one action that fixes it. The action row
          below survives too, because the model chip in it is usually the
          very thing being asked for. -->
-    <div class="blocked-body">
+    <div class="flex flex-col items-start gap-2 px-2 pb-1">
       {#if blocked.kind === "providers-loading"}
-        <p class="blocked-text text-small">Loading providers…</p>
+        <p class="text-sm text-muted-foreground">Loading providers…</p>
       {:else if blocked.kind === "providers-error"}
-        <p class="blocked-text text-small">Couldn't load your providers.</p>
-        <button type="button" onclick={openOptionsPage}>Open options</button>
+        <p class="text-sm text-muted-foreground">Couldn't load your providers.</p>
+        <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>Open options</Button>
       {:else if blocked.kind === "no-providers"}
-        <p class="blocked-text text-small">
+        <p class="text-sm text-muted-foreground">
           No provider is registered yet — add one on the options page to start chatting.
         </p>
-        <button type="button" onclick={openOptionsPage}>Open options to add a provider</button>
+        <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
+          Open options to add a provider
+        </Button>
       {:else if blocked.kind === "unselected"}
-        <p class="blocked-text text-small">
+        <p class="text-sm text-muted-foreground">
           {#if blocked.dangling}
             The provider this chat was using has been removed. Choose a replacement to continue —
             your conversation is kept.
@@ -146,28 +165,32 @@
             Choose a provider and model before sending your first message.
           {/if}
         </p>
-        <button type="button" onclick={openPicker}>Choose provider &amp; model</button>
+        <Button type="button" variant="secondary" size="sm" onclick={openPicker}>
+          Choose provider &amp; model
+        </Button>
       {:else if blocked.kind === "needs-confirmation"}
-        <p class="blocked-text text-small">
-          This chat will use <strong>{blocked.label}</strong> — confirm it below to start.
+        <p class="text-sm text-muted-foreground">
+          This chat will use <strong class="text-foreground">{blocked.label}</strong> — confirm it
+          below to start.
         </p>
       {/if}
     </div>
   {:else}
-    <textarea
-      bind:this={textarea}
+    <Textarea
+      bind:ref={textarea}
       bind:value
       onkeydown={handleKeydown}
       placeholder="Ask about this page…"
-      rows="1"
+      rows={1}
       disabled={busy}
       aria-label="Message"
       aria-describedby="composer-hint"
-    ></textarea>
+      class="min-h-0 max-h-[8lh] resize-none border-0 bg-transparent p-0 px-2 text-base shadow-none focus-visible:ring-0"
+    />
     <!-- The Enter/Shift+Enter hint used to live in the placeholder, where it
          pushed the actual prompt off the end of a 320px panel. It is still
          announced, just not drawn. -->
-    <p id="composer-hint" class="visually-hidden">
+    <p id="composer-hint" class="sr-only">
       Press Enter to send, Shift and Enter for a new line.
     </p>
   {/if}
@@ -177,8 +200,8 @@
        same reasoning that kept thumbs up/down out of the reply actions. The
        row is right-aligned until there is something true to put on the
        left. -->
-  <div class="composer-actions">
-    <div class="composer-actions__end">
+  <div class="flex items-center gap-2">
+    <div class="ml-auto flex min-w-0 items-center gap-2">
       <!-- Rendered in the blocked state too, and not only for symmetry:
            `openPicker` sets `selection.pickerOpen`, which does nothing
            unless a ProviderPicker is actually mounted to read it. The
@@ -210,85 +233,3 @@
     </div>
   </div>
 </form>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  .composer {
-    display: flex;
-    flex-direction: column;
-    /* `position: relative` is load-bearing: the model picker's sheet
-       anchors to this box (bottom: 100%), and it must escape the
-       transcript's scroller, not be clipped by it. */
-    position: relative;
-    gap: var(--space-1);
-    margin: var(--space-2) var(--space-3) var(--space-3);
-    padding: var(--space-3) var(--space-2) var(--space-2);
-    border: 1px solid var(--color-outline);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    flex: none;
-  }
-
-  textarea {
-    /* The box IS the input; the textarea inside it draws nothing. */
-    width: 100%;
-    min-width: 0;
-    max-height: 8lh;
-    padding: 0 var(--space-2);
-    border: none;
-    background: transparent;
-    /* field-sizing is Chrome 123+; max-height and rows="1" are the floor
-       for anything older (manifest minimum is 116). */
-    field-sizing: content;
-  }
-
-  textarea:hover {
-    border: none;
-  }
-
-  .composer-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .composer-actions__end {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-left: auto;
-    min-width: 0;
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  /* Card 35's blocked-composer state: it has to do real work rather than
-     just sit there disabled — a short explanation plus a one-click way
-     forward — but it stays inside the composer's own box, so it reads as
-     "the composer, currently saying something" rather than as a banner
-     that replaced it. */
-  .blocked-body {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-    padding: 0 var(--space-2) var(--space-1);
-  }
-
-  .blocked-text {
-    margin: 0;
-    color: var(--color-on-surface-variant);
-  }
-
-</style>

@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
-   * The page-context strip directly above the composer (decisions/18):
-   * which tab this chat is attached to, whether we're connected, and how
-   * many WebMCP tools that page publishes.
+   * The page-context strip directly above the composer (decisions/18,
+   * re-skinned by decisions/28): which tab this chat is attached to,
+   * whether we're connected, and how many WebMCP tools that page publishes.
    *
    * All three used to occupy two rows of the header. They belong here
    * instead, because all three describe what will happen when you press
@@ -16,8 +16,15 @@
    * carried on being offered to the model. Instead the whole strip is a
    * button that opens the tool inspector, which is what someone poking at
    * "6 tools" actually wants.
+   *
+   * This component is only ever mounted directly above Composer.svelte in
+   * App.svelte's composer dock, so its bottom corners are hard-coded square
+   * rather than negotiated with a sibling selector — see App.svelte's dock
+   * markup, which stacks the two with no gap so this chip's rounded top and
+   * the composer's rounded bottom read as one unit.
    */
   import Icon from "./Icon.svelte";
+  import { cn } from "$lib/utils";
   import type { ConnectionStatus, PageInfo } from "../stores/panel.svelte";
 
   interface Props {
@@ -68,24 +75,43 @@
     void pageInfo?.favIconUrl;
     iconFailed = false;
   });
+
+  const dotColor: Record<ConnectionStatus, string> = {
+    unknown: "bg-muted-foreground",
+    connecting: "bg-primary",
+    connected: "bg-emerald-500 dark:bg-emerald-400",
+    disconnected: "bg-muted-foreground",
+    error: "bg-destructive",
+  };
 </script>
 
 {#snippet body()}
-  <span class="favicon" data-status={connectionStatus}>
+  <span class="relative inline-flex size-4 flex-none items-center justify-center">
     {#if pageInfo?.favIconUrl && !iconFailed}
-      <img src={pageInfo.favIconUrl} alt="" onerror={() => (iconFailed = true)} />
+      <img
+        src={pageInfo.favIconUrl}
+        alt=""
+        class="size-4 rounded-sm"
+        onerror={() => (iconFailed = true)}
+      />
     {:else}
       <Icon name="public" size={16} />
     {/if}
     <!-- Connection state rides on the favicon rather than taking its own
          row: it is a property of the thing the row is already about. -->
-    <span class="status-dot" aria-hidden="true"></span>
+    <span
+      class={cn(
+        "absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-secondary transition-colors",
+        dotColor[connectionStatus],
+      )}
+      aria-hidden="true"
+    ></span>
   </span>
 
-  <span class="label">{label}</span>
+  <span class="min-w-0 flex-1 truncate">{label}</span>
 
   {#if toolCountLabel}
-    <span class="tool-count">{toolCountLabel}</span>
+    <span class="flex-none whitespace-nowrap max-[360px]:hidden">{toolCountLabel}</span>
   {/if}
 {/snippet}
 
@@ -95,116 +121,19 @@
 {#if onOpenTools}
   <button
     type="button"
-    class="context-chip"
+    class="context-chip flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
     onclick={onOpenTools}
     title={detail}
     aria-label={`${detail}. Open tools and call log`}
   >
     {@render body()}
-    <span class="chevron" aria-hidden="true"><Icon name="chevron_right" size={18} /></span>
+    <span class="flex-none"><Icon name="chevron_right" size={18} /></span>
   </button>
 {:else}
-  <div class="context-chip" title={detail}>
+  <div
+    class="context-chip flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground"
+    title={detail}
+  >
     {@render body()}
   </div>
 {/if}
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  .context-chip {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: calc(100% - var(--space-3) * 2);
-    margin: 0 var(--space-3);
-    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-    border: none;
-    /* Rounded on top only, and sitting flush on the composer below it, so
-       the two read as one attached unit rather than two stacked bars. */
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    background: var(--color-surface-container);
-    color: var(--color-on-surface-variant);
-    font-size: var(--font-size-small);
-    text-align: left;
-    min-width: 0;
-    flex: none;
-  }
-
-  .context-chip:hover {
-    background: var(--color-surface-container-high);
-  }
-
-  .favicon {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    width: 16px;
-    height: 16px;
-  }
-
-  .favicon img {
-    width: 16px;
-    height: 16px;
-    border-radius: var(--radius-sm);
-  }
-
-  .status-dot {
-    position: absolute;
-    right: -3px;
-    bottom: -3px;
-    width: 7px;
-    height: 7px;
-    border-radius: var(--radius-full);
-    background: var(--color-on-surface-variant);
-    /* Ringed in the chip's own background so the dot stays legible against
-       whatever the favicon happens to be. */
-    box-shadow: 0 0 0 2px var(--color-surface-container);
-    transition: background-color var(--transition-fast);
-  }
-
-  .context-chip:hover .status-dot {
-    box-shadow: 0 0 0 2px var(--color-surface-container-high);
-  }
-
-  .favicon[data-status="connected"] .status-dot {
-    background: var(--color-success);
-  }
-
-  .favicon[data-status="connecting"] .status-dot {
-    background: var(--color-primary);
-  }
-
-  .favicon[data-status="error"] .status-dot {
-    background: var(--color-danger);
-  }
-
-  .label {
-    flex: 1 1 auto;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .tool-count {
-    flex: none;
-    white-space: nowrap;
-  }
-
-  /* Below roughly 360px the title has nothing left to give — drop the count
-     rather than ellipsizing the one part of the row that names the page. */
-  @media (max-width: 360px) {
-    .tool-count {
-      display: none;
-    }
-  }
-
-  .chevron {
-    display: inline-flex;
-    flex: none;
-  }
-</style>

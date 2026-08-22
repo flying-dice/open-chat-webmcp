@@ -1,9 +1,10 @@
 <script lang="ts">
   /**
    * The composer's flat model picker (card 51, decisions/22-flat-model-picker.md
-   * — refining card 23's two-level provider-then-model control). A compact
-   * chip in the composer's action row opens a sheet ABOVE it, showing every
-   * configured provider's models as ONE list:
+   * — refining card 23's two-level provider-then-model control; re-skinned
+   * onto shadcn's Popover + Command by decisions/28). A compact chip in the
+   * composer's action row opens a sheet ABOVE it, showing every configured
+   * provider's models as ONE list:
    *
    *   1. Selectable models, grouped under a heading per provider. A provider
    *      contributes a heading either because it has selectable models, or
@@ -23,6 +24,20 @@
    * provider) — lives in src/sidepanel/stores/selection.svelte.ts; this
    * component is presentation plus the popover's open/close, filtering, and
    * keyboard handling.
+   *
+   * Popover.Root's open/close state is driven one-way from the store
+   * (`selection.pickerOpen`, toggled by its own trigger click, or opened
+   * directly by Composer.svelte's blocked-state button) via `onOpenChange`,
+   * so there's still exactly one source of truth for whether the sheet is
+   * open. Command.Root (`shouldFilter={false}`) supplies keyboard roving
+   * (arrow keys skip disabled rows automatically, Enter activates the
+   * currently-highlighted row, and reselecting the first valid row when a
+   * filter removes the highlighted one) and Escape-to-close bubbles to the
+   * Popover unhandled by Command — this replaces the previous hand-rolled
+   * pointerdown/keydown listeners and roving-focus helpers entirely. Row
+   * VISIBILITY (which groups/rows exist at all) stays our own derived logic
+   * below, exactly as before — `shouldFilter={false}` tells Command not to
+   * apply its own fuzzy filter/sort on top of it.
    */
   import { tick } from "svelte";
   import {
@@ -34,13 +49,18 @@
     refresh,
     openOptionsPage,
     closePicker,
-    togglePicker,
+    openPicker,
     type ModelListEntry,
     type ModelsState,
   } from "../stores/selection.svelte";
   import { panel } from "../stores/panel.svelte";
   import Markdown from "../../lib/components/Markdown.svelte";
   import Icon from "./Icon.svelte";
+  import * as Popover from "$lib/components/ui/popover";
+  import * as Command from "$lib/components/ui/command";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { cn } from "$lib/utils";
   import {
     capabilityBadge,
     isSelectable,
@@ -67,8 +87,11 @@
   // instance in one click rather than owning a second, independent popover.
   let manualModelInputs = $state<Record<string, string>>({});
   let filterQuery = $state("");
-  let rootEl: HTMLDivElement | undefined = $state();
-  let filterInputEl: HTMLInputElement | undefined = $state();
+  // Both bound via `bind:ref` to shadcn components whose `ref` prop is
+  // `$bindable(null)` — starting these at bare `$state()` (i.e. `undefined`)
+  // throws Svelte's props_invalid_value at mount, so they start `null`.
+  let filterInputEl: HTMLInputElement | null = $state(null);
+  let commandRootEl: HTMLDivElement | null = $state(null);
 
   /** A current tool-calling-capable Ollama model, named concretely per card 14 rather than leaving "pull a model" vague. */
   const OLLAMA_TOOL_MODEL_SUGGESTION = "llama3.1";
@@ -80,36 +103,31 @@
     if (info) void syncToTab(info.tabId, info.origin);
   });
 
+  // Reset the filter between opens.
   $effect(() => {
-    if (!selection.pickerOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (rootEl && e.target instanceof Node && !rootEl.contains(e.target)) closePicker();
-    };
-    const onKeydown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePicker();
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeydown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeydown);
-    };
+    if (!selection.pickerOpen) filterQuery = "";
   });
 
-  // Reset the filter between opens, and land keyboard focus somewhere
-  // useful the moment the sheet appears — the filter box when there is one
-  // (decisions/22: "filter" is one of the keyboard affordances this picker
-  // has to keep), otherwise the first selectable row.
-  $effect(() => {
-    if (!selection.pickerOpen) {
-      filterQuery = "";
-      return;
-    }
+  /**
+   * Land keyboard focus somewhere useful the moment the sheet appears — the
+   * filter box when there is one (decisions/22: "filter" is one of the
+   * keyboard affordances this picker has to keep), otherwise the Command
+   * root itself, so arrow keys work immediately without a click first.
+   *
+   * Popover.Content's own default open-focus (bits-ui's FocusScope) would
+   * otherwise land on the FIRST genuinely tabbable descendant — which,
+   * since Command's rows are `role="option"` with no tabindex of their own,
+   * is the footer's "Refresh" button, not the list. `preventDefault` here
+   * (bits-ui's `onOpenAutoFocus` is cancelable, mirroring Radix) opts out
+   * of that default so this can place focus intentionally instead.
+   */
+  function handleOpenAutoFocus(e: Event): void {
+    e.preventDefault();
     void tick().then(() => {
       if (filterInputEl) filterInputEl.focus();
-      else firstEnabledRowEl()?.focus();
+      else commandRootEl?.focus();
     });
-  });
+  }
 
   function handleManualSubmit(providerId: string, e: SubmitEvent): void {
     e.preventDefault();
@@ -275,485 +293,216 @@
     if (!isSelectable(row.capability)) return;
     void selectModel(row.providerId, row.model.id).then(() => closePicker());
   }
-
-  // ---- Keyboard: arrow-key roving focus across enabled rows ------------
-
-  function allRowEls(): HTMLButtonElement[] {
-    return rootEl ? Array.from(rootEl.querySelectorAll<HTMLButtonElement>(".model-row:not(:disabled)")) : [];
-  }
-
-  function firstEnabledRowEl(): HTMLButtonElement | undefined {
-    return allRowEls()[0];
-  }
-
-  function handleRowKeydown(e: KeyboardEvent): void {
-    const rows = allRowEls();
-    const idx = rows.indexOf(e.currentTarget as HTMLButtonElement);
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      rows[idx + 1]?.focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (idx <= 0) filterInputEl?.focus();
-      else rows[idx - 1]?.focus();
-    }
-  }
-
-  function handleFilterKeydown(e: KeyboardEvent): void {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      firstEnabledRowEl()?.focus();
-    } else if (e.key === "Enter") {
-      // Gemini/VS Code Chat's own filter-then-Enter shortcut: pick the top
-      // match directly rather than making the user tab down to it.
-      e.preventDefault();
-      firstEnabledRowEl()?.click();
-    }
-  }
 </script>
 
 {#snippet modelRow(row: Row, showProvider: boolean)}
   {@const badge = row.capability ? capabilityBadge(row.capability.status) : undefined}
   {@const reason = reasonForCapability(row.capability)}
   {@const selectable = isSelectable(row.capability)}
-  <li>
-    <button
-      type="button"
-      class="model-row"
-      data-status={row.capability?.status ?? "unknown"}
-      data-active={row.isActive}
-      disabled={!selectable}
-      onclick={() => handlePickModel(row)}
-      onkeydown={handleRowKeydown}
-    >
-      <span class="model-row__text">
-        <span class="model-row__name">{row.model.name}</span>
-        {#if showProvider}
-          <span class="model-row__provider">{row.providerName}</span>
-        {/if}
-        {#if reason}
-          <span class="model-row__reason">{reason}</span>
-        {/if}
+  <Command.Item
+    value={`${row.providerId}:${row.model.id}`}
+    disabled={!selectable}
+    onSelect={() => handlePickModel(row)}
+    data-status={row.capability?.status ?? "unknown"}
+    data-active={row.isActive}
+    class={cn(
+      "flex items-center justify-between gap-2 rounded-xl px-3 py-2",
+      row.isActive && "border border-primary data-selected:bg-muted",
+    )}
+  >
+    <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span class={cn("truncate text-foreground", !selectable && "text-muted-foreground")}>
+        {row.model.name}
       </span>
-      {#if row.isActive}
-        <!-- The selected row is marked by a filled check, not only by its
-             outline: a 1px border is easy to miss in a list where every row
-             is a box. -->
-        <span class="model-row__check"><Icon name="check_circle" size={20} /></span>
-      {:else if badge}
-        <span class="model-row__badge">{badge.icon} {badge.label}</span>
+      {#if showProvider}
+        <span class="text-xs text-muted-foreground">{row.providerName}</span>
       {/if}
-    </button>
-  </li>
+      {#if reason}
+        <span class="text-sm break-words text-muted-foreground">{reason}</span>
+      {/if}
+    </span>
+    {#if row.isActive}
+      <!-- The selected row is marked by a filled check, not only by its
+           outline: a 1px border is easy to miss in a list where every row
+           is a box. -->
+      <span class="flex-none text-primary"><Icon name="check_circle" size={20} /></span>
+    {:else if badge}
+      <span
+        class={cn(
+          "flex-none text-sm whitespace-nowrap text-muted-foreground",
+          row.capability?.status === "tool-capable" && "text-primary",
+        )}
+      >
+        {badge.icon} {badge.label}
+      </span>
+    {/if}
+  </Command.Item>
 {/snippet}
 
-<div class="picker" bind:this={rootEl}>
-  <button
-    type="button"
-    class="picker__trigger"
-    data-variant={triggerInfo.variant}
-    aria-haspopup="dialog"
-    aria-expanded={selection.pickerOpen}
-    onclick={togglePicker}
-    title={triggerInfo.label}
-    aria-label={triggerInfo.label}
-  >
-    <span class="picker__trigger-label">{triggerText}</span>
-    <Icon name="expand_more" size={18} />
-  </button>
+<div class="picker relative min-w-0">
+  <Popover.Root open={selection.pickerOpen} onOpenChange={(o) => (o ? openPicker() : closePicker())}>
+    <Popover.Trigger
+      class={cn(
+        "picker__trigger inline-flex max-w-[180px] min-w-0 items-center gap-1 rounded-full bg-secondary py-1 pr-1 pl-3 text-sm text-secondary-foreground",
+        triggerInfo.variant === "muted" && "text-muted-foreground",
+        triggerInfo.variant === "warning" && "text-destructive",
+      )}
+      title={triggerInfo.label}
+      aria-label={triggerInfo.label}
+    >
+      <span class="min-w-0 truncate">{triggerText}</span>
+      <Icon name="expand_more" size={18} />
+    </Popover.Trigger>
 
-  {#if selection.pickerOpen}
-    <div class="picker__panel" role="dialog" aria-label="Choose a model">
-      <p class="picker__title">Choose your model</p>
+    <Popover.Content
+      side="top"
+      align="end"
+      sideOffset={8}
+      aria-label="Choose a model"
+      class="flex max-h-[60vh] w-80 max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-hidden"
+      onOpenAutoFocus={handleOpenAutoFocus}
+    >
+      <p class="px-1 text-base font-medium text-muted-foreground">Choose your model</p>
       {#if selection.providersStatus === "loading"}
-        <p class="hint">Loading providers…</p>
+        <p class="px-1 text-sm text-muted-foreground">Loading providers…</p>
       {:else if selection.providers.length === 0}
-        <div class="empty-state">
-          <p>No providers are registered yet.</p>
-          <button type="button" onclick={openOptionsPage}>Open options to add one</button>
+        <div class="flex flex-col items-start gap-2 px-1">
+          <p class="text-sm text-muted-foreground">No providers are registered yet.</p>
+          <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
+            Open options to add one
+          </Button>
         </div>
       {:else}
         {#if selection.resolution.status === "dangling"}
-          <p class="banner banner--warning">
+          <p class="rounded-xl border border-destructive px-2 py-2 text-sm text-destructive">
             The provider this chat was using has been removed. Pick a replacement below —
             your conversation is kept.
           </p>
         {/if}
 
-        {#if showFilter}
-          <input
-            type="text"
-            class="filter-input"
-            placeholder="Filter models…"
-            bind:value={filterQuery}
-            bind:this={filterInputEl}
-            onkeydown={handleFilterKeydown}
-            aria-label="Filter models"
-          />
-        {/if}
+        <Command.Root shouldFilter={false} bind:ref={commandRootEl} class="flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0">
+          {#if showFilter}
+            <Command.Input
+              bind:value={filterQuery}
+              bind:ref={filterInputEl}
+              placeholder="Filter models…"
+              aria-label="Filter models"
+              class="p-0"
+            />
+          {/if}
 
-        <div class="picker__list">
-          {#each visibleGroups as group (group.provider.id)}
-            <div class="group">
-              <div class="group__heading">{group.provider.name}</div>
-
-              {#if group.filteredSelectable.length > 0}
-                <ul class="model-list">
-                  {#each group.filteredSelectable as row (row.model.id)}
+          <Command.List class="flex max-h-full flex-col gap-3 overflow-y-auto">
+            {#each visibleGroups as group (group.provider.id)}
+              <Command.Group value={group.provider.id} heading={group.provider.name} class="flex flex-col gap-1 p-0">
+                {#if group.filteredSelectable.length > 0}
+                  {#each group.filteredSelectable as row (`${row.providerId}:${row.model.id}`)}
                     {@render modelRow(row, false)}
                   {/each}
-                </ul>
-              {/if}
+                {/if}
 
-              {#if !group.state || group.state.status === "loading"}
-                <p class="hint">Checking models…</p>
-              {:else if group.state.status === "error"}
-                <p class="banner banner--error">{group.state.message}</p>
-                {#if group.state.error.kind === "unreachable-or-cors" && group.state.error.fix}
-                  {@const fix = group.state.error.fix}
-                  <p class="hint">{fix.label}:</p>
-                  <Markdown source={fenceOf(fix.command)} />
-                {:else if group.state.error.kind === "auth"}
-                  <button type="button" onclick={openOptionsPage}>Open options to check the API key</button>
-                {/if}
-                <button type="button" class="link-btn" onclick={() => reloadModels(group.provider.id)}>Retry</button>
-              {:else if group.state.status === "not-supported"}
-                <p class="hint">{group.state.message}</p>
-                <form class="manual-entry" onsubmit={(e) => handleManualSubmit(group.provider.id, e)}>
-                  <input
-                    type="text"
-                    placeholder="Model id, e.g. gpt-4o-mini"
-                    aria-label={`Model id for ${group.provider.name}`}
-                    value={manualModelInputs[group.provider.id] ?? ""}
-                    oninput={(e) =>
-                      (manualModelInputs[group.provider.id] = (e.currentTarget as HTMLInputElement).value)}
-                  />
-                  <button type="submit">Check</button>
-                </form>
-                {#if group.state.manualEntry && !isSelectable(group.state.manualEntry.capability)}
-                  <!-- A SELECTABLE manual entry already rendered above, in
-                       filteredSelectable (it's part of `allRows` too) — this
-                       only covers the unverified/no-tools outcome, so the
-                       result isn't shown twice. -->
-                  <ul class="model-list">
-                    {@render modelRow(toRow(group.provider, group.state.manualEntry), false)}
-                  </ul>
-                {/if}
-              {:else if group.state.status === "loaded" && group.state.entries.length === 0}
-                <p class="hint">
-                  This provider has no models installed yet.
-                  {#if group.provider.type === "ollama"}
-                    Pull one to get started, e.g. <code>ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code>.
+                {#if !group.state || group.state.status === "loading"}
+                  <p class="px-2 text-sm text-muted-foreground">Checking models…</p>
+                {:else if group.state.status === "error"}
+                  <p class="rounded-xl border border-destructive px-2 py-2 text-sm text-destructive">
+                    {group.state.message}
+                  </p>
+                  {#if group.state.error.kind === "unreachable-or-cors" && group.state.error.fix}
+                    {@const fix = group.state.error.fix}
+                    <p class="px-2 text-sm text-muted-foreground">{fix.label}:</p>
+                    <Markdown source={fenceOf(fix.command)} />
+                  {:else if group.state.error.kind === "auth"}
+                    <Button type="button" variant="link" size="sm" class="h-auto px-2" onclick={openOptionsPage}>
+                      Open options to check the API key
+                    </Button>
                   {/if}
-                </p>
-                {#if group.provider.type === "ollama"}
-                  <Markdown source={fenceOf(`ollama pull ${OLLAMA_TOOL_MODEL_SUGGESTION}`)} />
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    class="h-auto self-start px-2"
+                    onclick={() => reloadModels(group.provider.id)}
+                  >
+                    Retry
+                  </Button>
+                {:else if group.state.status === "not-supported"}
+                  <p class="px-2 text-sm text-muted-foreground">{group.state.message}</p>
+                  <form class="flex gap-1 px-2" onsubmit={(e) => handleManualSubmit(group.provider.id, e)}>
+                    <Input
+                      type="text"
+                      placeholder="Model id, e.g. gpt-4o-mini"
+                      aria-label={`Model id for ${group.provider.name}`}
+                      class="min-w-0 flex-1"
+                      value={manualModelInputs[group.provider.id] ?? ""}
+                      oninput={(e) =>
+                        (manualModelInputs[group.provider.id] = (e.currentTarget as HTMLInputElement).value)}
+                    />
+                    <Button type="submit" variant="secondary" size="sm">Check</Button>
+                  </form>
+                  {#if group.state.manualEntry && !isSelectable(group.state.manualEntry.capability)}
+                    <!-- A SELECTABLE manual entry already rendered above, in
+                         filteredSelectable (it's part of `allRows` too) — this
+                         only covers the unverified/no-tools outcome, so the
+                         result isn't shown twice. -->
+                    {@render modelRow(toRow(group.provider, group.state.manualEntry), false)}
+                  {/if}
+                {:else if group.state.status === "loaded" && group.state.entries.length === 0}
+                  <p class="px-2 text-sm text-muted-foreground">
+                    This provider has no models installed yet.
+                    {#if group.provider.type === "ollama"}
+                      Pull one to get started, e.g. <code>ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code>.
+                    {/if}
+                  </p>
+                  {#if group.provider.type === "ollama"}
+                    <Markdown source={fenceOf(`ollama pull ${OLLAMA_TOOL_MODEL_SUGGESTION}`)} />
+                  {/if}
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    class="h-auto self-start px-2"
+                    onclick={() => reloadModels(group.provider.id)}
+                  >
+                    Retry
+                  </Button>
                 {/if}
-                <button type="button" class="link-btn" onclick={() => reloadModels(group.provider.id)}>Retry</button>
-              {/if}
-            </div>
-          {/each}
+              </Command.Group>
+            {/each}
 
-          {#if unverifiedRows.length > 0}
-            <div class="group">
-              <div class="group__heading">Unverified</div>
-              <ul class="model-list">
+            {#if unverifiedRows.length > 0}
+              <Command.Group value="unverified" heading="Unverified" class="flex flex-col gap-1 p-0">
                 {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
                   {@render modelRow(row, true)}
                 {/each}
-              </ul>
-            </div>
-          {/if}
+              </Command.Group>
+            {/if}
 
-          {#if noToolsRows.length > 0}
-            <div class="group">
-              <div class="group__heading">No tool support</div>
-              {#if noToolsHasOllama}
-                <p class="hint">
-                  Pull a tool-capable model to use it here, e.g.
-                  <code>ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code>.
-                </p>
-              {/if}
-              <ul class="model-list">
+            {#if noToolsRows.length > 0}
+              <Command.Group value="no-tools" heading="No tool support" class="flex flex-col gap-1 p-0">
+                {#if noToolsHasOllama}
+                  <p class="px-2 text-sm text-muted-foreground">
+                    Pull a tool-capable model to use it here, e.g.
+                    <code>ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code>.
+                  </p>
+                {/if}
                 {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
                   {@render modelRow(row, true)}
                 {/each}
-              </ul>
-            </div>
-          {/if}
+              </Command.Group>
+            {/if}
 
-          {#if visibleGroups.length === 0 && unverifiedRows.length === 0 && noToolsRows.length === 0}
-            <p class="hint">No models match “{filterQuery}”.</p>
-          {/if}
-        </div>
+            {#if visibleGroups.length === 0 && unverifiedRows.length === 0 && noToolsRows.length === 0}
+              <p class="px-2 py-4 text-sm text-muted-foreground">No models match "{filterQuery}".</p>
+            {/if}
+          </Command.List>
+        </Command.Root>
 
-        <div class="picker__footer">
-          <button type="button" class="link-btn" onclick={refresh}>Refresh</button>
-          <button type="button" class="link-btn" onclick={openOptionsPage}>Manage providers…</button>
+        <div class="flex justify-between gap-2 border-t border-border pt-2">
+          <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={refresh}>Refresh</Button>
+          <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={openOptionsPage}>
+            Manage providers…
+          </Button>
         </div>
       {/if}
-    </div>
-  {/if}
+    </Popover.Content>
+  </Popover.Root>
 </div>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  .picker {
-    position: relative;
-    min-width: 0;
-  }
-
-  /* The chip in the composer's action row. Clamped to whichever is
-     smaller: a 180px cap, or whatever width the row actually shrank
-     `.picker` to — a plain <button> doesn't inherit a flex item's shrunk
-     width on its own, so without this it sizes up to the flat cap and
-     overflows instead of ellipsizing within it. */
-  .picker__trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    max-width: min(180px, 100%);
-    border-radius: var(--radius-pill);
-    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-    background: var(--color-surface-container-high);
-    color: var(--color-on-surface);
-    font-size: var(--font-size-small);
-    min-width: 0;
-  }
-
-  .picker__trigger-label {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-  }
-
-  .picker__trigger[data-variant="muted"] {
-    color: var(--color-on-surface-variant);
-  }
-
-  .picker__trigger[data-variant="warning"] {
-    color: var(--color-danger);
-  }
-
-  /* The sheet opens UPWARDS: the chip sits at the bottom of the panel, and
-     a menu dropping down from it would have nowhere to go. It anchors to
-     `.picker`, which is inside the composer — deliberately outside the
-     transcript's scroller, so nothing clips it. */
-  .picker__panel {
-    position: absolute;
-    bottom: calc(100% + var(--space-2));
-    right: 0;
-    z-index: 10;
-    width: 320px;
-    max-width: calc(100vw - var(--space-4));
-    max-height: 60vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    background: var(--color-surface-container);
-    border-radius: var(--radius-lg);
-    padding: var(--space-4);
-    box-shadow: var(--elevation-3);
-  }
-
-  .picker__title {
-    margin: 0 0 var(--space-1);
-    font-size: var(--font-size-heading);
-    color: var(--color-on-surface-variant);
-  }
-
-  .picker__list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .filter-input {
-    width: 100%;
-    box-sizing: border-box;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-outline);
-    background: var(--color-surface);
-    color: var(--color-on-surface);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--font-size-small);
-  }
-
-  .group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .group__heading {
-    font-size: var(--font-size-small);
-    font-weight: 600;
-    color: var(--color-on-surface-variant);
-  }
-
-  .hint {
-    margin: 0;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-  }
-
-  .banner {
-    margin: 0;
-    font-size: var(--font-size-small);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2);
-    background: var(--color-surface-container);
-    border: 1px solid var(--color-outline);
-  }
-
-  .banner--warning {
-    border-color: var(--color-danger);
-    color: var(--color-danger);
-  }
-
-  .banner--error {
-    border-color: var(--color-danger);
-    color: var(--color-danger);
-  }
-
-  .hint code {
-    font-size: inherit;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    align-items: flex-start;
-  }
-
-  .empty-state p {
-    margin: 0;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-  }
-
-  .model-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .model-row {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    text-align: left;
-    border-radius: var(--radius-card);
-    padding: var(--space-2) var(--space-3);
-    background: transparent;
-    /* Transparent rather than absent so selecting a row doesn't shift the
-       list by 2px. */
-    border: 1px solid transparent;
-    min-width: 0;
-  }
-
-  .model-row:hover:not(:disabled) {
-    background: var(--state-hover);
-  }
-
-  .model-row[data-active="true"],
-  .model-row[data-active="true"]:hover {
-    border-color: var(--color-primary);
-    background: var(--state-hover);
-  }
-
-  .model-row__text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .model-row__name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    color: var(--color-on-surface);
-  }
-
-  .model-row:disabled .model-row__name {
-    color: var(--color-on-surface-variant);
-  }
-
-  /* Rows in the Unverified/No-tool-support groups carry their provider as
-     secondary text, since they're no longer under a provider heading
-     (decisions/22). */
-  .model-row__provider {
-    font-size: var(--font-size-caption);
-    color: var(--color-on-surface-variant);
-  }
-
-  .model-row__badge {
-    flex: 0 0 auto;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    white-space: nowrap;
-  }
-
-  .model-row[data-status="tool-capable"] .model-row__badge {
-    color: var(--color-primary);
-  }
-
-  .model-row__check {
-    display: inline-flex;
-    flex: 0 0 auto;
-    color: var(--color-primary);
-  }
-
-  /* The row's second line: why this model is or isn't usable. Wraps rather
-     than ellipsizing — a truncated reason is no reason at all. */
-  .model-row__reason {
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    overflow-wrap: anywhere;
-  }
-
-  .manual-entry {
-    display: flex;
-    gap: var(--space-1);
-  }
-
-  .manual-entry input {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  .picker__footer {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-2);
-    border-top: 1px solid var(--color-outline-variant);
-    padding-top: var(--space-3);
-    margin-top: var(--space-1);
-  }
-
-  .link-btn {
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--color-primary);
-    font-size: var(--font-size-small);
-  }
-
-  .link-btn:hover {
-    background: transparent;
-    text-decoration: underline;
-  }
-</style>
