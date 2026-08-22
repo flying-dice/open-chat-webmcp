@@ -317,3 +317,64 @@ describe("defensive reads of corrupt storage", () => {
     expect(summaries.map((s) => s.id)).toEqual(["ok"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chaos: unhappy paths the suites above don't cover (card 85,
+// .claude/skills/chaos-monkey/SKILL.md) — quota exceeded mid-write, and
+// acting on a chat that was deleted out from under a pending write.
+// ---------------------------------------------------------------------------
+
+describe("chaos: quota exceeded mid-write leaves a half-written index", () => {
+  it("a chat write that succeeds followed by an index write that hits quota leaves the chat orphaned but still readable, and rejects", async () => {
+    const { fake, store } = setup();
+    const session = createChat("https://example.com");
+
+    // `commit()` (./chat-store.ts) writes `chat:<id>` first, then
+    // read-modify-writes `chat:index` — two separate `chrome.storage.local.set`
+    // calls. Fail ONLY the second (the index) so the chat's own record has
+    // already landed by the time the quota error hits, exactly like a real
+    // `chrome.storage.local.set` throwing partway through two backend calls.
+    const originalSet = fake.chrome.storage.local.set.bind(fake.chrome.storage.local);
+    fake.chrome.storage.local.set = vi.fn(async (entries: Record<string, unknown>) => {
+      if ("chat:index" in entries) throw new Error("QUOTA_BYTES quota exceeded");
+      return originalSet(entries);
+    }) as typeof fake.chrome.storage.local.set;
+
+    await expect(store.save(session, { immediate: true })).rejects.toThrow(/quota/i);
+
+    // The chat's own record is NOT lost — `local.write` for the chat key
+    // already resolved before the index write blew up.
+    await expect(store.getChat(session.id)).resolves.toMatchObject({ id: session.id });
+    // But it is invisible to a history listing: the index write never landed.
+    await expect(store.listChatSummaries()).resolves.toEqual([]);
+  });
+});
+
+describe("chaos: a debounced write landing after the chat it targets was deleted", () => {
+  it("flush() after deleteChat() resurrects the chat — the 'don't resurrect a deleted chat' guard lives in ChatService, not this store", async () => {
+    const { store } = setup();
+    const session = createChat("https://example.com");
+    await store.save(session, { immediate: true });
+
+    await store.deleteChat(session.id);
+    await expect(store.getChat(session.id)).resolves.toBeUndefined();
+
+    // A caller that (unlike ChatService.discardIfDeleted) still holds a
+    // reference to the deleted session and schedules a debounced write for
+    // it — e.g. a straggling `appendAssistantDelta` from a turn that hadn't
+    // noticed the deletion yet — is not guarded against at this layer.
+    session.messages.push({ id: "m1", role: "user", content: "too late", createdAt: Date.now() });
+    await store.save(session);
+    vi.advanceTimersByTime(2000);
+    await store.flush(session.id);
+
+    // Documented current behaviour, not asserted as correct: the chat comes
+    // back. The actual guard against this ("a later message can't resurrect
+    // a chat the user just deleted") is `ChatService.discardIfDeleted`
+    // (src/domain/chat/service.ts), which only ever hands a FRESH chat back
+    // to a caller in this situation rather than continuing to write to the
+    // stale one — so a caller that bypasses the service (as this test does,
+    // by talking to the store directly) does not get that protection.
+    await expect(store.getChat(session.id)).resolves.toMatchObject({ id: session.id });
+  });
+});

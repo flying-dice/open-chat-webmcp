@@ -142,6 +142,26 @@ describe("Transcript", () => {
     });
   });
 
+  describe("chaos: assistant content is rendered sanitized end to end", () => {
+    it("neutralises an HTML/script injection attempt riding in an assistant message's content", () => {
+      const { container } = render(Transcript, {
+        props: baseProps({
+          messages: [
+            assistantMsg(
+              "a1",
+              'Here you go: <img src=x onerror="window.__pwned = true"><script>window.__pwned = true</script>',
+            ),
+          ],
+        }),
+      });
+
+      expect(container.querySelector("script")).toBeNull();
+      expect(container.querySelector("img")).toBeNull();
+      expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined();
+      expect(screen.getByText(/Here you go:/)).toBeInTheDocument();
+    });
+  });
+
   describe("jump-to-latest visibility (autoscroll pinning state)", () => {
     it("is absent while jsdom reports the container as already at the bottom", () => {
       render(Transcript, {

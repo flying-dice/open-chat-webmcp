@@ -552,6 +552,206 @@ describe("ChatService.requestStop", () => {
 // Diagnostic snapshot
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Chaos: unhappy paths the suites above don't cover (card 85,
+// .claude/skills/chaos-monkey/SKILL.md) — message races between surfaces.
+// ---------------------------------------------------------------------------
+
+describe("chaos: a second turn starting for a chat that already has one in flight", () => {
+  // KNOWN BUG (journalled on card 85): `runTurn`'s `finally` block
+  // unconditionally deletes `liveSessions`/`stopHandlers` for the chat id it
+  // captured (./service.ts), with no way to tell "the registration I set up"
+  // from "whatever is registered now". Two turns racing for the SAME chat
+  // (e.g. a doubled-up "send" click, or a retry fired before the first
+  // request settled) is never guarded against anywhere in this port, so the
+  // FIRST turn finishing clears the registration out from under the SECOND
+  // one, which is still genuinely streaming — `isTurnActive` then reports
+  // `false` and `requestStop` becomes a silent no-op for a turn that is very
+  // much still running. Fixing this (e.g. a per-registration token, or
+  // refusing a second `runTurn` for a chat that already has one active) is
+  // for the improvement sprint — this test asserts the CORRECT behaviour and
+  // is expected to fail against the current implementation.
+  it.fails("keeps reporting the chat as turn-active while the second turn is still streaming", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const chat = service.current()!;
+
+    const gate1 = deferred();
+    const reachedGate1 = deferred();
+    const gate2 = deferred();
+    const reachedGate2 = deferred();
+    let round = 0;
+    const gateway: ModelGateway = {
+      async *chat() {
+        round += 1;
+        if (round === 1) {
+          yield { type: "content", delta: "first " };
+          reachedGate1.resolve();
+          await gate1.promise;
+          yield doneEvent();
+        } else {
+          yield { type: "content", delta: "second " };
+          reachedGate2.resolve();
+          await gate2.promise;
+          yield doneEvent();
+        }
+      },
+    };
+
+    const turn1 = service.runTurn("go", {
+      model: gateway,
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+    });
+    await reachedGate1.promise;
+    expect(service.isTurnActive(chat.id)).toBe(true);
+
+    // Nothing in the port stops a caller from starting a SECOND turn for the
+    // same still-in-flight chat (e.g. two racing "send" clicks, or a retry
+    // fired before the first request settled). `runTurn` re-captures
+    // `session` (the same live object) and re-registers the stop handler.
+    const turn2 = service.runTurn("go again", {
+      model: gateway,
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+    });
+    await reachedGate2.promise;
+
+    // Let the FIRST turn finish while the second is still streaming.
+    gate1.resolve();
+    await turn1;
+
+    // CORRECT behaviour: turn2 is still genuinely in flight for this chat.
+    expect(service.isTurnActive(chat.id)).toBe(true);
+
+    gate2.resolve();
+    await turn2;
+    expect(chat.messages.filter((m) => m.role === "assistant").map((m) => m.content)).toEqual([
+      "first ",
+      "second ",
+    ]);
+  });
+});
+
+describe("chaos: acting on a chat mid-turn from elsewhere", () => {
+  it("openChat re-attaches the live, still-streaming session even if it was concurrently deleted from storage", async () => {
+    const { service, store } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const chat = service.current()!;
+
+    const gate = deferred();
+    const reachedGate = deferred();
+    const gateway: ModelGateway = {
+      async *chat() {
+        yield { type: "content", delta: "partial" };
+        reachedGate.resolve();
+        await gate.promise;
+        yield doneEvent();
+      },
+    };
+    const turnPromise = service.runTurn("hi", {
+      model: gateway,
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+    });
+    await reachedGate.promise;
+
+    // The user deletes this chat from History (or it's evicted) WHILE it is
+    // still streaming — the store no longer has it, but the turn's own
+    // in-memory session is still live.
+    await store.deleteChat(chat.id);
+    await service.syncToTab(2, "https://b.example.com"); // look elsewhere first
+
+    expect(await service.openChat(chat.id)).toBe(true);
+    expect(service.current()).toBe(chat); // re-attached to the SAME live object, not a 404
+
+    gate.resolve();
+    await turnPromise;
+  });
+
+  it("discardIfDeleted starting a fresh chat does not orphan a turn still writing to the old one", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const chat = service.current()!;
+
+    const gate = deferred();
+    const reachedGate = deferred();
+    const gateway: ModelGateway = {
+      async *chat() {
+        yield { type: "content", delta: "still " };
+        reachedGate.resolve();
+        await gate.promise;
+        yield { type: "content", delta: "writing" };
+        yield doneEvent();
+      },
+    };
+    const turnPromise = service.runTurn("hi", {
+      model: gateway,
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+    });
+    await reachedGate.promise;
+
+    // "Don't resurrect a chat the user just deleted" fires for the chat this
+    // tab is CURRENTLY showing — which, mid-turn, is still `chat`.
+    await service.discardIfDeleted(chat.id);
+    expect(service.current()!.id).not.toBe(chat.id);
+
+    gate.resolve();
+    await turnPromise;
+    // The turn kept writing to its captured `target`, unaffected by the
+    // panel swapping to a fresh chat underneath it.
+    expect(chat.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe("still writing");
+    expect(service.isTurnActive(chat.id)).toBe(false);
+  });
+});
+
+describe("chaos: duplicate delivery / no-op replays", () => {
+  it("syncToTab delivered twice in a row (e.g. a duplicated onActivated event) reattaches the same persisted chat, not a fresh one", async () => {
+    const { service, store } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    service.addUserMessage("hello"); // persists immediately — see ChatService's transcript-mutator note
+    const first = service.current();
+
+    await service.syncToTab(1, "https://a.example.com");
+
+    // No turn is in flight, so the second sync is a fresh storage read (see
+    // createFakeStore's doc comment) rather than the SAME object reference —
+    // that reattachment is reserved for a chat with a live turn. What must
+    // stay stable is the CHAT identity and its content: the same id, the one
+    // message, and exactly one tab pointer — not a second, spuriously
+    // recreated chat.
+    expect(service.current()!.id).toBe(first!.id);
+    expect(service.current()!.messages).toHaveLength(1);
+    expect(store.pointers.size).toBe(1);
+    expect(store.chats.size).toBe(1);
+  });
+
+  it("discardIfDeleted delivered twice for the same id only starts one fresh chat", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const chat = service.current()!;
+
+    await service.discardIfDeleted(chat.id);
+    const replacement = service.current()!;
+    await service.discardIfDeleted(chat.id); // e.g. a duplicated storage.onChanged / message delivery
+
+    expect(service.current()).toBe(replacement); // second delivery is a no-op, not a second reset
+  });
+});
+
 describe("ChatService.snapshot", () => {
   it("reports ids and counts only, never message text or tool arguments", async () => {
     const { service } = makeService();

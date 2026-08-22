@@ -970,3 +970,202 @@ describe("turn phase transitions (turn-phase.ts)", () => {
     expect(phases.filter((p) => p?.kind === "calling")).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chaos: unhappy paths the suites above don't cover (card 85,
+// .claude/skills/chaos-monkey/SKILL.md).
+// ---------------------------------------------------------------------------
+
+describe("chaos: duplicate tool-call ids from the model", () => {
+  // KNOWN BUG (journalled on card 85): a hallucinating/buggy model can emit
+  // two `tool_calls` entries sharing one `id` in the same round. `toolEntry`
+  // (./message.ts) keys a transcript entry by `call.id`, and both
+  // `ChatService.findEntry` and this file's own `makeTranscript` fake resolve
+  // a later `updateToolCallResult(id, ...)` with `Array.prototype.find`,
+  // which always returns the FIRST entry with that id. The second call's
+  // result therefore clobbers the FIRST call's already-recorded outcome, and
+  // the second call's own transcript entry is left stuck at `"pending"`
+  // forever. Fixing this (e.g. resolving by array position rather than by
+  // id, or rejecting a second call sharing an id already used this turn) is
+  // for the improvement sprint — this test asserts the CORRECT behaviour and
+  // is expected to fail against the current implementation.
+  it.fails("resolves each duplicate-id call against its OWN transcript entry, not the first one", async () => {
+    const session = createChat("https://example.com");
+    const { transcript } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const toolA = makeTool({ name: "a", readOnlyHint: true, call: async () => ({ ok: true, result: "A result" }) });
+    const toolB = makeTool({ name: "b", readOnlyHint: true, call: async () => ({ ok: true, result: "B result" }) });
+
+    const gateway = scriptedGateway([
+      [
+        {
+          type: "tool-calls",
+          toolCalls: [
+            { id: "dup", name: "a", arguments: {} },
+            { id: "dup", name: "b", arguments: {} },
+          ],
+        },
+        doneEvent(),
+      ],
+      [{ type: "content", delta: "ok" }, doneEvent()],
+    ]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: new AbortController().signal,
+      ...baseOpts({
+        tools: { toolsForTurn: async () => [toolA, toolB] },
+        policy: { mayAutoRun: async () => true },
+        attachTools: true,
+      }),
+    });
+
+    const toolResults = session.messages.filter((m) => m.role === "tool");
+    expect(toolResults).toHaveLength(2);
+    expect(toolResults[0]).toMatchObject({ toolName: "a", toolStatus: "success", content: "A result" });
+    expect(toolResults[1]).toMatchObject({ toolName: "b", toolStatus: "success", content: "B result" });
+  });
+});
+
+describe("chaos: partial failure across a round's tool calls", () => {
+  it("keeps running (and correctly records) the remaining calls when the middle one of three fails", async () => {
+    const session = createChat("https://example.com");
+    const { transcript } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const toolA = makeTool({ name: "a", readOnlyHint: true, call: async () => ({ ok: true, result: "a-ok" }) });
+    const toolB = makeTool({
+      name: "b",
+      readOnlyHint: true,
+      call: async () => {
+        throw new Error("b blew up");
+      },
+    });
+    const toolC = makeTool({ name: "c", readOnlyHint: true, call: async () => ({ ok: true, result: "c-ok" }) });
+
+    const gateway = scriptedGateway([
+      [
+        {
+          type: "tool-calls",
+          toolCalls: [
+            { id: "call-a", name: "a", arguments: {} },
+            { id: "call-b", name: "b", arguments: {} },
+            { id: "call-c", name: "c", arguments: {} },
+          ],
+        },
+        doneEvent(),
+      ],
+      [{ type: "content", delta: "summarised" }, doneEvent()],
+    ]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: new AbortController().signal,
+      ...baseOpts({
+        tools: { toolsForTurn: async () => [toolA, toolB, toolC] },
+        policy: { mayAutoRun: async () => true },
+        attachTools: true,
+      }),
+    });
+
+    const toolResults = session.messages.filter((m) => m.role === "tool");
+    expect(toolResults).toHaveLength(3);
+    expect(toolResults[0]).toMatchObject({ toolName: "a", toolStatus: "success", content: "a-ok" });
+    expect(toolResults[1]).toMatchObject({ toolName: "b", toolStatus: "error", content: "b blew up" });
+    expect(toolResults[2]).toMatchObject({ toolName: "c", toolStatus: "success", content: "c-ok" });
+    // The failure of call 2 did not end the turn early — the model still got
+    // a second round with all three outcomes to summarise.
+    expect(gateway.requests).toHaveLength(2);
+    expect(session.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe("summarised");
+  });
+});
+
+describe("chaos: stream reports tool calls then dies before 'done'", () => {
+  it("drops the uncommitted tool calls and surfaces the terminal error, rather than running or hanging", async () => {
+    const session = createChat("https://example.com");
+    const { transcript, notes } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const spy = vi.fn(async () => ({ ok: true as const, result: "should never run" }));
+    const tool = makeTool({ name: "a", readOnlyHint: true, call: spy });
+
+    const gateway = scriptedGateway([
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "a", arguments: {} }] },
+        { type: "error", error: { kind: "http", status: 500, statusText: "Internal Server Error", body: "" } },
+      ],
+    ]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: new AbortController().signal,
+      ...baseOpts({
+        tools: { toolsForTurn: async () => [tool] },
+        policy: { mayAutoRun: async () => true },
+        attachTools: true,
+      }),
+    });
+
+    // Current behaviour: a terminal error anywhere in the round discards
+    // whatever `tool-calls` already arrived — nothing is executed and no
+    // tool-result entry is written.
+    expect(spy).not.toHaveBeenCalled();
+    expect(session.messages.some((m) => m.role === "tool")).toBe(false);
+    expect(notes).toHaveLength(1);
+    expect(gateway.requests).toHaveLength(1); // no second round was ever started
+  });
+
+  // Whether the model's already-committed tool calls SHOULD still run before
+  // the failure is reported (so their results aren't silently thrown away)
+  // is not decided — flagged rather than guessed at, per the chaos-monkey
+  // skill.
+  it.todo(
+    "decide: should tool calls carried on a 'tool-calls' event still run when the SAME round's stream " +
+      "then dies with a terminal error before 'done' — or is discarding them (current behaviour, tested " +
+      "above) intended?",
+  );
+});
+
+describe("chaos: stream dies immediately after a successful tool round, before any new text", () => {
+  it("keeps the completed tool result in the transcript and adds a retry note, without a stray empty reply", async () => {
+    const session = createChat("https://example.com");
+    const { transcript, notes } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const tool = makeTool({ name: "lookup", readOnlyHint: true, call: async () => ({ ok: true, result: "found it" }) });
+
+    const gateway = scriptedGateway([
+      [{ type: "tool-calls", toolCalls: [{ id: "call-1", name: "lookup", arguments: {} }] }, doneEvent()],
+      // Round 2: the model never streams anything before the connection dies.
+      [{ type: "error", error: { kind: "invalid-response", message: "connection reset" } }],
+    ]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: new AbortController().signal,
+      ...baseOpts({
+        tools: { toolsForTurn: async () => [tool] },
+        policy: { mayAutoRun: async () => true },
+        attachTools: true,
+      }),
+    });
+
+    const toolResult = session.messages.find((m) => m.role === "tool");
+    expect(toolResult).toMatchObject({ toolStatus: "success", content: "found it" });
+    expect(notes).toHaveLength(1);
+    expect(notes[0].actions).toEqual([{ kind: "retry" }]);
+    // Round 2's own (empty) assistant bubble stays empty rather than being
+    // dropped or fused with the note — endAssistantMessage already closed it.
+    const assistantEntries = session.messages.filter((m) => m.role === "assistant");
+    expect(assistantEntries.some((m) => m.content === "")).toBe(true);
+  });
+});

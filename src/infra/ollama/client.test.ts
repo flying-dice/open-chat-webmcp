@@ -427,3 +427,88 @@ describe("chat() — NDJSON stream parsing", () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chaos: unhappy paths the suites above don't cover (card 85,
+// .claude/skills/chaos-monkey/SKILL.md).
+// ---------------------------------------------------------------------------
+
+describe("chaos: stream faults", () => {
+  it("a connection that closes after content but WITHOUT ever sending a done:true line ends the generator silently, no error/done event", async () => {
+    // A real-world truncation: the model server crashes, or a proxy in
+    // front of it drops the connection, after streaming some tokens but
+    // before writing the final `{"done":true,...}` line. Unlike
+    // src/infra/openai/index.ts (which always finalizes on stream end,
+    // `sawDone` or not — see its `finalize()`), this NDJSON parser only ever
+    // emits a "done" event when it actually sees `done:true` on a complete
+    // line, so a truncated connection surfaces NEITHER a "done" NOR an
+    // "error" event — the turn ends up looking like an ordinary, complete
+    // response with no signal that it was cut short.
+    const body = JSON.stringify({ message: { role: "assistant", content: "The answer is" }, done: false }) + "\n";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => streamResponse([enc.encode(body)])),
+    );
+
+    const events = await collect(chat(baseParams()));
+    expect(events).toEqual([{ type: "content", delta: "The answer is" }]);
+  });
+
+  // Whether a truncated connection like the one above SHOULD synthesize a
+  // terminal error (so the transcript can show "response may be
+  // incomplete") is not decided — flagged rather than guessed at.
+  it.todo(
+    "decide: should a stream that closes without a done:true line surface a terminal error (truncated " +
+      "response), the way src/infra/openai's client always finalizes on stream end regardless of whether " +
+      "it saw [DONE] — or is ending silently (current behaviour, tested above) intended?",
+  );
+
+  it("garbage JSON on the final, newline-less line (flush path) still yields a single invalid-response error, not a thrown exception", async () => {
+    // Distinct from the existing "garbage line mid-stream" case: this one
+    // exercises `chat()`'s POST-loop flush of a trailing partial line (no
+    // `\n` at all), the other code path that calls `parseNdjsonLine`.
+    const body =
+      JSON.stringify({ message: { role: "assistant", content: "ok" }, done: false }) + "\n" + "{not json, no newline";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => streamResponse([enc.encode(body)])),
+    );
+
+    const events = await collect(chat(baseParams()));
+    expect(events[0]).toEqual({ type: "content", delta: "ok" });
+    expect(events[1]).toMatchObject({ type: "error", error: { kind: "invalid-response" } });
+    expect(events).toHaveLength(2);
+  });
+
+  it("an abort that fires mid-stream (after some content already arrived) yields 'aborted' without dropping the partial content already yielded", async () => {
+    let reads = 0;
+    const abortingResponse = {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => {
+            reads += 1;
+            if (reads === 1) {
+              return Promise.resolve({
+                done: false,
+                value: enc.encode(
+                  JSON.stringify({ message: { role: "assistant", content: "partial" }, done: false }) + "\n",
+                ),
+              });
+            }
+            return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+          },
+          releaseLock: () => undefined,
+        }),
+      },
+    } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn(async () => abortingResponse));
+
+    const events = await collect(chat(baseParams()));
+    expect(events).toEqual([
+      { type: "content", delta: "partial" },
+      { type: "error", error: { kind: "aborted" } },
+    ]);
+  });
+});
