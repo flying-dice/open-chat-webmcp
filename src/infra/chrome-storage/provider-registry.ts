@@ -71,8 +71,28 @@ function isProviderHeader(v: unknown): v is ProviderHeader {
   );
 }
 
+/**
+ * Defensive against corrupted/foreign-written storage, mirroring
+ * {@link decodeProviderCore}'s `v.id.length > 0` check: a `model` that
+ * decodes as the empty string was never a real selection made through any
+ * current write path (`ProvidersSection.svelte`'s "Set as default" only
+ * offers tool-capable model ids from a loaded list; the side panel's
+ * `selectModel` only ever writes a model it just resolved capability for) —
+ * it can only be leftover, pre-decisions/23 storage from when the options
+ * page's now-removed free-text `defaultModel` field was optional and could
+ * be left blank (card 97). Treating it as "no selection" here, at the one
+ * place both surfaces read `providers:default` back through, means neither
+ * surface ever has to guard against probing a provider's capability
+ * endpoint with an empty model id (which Ollama's `/api/show` answers with
+ * `400 {"error":"model is required"}` — the exact banner card 97 reported).
+ */
 function isProviderSelection(v: unknown): v is ProviderSelection {
-  return isRecord(v) && typeof v.providerId === "string" && typeof v.model === "string";
+  return (
+    isRecord(v) &&
+    typeof v.providerId === "string" &&
+    typeof v.model === "string" &&
+    v.model.length > 0
+  );
 }
 
 function generateProviderId(): string {

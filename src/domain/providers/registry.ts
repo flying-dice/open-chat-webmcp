@@ -44,7 +44,20 @@ export interface ProviderConfig {
 /** The fields of a {@link ProviderConfig} that are NOT credentials — what may be listed, synced, and reordered freely. */
 export type ProviderConfigCore = Omit<ProviderConfig, "apiKey" | "headers">;
 
-/** A provider + model choice, as stored for the global default and for a chat's own selection alike. */
+/**
+ * A provider + model choice, as stored for the global default and for a
+ * chat's own selection alike. `model` is expected non-empty — every current
+ * writer only ever commits a model it just resolved (ProvidersSection.svelte's
+ * "Set as default" picks from a loaded tool-capable list; the side panel's
+ * `selectModel` only writes after a capability check). The `providers:default`
+ * adapter (src/infra/chrome-storage/provider-registry.ts's `isProviderSelection`)
+ * enforces this on read, decoding a stored empty-string `model` as "no
+ * selection" rather than a real one — card 97 found a pre-decisions/23
+ * leftover in exactly that shape (the options page's now-removed free-text
+ * `defaultModel` field was optional and could be saved blank) driving a
+ * capability probe with an empty model id straight into Ollama's
+ * `400 {"error":"model is required"}`.
+ */
 export interface ProviderSelection {
   providerId: string;
   model: string;

@@ -231,6 +231,13 @@ describe("defensive decoding of corrupted/foreign-written storage", () => {
     const provider = await registry.getProvider("p1");
     expect(provider?.headers).toBeUndefined();
   });
+
+  it("getDefaultSelection treats a stored empty-string model as no selection (card 97)", async () => {
+    const { registry, fake } = setup();
+    fake.sync.seed({ "providers:default": { providerId: "p1", model: "" } });
+
+    await expect(registry.getDefaultSelection()).resolves.toBeUndefined();
+  });
 });
 
 describe("error propagation", () => {
