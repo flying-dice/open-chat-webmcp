@@ -36,6 +36,7 @@ import type { TestOutcome } from "./testConnection";
  * utilities (decisions/28-shadcn-svelte-maia-zinc.md); the three-way split is
  * unchanged, and as of card 78 there is one copy of it rather than two.
  */
+// TODO: clean-code - 0.5 - DRY: McpServerForm.svelte's oauthStatusClass reimplements this exact three-tone class-string logic as a second local copy instead of calling this already-exported bannerClass("ok"|"error"|"neutral").
 const TEST_RESULT_BASE = "rounded-lg border px-3 py-2 text-sm";
 
 function bannerClass(tone: "ok" | "error" | "neutral"): string {

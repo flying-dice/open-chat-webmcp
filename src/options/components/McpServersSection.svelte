@@ -40,6 +40,7 @@
   let testOutcomes = $state<Record<string, McpTestOutcome | undefined>>({});
   let testingIds = $state<Record<string, boolean>>({});
 
+  // TODO: clean-code - 0.45 - DRY: refreshPermissions (Promise.all + Object.fromEntries over cached grants) and handleMove/handleTest below are the same generic reorder/permission-gate plumbing duplicated a second time in ProvidersSection.svelte, with no domain-specific reason left to be typed twice.
   async function refreshPermissions(): Promise<void> {
     const entries = await Promise.all(
       servers.map(async (s) => [s.id, await optionsServices().permissions.has(s.url)] as const),
@@ -95,6 +96,7 @@
     await refresh();
   }
 
+  // TODO: clean-code - 0.45 - DRY: byte-identical optimistic-reorder-then-persist logic to ProvidersSection.svelte's handleMove.
   async function handleMove(index: number, direction: -1 | 1): Promise<void> {
     const target = index + direction;
     if (target < 0 || target >= servers.length) return;
@@ -110,6 +112,7 @@
    * (decisions/14): a click handler is the only place the browser honours
    * that request, and any async work ahead of it risks losing the gesture.
    */
+  // TODO: clean-code - 0.45 - DRY: the "check cached grant -> permissions.request as first await -> run the test, else report the same permission-denied string" flow duplicates ProvidersSection.svelte's handleTest.
   async function handleTest(server: McpServerConfig): Promise<void> {
     testingIds = { ...testingIds, [server.id]: true };
     testOutcomes = { ...testOutcomes, [server.id]: undefined };

@@ -31,6 +31,7 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Message01Icon } from "@hugeicons/core-free-icons";
 
+  // TODO: clean-code - 0.35 - NAMING: local state (sessions, sessionsLoading, refreshSessions, loop var session) names a ChatSummary[] "sessions" — the vocabulary decisions/13 and the domain/chat README deliberately retired in favour of "chat". The sibling component rendering the identical type, HistoryPanel.svelte, correctly uses summaries/summary.
   let sessions = $state<ChatSummary[]>([]);
   let sessionsLoading = $state(true);
   let clearingHistory = $state(false);

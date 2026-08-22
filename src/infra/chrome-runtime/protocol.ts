@@ -159,6 +159,7 @@ export type RuntimeMessage =
 // error, not a silent runtime gap.
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.4 - DEAD: this Msg alias is exported and re-exported through the barrel, but nothing imports it by name and it isn't used to type anything else in this file — every real consumer (background/sw.ts, content/relay.ts) imports RuntimeRequest/RuntimeResponse/individual message types instead.
 export type Msg = RuntimeMessage;
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@
    * danger-coloured treatment a failed one does, never a quieter one.
    * Auto-run successes start collapsed since nobody had to review them.
    *
+   * TODO: clean-code - 0.4 - NAMING: "recorded ... by src/lib/session.ts's logToolCall" is stale — that file was deleted in the restructure; logToolCall now lives in src/domain/chat/session.ts.
    * Card 38 (decisions/19 §6): `entry.origin`, recorded alongside args and
    * result by src/lib/session.ts's `logToolCall`, is shown next to the call
    * name — the call log is the accountability surface, so it must say where

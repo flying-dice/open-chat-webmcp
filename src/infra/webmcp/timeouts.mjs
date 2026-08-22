@@ -16,6 +16,7 @@
 //
 //   side panel (chatTurn.ts) -> worker (sw.ts) -> relay (relay.ts) -> document.modelContext
 //
+// TODO: clean-code - 0.3 - COUPLING: the three-rung timeout ladder ordering below is a cross-file value invariant enforced only by this comment — nothing checks it at compile time if one rung changes independently.
 // ORDERING INVARIANT: each layer's budget must exceed the one it wraps, with
 // a comfortable margin, so the innermost, most specific timeout error wins
 // the race under real scheduling jitter instead of being masked by an outer

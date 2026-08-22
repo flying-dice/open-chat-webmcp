@@ -38,6 +38,7 @@
  * - `Unexpected` — anything the adapter could not classify. Always carries
  *   its `cause`.
  */
+// TODO: clean-code - 0.3 - KISS: two of these five members are unreachable — a repo-wide search for `new StorageError(` finds exactly one construction site (src/infra/chrome-storage/area.ts), which only ever produces "Unavailable" or "Unexpected". "NotFound" and "Conflict" are never constructed anywhere in src/ — premature generality in the domain's own error vocabulary.
 export type StorageErrorKind =
   | "Unavailable"
   | "NotFound"
@@ -61,6 +62,7 @@ export class StorageError extends Error {
   }
 }
 
+// TODO: clean-code - 0.6 - DEAD: isStorageError has zero callers anywhere — every catch site either doesn't narrow the error or uses `instanceof StorageError` directly.
 /** Narrow an unknown rejection to a {@link StorageError} — for a caller that wants to branch on `kind` rather than just report the failure. */
 export function isStorageError(value: unknown): value is StorageError {
   return value instanceof StorageError;

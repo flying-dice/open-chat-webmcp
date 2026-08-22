@@ -40,6 +40,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { RadioGroup, RadioGroupItem } from "$lib/components/ui/radio-group";
 
+  // TODO: clean-code - 0.15 - DRY: the page-policy and MCP-policy option arrays and their RadioGroup/Field render blocks are structurally identical (same shape, different data) — kept deliberate/low per decisions/20's "an edit to one must never accidentally change the other", same rationale as approval-policy.ts.
   const POLICY_OPTIONS: {
     value: ApprovalPolicy;
     label: string;

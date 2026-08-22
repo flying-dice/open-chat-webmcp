@@ -1,3 +1,4 @@
+// TODO: clean-code - 0.3 - SRP: single file mixes model listing, capability detection+caching, tool-schema conversion, chat-error classification, and full NDJSON streaming/parsing for /api/chat — more than one wire-client sub-responsibility.
 // Typed, UI-free REST client for a local Ollama server: model listing,
 // tool-capability detection, and streaming chat. This is the raw wire-level
 // client; ./adapter.ts wraps it to implement the shared `ChatProvider`
@@ -184,6 +185,7 @@ function originRejectedError(): OllamaError {
   };
 }
 
+// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/mcp/json-rpc.ts and src/infra/openai/index.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead.
 async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();
@@ -241,6 +243,7 @@ async function ollamaFetchJson<T>(
   return { ok: true, value: json as T };
 }
 
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, openai/index.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -413,6 +416,7 @@ export async function getCapabilities(
  * decisions/11-provider-capability-detection.md). Each entry's result is
  * independent, so one model's error does not fail the others.
  */
+// TODO: clean-code - 0.6 - DEAD: getCapabilitiesForModels has zero callers anywhere, including its own doc-comment self-reference above getCapabilities; the concurrent-capability job it exists for is done by src/domain/providers/capability.ts's resolveCapabilities instead.
 export async function getCapabilitiesForModels(
   models: Pick<OllamaModel, "name" | "digest">[],
   opts?: OllamaCapabilityOptions,

@@ -53,6 +53,7 @@
 
   let expanded = $state(false);
 
+  // TODO: clean-code - 0.55 - DRY: derives the same five-value annotation block (readOnly, untrustedContent, unannotated, isServerTool, destructive) and renders the same four-Badge conditional block as ApprovalCard.svelte — a shared AnnotationBadges component would remove this.
   const readOnly = $derived(tool.annotations?.readOnlyHint === true);
   const untrustedContent = $derived(tool.annotations?.untrustedContentHint === true);
   const unannotated = $derived(!tool.annotations || (!readOnly && !untrustedContent));

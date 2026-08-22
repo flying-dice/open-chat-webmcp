@@ -65,6 +65,7 @@ export { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, ollama/client.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -94,6 +95,7 @@ function toOpenAiError(err: unknown): ProviderError {
   };
 }
 
+// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/mcp/json-rpc.ts and src/infra/ollama/client.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead.
 async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();

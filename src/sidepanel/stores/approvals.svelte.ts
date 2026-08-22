@@ -113,6 +113,7 @@ export function initApprovalPolicySync(): () => void {
 // PAGE tool approval — decisions/05/17, unchanged by card 38.
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.25 - COUPLING: reads panel.pageInfo?.origin via a static import of the sibling panel.svelte.ts store rather than through an injected value or a parameter from the caller — one view-state store reaching directly into another's public surface.
 function pageSkipKeyFor(toolName: string): string | undefined {
   const origin = panel.pageInfo?.origin;
   return origin ? `${origin}::${toolName}` : undefined;

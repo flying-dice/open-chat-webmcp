@@ -85,6 +85,7 @@ export type McpServerConfigCore = Omit<McpServerConfig, "auth" | "headers">;
 // ---------------------------------------------------------------------------
 
 /** Header names the client controls for correctness and never lets a custom header override (decisions/15). Compared case-insensitively. `authorization` is only actually reserved when the server has auth configured — see {@link validateServerHeaders}. */
+// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/providers/provider.ts's reservedHeaderReason — one returns an issue array for MCP servers, the other a single reason string for providers, with no shared source tying the rule together.
 export const CLIENT_CONTROLLED_HEADERS = ["content-type", "accept"] as const;
 
 export interface McpHeaderValidationIssue {

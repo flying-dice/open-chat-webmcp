@@ -1,4 +1,5 @@
 <script lang="ts">
+  // TODO: clean-code - 0.7 - DEAD: whole component is dead. Its own doc comment claims it's used for the chat/inspector switch in App.svelte and the Tools/Call Log switch in Inspector.svelte, but both were re-skinned directly onto shadcn's Tabs (Inspector.svelte says as much). Zero <SegmentedControl> usages anywhere in src/verify/scripts.
   /**
    * A generic tab-strip switch, now shadcn's Tabs (decisions/28) standing
    * in for the old hand-rolled pill strip. Used twice: the chat/inspector

@@ -76,6 +76,7 @@
     denyButton?.focus();
   });
 
+  // TODO: clean-code - 0.55 - DRY: derives the same five-value annotation block (readOnly, untrustedContent, unannotated, isServerTool, destructive) and renders the same four-Badge conditional block as ToolListItem.svelte — a shared AnnotationBadges component would remove this.
   const tool = $derived(request.tool);
   const readOnly = $derived(tool?.annotations?.readOnlyHint === true);
   const untrustedContent = $derived(tool?.annotations?.untrustedContentHint === true);

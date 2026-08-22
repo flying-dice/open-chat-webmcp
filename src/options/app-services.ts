@@ -31,6 +31,8 @@ export interface OptionsServices {
   permissions: HostPermissions;
 }
 
+// TODO: clean-code - 0.3 - DRY: this module-singleton "init once, throw if already set / throw if read before init" pair is identical logic duplicated in src/sidepanel/app-services.ts — extractable as one generic createServiceSlot<T>().
+// TODO: clean-code - 0.15 - COUPLING: the initXServices()/xServices() module-singleton pair is a documented, deliberate service-locator substitute for props/context; every consumer checked either destructures immediately or calls one member, so the hazard this pattern invites (re-widening the whole bundle) has not materialized in practice.
 let current: OptionsServices | undefined;
 
 /** Called ONCE by src/options/main.ts, before `mount(App)`. Throws on a second call — see the side panel twin for why a duplicate bundle is a real bug, not a harmless one. */

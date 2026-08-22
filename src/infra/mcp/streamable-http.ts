@@ -52,6 +52,7 @@ function createStreamableHttpSession(
       const response = await post({ jsonrpc: "2.0", id, method, params: params ?? {} });
       if ("failed" in response) return { ok: false, error: response.failed };
 
+      // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in legacy-sse.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
       if (response.status === 401 || response.status === 403) {
         return {
           ok: false,
@@ -132,6 +133,7 @@ export async function tryStreamableHttp(
 
   const sessionId = response.headers.get("Mcp-Session-Id") ?? undefined;
 
+  // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and above, and twice more in legacy-sse.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
   if (response.status === 401 || response.status === 403) {
     return {
       outcome: "failed",

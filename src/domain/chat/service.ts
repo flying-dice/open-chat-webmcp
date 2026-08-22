@@ -181,12 +181,14 @@ const headlessPresenter: ChatPresenter = {
   waitUntilVisible: () => Promise.resolve(),
 };
 
+// TODO: clean-code - 0.4 - DRY: byte-for-byte identical crypto.randomUUID/fallback id-generation pattern as session.ts's makeChatId, differing only in the fallback string prefix.
 function makeMessageId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+// TODO: clean-code - 0.25 - SRP: createChatService bundles four related-but-distinct responsibilities (tab->chat resolution/navigation, provider/model selection state, transcript mutation, turn lifecycle/stop-handling) into one port — a deliberate consolidation per the module header, but still a wide surface.
 export function createChatService(deps: ChatServiceDeps): ChatService {
   const { store, policy } = deps;
   const presenter = deps.presenter ?? headlessPresenter;

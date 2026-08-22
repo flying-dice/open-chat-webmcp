@@ -32,6 +32,7 @@ function firstLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+// TODO: clean-code - 0.35 - DRY: "truncate text to N chars, append an ellipsis" is hand-rolled here, and separately in session.ts's chatPreview and turn.ts's truncate, with three slightly different ellipsis markers, instead of one shared helper.
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
@@ -73,6 +74,7 @@ export function titleFromSummary(summary: ChatSummary, max = TITLE_MAX_LENGTH): 
  * name UNSETS `ChatSession.title` and reverts to the derived title, rather
  * than storing `""` (decisions/24 §4).
  */
+// TODO: clean-code - 0.3 - DRY: the same text.replace(/\s+/g, " ").trim() whitespace-collapse as firstLine (above, in this file) is written a second time here instead of normalizeChatTitle calling firstLine.
 export function normalizeChatTitle(title: string, maxStored: number): string | undefined {
   const collapsed = title.replace(/\s+/g, " ").trim();
   if (!collapsed) return undefined;

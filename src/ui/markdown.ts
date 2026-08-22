@@ -155,6 +155,7 @@ function escapeHtml(text: string): string {
 // marked configuration
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.3 - COUPLING: hardcodes the class names (md-code, md-code-header, md-code-lang, md-copy-btn) and data-copy-button/data-code-block attributes that Markdown.svelte's click handler and scoped CSS both depend on — an untyped string contract with no compiler behind it.
 function renderCodeBlock({ text, lang }: { text: string; lang?: string }): string {
   const langToken = (lang ?? "").trim().split(/\s+/)[0] ?? "";
   const displayCode = prettyPrintIfJson(langToken, text);

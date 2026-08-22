@@ -194,6 +194,7 @@ function describeUnreachable(tabId: number, result: RelayReachResult): string {
 // that carries the tab's origin alongside its tools, which the registry
 // requires. See report for a flag on this assumption.
 
+// TODO: clean-code - 0.3 - DRY: the inline `typeof v === "object" && v !== null && !Array.isArray` shape check here and in isCallToolResponse below is the same isRecord predicate reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, ollama/client.ts, openai/index.ts, relay.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
 function isToolsUpdatedMessage(v: unknown): v is RuntimeToolsUpdatedMessage {
   return (
     typeof v === "object" &&

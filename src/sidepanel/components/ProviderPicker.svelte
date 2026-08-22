@@ -1,4 +1,5 @@
 <script lang="ts">
+  // TODO: clean-code - 0.5 - NAMING: named ProviderPicker but card 51/decisions-22 flattened it into a single MODEL picker grouped by provider — heading reads "Choose your model", selectModel/ModelListEntry are the vocabulary throughout. Should say it picks a model.
   /**
    * The composer's flat model picker (card 51, decisions/22-flat-model-picker.md
    * — refining card 23's two-level provider-then-model control; re-skinned
@@ -198,6 +199,7 @@
    * "selectable" or vanishing — decisions/06's "never hide, never guess
    * safe" rule applies here too.
    */
+  // TODO: clean-code - 0.35 - SRP: mixes popover open/close + keyboard/filter UI with row-bucketing/grouping business logic (toRow, bucketOf, groups, visibleGroups, unverifiedRows, noToolsRows) in one file.
   function bucketOf(capability: ModelCapabilities | undefined): "selectable" | "unverified" | "no-tools" {
     if (isSelectable(capability)) return "selectable";
     if (capability?.status === "no-tools") return "no-tools";
@@ -290,6 +292,7 @@
   /** Keeps the concrete `ollama pull` suggestion alive for the "some models installed, none tool-capable" case, without violating the "no heading for a provider with no selectable models" rule above — this hint lives on the No-tool-support SECTION instead of on a per-provider heading. */
   const noToolsHasOllama = $derived(noToolsRows.some((r) => r.isOllama));
 
+  // TODO: clean-code - 0.4 - COUPLING: "is the current selection usable" is independently re-derived here (bucketOf/handlePickModel) as well as in Composer.svelte's blocked and App.svelte's handleSend guard — one rule, three call sites, no shared function.
   function handlePickModel(row: Row): void {
     if (!isSelectable(row.capability)) return;
     void selectModel(row.providerId, row.model.id).then(() => closePicker());
@@ -342,6 +345,7 @@
 
 <div class="relative min-w-0">
   <Popover.Root open={selection.pickerOpen} onOpenChange={(o) => (o ? openPicker() : closePicker())}>
+    <!-- TODO: clean-code - 0.2 - COUPLING: `picker__trigger` (like ActivityGroup.svelte's `.activity-group`/`.summary`) is a class with no styling of its own kept only so scripts/verify/checks/screenshots.mjs can find the element — a magic-string contract with no compiler behind it. -->
     <!-- `picker__trigger` carries no styling of its own — kept purely so
          verify/checks/screenshots.mjs can open the model sheet for its
          screenshot matrix. The chip's own accessible name is whichever model

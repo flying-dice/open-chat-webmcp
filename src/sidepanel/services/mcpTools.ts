@@ -1,3 +1,4 @@
+// TODO: clean-code - 0.3 - SRP: blends four distinct jobs — background discovery caching/scheduling, permission checks, server-tool execution, and MCP-content-to-text formatting — in one module.
 // Owns everything about turning configured MCP servers into tools the agent
 // loop can call, per decisions/14-backend-mcp-servers.md and
 // decisions/19-merging-server-tools-with-page-tools.md. This is the
@@ -64,6 +65,7 @@ const DISCOVERY_REFRESH_INTERVAL_MS = 60_000;
 
 /** The gateway's own `DEFAULT_CALL_TOOL_TIMEOUT_MS` budget (src/infra/mcp/timeouts.ts) already bounds one `callServerTool` — this module adds no second timeout on top of it, matching the page-tool call path's own single-timeout-per-hop discipline. */
 
+// TODO: clean-code - 0.3 - DEAD: orphaned doc comment above with no subject — the next code is a "// Cache" section-header comment, not a const/function this doc could attach to. Reads as a leftover from a deleted constant.
 
 // ---------------------------------------------------------------------------
 // Cache
@@ -74,6 +76,7 @@ interface CacheEntry {
   discovery: McpServerDiscovery;
 }
 
+// TODO: clean-code - 0.2 - COUPLING: the cache/refreshing/lastRefreshStartedAt triple is temporally coupled — any future caller of cachedServerTools() that doesn't first (directly or transitively) call ensureMcpDiscoveryFresh() silently gets a stale/empty list rather than an error.
 let cache: CacheEntry[] = [];
 let lastRefreshStartedAt = 0;
 let refreshing: Promise<void> | undefined;
@@ -165,6 +168,7 @@ export function initMcpToolsSync(): () => void {
  * cache built by the last `refreshNow` — and always kicks a background
  * refresh for the NEXT call, never waits on one now (decisions/19 §4).
  */
+// TODO: clean-code - 0.3 - NAMING: getMergedToolsForTab reads as a pure getter, but calling it also triggers ensureMcpDiscoveryFresh() — a background network refresh — as a side effect not implied by "get".
 export function getMergedToolsForTab(
   pageTools: SerializedTool[],
   callPageTool: (

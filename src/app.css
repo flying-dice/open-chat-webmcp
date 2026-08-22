@@ -34,6 +34,7 @@
 	--border: oklch(0.92 0.004 286.32);
 	--input: oklch(0.92 0.004 286.32);
 	--ring: oklch(0.705 0.015 286.067);
+	/* TODO: clean-code - 0.3 - DEAD: --chart-1..--chart-5 and every --sidebar* token below (light + dark values, plus their @theme inline --color-* re-exports) are leftover shadcn CLI generator output for a chart component and a Sidebar primitive this extension has neither of. */
 	--chart-1: oklch(0.87 0 0);
 	--chart-2: oklch(0.556 0 0);
 	--chart-3: oklch(0.439 0 0);

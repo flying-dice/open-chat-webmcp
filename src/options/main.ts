@@ -38,6 +38,7 @@ const permissions = createChromeHostPermissions();
 // Card 75's exhaustive `Record<ProviderType, ...>` dispatcher — see the side
 // panel root for why the old runtime locator went. Both surfaces build their
 // own, from their own storage ports, so neither imports the other's.
+// TODO: clean-code - 0.25 - DRY: this createProviderClientFactory composition-root wiring block is copy-pasted verbatim from src/sidepanel/main.ts.
 const createProviderClient = createProviderClientFactory({
   ollama: (config) =>
     createOllamaProvider(config, {

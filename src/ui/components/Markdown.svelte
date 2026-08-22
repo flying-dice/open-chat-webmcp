@@ -12,6 +12,7 @@
    * design (marked -> DOMPurify, strict allowlist, no raw HTML
    * passthrough).
    *
+   * TODO: clean-code - 0.45 - NAMING: this doc comment states "Lives in src/lib/components" as present-tense fact. src/lib no longer exists (renamed to src/ui) — the file is actually at src/ui/components/Markdown.svelte. Misleads a reader about the current location.
    * Lives in src/lib/components (not src/sidepanel/components, where it
    * originated with card 14) because it's used by both the side panel
    * (streaming transcript, ProviderPicker's copyable fixes/commands) and
@@ -55,6 +56,7 @@
 
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // TODO: clean-code - 0.3 - COUPLING: this click handler and the scoped style block below depend on class names (md-code, md-code-header, md-code-lang, md-copy-btn) and data-copy-button/data-code-block attributes hardcoded in src/ui/markdown.ts's renderCodeBlock — an untyped string contract with no compiler behind it.
   function handleClick(event: MouseEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;

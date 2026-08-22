@@ -205,6 +205,7 @@ export type PageToolExecutor = (
   opts: { signal?: AbortSignal },
 ) => Promise<MergedToolCallOutcome>;
 
+// TODO: clean-code - 0.4 - KISS: ServerToolExecutor and buildServerMergedTools below are generic over a server-config shape to avoid a domain->infra inward edge from when McpServerConfig lived in a chrome.storage adapter. Since the DDD restructure, McpServerConfig has lived in ./servers.ts — the same bounded context and barrel as this file — so the inward-edge risk no longer exists, and the generic is instantiated with exactly one concrete type across the whole codebase.
 /** Invokes one server tool by (config, toolName) — bound in src/sidepanel/services/mcpTools.ts, which wraps client.ts's `callServerTool` with the permission check and error-shape translation decisions/19 §4/§6 require. Never throws. */
 export type ServerToolExecutor<TServer extends ToolServerIdentity = ToolServerIdentity> = (
   config: TServer,

@@ -64,6 +64,7 @@
     chevron_right: ArrowRight01Icon,
     close: Cancel01Icon,
     content_copy: Copy01Icon,
+    // TODO: clean-code - 0.5 - DEAD: this "delete" lookup entry is unreachable — name="delete" is never passed to <Icon> anywhere in src, and there's no dynamic iteration over this map that would reach it structurally (see src/ui/icons.ts's matching union member).
     delete: Delete02Icon,
     diamond: Diamond02Icon,
     edit_square: PencilEdit02Icon,

@@ -1,3 +1,4 @@
+// TODO: clean-code - 0.3 - SRP: combines provider-list loading, per-provider model-loading/capability resolution, and selection persistence with an unrelated picker open/close UI toggle (pickerOpen/openPicker/closePicker/togglePicker).
 // Provider + model selection for the side panel's picker (card 23, flattened
 // by card 51 per decisions/22-flat-model-picker.md, decisions/10-provider-registry-and-credential-storage.md,
 // decisions/11-provider-capability-detection.md).
@@ -123,6 +124,7 @@ export type ModelsState =
 // State
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.15 - COUPLING: eight independent module-level $state fields plus a non-reactive providerTokens map are mutated by overlapping functions (syncToTab, loadProviders, loadModelsForProvider, selectModel, refresh) with implicit ordering assumptions — a wide surface to hold in your head to change one function safely.
 let tabId = $state<number | undefined>(undefined);
 let origin = $state<string>("");
 
@@ -311,6 +313,7 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
 // Per-provider model loading (decisions/22: parallel, degrading per provider)
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.3 - DRY: buildClient (try createProviderClient, catch -> undefined) is duplicated verbatim in src/options/components/ProvidersSection.svelte instead of being shared.
 function buildClient(config: ProviderConfig): ChatProvider | undefined {
   try {
     return sidePanelServices().createProviderClient(config);
@@ -337,6 +340,7 @@ function buildClient(config: ProviderConfig): ChatProvider | undefined {
  * (see this module's header comment) so retrying provider A can never
  * discard an in-flight load for provider B.
  */
+// TODO: clean-code - 0.45 - DRY: duplicates at length the same per-provider-token-guarded "listModels -> branch on error kind -> resolveCapabilities -> filter selectable" sequence as src/options/components/ProvidersSection.svelte's loadDefaultModelOptions, instead of sharing an extracted helper.
 async function loadModelsForProvider(config: ProviderConfig): Promise<void> {
   const token = (providerTokens[config.id] = (providerTokens[config.id] ?? 0) + 1);
   providerModelsState[config.id] = { status: "loading" };
@@ -490,6 +494,7 @@ export function closePicker(): void {
   pickerOpen = false;
 }
 
+// TODO: clean-code - 0.6 - DEAD: togglePicker has zero callers — ProviderPicker.svelte actually wires Popover.Root's onOpenChange straight to openPicker/closePicker instead; the doc comment below describes wiring that was never built.
 /** Toggle the shared picker popover — ProviderPicker.svelte's trigger chip calls this. */
 export function togglePicker(): void {
   pickerOpen = !pickerOpen;
@@ -506,6 +511,7 @@ export async function refresh(): Promise<void> {
   await Promise.all(providers.map((p) => loadModelsForProvider(p)));
   const currentTabId = tabId;
   const currentOrigin = origin;
+  // TODO: clean-code - 0.2 - KISS: mutating tabId to undefined solely to flip syncToTab's changedTab branch is a side-channel signal rather than an explicit parameter; syncToTab(tabId, origin, { force: true }) would say the same thing without exploiting the "assign to invalidate identity" trick.
   tabId = undefined; // force syncToTab's changedTab branch
   await syncToTab(currentTabId, currentOrigin);
 }

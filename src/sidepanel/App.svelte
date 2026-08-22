@@ -191,6 +191,8 @@
     composerRef?.focusInput();
   }
 
+  // TODO: clean-code - 0.4 - COUPLING: "is the current selection usable" is independently re-derived here (the resolution/tabId/needsConfirmation guard) as well as in Composer.svelte's blocked and ProviderPicker.svelte's bucketOf/handlePickModel — one rule, three call sites, no shared function.
+  // TODO: clean-code - 0.25 - SRP: handleSend mixes UI validation branching (no-provider/no-selection guards) with fallback assistant-note authoring and turn-dispatch assembly, rather than delegating the fallback messaging entirely to a service.
   function handleSend(text: string): void {
     lastSentText = text;
 

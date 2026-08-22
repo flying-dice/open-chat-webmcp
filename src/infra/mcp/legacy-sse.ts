@@ -160,6 +160,7 @@ async function postLegacyMessage(
   } catch (err) {
     return { ok: false, error: budget.classify(err) };
   }
+  // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in streamable-http.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
   if (response.status === 401 || response.status === 403) {
     return {
       ok: false,
@@ -190,6 +191,7 @@ export async function connectLegacySse(
     return { ok: false, error: budget.classify(err) };
   }
 
+  // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in streamable-http.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
   if (response.status === 401 || response.status === 403) {
     return {
       ok: false,

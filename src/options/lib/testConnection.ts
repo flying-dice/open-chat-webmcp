@@ -1,3 +1,4 @@
+// TODO: clean-code - 0.4 - NAMING: exported type TestOutcome and this file name are both unprefixed, while the sibling MCP-connection test explicitly names its subject (McpTestOutcome, mcpTestConnection.ts). testResultDisplay.ts imports both side by side; the asymmetry makes it easy to misread which subject a call site is formatting. Should read ProviderTestOutcome/providerTestConnection.ts.
 // "Test connection" for the provider registry UI (card 22). Resolves
 // through the provider's own `ChatProvider` client — built via the
 // `createProviderClient` dispatcher this surface's composition root wired

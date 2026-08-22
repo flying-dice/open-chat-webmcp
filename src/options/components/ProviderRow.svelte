@@ -125,6 +125,7 @@
   let backendLabel = $derived(getPreset(provider.presetId)?.label ?? TYPE_LABELS[provider.type]);
 </script>
 
+<!-- TODO: clean-code - 0.4 - DRY: the move-up/move-down button pair, the outer row wrapper, the "Permission needed"/"Permission granted" badge pair, and the masked-header-count line are markup-identical to McpServerRow.svelte's row shell — a shared ReorderButtons/row-shell component would remove this. -->
 <div class="flex flex-col gap-2 rounded-2xl border p-3">
   <div class="flex flex-wrap items-center gap-2">
     <div class="flex flex-col gap-0.5">

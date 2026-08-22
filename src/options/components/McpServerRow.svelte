@@ -51,6 +51,7 @@
   let toolsExpanded = $state(false);
 </script>
 
+<!-- TODO: clean-code - 0.4 - DRY: the move-up/move-down button pair, the outer row wrapper, the "Permission needed"/"Permission granted" badge pair, and the masked-header-count line are markup-identical to ProviderRow.svelte's row shell — a shared ReorderButtons/row-shell component would remove this. -->
 <div class="flex flex-col gap-2 rounded-2xl border p-3" class:opacity-60={!server.enabled}>
   <div class="flex flex-wrap items-center gap-2">
     <div class="flex flex-col gap-0.5">
@@ -102,6 +103,7 @@
       probe (decisions/27's consequences: "the management UI ... needs a way
       to show 'reconnect needed' distinctly from 'add a token'").
     -->
+    <!-- TODO: clean-code - 0.3 - COUPLING: the "needs reconnect" rule (expiresAt <= Date.now() && !refreshToken) is duplicated inline in McpServerForm.svelte's oauthNeedsReconnect instead of living once in src/domain/tools. -->
     {#if server.auth?.type === "oauth" && server.auth.expiresAt !== undefined && server.auth.expiresAt <= Date.now() && !server.auth.refreshToken}
       <Badge
         variant="destructive"
@@ -145,6 +147,7 @@
   {#if testOutcome}
     <p class={mcpTestResultClass(testOutcome)}>{mcpTestResultMessage(testOutcome)}</p>
     {#if mcpTestResultTools(testOutcome)}
+      <!-- TODO: clean-code - 0.55 - DRY: this "show N tools" toggle button plus the expandable, index-keyed tool list is copy-pasted verbatim from McpServerForm.svelte's matching list (down to the each_key_duplicate war-story comment) instead of a shared DiscoveredToolsList component. -->
       {@const tools = mcpTestResultTools(testOutcome) ?? []}
       <div class="flex">
         <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>

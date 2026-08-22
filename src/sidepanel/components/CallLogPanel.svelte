@@ -1,5 +1,6 @@
 <script lang="ts">
   /**
+   * TODO: clean-code - 0.4 - NAMING: "the same entries logToolCall/completeToolCall (src/lib/session.ts) write" is stale — both functions and ToolCallLogEntry now live in src/domain/chat, not src/lib/session.ts (deleted).
    * Call Log view (card 11): every tool call the model made this session —
    * args, result or error, duration, and whether it ran automatically, was
    * approved, or was denied (decisions/05's accountability surface). Reads

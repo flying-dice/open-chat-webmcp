@@ -535,6 +535,7 @@ function stringifyResult(result: unknown): string {
   }
 }
 
+// TODO: clean-code - 0.35 - DRY: "truncate text to N chars, append an ellipsis" is hand-rolled here, and separately in session.ts's chatPreview and title.ts's truncate, with three slightly different ellipsis markers, instead of one shared helper.
 function truncate(text: string): string {
   if (text.length <= MAX_TOOL_RESULT_CHARS) return text;
   return `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n… (truncated)`;

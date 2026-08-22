@@ -20,6 +20,7 @@
 
   let { value }: Props = $props();
 
+  // TODO: clean-code - 0.3 - DRY: this isPlainObject predicate is the same isRecord shape reimplemented independently at least nine times across src/; unlike the infra adapters, SchemaProperty/ToolSchema/ToolArgValue have no adapters-do-not-import-adapters constraint and could share one from src/ui/utils.ts alongside cn().
   function isPlainObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
   }

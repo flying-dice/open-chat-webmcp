@@ -124,6 +124,7 @@
    * duplicate or not-yet-valid key — keying on `key` itself would make two
    * rows collide, or a row jump position, while its name is still being typed.
    */
+  // TODO: clean-code - 0.55 - DRY: HeaderRow shape/CRUD, the permission-grant $effect, the "request permission then test" handleTest flow, and the header-editor markup are all independently re-declared in McpServerForm.svelte (see its HeaderRow interface, handleTest and the custom-headers Field.Field block).
   interface HeaderRow {
     id: number;
     key: string;
@@ -235,6 +236,7 @@
   let testing = $state(false);
   let testOutcome = $state<TestOutcome | undefined>(undefined);
 
+  // TODO: clean-code - 0.15 - NAMING: buildData is a generic name for a well-typed, single-purpose builder — should convey it builds a provider config (cf. McpServerForm.svelte's identically-named buildData).
   function buildData(): Omit<ProviderConfig, "id"> {
     // Drop only fully-blank rows (an added-but-not-yet-filled-in row) —
     // anything else is sent as typed, including an invalid one; callers

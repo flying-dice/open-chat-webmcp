@@ -1,3 +1,4 @@
+// TODO: clean-code - 0.35 - NAMING: src/sidepanel/lib/ is a generic "lib" folder name — the exact grab-bag name decisions/33 retired at the top level (src/lib -> src/ui) because "lib" hides a layer. Contents are legitimate surface-local presentation helpers, but the name reads as a leftover pre-DDD grab-bag.
 // The glyph + wording for a model's tool-capability status — the UI half of
 // decisions/11-provider-capability-detection.md.
 //

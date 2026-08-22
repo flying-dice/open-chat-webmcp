@@ -36,6 +36,7 @@
 
   const { pageInfo, connectionStatus, onOpenTools }: Props = $props();
 
+  // TODO: clean-code - 0.4 - DRY: identical statusLabel lookup table declared independently in OverflowMenu.svelte instead of exported once from src/sidepanel/lib/, the pattern capabilityBadge.ts/toolOrigin.ts already establish for exactly this kind of shared wording.
   const statusLabel: Record<ConnectionStatus, string> = {
     unknown: "Not connected",
     connecting: "Connecting…",

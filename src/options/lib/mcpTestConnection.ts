@@ -1,3 +1,4 @@
+// TODO: clean-code - 0.35 - NAMING: src/options/lib/ is a generic "lib" folder name for options-surface helpers. The top-level src/lib was deliberately renamed to src/ui specifically because "lib" is a grab-bag name that hides its layer (ui/README.md, decisions/33); this surface-local folder kept the retired name.
 // "Test connection" for the MCP server registry UI (card 39,
 // decisions/14-backend-mcp-servers.md). Resolves through the
 // `McpToolGateway` port's `discoverAllServerTools` (src/domain/tools) called

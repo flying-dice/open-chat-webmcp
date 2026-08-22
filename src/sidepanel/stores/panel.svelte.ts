@@ -368,6 +368,7 @@ declare global {
   }
 }
 
+// TODO: clean-code - 0.2 - NAMING: named/documented as a "snapshot" (implying a pure read) but carries enableTracing/disableTracing — state-mutating methods — as properties on the same object.
 function webmcpPanelDebugSnapshot() {
   const snapshot = chat().snapshot();
   return {

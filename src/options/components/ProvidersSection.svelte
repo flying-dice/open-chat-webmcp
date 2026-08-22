@@ -1,4 +1,5 @@
 <script lang="ts">
+  // TODO: clean-code - 0.4 - SRP: bundles provider CRUD, permission-grant tracking, a per-provider tool-capable-model capability/staleness subsystem, stale-default-selection detection, and the two-step add-provider flow state machine in one component.
   // Provider registry management (card 22,
   // decisions/10-provider-registry-and-credential-storage.md): the CRUD +
   // reorder + set-default UI on top of the `ProviderRegistry` port, which
@@ -101,6 +102,7 @@
   let testOutcomes = $state<Record<string, TestOutcome | undefined>>({});
   let testingIds = $state<Record<string, boolean>>({});
 
+  // TODO: clean-code - 0.45 - DRY: refreshPermissions (Promise.all + Object.fromEntries over cached grants) and handleMove/handleTest below are the same generic reorder/permission-gate plumbing duplicated a second time in McpServersSection.svelte, with no domain-specific reason left to be typed twice.
   async function refreshPermissions(): Promise<void> {
     const entries = await Promise.all(
       providers.map(async (p) => [p.id, await optionsServices().permissions.has(p.baseUrl)] as const),
@@ -108,6 +110,7 @@
     permissionGranted = Object.fromEntries(entries);
   }
 
+  // TODO: clean-code - 0.3 - DRY: buildClient (try createProviderClient, catch -> undefined) is duplicated verbatim in src/sidepanel/stores/selection.svelte.ts instead of being shared.
   /** Mirrors `src/sidepanel/stores/selection.svelte.ts`'s `buildClient`: a missing factory (registry.ts: no client registered for this provider's type) is a programming-error path here, not a real `ProviderError` — `undefined` is the honest signal, never a fabricated network/auth failure. */
   function buildClient(config: ProviderConfig): ChatProvider | undefined {
     try {
@@ -125,6 +128,7 @@
    * slow/unreachable provider's `listModels()` never delays another
    * provider's write to `defaultModelOptionsState`.
    */
+  // TODO: clean-code - 0.45 - DRY: duplicates at length the same per-provider-token-guarded "listModels -> branch on error kind -> resolveCapabilities -> filter selectable" sequence as src/sidepanel/stores/selection.svelte.ts's loadModelsForProvider, instead of sharing an extracted helper.
   async function loadDefaultModelOptions(provider: ProviderConfig): Promise<void> {
     const token = (defaultModelOptionsTokens[provider.id] =
       (defaultModelOptionsTokens[provider.id] ?? 0) + 1);
@@ -252,6 +256,7 @@
     await refresh();
   }
 
+  // TODO: clean-code - 0.45 - DRY: byte-identical optimistic-reorder-then-persist logic to McpServersSection.svelte's handleMove.
   async function handleMove(index: number, direction: -1 | 1): Promise<void> {
     const target = index + direction;
     if (target < 0 || target >= providers.length) return;
@@ -319,6 +324,7 @@
    * (decisions/09): a click handler is the only place the browser honours
    * that request, and any async work ahead of it risks losing the gesture.
    */
+  // TODO: clean-code - 0.45 - DRY: the "check cached grant -> permissions.request as first await -> run the test, else report the same permission-denied string" flow duplicates McpServersSection.svelte's handleTest.
   async function handleTest(provider: ProviderConfig): Promise<void> {
     testingIds = { ...testingIds, [provider.id]: true };
     testOutcomes = { ...testOutcomes, [provider.id]: undefined };

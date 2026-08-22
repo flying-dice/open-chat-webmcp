@@ -71,6 +71,7 @@ const permissions = createChromeHostPermissions();
 // type" throw for any new entry point that forgot it. This is the exhaustive
 // `Record<ProviderType, ...>` that replaced it: adding a third provider type
 // is a compile error here rather than a runtime throw.
+// TODO: clean-code - 0.25 - DRY: this createProviderClientFactory composition-root wiring block is copy-pasted verbatim from src/options/main.ts.
 const createProviderClient = createProviderClientFactory({
   ollama: (config) =>
     createOllamaProvider(config, {

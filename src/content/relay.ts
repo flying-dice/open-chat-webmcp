@@ -68,6 +68,7 @@ import type { ModelContextToolInfo } from "@mcp-b/webmcp-types";
 // worker.
 const TOOLCHANGE_DEBOUNCE_MS = 100;
 
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, ollama/client.ts, openai/index.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -170,6 +171,7 @@ function safeRespond(sendResponse: (response: RuntimeMessage) => void, response:
 // `ModelContextToolInfo` object, not a name).
 // ---------------------------------------------------------------------------
 
+// TODO: clean-code - 0.15 - COUPLING: module-level mutable cache/timer read and written from refreshTools, resolveTool, handleCallTool, handleRefreshToolsRequest, the ontoolchange handler and the pageshow listener. Root-owned singleton state (relay.ts is a composition root) with a well-documented lifecycle, so kept low severity.
 let latestByName = new Map<string, NativeToolInfo>();
 let latestSerialized: SerializedTool[] = [];
 

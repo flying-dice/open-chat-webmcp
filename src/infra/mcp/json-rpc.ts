@@ -10,6 +10,7 @@
 import type { McpError, McpResult } from "../../domain/tools";
 import { PROTOCOL_VERSION } from "./protocol";
 
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, ollama/client.ts, openai/index.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -18,6 +19,7 @@ export function truncate(s: string, max = 500): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
+// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/ollama/client.ts and src/infra/openai/index.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead.
 export async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();

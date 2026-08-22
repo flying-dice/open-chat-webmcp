@@ -96,6 +96,7 @@ export interface ChatSession {
   /**
    * An explicit, user-set name (decisions/24-explicit-chat-titles.md).
    * Absent means "derived" — ./title.ts takes over exactly as it always has.
+   * TODO: clean-code - 0.3 - NAMING: this says "Set via ChatService.renameActiveChat" but the actual method in service.ts is renameCurrent — stale name left over from a rename; misleads a reader trying to find the setter.
    * Set via `ChatService.renameActiveChat` (./service.ts); an
    * empty/whitespace-only rename UNSETS this field rather than storing `""`,
    * so clearing the name reverts to the derived title.
@@ -134,6 +135,7 @@ export const MAX_RETAINED_CHATS = 400;
 /** Longest preview/derived-title text a chat summary carries — keeps a chat's index footprint bounded regardless of how long its first message is. */
 export const MAX_CHAT_PREVIEW_LENGTH = 120;
 
+// TODO: clean-code - 0.4 - DRY: byte-for-byte identical crypto.randomUUID/fallback id-generation pattern as service.ts's makeMessageId, differing only in the fallback string prefix.
 function makeChatId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -154,6 +156,7 @@ export function createChat(origin: string, selection?: ProviderSelection): ChatS
   };
 }
 
+// TODO: clean-code - 0.35 - DRY: "truncate text to N chars, append an ellipsis" is hand-rolled here (inline), and separately in turn.ts's truncate and title.ts's truncate, with three slightly different ellipsis markers, instead of one shared helper.
 /** Trims and shortens the first user message into a history-list preview. `undefined` if there is no user message with any content yet. */
 export function chatPreview(messages: readonly TranscriptEntry[]): string | undefined {
   const firstUser = messages.find((m) => m.role === "user");
@@ -164,6 +167,7 @@ export function chatPreview(messages: readonly TranscriptEntry[]): string | unde
     : trimmed;
 }
 
+// TODO: clean-code - 0.6 - DEAD: summarizeChat has zero callers anywhere; the ChatSummary view it builds is instead assembled by hand in src/infra/chrome-storage/chat-store.ts (which calls chatPreview directly), duplicating this function's job with only the hand-rolled copy actually wired up.
 /** The `ChatSummary` view of a chat — what a history list shows, derived here so the index an adapter writes and the list a caller reads can never disagree. */
 export function summarizeChat(session: ChatSession): ChatSummary {
   return {

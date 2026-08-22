@@ -43,6 +43,7 @@ interface ProviderCredentials {
   headers?: ProviderHeader[];
 }
 
+// TODO: clean-code - 0.2 - DRY: decodeProviderCore follows the identical isRecord(v) && typeof v.id === "string" && v.id.length > 0 && ... defensive-cast pattern as mcp-server-registry.ts's decodeServerCore, and generateProviderId below mirrors generateServerId (same crypto.randomUUID + fallback, differing only in the prefix literal) — per-record-shape leftovers around keyed-record-store.ts's shared mechanic.
 /** Defensive against corrupted/foreign-written storage: drop any entry that doesn't look like a provider config rather than letting it crash a consumer downstream. */
 function decodeProviderCore(v: unknown): ProviderConfigCore | undefined {
   if (

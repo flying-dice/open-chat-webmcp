@@ -44,6 +44,7 @@ interface McpServerCredentials {
   headers?: Record<string, string>;
 }
 
+// TODO: clean-code - 0.2 - DRY: decodeServerCore follows the identical isRecord(v) && typeof v.id === "string" && v.id.length > 0 && ... defensive-cast pattern as provider-registry.ts's decodeProviderCore, and generateServerId below mirrors generateProviderId (same crypto.randomUUID + fallback, differing only in the prefix literal) — per-record-shape leftovers around keyed-record-store.ts's shared mechanic.
 /** Defensive against corrupted/foreign-written storage: drop any entry that doesn't look like a server config rather than letting it crash a consumer downstream. */
 function decodeServerCore(v: unknown): McpServerConfigCore | undefined {
   if (

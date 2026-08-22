@@ -152,6 +152,7 @@ export function subscribeToKey(
   return () => chrome.storage.onChanged.removeListener(listener);
 }
 
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (json-rpc.ts, ollama/client.ts, openai/index.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
 /** `typeof v === "object" && v !== null && !Array.isArray(v)` — the shape check every defensive reader in this folder starts from. */
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

@@ -94,6 +94,7 @@
   // selection when it started, and yanking the composer away to show a
   // banner while a reply is streaming or a tool is running would be
   // confusing, not helpful.
+  // TODO: clean-code - 0.4 - COUPLING: "is the current selection usable" is independently re-derived here as well as in App.svelte's handleSend guard and ProviderPicker.svelte's bucketOf/handlePickModel — one rule, three call sites, no shared function.
   const blocked = $derived.by((): Blocked | undefined => {
     if (busy) return undefined;
     if (selection.providersStatus === "loading") return { kind: "providers-loading" };

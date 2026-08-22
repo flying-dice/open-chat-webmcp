@@ -60,6 +60,7 @@
 
   let open = $state(false);
 
+  // TODO: clean-code - 0.3 - COUPLING: re-derives the same readOnly/untrustedContent/isServerTool booleans from a tool's annotations/origin as ApprovalCard.svelte instead of sharing one derivation — a change to what counts as "read-only" or "server tool" has to be mirrored in both.
   const readOnly = $derived(message.toolAnnotations?.readOnlyHint === true);
   const untrustedContent = $derived(message.toolAnnotations?.untrustedContentHint === true);
   const isServerTool = $derived(message.toolOrigin?.kind === "server");
@@ -104,6 +105,7 @@
     }
   });
 
+  // TODO: clean-code - 0.4 - NAMING: this doc comment's "src/lib/session.ts's ToolCallLogEntry" and "(panel.svelte.ts)" attributions are stale — the type and functions now live in src/domain/chat/service.ts and session.ts, not the deleted src/lib/session.ts or panel.svelte.ts.
   /** The matching call-log entry (src/lib/session.ts's `ToolCallLogEntry`), looked up by id — `addToolCall`/`logToolCall` (panel.svelte.ts) both key it as `call.id`, the same value used for this message's own `id`. */
   const logEntry = $derived(panel.toolCalls.find((entry) => entry.id === message.id));
 

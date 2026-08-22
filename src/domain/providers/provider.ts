@@ -91,6 +91,7 @@ export interface ProviderHeader {
  *   concept at all, so `Authorization` is always free there — useful for a
  *   gateway sitting in front of a local Ollama server.
  */
+// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/tools/servers.ts's validateServerHeaders/CLIENT_CONTROLLED_HEADERS — one returns an issue array for MCP servers, this returns a single reason string for providers, with no shared source tying the rule together.
 export function reservedHeaderReason(
   name: string,
   opts: { type: ProviderType; apiKeyConfigured: boolean },

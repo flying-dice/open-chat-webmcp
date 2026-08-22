@@ -28,6 +28,7 @@
 
   let { name, node, required = false }: Props = $props();
 
+  // TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/; unlike the infra adapters, SchemaProperty/ToolSchema/ToolArgValue have no adapters-do-not-import-adapters constraint and could share one isRecord from src/ui/utils.ts alongside cn().
   function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
   }

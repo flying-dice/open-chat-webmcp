@@ -1,4 +1,5 @@
 <script lang="ts">
+  // TODO: clean-code - 0.5 - SRP: Bundles five largely independent UI concerns — basic fields, bearer-token entry, a full OAuth sign-in state machine with a nested manual-app-registration sub-flow, custom-header row CRUD+validation, and connection-test orchestration — in one component.
   // Add/edit form for one MCP server config (card 39,
   // decisions/14-backend-mcp-servers.md,
   // decisions/15-custom-headers-are-credentials.md). Deliberately mirrors
@@ -128,6 +129,7 @@
     }
   }
 
+  // TODO: clean-code - 0.3 - COUPLING: the "needs reconnect" rule (expiresAt <= Date.now() && !refreshToken) is duplicated inline in McpServerRow.svelte instead of living once in src/domain/tools.
   /** Mirrors the "reconnect needed" condition McpServerRow.svelte checks against a saved server — here checked against the live local `oauthAuth` state instead of a stored config, so the form's own status line agrees with the row's badge. */
   const oauthNeedsReconnect = $derived(
     oauthAuth !== undefined &&
@@ -143,6 +145,7 @@
    * hands out), because that is exactly what it is: the last known verdict
    * on whether this server's credentials work.
    */
+  // TODO: clean-code - 0.5 - DRY: oauthStatusClass reimplements testResultDisplay.ts's bannerClass's exact three Tailwind class strings as a second local copy instead of calling the already-exported, already-shared bannerClass("ok"|"error"|"neutral").
   const OAUTH_STATUS_BASE = "rounded-lg border px-3 py-2 text-sm";
   const oauthStatusClass = $derived(
     oauthNeedsReconnect
@@ -163,6 +166,7 @@
     return "Connected — no expiry known.";
   }
 
+  // TODO: clean-code - 0.55 - DRY: HeaderRow shape/CRUD, the permission-grant $effect, the "request permission then test" handleTest flow, and the header-editor markup are all independently re-declared in ProviderForm.svelte (see its HeaderRow interface, handleTest and header-editor markup).
   interface HeaderRow {
     id: number;
     key: string;
@@ -261,6 +265,7 @@
     AUTH_MODE_OPTIONS.find((a) => a.value === authMode)?.label ?? AUTH_MODE_OPTIONS[0].label,
   );
 
+  // TODO: clean-code - 0.15 - NAMING: buildData is a generic name for a well-typed, single-purpose builder — should convey it builds a server config (cf. ProviderForm.svelte's identically-named buildData).
   function buildData(): Omit<McpServerConfig, "id"> {
     const cleanHeaders: Record<string, string> = {};
     for (const h of headers) {
@@ -713,6 +718,7 @@
   {#if testOutcome}
     <p class={mcpTestResultClass(testOutcome)}>{mcpTestResultMessage(testOutcome)}</p>
     {#if mcpTestResultTools(testOutcome)}
+      <!-- TODO: clean-code - 0.55 - DRY: this "show N tools" toggle button plus the expandable, index-keyed tool list is copy-pasted verbatim from McpServerRow.svelte's matching list (down to the each_key_duplicate war-story comment) instead of a shared DiscoveredToolsList component. -->
       {@const tools = mcpTestResultTools(testOutcome) ?? []}
       <div class="flex">
         <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
