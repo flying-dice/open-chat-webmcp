@@ -4,9 +4,21 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { crx } from "@crxjs/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import manifest from "./manifest.config.ts";
+import pkg from "./package.json" with { type: "json" };
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Build-time constants (typed in src/build-globals.d.ts). Card 76: the MCP
+  // client announces a name/version in its `initialize` handshake and used to
+  // `import pkg from "../../../package.json"` to get them — an adapter
+  // reaching outside src/ for build metadata, and the whole manifest in the
+  // bundle for two strings. Substituting literals here keeps the wire value
+  // identical (same package.json manifest.config.ts reads, just above) while
+  // leaving src/infra/mcp with no runtime dependency on it.
+  define: {
+    __APP_NAME__: JSON.stringify(pkg.name),
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   // `$lib` is a SvelteKit convention with no runtime behind it — this is a
   // plain multi-entry Vite build, so the alias has to be declared by hand
   // here AND in tsconfig.json/tsconfig.app.json (the shadcn-svelte CLI reads

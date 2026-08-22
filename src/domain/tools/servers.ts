@@ -167,3 +167,29 @@ export interface McpServerRegistry {
   /** Reorder to match `orderedIds`. Any id it omits is DROPPED — reordering is not a way to delete, so pass every current id back. */
   reorderServers(orderedIds: string[]): Promise<void>;
 }
+
+/**
+ * Persist a token set the OAuth adapter just refreshed (card 76).
+ *
+ * This exists so the transport stack does not write the config store from
+ * inside itself — the layering inversion decisions/29 names by name. Before
+ * card 76, `src/lib/mcp/oauth.ts` imported the registry directly and called
+ * `updateServer`; now it takes THIS port and the composition root's wiring
+ * supplies an implementation, so `src/infra/mcp` has no edge to
+ * `src/infra/chrome-storage` at all (`adapters-do-not-import-adapters`).
+ *
+ * Deliberately one write-only method rather than a second full registry:
+ * refreshing a token is the ONLY thing the transport is allowed to change
+ * about a stored server, and a port that can do nothing else makes that
+ * true by construction rather than by discipline.
+ *
+ * Rejects with `StorageError` (src/domain/storage) like every other storage
+ * port — the OAuth adapter treats persistence as best-effort and maps a
+ * rejection to "this refreshed token was used for this one call and not
+ * kept", which is also the correct behaviour for an unsaved draft config
+ * whose `serverId` is not registered at all.
+ */
+export interface McpAuthTokenStore {
+  /** Store `auth` as the given server's credentials. A `serverId` that is not registered is a no-op, not an error. */
+  saveAuth(serverId: string, auth: McpOAuthAuth): Promise<void>;
+}

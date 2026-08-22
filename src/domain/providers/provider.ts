@@ -21,8 +21,9 @@
 // Card 73 (decisions/29) moved this file from src/lib/provider.ts into the
 // `providers` bounded context. Its one cross-context dependency —
 // `SerializedTool`, the shape `chat()` takes tool definitions in — now comes
-// from the `tools` context's BARREL rather than from src/lib/protocol.ts,
-// the `chrome.runtime` messaging adapter that used to declare it. Contexts
+// from the `tools` context's BARREL rather than from the `chrome.runtime`
+// messaging adapter that used to declare it (src/lib/protocol.ts, now
+// src/infra/chrome-runtime/protocol.ts). Contexts
 // plug together through barrels, never by reaching into each other's files.
 import type { SerializedTool } from "../tools";
 

@@ -8,7 +8,7 @@
 // `chrome.permissions.request` before it can ever connect — a blocked CORS
 // preflight and a genuinely dead server both fail identically as a bare
 // TypeError from `fetch` (src/infra/ollama/client.ts, src/infra/openai,
-// src/lib/mcp/client.ts), so the only way to make "needs permission"
+// src/infra/mcp/budget.ts), so the only way to make "needs permission"
 // visibly distinct from "misconfigured" is to check grant state
 // independently of ever attempting a request.
 //
@@ -16,10 +16,12 @@
 // as src/options/lib/permissions.ts) and copied verbatim for the MCP
 // registry (card 37, as src/lib/mcp/permissions.ts) because src/options/
 // was off-limits to that card at the time. Card 37 flagged the duplication
-// explicitly as something that belongs shared once both land — this is
-// that consolidation: one implementation, generic over "a URL whose host
-// needs a permission grant", re-exported from both original locations so
-// neither side's imports had to change.
+// explicitly as something that belongs shared once both land, and card 39
+// did that consolidation: one implementation, generic over "a URL whose
+// host needs a permission grant". Card 76 deleted the src/lib/mcp/
+// re-export shim and pointed its importer here directly; the
+// src/options/lib/permissions.ts one is still standing, and goes when card
+// 78 moves this module into src/infra/chrome-runtime.
 
 /** Parse a URL into the origin-only match pattern `chrome.permissions` deals in (`<scheme>://<host>/*`), or `undefined` if the URL doesn't parse. */
 export function originPatternForUrl(url: string): string | undefined {

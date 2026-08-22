@@ -21,17 +21,17 @@
   import { untrack } from "svelte";
   import {
     validateServerHeaders,
+    type McpAuthorizationServerInfo,
     type McpOAuthAuth,
     type McpServerAuth,
     type McpServerConfig,
     type McpTransportPreference,
   } from "../../domain/tools";
-  import {
-    discoverAuthorizationServer,
-    registerClient,
-    runAuthorizationFlow,
-    type McpAuthorizationServerInfo,
-  } from "../../lib/mcp/oauth";
+  // Card 76: the OAuth chain is the `McpOAuthClient` PORT (src/domain/tools);
+  // the instance comes from this surface's interim wiring. The sign-in
+  // ORCHESTRATION below stays in this component — de-chroming components is
+  // card 78's job, not this one's.
+  import { mcpOAuthClient } from "../lib/mcpClients";
   import { describeMcpError } from "../../domain/tools";
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../../lib/permissions";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
@@ -404,7 +404,7 @@
       }
 
       // 2. Discover the authorization server (RFC 9728 / RFC 8414).
-      const discovery = await discoverAuthorizationServer(serverUrl);
+      const discovery = await mcpOAuthClient.discoverAuthorizationServer(serverUrl);
       if (!discovery.ok) {
         oauthError = describeMcpError(discovery.error);
         return;
@@ -419,12 +419,12 @@
         oauthDiscovery = discovery.value;
         return;
       }
-      const registration = await registerClient(discovery.value.registrationEndpoint, redirectUri());
+      const registration = await mcpOAuthClient.registerClient(discovery.value.registrationEndpoint, redirectUri());
       if (!registration.ok) {
         oauthError = describeMcpError(registration.error);
         return;
       }
-      const flow = await runAuthorizationFlow(
+      const flow = await mcpOAuthClient.runAuthorizationFlow(
         {
           serverUrl,
           clientId: registration.value.clientId,
@@ -471,7 +471,7 @@
       // the longer note at `buildData()`'s oauth branch for what breaks if a
       // Proxy reaches `chrome.storage` unsnapshotted.
       const discoverySnapshot = $state.snapshot(oauthDiscovery);
-      const flow = await runAuthorizationFlow(
+      const flow = await mcpOAuthClient.runAuthorizationFlow(
         {
           serverUrl: url.trim(),
           clientId,

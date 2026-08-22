@@ -121,84 +121,129 @@ if (violations.length === 0) {
 }
 
 // ---------------------------------------------------------------------------
-// Storage containment (card 74)
+// CONTAINMENT scans (cards 74 and 76)
 //
-// The domain-purity scan above says where `chrome.storage` may NOT be. This
-// says where it may be: exactly one folder. Card 74 pulled every repository
-// out of src/lib and behind a port, and the thing that makes that stick is
-// not the port — it is that a component can no longer quietly add a
+// The domain-purity scan above says where a platform global may NOT be. These
+// say where one MAY be: exactly one folder each. Pulling a concern out of
+// src/lib and behind a port is not what makes the move stick — the thing that
+// makes it stick is that a component can no longer quietly add a
 // `chrome.storage.local.set` next to the code that needed it, which is how
 // seven of the eleven options components ended up talking to the platform
 // directly (decisions/29).
 //
-// This is a globals scan for the same reason the one above is: `chrome` is
+// These are globals scans for the same reason the domain one is: `chrome` is
 // ambient, so dependency-cruiser cannot see it at all.
 // ---------------------------------------------------------------------------
 
-/** The only folder allowed to call `chrome.storage`. */
-const STORAGE_HOME = "src/infra/chrome-storage/";
-
 /**
- * Sites that are known, named, and owned by a later card. Each entry is a
- * file path plus the card that removes it — NOT a general escape hatch: add
- * to this list only alongside a board card that deletes the entry again.
+ * Run one containment scan over src/.
+ *
+ * `detect` decides whether a line is a CALL SITE rather than a mention: it
+ * gets each non-comment line and returns a boolean. Comment lines and block
+ * comments are skipped for us — a module that explains why it no longer calls
+ * an API must not fail the guard that made that true.
+ *
+ * `exceptions` are sites that are known, named, and owned by a later card:
+ * each entry is a file path plus the card that removes it. NOT a general
+ * escape hatch — add to one of these lists only alongside a board card that
+ * deletes the entry again.
  */
-const STORAGE_EXCEPTIONS = [
-  {
-    file: "src/sidepanel/stores/panel.svelte.ts",
-    why: "the `debug:tab-sync-tracing` runtime flag — card 77 moves it with the rest of the panel store's storage",
-  },
-];
-
-const storageFiles = (await sourceFiles(SRC)).filter(
-  (f) => !path.relative(ROOT, f).replaceAll(path.sep, "/").startsWith("src/lib/components/ui/"),
-);
-const storageViolations = [];
-
-for (const file of storageFiles) {
-  const rel = path.relative(ROOT, file).replaceAll(path.sep, "/");
-  if (rel.startsWith(STORAGE_HOME)) continue;
-  if (STORAGE_EXCEPTIONS.some((e) => e.file === rel)) continue;
-
-  const lines = readFileSync(file, "utf8").split("\n");
-  let inBlockComment = false;
-
-  lines.forEach((line, i) => {
-    const wasInBlockComment = inBlockComment;
-    const opens = line.lastIndexOf("/*");
-    const closes = line.lastIndexOf("*/");
-    if (opens > closes) inBlockComment = true;
-    else if (closes > opens) inBlockComment = false;
-
-    if (wasInBlockComment || isCommentOnly(line)) return;
-    // `.svelte` markup prose mentions `chrome.storage.local` to tell the
-    // user where their API key is kept — that is copy, not a call site.
-    if (/(?<![\w$.])chrome\s*\.\s*storage\b/.test(line) && /chrome\s*\.\s*storage\s*\.\s*\w+\s*\./.test(line)) {
-      storageViolations.push({ file: rel, line: i + 1, text: line.trim() });
-    }
-  });
-}
-
-console.log(
-  `guard:boundaries — storage containment: scanned ${storageFiles.length} file(s) under src/` +
-    ` (${STORAGE_EXCEPTIONS.length} known exception(s))`,
-);
-
-if (storageViolations.length === 0) {
-  console.log(`  ok — chrome.storage is called only from ${STORAGE_HOME}`);
-} else {
-  console.error(
-    `\n  ${storageViolations.length} chrome.storage call site(s) outside ${STORAGE_HOME}.` +
-      "\n  Storage is a driven port (card 74, decisions/29): declare what you" +
-      "\n  need on the port in src/domain/<context> and implement it in" +
-      `\n  ${STORAGE_HOME}, then reach it through the port:\n`,
+function containmentScan({ api, home, exceptions, detect, fixHint }, allFiles) {
+  const files = allFiles.filter(
+    (f) => !path.relative(ROOT, f).replaceAll(path.sep, "/").startsWith("src/lib/components/ui/"),
   );
-  for (const v of storageViolations) {
+  const found = [];
+
+  for (const file of files) {
+    const rel = path.relative(ROOT, file).replaceAll(path.sep, "/");
+    if (rel.startsWith(home)) continue;
+    if (exceptions.some((e) => e.file === rel)) continue;
+
+    const lines = readFileSync(file, "utf8").split("\n");
+    let inBlockComment = false;
+
+    lines.forEach((line, i) => {
+      const wasInBlockComment = inBlockComment;
+      const opens = line.lastIndexOf("/*");
+      const closes = line.lastIndexOf("*/");
+      if (opens > closes) inBlockComment = true;
+      else if (closes > opens) inBlockComment = false;
+
+      if (wasInBlockComment || isCommentOnly(line)) return;
+      if (detect(line)) found.push({ file: rel, line: i + 1, text: line.trim() });
+    });
+  }
+
+  console.log(
+    `guard:boundaries — ${api} containment: scanned ${files.length} file(s) under src/` +
+      ` (${exceptions.length} known exception(s))`,
+  );
+
+  if (found.length === 0) {
+    console.log(`  ok — ${api} is called only from ${home}`);
+    return 0;
+  }
+  console.error(`\n  ${found.length} ${api} call site(s) outside ${home}.\n${fixHint}\n`);
+  for (const v of found) {
     console.error(`  ${v.file}:${v.line}`);
     console.error(`      ${v.text}`);
   }
   console.error("");
+  return found.length;
 }
 
-if (violations.length > 0 || storageViolations.length > 0) process.exit(1);
+const allSourceFiles = await sourceFiles(SRC);
+
+const containmentViolations =
+  containmentScan(
+    {
+      api: "chrome.storage",
+      home: "src/infra/chrome-storage/",
+      exceptions: [
+        {
+          file: "src/sidepanel/stores/panel.svelte.ts",
+          why: "the `debug:tab-sync-tracing` runtime flag — card 77 moves it with the rest of the panel store's storage",
+        },
+      ],
+      // `.svelte` markup prose mentions `chrome.storage.local` to tell the
+      // user where their API key is kept — that is copy, not a call site.
+      detect: (line) =>
+        /(?<![\w$.])chrome\s*\.\s*storage\b/.test(line) &&
+        /chrome\s*\.\s*storage\s*\.\s*\w+\s*\./.test(line),
+      fixHint:
+        "  Storage is a driven port (card 74, decisions/29): declare what you\n" +
+        "  need on the port in src/domain/<context> and implement it in\n" +
+        "  src/infra/chrome-storage/, then reach it through the port:",
+    },
+    allSourceFiles,
+  ) +
+  // Card 76. `chrome.identity` is the OAuth sign-in capability, and it is
+  // inseparable from the PKCE flow it sits inside — the `state` parameter is
+  // generated, sent and re-validated across the one `launchWebAuthFlow` call,
+  // so splitting it into src/infra/chrome-runtime would put half of an
+  // anti-CSRF check in each folder (src/infra/chrome-runtime/README.md
+  // records that call). Containing it to the OAuth adapter is what stops a
+  // second, unreviewed sign-in path from appearing next to whatever UI
+  // wanted one.
+  containmentScan(
+    {
+      api: "chrome.identity",
+      home: "src/infra/mcp/",
+      exceptions: [
+        {
+          file: "src/options/components/McpServerForm.svelte",
+          why: "`getRedirectURL()` for the copy-the-redirect-URI field — card 78 takes it as a prop when it de-chromes this component",
+        },
+      ],
+      detect: (line) => /(?<![\w$.])chrome\s*\.\s*identity\s*\.\s*\w/.test(line),
+      fixHint:
+        "  OAuth is a driven port (card 76, decisions/27, decisions/29): the\n" +
+        "  `McpOAuthClient` interface in src/domain/tools is the whole sign-in\n" +
+        "  surface, implemented once in src/infra/mcp/oauth.ts. A component\n" +
+        "  receives that port; it does not open an auth window itself:",
+    },
+    allSourceFiles,
+  );
+
+if (violations.length > 0 || containmentViolations > 0) process.exit(1);
 process.exit(0);

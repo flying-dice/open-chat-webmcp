@@ -24,12 +24,11 @@
  * ── Enforced today vs. deferred ──────────────────────────────────────────
  *
  * Card 73 stood up `src/domain` and `src/infra` and moved only the modules
- * that were ALREADY infrastructure-free. Card 74 then took the four
- * `chrome.storage` repositories (session.ts, both registries, settings.ts)
- * and ollama.ts's private store, leaving `src/lib` holding ollama.ts's wire
- * half, mcp/client.ts, mcp/oauth.ts, permissions.ts, protocol.ts and the
- * provider client factory — which cards 75-79 move into `src/infra/*`. So
- * the full Decision 29 direction rule —
+ * that were ALREADY infrastructure-free. Cards 74-76 then took the four
+ * `chrome.storage` repositories, the provider wire clients, and the MCP
+ * client with its OAuth flow, leaving `src/lib` holding permissions.ts
+ * (card 78's) and the UI odds and ends. So the full Decision 29 direction
+ * rule —
  * "composition root → infra → domain, and nothing else" — is not satisfiable
  * by today's tree and would fail on the first run, which would make the guard
  * something people skip rather than something that holds.
@@ -113,12 +112,42 @@ module.exports = {
       comment:
         "Two adapters that need each other must meet at a domain port " +
         "instead (ddd-hexagonal SKILL.md's smells table). This is the rule " +
-        "that stops the src/lib/mcp/oauth.ts → src/lib/mcp/registry.ts " +
-        "inversion (the transport stack writing the config store from inside " +
-        "itself, decisions/29) from being rebuilt in src/infra once card 77 " +
-        "moves those two modules apart.",
+        "that stops the src/lib/mcp/oauth.ts → registry inversion (the " +
+        "transport stack writing the config store from inside itself, " +
+        "decisions/29) from being rebuilt in src/infra. Card 76 is where it " +
+        "earned its keep: moving oauth.ts into src/infra/mcp with its " +
+        "`updateServer` call intact would have failed this rule on the first " +
+        "run, which is exactly why that write now goes out through " +
+        "`McpAuthTokenStore` (src/domain/tools), injected at the wiring site.",
       from: { path: "^src/infra/([^/]+)/" },
       to: { path: "^src/infra/", pathNot: "^src/infra/$1/" },
+    },
+    {
+      // Card 76. The SCOPED half of the deferred `no-src-lib` rule below.
+      //
+      // `no-src-lib` cannot be turned on until src/lib is empty, and it is
+      // not: permissions.ts still calls `chrome.permissions` (card 78's), and
+      // the UI odds and ends (markdown.ts, icons.ts, providerIcon.ts,
+      // dark-mode.ts, utils.ts, components/) have no home decided yet. But
+      // the HALF of it that IS true today — that nothing on the INSIDE of the
+      // architecture may depend on the grab bag — is worth having teeth now
+      // rather than after cards 77-79.
+      //
+      // The domain half is already covered by `domain-is-pure`. This is the
+      // infra half: as of card 76 no adapter imports src/lib at all, and the
+      // one that most plausibly would (src/infra/mcp, whose predecessor lived
+      // in src/lib and imported ../permissions through a shim) is exactly the
+      // one this card moved. Widen to `no-src-lib` when src/lib is gone.
+      name: "infra-does-not-import-src-lib",
+      severity: "error",
+      comment:
+        "src/lib is the pre-DDD grab bag cards 74-79 are emptying. An " +
+        "adapter may not reach into it: whatever it needs is either a domain " +
+        "port (src/domain), its own concern (move the file into " +
+        "src/infra/<tech>), or presentation that does not belong in an " +
+        "adapter at all.",
+      from: { path: "^src/infra/" },
+      to: { path: "^src/lib/" },
     },
     {
       name: "no-cross-surface-imports",
@@ -178,11 +207,25 @@ module.exports = {
     // each comment makes it true. Uncomment there; do not soften.
     // =====================================================================
 
-    // Cards 75-79 (the last one to empty src/lib turns this on). src/lib was
+    // Cards 78-79 (the last one to empty src/lib turns this on). src/lib was
     // the pre-DDD grab bag: domain rules, four chrome.storage repositories,
     // three wire clients and the shared UI kit all at once. Card 74 took the
-    // repositories; the wire clients and the provider client factory are
-    // what is left. When it is gone, nothing may recreate it.
+    // repositories, card 75 the provider wire clients, card 76 the MCP client
+    // and its OAuth flow (plus the dead src/lib/protocol.ts and
+    // src/lib/mcp/permissions.ts re-export shims).
+    //
+    // What is left, and why this is STILL parked: permissions.ts calls
+    // `chrome.permissions` and is infrastructure — card 78 moves it to
+    // src/infra/chrome-runtime. The rest (markdown.ts, icons.ts,
+    // providerIcon.ts, dark-mode.ts, utils.ts, components/) is UI-layer or
+    // pure, so it no longer VIOLATES the layering the way an adapter parked
+    // in src/lib did — but "src/lib" is a name for no layer, and both
+    // surfaces import it, so it cannot simply be relabelled shared UI
+    // without a decision. Enabling this rule with a carve-out for those
+    // files would encode "src/lib is fine actually", the opposite of what
+    // decisions/29 concluded. `infra-does-not-import-src-lib` above takes
+    // the half that is true today; this one waits for the rest. When src/lib
+    // is gone, nothing may recreate it.
     // {
     //   name: "no-src-lib",
     //   severity: "error",
@@ -200,7 +243,12 @@ module.exports = {
     // made this edge REAL rather than pending: the UI now imports the port
     // instances from src/infra/chrome-storage/wiring.ts, the interim shared
     // bundle whose own header describes exactly what deleting it takes.
-    // Turning this rule on is what proves the bundle is gone.
+    // Cards 75 and 76 added four more per-surface wiring files on the same
+    // pattern (src/{sidepanel,options}/lib/{providerClients,mcpClients}.ts),
+    // each a two-line factory call carrying the same delete-me header. Those
+    // five files are the complete list of what this rule will report on the
+    // day it is uncommented — no component or store constructs an adapter
+    // itself. Turning it on is what proves they are gone.
     // {
     //   name: "ui-does-not-import-infra",
     //   severity: "error",

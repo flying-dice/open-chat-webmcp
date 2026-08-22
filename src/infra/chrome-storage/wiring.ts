@@ -9,7 +9,7 @@
 // Why not full injection now: the callers of these ports are today ~20 Svelte
 // components, three Svelte 5 rune stores and two services, none of which take
 // dependencies at all — a component reads `listProviders()` as a module
-// import. Threading six ports down through them is not a storage change, it
+// import. Threading seven ports down through them is not a storage change, it
 // is the UI change cards 77 and 78 exist for (`ui-does-not-import-infra` in
 // .dependency-cruiser.cjs is parked for exactly those two cards). Doing it
 // here would have doubled this card and buried the storage extraction inside
@@ -53,6 +53,7 @@ export function initChromeStorage(): ChromeStoragePorts {
 export const chatStore = ports.chatStore;
 export const providerRegistry = ports.providerRegistry;
 export const mcpServerRegistry = ports.mcpServerRegistry;
+export const mcpAuthTokenStore = ports.mcpAuthTokenStore;
 export const settingsStore = ports.settingsStore;
 export const providerDefaults = ports.providerDefaults;
 export const modelCapabilityCache = ports.modelCapabilityCache;

@@ -17,23 +17,30 @@
 //
 // PERMISSION (decisions/19 §4: "reported as unavailable with that specific
 // reason, never as a generic failure"): checked via `hasHostPermission`
-// BEFORE ever attempting a request, because client.ts's own `fetch` failure
-// can't tell "no permission" apart from "genuinely unreachable" (a blocked
-// CORS preflight and a dead host both reject as a bare TypeError) — only a
-// caller that checks out of band, like this one, can report the specific
-// reason. See types.ts's `McpError`'s `"permission"` kind, added for this.
+// BEFORE ever attempting a request, because the transport's own `fetch`
+// failure can't tell "no permission" apart from "genuinely unreachable" (a
+// blocked CORS preflight and a dead host both reject as a bare TypeError) —
+// only a caller that checks out of band, like this one, can report the
+// specific reason. See `McpError`'s `"permission"` kind (src/domain/tools),
+// added for this.
 //
 // CREDENTIALS (decisions/15-custom-headers-are-credentials.md): nothing
-// here ever reads `config.headers`/`config.auth` directly — only
-// client.ts's `callServerTool`/`discoverAllServerTools` do, and their
-// errors (`describeMcpError`) are already scrubbed of header/credential
-// values by construction (see types.ts's own doc comment on that
-// function). This module only ever forwards that already-safe text.
+// here ever reads `config.headers`/`config.auth` directly — only the
+// `McpToolGateway` port's `callServerTool`/`discoverAllServerTools` do, and
+// their errors (`describeMcpError`) are already scrubbed of
+// header/credential values by construction (see that function's own doc
+// comment in src/domain/tools). This module only ever forwards that
+// already-safe text.
+//
+// PORTS (card 76): the gateway below is the `McpToolGateway` INTERFACE from
+// src/domain/tools; the instance comes from this surface's interim wiring
+// (src/sidepanel/lib/mcpClients.ts). This module names no transport module
+// and constructs nothing.
 
-import { discoverAllServerTools, callServerTool } from "../../lib/mcp/client";
-import type { McpServerConfig } from "../../domain/tools";
+import type { McpServerConfig, McpToolGateway } from "../../domain/tools";
 import { mcpServerRegistry } from "../../infra/chrome-storage";
-import { hasHostPermission } from "../../lib/mcp/permissions";
+import { hasHostPermission } from "../../lib/permissions";
+import { mcpToolGateway } from "../lib/mcpClients";
 import {
   buildServerMergedTools,
   combineWithPageTools,
@@ -54,7 +61,10 @@ import { setServerTools } from "../stores/panel.svelte";
 /** How long a discovery result is trusted before a background refresh is due again. Not a hard cache-validity boundary — a turn always uses whatever's cached regardless of age (decisions/19 §4); this only paces how often this module bothers re-asking servers that are already known. */
 const DISCOVERY_REFRESH_INTERVAL_MS = 60_000;
 
-/** src/lib/mcp/client.ts's own `DEFAULT_CALL_TOOL_TIMEOUT_MS` budget already bounds one `callServerTool` — this module adds no second timeout on top of it, matching the page-tool call path's own single-timeout-per-hop discipline. */
+/** The gateway's own `DEFAULT_CALL_TOOL_TIMEOUT_MS` budget (src/infra/mcp/timeouts.ts) already bounds one `callServerTool` — this module adds no second timeout on top of it, matching the page-tool call path's own single-timeout-per-hop discipline. */
+
+/** The one `McpToolGateway` this service talks through. A local alias so every call site below reads as a port call, and so card 77/78 has one line to change when this arrives as an argument instead. */
+const gateway: McpToolGateway = mcpToolGateway;
 
 // ---------------------------------------------------------------------------
 // Cache
@@ -89,7 +99,7 @@ async function refreshNow(): Promise<void> {
   const permitted = checks.filter((c) => c.allowed).map((c) => c.config);
   const denied = checks.filter((c) => !c.allowed).map((c) => c.config);
 
-  const discovered = await discoverAllServerTools(permitted);
+  const discovered = await gateway.discoverAllServerTools(permitted);
   const deniedEntries: McpServerDiscovery[] = denied.map((config) => ({
     status: "error",
     serverId: config.id,
@@ -133,7 +143,7 @@ export function ensureMcpDiscoveryFresh(opts?: { force?: boolean }): void {
  * once from App.svelte's `onMount`, alongside `initActiveTabSync`/
  * `initApprovalPolicySync`. Returns a cleanup function that stops the
  * interval (the in-flight `refreshNow` promise, if any, is left to settle on
- * its own rather than aborted mid-flight — client.ts's own budgets already
+ * its own rather than aborted mid-flight — the gateway's own budgets already
  * bound how long that can take).
  */
 export function initMcpToolsSync(): () => void {
@@ -202,7 +212,7 @@ function successResult(result: McpToolCallResult): unknown {
  * already speaks for page tools, so `executeToolCall` there needs no
  * per-kind branching (decisions/19 §5).
  *
- * `isError: true` (client.ts's doc: "the tool's OWN reported failure" —
+ * `isError: true` (the gateway's doc: "the tool's OWN reported failure" —
  * still a protocol-level success) is folded into the `{ok:false}` path
  * here, same as a page tool's own thrown/rejected execution already
  * surfaces as `{ok:false}` — from the agent loop's and the transcript's
@@ -227,7 +237,7 @@ async function executeServerTool(
     };
   }
 
-  const result = await callServerTool(config, toolName, args, { signal: opts.signal });
+  const result = await gateway.callServerTool(config, toolName, args, { signal: opts.signal });
   if (!result.ok) {
     return { ok: false, error: describeMcpError(result.error) };
   }

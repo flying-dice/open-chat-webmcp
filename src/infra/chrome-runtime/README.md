@@ -1,13 +1,31 @@
-# infra/chrome-runtime — placeholder
+# infra/chrome-runtime
 
-The `chrome.runtime` / `chrome.tabs` / `chrome.permissions` / `chrome.identity` side: the cross-context message protocol and every capability the extension asks the browser for.
+The `chrome.runtime` / `chrome.tabs` / `chrome.permissions` side: the cross-context message protocol and every capability the extension asks the browser for.
 
-| Lands here | Comes from |
-| --- | --- |
-| the six-message protocol, `isRuntimeMessage`, and typed send/receive helpers | `src/lib/protocol.ts` (the tool DESCRIPTOR types it used to own already moved to `src/domain/tools` in card 73) |
-| `originPatternForUrl`, `hasHostPermission`, `requestHostPermission` — and the deletion of the two re-export shims (`src/lib/mcp/permissions.ts`, `src/options/lib/permissions.ts`) | `src/lib/permissions.ts` |
-| active-tab tracking, tab-switch vs. same-tab cross-origin-nav discrimination | `src/sidepanel/services/activeTab.ts` (~17 `chrome.*` sites) |
-| `chrome.identity.launchWebAuthFlow` | `src/lib/mcp/oauth.ts` (the browser half; the protocol half goes to `src/infra/mcp`) |
+| Status | What | From |
+| --- | --- | --- |
+| landed (card 79) | the six-message protocol, `isRuntimeMessage`, and typed send/receive helpers | `src/lib/protocol.ts` — deleted outright by card 76 once its last re-export importer was gone (the tool DESCRIPTOR types it used to own moved to `src/domain/tools` in card 73) |
+| pending (card 78) | `originPatternForUrl`, `hasHostPermission`, `requestHostPermission` — and the deletion of the surviving re-export shim `src/options/lib/permissions.ts` (the MCP-side twin `src/lib/mcp/permissions.ts` is already gone, card 76) | `src/lib/permissions.ts` |
+| pending (card 77) | active-tab tracking, tab-switch vs. same-tab cross-origin-nav discrimination | `src/sidepanel/services/activeTab.ts` (~17 `chrome.*` sites) |
+
+## `chrome.identity` does NOT land here
+
+This README used to list `chrome.identity.launchWebAuthFlow` as arriving from
+`src/lib/mcp/oauth.ts`, on the "every capability the extension asks the
+browser for" principle. Card 76 kept it in `src/infra/mcp` instead, and that
+is now the settled answer:
+
+- The three call sites (`getRedirectURL`, the availability guard, and
+  `launchWebAuthFlow` itself) are inseparable from the PKCE flow around them.
+  The `state` parameter is generated, sent and re-validated across that one
+  call; splitting it out would put half of an anti-CSRF check in each folder.
+- `adapters-do-not-import-adapters` means `src/infra/mcp` could not simply
+  call a helper here — it would need a port of its own, in the domain, whose
+  entire content is "open this URL and give me back the redirect". That is a
+  port modelling a browser API rather than a domain need.
+
+`chrome.identity` is therefore contained to `src/infra/mcp/oauth.ts`, and
+`scripts/guard-boundaries.mjs` enforces exactly that.
 
 Adapters map their technology's failures INTO the domain's error vocabulary;
 nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or

@@ -1,6 +1,6 @@
 // The bundle of storage ports a composition root builds (card 74).
 //
-// One function, one call, six ports — rather than six factories a root has
+// One function, one call, seven ports — rather than seven factories a root has
 // to remember to call and keep in step. The two area gateways are created
 // once and shared, which is also what makes the credential split visible in
 // one place: `sync` and `local` are passed to each repository explicitly, so
@@ -14,9 +14,10 @@ import type {
   ProviderRegistry,
 } from "../../domain/providers";
 import type { SettingsStore } from "../../domain/settings";
-import type { McpServerRegistry } from "../../domain/tools";
+import type { McpAuthTokenStore, McpServerRegistry } from "../../domain/tools";
 import { createStorageAreaGateway } from "./area";
 import { createChromeStorageChatStore } from "./chat-store";
+import { createChromeStorageMcpAuthTokenStore } from "./mcp-auth-token-store";
 import { createChromeStorageMcpServerRegistry } from "./mcp-server-registry";
 import {
   createChromeStorageModelCapabilityCache,
@@ -29,6 +30,8 @@ export interface ChromeStoragePorts {
   chatStore: ChatStore;
   providerRegistry: ProviderRegistry;
   mcpServerRegistry: McpServerRegistry;
+  /** Card 76: the write-only narrowing of `mcpServerRegistry` that src/infra/mcp's OAuth client persists a refreshed token through. */
+  mcpAuthTokenStore: McpAuthTokenStore;
   settingsStore: SettingsStore;
   providerDefaults: ProviderDefaultsStore;
   modelCapabilityCache: ModelCapabilityCache;
@@ -46,11 +49,13 @@ export interface ChromeStoragePorts {
 export function createChromeStoragePorts(): ChromeStoragePorts {
   const local = createStorageAreaGateway("local");
   const sync = createStorageAreaGateway("sync");
+  const mcpServerRegistry = createChromeStorageMcpServerRegistry(sync, local);
 
   return {
     chatStore: createChromeStorageChatStore(local),
     providerRegistry: createChromeStorageProviderRegistry(sync, local),
-    mcpServerRegistry: createChromeStorageMcpServerRegistry(sync, local),
+    mcpServerRegistry,
+    mcpAuthTokenStore: createChromeStorageMcpAuthTokenStore(mcpServerRegistry),
     settingsStore: createChromeStorageSettingsStore(sync),
     providerDefaults: createChromeStorageProviderDefaultsStore(local),
     modelCapabilityCache: createChromeStorageModelCapabilityCache(local),

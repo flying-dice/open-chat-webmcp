@@ -1,7 +1,8 @@
 // "Test connection" for the MCP server registry UI (card 39,
-// decisions/14-backend-mcp-servers.md). Resolves through
-// `discoverAllServerTools` (src/lib/mcp/client.ts) called with a single
-// server — that function already does exactly what the card asks for in
+// decisions/14-backend-mcp-servers.md). Resolves through the
+// `McpToolGateway` port's `discoverAllServerTools` (src/domain/tools) called
+// with a single server — that method already does exactly what the card asks
+// for in
 // one round trip: a real `initialize` handshake AND a `tools/list`, bundled
 // into one `McpServerDiscovery` entry carrying both the negotiated
 // connection info and the discovered tools. Reusing it here (rather than
@@ -11,16 +12,20 @@
 // trip.
 //
 // The point of this module, per the card: collapse nothing. `McpError`
-// (src/domain/tools/types.ts) already distinguishes unreachable, timeout, auth,
+// (src/domain/tools) already distinguishes unreachable, timeout, auth,
 // "not an MCP endpoint", protocol mismatch, an RPC-level error, and a
 // malformed response — every one of those gets its own outcome kind below,
 // carried straight through with the client's own message, rather than one
 // generic "connection failed". User-facing WORDING for each kind lives in
 // mcpTestResultDisplay.ts, not here — this module only classifies.
 
-import { discoverAllServerTools, type McpCallOptions } from "../../lib/mcp/client";
-import type { McpServerConfig } from "../../domain/tools";
-import type { McpConnectionInfo, McpTool } from "../../domain/tools";
+import type {
+  McpCallOptions,
+  McpConnectionInfo,
+  McpServerConfig,
+  McpTool,
+} from "../../domain/tools";
+import { mcpToolGateway } from "./mcpClients";
 
 export type McpTestOutcome =
   | { kind: "success"; connection: McpConnectionInfo; tools: McpTool[] }
@@ -47,7 +52,7 @@ export async function testMcpServerConnection(
   config: McpServerConfig,
   opts?: McpCallOptions,
 ): Promise<McpTestOutcome> {
-  const [result] = await discoverAllServerTools([config], opts);
+  const [result] = await mcpToolGateway.discoverAllServerTools([config], opts);
   if (result.status === "ok") {
     return { kind: "success", connection: result.connection, tools: result.tools };
   }
@@ -71,8 +76,8 @@ export async function testMcpServerConnection(
     case "invalid-response":
       return { kind: "invalid-response", message: error.message };
     case "permission":
-      // Card 38 added this `McpError` kind (src/domain/tools/types.ts) for its
-      // own out-of-band permission check (decisions/19 §4) — client.ts
+      // Card 38 added this `McpError` kind (src/domain/tools) for its
+      // own out-of-band permission check (decisions/19 §4) — the transport
       // itself never produces it, so this arm is unreachable from a real
       // `discoverAllServerTools` call today. Handled anyway so the switch
       // stays exhaustive against the shared `McpError` union, and so this

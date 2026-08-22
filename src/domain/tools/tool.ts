@@ -6,9 +6,10 @@
 // `SerializedTool` is what `ChatProvider.chat()` takes
 // (src/domain/providers/provider.ts) and what `toSerializedTools` produces
 // (./merge.ts), so the DOMAIN owns the shape and the protocol adapter merely
-// carries it. src/lib/protocol.ts now re-exports both names, so every
-// existing importer of `protocol` is unchanged; new code should import them
-// from `src/domain/tools` instead.
+// carries it. src/lib/protocol.ts kept a re-export of both names for a
+// while so existing importers of `protocol` did not have to change; card 76
+// deleted that shim once its last importer was gone, and this barrel is now
+// the only place either name comes from.
 
 /**
  * The WebMCP `ToolAnnotations` dictionary has exactly these two members,

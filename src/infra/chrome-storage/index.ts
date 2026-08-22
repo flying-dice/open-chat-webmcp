@@ -1,8 +1,7 @@
 // `chrome-storage` adapter — the `chrome.storage` side of every driven
-// storage port (card 74; see ./README.md). Nothing outside this folder
-// touches `chrome.storage` any more, with the two exceptions cards 76 and 77
-// own (src/lib/mcp/oauth.ts's token write goes through the registry port
-// already; src/sidepanel/stores/panel.svelte.ts's debug flag is card 77's).
+// storage port (cards 74 and 76; see ./README.md). Nothing outside this
+// folder touches `chrome.storage` any more, with one exception card 77 owns
+// (src/sidepanel/stores/panel.svelte.ts's debug flag).
 //
 // What is here:
 //   ./area.ts                  the only place `chrome.storage` is called,
@@ -12,6 +11,9 @@
 //                              mechanic both registries configure
 //   ./provider-registry.ts     `ProviderRegistry`      (src/domain/providers)
 //   ./mcp-server-registry.ts   `McpServerRegistry`     (src/domain/tools)
+//   ./mcp-auth-token-store.ts  `McpAuthTokenStore`     (src/domain/tools) —
+//                              the write-only narrowing of that registry the
+//                              MCP OAuth adapter refreshes tokens through
 //   ./chat-store.ts            `ChatStore`             (src/domain/chat)
 //   ./settings-store.ts        `SettingsStore`         (src/domain/settings)
 //   ./provider-config-store.ts `ProviderDefaultsStore` + `ModelCapabilityCache`
@@ -25,6 +27,7 @@ export { createStorageAreaGateway, type StorageAreaGateway, type StorageAreaName
 export { createChromeStorageChatStore } from "./chat-store";
 export { createChromeStorageProviderRegistry } from "./provider-registry";
 export { createChromeStorageMcpServerRegistry } from "./mcp-server-registry";
+export { createChromeStorageMcpAuthTokenStore } from "./mcp-auth-token-store";
 export { createChromeStorageSettingsStore } from "./settings-store";
 export {
   createChromeStorageModelCapabilityCache,
@@ -34,6 +37,7 @@ export { createChromeStoragePorts, type ChromeStoragePorts } from "./ports";
 export {
   chatStore,
   initChromeStorage,
+  mcpAuthTokenStore,
   mcpServerRegistry,
   modelCapabilityCache,
   providerDefaults,

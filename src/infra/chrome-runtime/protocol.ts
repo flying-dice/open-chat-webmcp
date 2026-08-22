@@ -15,9 +15,9 @@
 // (boards/project-backlog/79-protocol-and-timeout-ladder-cleanup.md,
 // decisions/29-ddd-hexagonal-typescript-layout.md): this is the
 // `chrome.runtime` messaging half of the chrome-runtime adapter (see
-// ./README.md). A thin re-export is left at src/lib/protocol.ts only for the
-// two importers still owned by the concurrent provider-adapter move (card
-// 75) — see that file's header.
+// ./README.md). A thin re-export was left behind at src/lib/protocol.ts for
+// the two importers card 75 owned at the time; card 76 deleted it once
+// those moved, so this file is now the only source of the protocol.
 //
 // There used to be a fourth context, a MAIN-world bridge (src/inject/bridge.ts)
 // that provided/adopted `navigator.modelContext`, and a CustomEvent transport

@@ -1,18 +1,19 @@
 // Shared vocabulary for the MCP client (decisions/14-backend-mcp-servers.md).
-// This is the file cards 38 (merging server tools into the agent loop) and 39
-// (management UI) code against, alongside client.ts (the transport) and
-// registry.ts (config CRUD). Deliberately does not import anything from
-// src/domain/providers/provider.ts or src/lib/protocol.ts: those files are owned by
-// concurrent work on this repo (see the card), so the shapes below are a
-// parallel, MCP-specific vocabulary rather than a re-export or an extension
-// of those files. Where the shapes are conceptually similar (`McpResult` /
-// `ProviderResult`, `McpError` / `ProviderError`), that's a deliberate
-// mirror of src/domain/providers/provider.ts's never-throw discipline, not a shared type.
+// The error/result half of this bounded context, alongside ./gateway.ts (the
+// operations) and ./servers.ts (the configured servers and their storage
+// port). Deliberately does not import anything from
+// src/domain/providers/provider.ts: the shapes below are a parallel,
+// MCP-specific vocabulary rather than a re-export or an extension of that
+// file. Where they are conceptually similar (`McpResult` / `ProviderResult`,
+// `McpError` / `ProviderError`), that is a deliberate mirror of
+// src/domain/providers/provider.ts's never-throw discipline, not a shared
+// type.
 //
 // Wire format target: MCP protocol version "2025-06-18" (the current spec at
 // https://modelcontextprotocol.io/specification/2025-06-18/), with the
 // client accepting a small set of known-compatible earlier versions a server
-// negotiates down to — see SUPPORTED_PROTOCOL_VERSIONS in client.ts.
+// negotiates down to — see SUPPORTED_PROTOCOL_VERSIONS in
+// src/infra/mcp/protocol.ts.
 
 // ---------------------------------------------------------------------------
 // Never-throw result plumbing (mirrors src/domain/providers/provider.ts's ProviderResult/
@@ -27,12 +28,12 @@
  *
  *   - `"unreachable"`: the endpoint could not be reached at all (network
  *     failure, DNS, connection refused) or a blocked CORS preflight — like
- *     src/lib/providers/openai.ts's `"unreachable-or-cors"`, a `fetch`
+ *     src/infra/openai's `"unreachable-or-cors"`, a `fetch`
  *     TypeError can't distinguish "host permission not granted" from
  *     "genuinely down", so both land here with a message that names both
  *     possibilities.
- *   - `"timeout"`: this operation's own timeout budget (see client.ts)
- *     elapsed before the server responded. Distinct from `"aborted"` (the
+ *   - `"timeout"`: this operation's own timeout budget (see
+ *     src/infra/mcp/timeouts.ts) elapsed before the server responded. Distinct from `"aborted"` (the
  *     *caller* cancelled) so a UI can say "server was too slow" rather than
  *     "cancelled".
  *   - `"aborted"`: the caller's own `AbortSignal` fired.
@@ -167,7 +168,8 @@ export interface McpEmbeddedResourceContent {
 /**
  * One item of a tool result's `content` array. Content types are per the
  * spec's fixed set; an item whose `type` this client doesn't recognize is
- * normalized to a `text` item carrying its raw JSON (see client.ts) rather
+ * normalized to a `text` item carrying its raw JSON (see
+ * src/infra/mcp/results.ts) rather
  * than dropped, so a future content type never silently disappears.
  */
 export type McpToolContent =
@@ -195,7 +197,7 @@ export interface McpServerInfo {
   version?: string;
 }
 
-/** What a successful connect (initialize handshake) resolves — used by testServerConnection (client.ts) and by discovery results below. */
+/** What a successful connect (initialize handshake) resolves — used by `McpToolGateway.testServerConnection` (./gateway.ts) and by discovery results below. */
 export interface McpConnectionInfo {
   protocolVersion: string;
   serverInfo?: McpServerInfo;
