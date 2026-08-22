@@ -50,18 +50,18 @@
 // deliberate parallel to `ProviderResult`/`ProviderError`, not a re-export.
 
 import pkg from "../../../package.json" with { type: "json" };
-import type { McpServerConfig } from "./registry";
-import { CLIENT_CONTROLLED_HEADERS } from "./registry";
 import * as oauth from "./oauth";
-import type {
-  McpConnectionInfo,
-  McpError,
-  McpResult,
-  McpServerDiscovery,
-  McpServerInfo,
-  McpTool,
-  McpToolContent,
-  McpToolCallResult,
+import {
+  CLIENT_CONTROLLED_HEADERS,
+  type McpConnectionInfo,
+  type McpError,
+  type McpResult,
+  type McpServerConfig,
+  type McpServerDiscovery,
+  type McpServerInfo,
+  type McpTool,
+  type McpToolContent,
+  type McpToolCallResult,
 } from "../../domain/tools";
 
 // ---------------------------------------------------------------------------
@@ -315,7 +315,7 @@ function raceWithBudget<T>(promise: Promise<T>, budget: Budget): Promise<T> {
 /**
  * Custom headers from a server config, with any reserved name dropped —
  * defense-in-depth so a config that slipped past
- * `registry.ts`'s `validateServerHeaders` (e.g. one written before that
+ * `validateServerHeaders` (src/domain/tools) (e.g. one written before that
  * check existed, or by a foreign tool touching storage directly) still
  * can't override what the client controls for correctness. The visible
  * "refuse at edit time" UX decision 15 asks for is card 39's job; this is

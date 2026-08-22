@@ -25,7 +25,7 @@
   // Show/Hide toggles that reveal them, behave exactly as before — the
   // toggle just lives in an `InputGroup` addon instead of a sibling button.
   import { untrack } from "svelte";
-  import type { ProviderConfig } from "../../lib/providers/registry";
+  import type { ProviderConfig } from "../../domain/providers";
   import {
     getPreset,
     reservedHeaderReason,

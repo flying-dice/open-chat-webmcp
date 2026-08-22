@@ -6,7 +6,7 @@
  * (decisions/24-explicit-chat-titles.md) — set by renaming it from the
  * header. When present, it always wins. When absent, the title is still a
  * pure derivation from what we already persist: `ChatSummary.preview`
- * (src/lib/session.ts) holds the first user message trimmed to 120 chars,
+ * (src/domain/chat) holds the first user message trimmed to 120 chars,
  * and the live session's messages hold the same text — no schema change
  * beyond the optional field itself, no migration, and no extra provider
  * round-trip to generate one.
@@ -15,7 +15,7 @@
  * the History rows can never disagree about what a chat is called.
  */
 
-import type { ChatSummary } from "../../lib/session";
+import type { ChatSummary } from "../../domain/chat";
 import type { PanelMessage } from "../stores/panel.svelte";
 
 /** Shown when a chat has nothing to derive a title from yet. */

@@ -6,8 +6,8 @@
   // settings, not one crowded one.
   //
   // Approval policy (decisions/05-tool-approval-policy.md): stored via
-  // src/lib/settings.ts, the typed getter/setter/subscription contract card
-  // 09's side-panel approval UI reads to decide whether a given tool call
+  // the `SettingsStore` port — the typed getter/setter/subscription
+  // contract card 09's side-panel approval UI reads to decide whether a tool call
   // needs a human's OK. This component only lets the user pick which of the
   // three policies is active — it does not itself judge any tool call.
   //
@@ -32,16 +32,8 @@
   // throws — a two-way binding would leave the UI showing a policy that was
   // never saved.
   import { onDestroy, onMount } from "svelte";
-  import {
-    getApprovalPolicy,
-    getMcpApprovalPolicy,
-    onApprovalPolicyChange,
-    onMcpApprovalPolicyChange,
-    setApprovalPolicy,
-    setMcpApprovalPolicy,
-    type ApprovalPolicy,
-    type McpApprovalPolicy,
-  } from "../../lib/settings";
+  import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
+  import { settingsStore } from "../../infra/chrome-storage";
   import * as Alert from "$lib/components/ui/alert";
   import * as Card from "$lib/components/ui/card";
   import * as Field from "$lib/components/ui/field";
@@ -117,10 +109,10 @@
   let unsubscribeMcpPolicy: (() => void) | undefined;
 
   onMount(() => {
-    getApprovalPolicy()
+    settingsStore.getApprovalPolicy()
       .then((p) => (policy = p))
       .finally(() => (policyLoading = false));
-    getMcpApprovalPolicy()
+    settingsStore.getMcpApprovalPolicy()
       .then((p) => (mcpPolicy = p))
       .finally(() => (mcpPolicyLoading = false));
 
@@ -129,8 +121,8 @@
     // from a different machine on the same profile) rather than only ever
     // reflecting what this tab itself last wrote. Two independent
     // subscriptions (decisions/20) — one can never fire the other's callback.
-    unsubscribePolicy = onApprovalPolicyChange((p) => (policy = p));
-    unsubscribeMcpPolicy = onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
+    unsubscribePolicy = settingsStore.onApprovalPolicyChange((p) => (policy = p));
+    unsubscribeMcpPolicy = settingsStore.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
   });
 
   onDestroy(() => {
@@ -142,7 +134,7 @@
     const previous = policy;
     policy = next; // optimistic
     try {
-      await setApprovalPolicy(next);
+      await settingsStore.setApprovalPolicy(next);
     } catch (err) {
       policy = previous;
       throw err;
@@ -153,7 +145,7 @@
     const previous = mcpPolicy;
     mcpPolicy = next; // optimistic
     try {
-      await setMcpApprovalPolicy(next);
+      await settingsStore.setMcpApprovalPolicy(next);
     } catch (err) {
       mcpPolicy = previous;
       throw err;

@@ -16,7 +16,7 @@
    * renders the row and carries `role="listitem"` for the ItemGroup list in
    * HistoryPanel; the open button and delete button are its two children.
    */
-  import type { ChatSummary } from "../../lib/session";
+  import type { ChatSummary } from "../../domain/chat";
   import { titleFromSummary } from "../lib/chatTitle";
   import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "$lib/components/ui/item";
   import { Button } from "$lib/components/ui/button";

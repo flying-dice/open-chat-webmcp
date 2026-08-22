@@ -68,7 +68,7 @@
     type ProviderModel,
   } from "../../domain/providers";
   import { capabilityBadge } from "../lib/capabilityBadge";
-  import type { ProviderConfig } from "../../lib/providers/registry";
+  import type { ProviderConfig } from "../../domain/providers";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders

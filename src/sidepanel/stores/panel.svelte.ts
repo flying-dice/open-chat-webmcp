@@ -1,5 +1,5 @@
 // Panel state for the side panel chat shell (card 07), now backed by
-// card 34's global, tab-aware chat history (src/lib/session.ts,
+// card 34's global, tab-aware chat history (src/domain/chat's `ChatStore`,
 // decisions/13-global-tab-aware-chat-history.md, which REVISES
 // decisions/07-session-state-and-persistence.md) — the SESSION SWAP
 // documented in card 07's original header comment, generalised from "swap
@@ -7,7 +7,7 @@
 //
 // IDENTITY (decision 13): a chat is no longer a property of a tab. Each
 // `ChatSession` has its own `id` and is listed globally; a tab merely
-// POINTS at its current chat id (persisted via src/lib/session.ts's
+// POINTS at its current chat id (persisted via the `ChatStore` port's
 // `tabchat:<tabId>` pointer). This module tracks which tab it's currently
 // showing in two plain module vars, `activeTabId`/`activeTabOrigin` — NOT
 // on the `ChatSession` itself, since the same chat can legitimately be
@@ -25,7 +25,7 @@
 // `ChatSession.messages` is typed `ChatMessage[]`, storing these richer
 // objects in it works by ordinary structural subtyping — reading them back
 // out (via the `messages` getter below) reclaims the extra fields with one
-// cast, and since `src/lib/session.ts` persists whatever JSON shape it's
+// cast, and since the chat store persists whatever JSON shape it's
 // given, those extra fields round-trip through `chrome.storage.local`
 // untouched. The agent loop (src/sidepanel/services/agentLoop.ts) reads
 // `panel.messages` directly as the conversation history to send a provider,
@@ -34,13 +34,13 @@
 // Every mutator that changes the transcript also persists it:
 //   - `addUserMessage`, `beginAssistantMessage`, `endAssistantMessage`,
 //     `addToolCall`, `updateToolCallResult` write immediately
-//     (`saveSession(target, {immediate: true})`) — none of these happen
+//     (`chatStore.save(target, {immediate: true})`) — none of these happen
 //     token-by-token, so there is no debounce reason to delay them.
 //     `beginAssistantMessage` persisting (card 58) means an in-flight reply
 //     is durable from the moment it starts streaming, not only once its
 //     first debounced delta lands.
 //   - `appendAssistantDelta` (the token-by-token one) calls the plain,
-//     debounced `saveSession(session)` — see src/lib/session.ts's own
+//     debounced `chatStore.save(session)` — see the `ChatStore` port's own
 //     DEBOUNCE_MS/MAX_WAIT_MS tuning. No per-token writes happen here.
 //   - `addToolCall`/`updateToolCallResult` additionally route through
 //     `logToolCall`/`completeToolCall` so `session.toolCalls` (card 11's
@@ -139,20 +139,17 @@
 // exists for exactly one sanctioned exception (agentLoop.ts's one-shot
 // capture at the top of a turn — see its own doc comment below).
 
-import type { ChatMessage, ToolCall } from "../../domain/providers";
-import type { ProviderSelection } from "../../lib/providers/registry";
+import type { ChatMessage, ProviderSelection, ToolCall } from "../../domain/providers";
 import {
   completeToolCall,
   createChat,
-  getChat,
-  getOrCreateChatForTab,
   logToolCall,
-  saveSession,
-  setCurrentChatForTab,
+  MAX_CHAT_PREVIEW_LENGTH,
   type ChatSession,
   type ToolCallLogEntry,
   type ToolCallMode,
-} from "../../lib/session";
+} from "../../domain/chat";
+import { chatStore } from "../../infra/chrome-storage";
 import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
 import type { McpToolAnnotations, MergedTool, ToolOrigin } from "../../domain/tools";
 
@@ -611,10 +608,10 @@ export const panel = {
 export async function syncSessionToTab(tabId: number, origin: string): Promise<void> {
   activeTabId = tabId;
   activeTabOrigin = origin;
-  const { chat, resolved } = await getOrCreateChatForTab(tabId, origin);
+  const { chat, resolved } = await chatStore.getOrCreateChatForTab(tabId, origin);
   const reattachedLive = liveSessions.has(chat.id);
   session = liveSessions.get(chat.id) ?? chat;
-  if (!resolved) await setCurrentChatForTab(tabId, session.id, origin);
+  if (!resolved) await chatStore.setCurrentChatForTab(tabId, session.id, origin);
   // Sync-path tracing (card 59, item 1) — see activeTab.ts's `trace` helper
   // doc comment for the full rationale; this is the one outcome that lives
   // in THIS module rather than that one, since it needs `chat`/`resolved`/
@@ -698,7 +695,7 @@ export async function startNewChat(origin: string): Promise<void> {
   const priorExplicit = (session as SessionWithSelectionMeta | undefined)?.selectionExplicit === true;
   session = createChat(origin, session?.selection);
   if (session.selection) (session as SessionWithSelectionMeta).selectionExplicit = priorExplicit;
-  await setCurrentChatForTab(activeTabId, session.id, origin);
+  await chatStore.setCurrentChatForTab(activeTabId, session.id, origin);
   notifyVisibilityChange();
 }
 
@@ -721,10 +718,10 @@ export async function startNewChat(origin: string): Promise<void> {
 export async function openChatInTab(chatId: string): Promise<boolean> {
   if (activeTabId === undefined) return false;
   const live = liveSessions.get(chatId);
-  const chat = live ?? (await getChat(chatId));
+  const chat = live ?? (await chatStore.getChat(chatId));
   if (!chat) return false;
   session = chat;
-  await setCurrentChatForTab(activeTabId, chat.id, activeTabOrigin);
+  await chatStore.setCurrentChatForTab(activeTabId, chat.id, activeTabOrigin);
   notifyVisibilityChange();
   return true;
 }
@@ -735,8 +732,8 @@ export async function openChatInTab(chatId: string): Promise<boolean> {
  * a chat the user just deleted (storage writes are keyed by chat id, so
  * continuing to write to the in-memory `session` object after its storage
  * record was removed would otherwise silently recreate it). Called by the
- * History view right after {@link deleteChat}/`clearAllChats`
- * (src/lib/session.ts) for whichever of those was the active chat. A no-op
+ * History view right after `chatStore.deleteChat`/`chatStore.clearAllChats`
+ * for whichever of those was the active chat. A no-op
  * for any other `chatId`.
  */
 export async function discardActiveChatIfDeleted(chatId: string): Promise<void> {
@@ -745,8 +742,8 @@ export async function discardActiveChatIfDeleted(chatId: string): Promise<void> 
 }
 
 /**
- * Fire-and-forget wrapper around `saveSession` (card 59 item 3). Every
- * transcript mutator below used to call `void saveSession(...)` directly —
+ * Fire-and-forget wrapper around `chatStore.save` (card 59 item 3). Every
+ * transcript mutator below used to call `void chatStore.save(...)` directly —
  * a rejected write (a `chrome.storage.local` quota error, the extension
  * context being invalidated mid-write, etc.) became an unhandled promise
  * rejection with no UI signal at all and no record of which chat or which
@@ -761,8 +758,8 @@ function saveSessionLogged(
   target: ChatSession,
   opts?: { immediate?: boolean; touch?: boolean },
 ): void {
-  void saveSession(target, opts).catch((err: unknown) => {
-    console.error(`[webmcp][panel] saveSession failed for chat ${target.id}`, err);
+  void chatStore.save(target, opts).catch((err: unknown) => {
+    console.error(`[webmcp][panel] chat save failed for chat ${target.id}`, err);
   });
 }
 
@@ -894,7 +891,7 @@ export function getSessionSelection(tabId: number): ProviderSelection | undefine
 
 /**
  * Card 35 (boards/project-backlog/35-force-explicit-model-selection.md):
- * `ChatSession` (src/lib/session.ts, out of this package's ownership) has
+ * `ChatSession` (src/domain/chat, out of this package's ownership) has
  * no field distinguishing a selection the user actually chose from one that
  * was silently seeded from the stored global default — both round-trip as
  * the exact same `{providerId, model}` shape. Rather than widen that type,
@@ -935,7 +932,7 @@ export async function setSessionSelection(
   if (!session || activeTabId !== tabId) return false;
   session.selection = next;
   (session as SessionWithSelectionMeta).selectionExplicit = explicit;
-  await saveSession(session, { immediate: true });
+  await chatStore.save(session, { immediate: true });
   return true;
 }
 
@@ -976,7 +973,7 @@ export function beginAssistantMessage(target: ChatSession | undefined = session)
   return id;
 }
 
-/** Append one token/delta to a streaming assistant message on `target`'s chat (defaults to the live `session` — see {@link beginAssistantMessage}'s doc comment). Pass the WHOLE delta text (already-decoded), not raw wire bytes. Debounced write — see src/lib/session.ts's DEBOUNCE_MS/MAX_WAIT_MS; never called per-token without this debounce. */
+/** Append one token/delta to a streaming assistant message on `target`'s chat (defaults to the live `session` — see {@link beginAssistantMessage}'s doc comment). Pass the WHOLE delta text (already-decoded), not raw wire bytes. Debounced write — see the chat-store adapter's DEBOUNCE_MS/MAX_WAIT_MS; never called per-token without this debounce. */
 export function appendAssistantDelta(id: string, delta: string, target: ChatSession | undefined = session): void {
   if (!target) return;
   const msg = findMessage(id, target);
@@ -1111,15 +1108,15 @@ export function addAssistantNote(
   return id;
 }
 
-/** Same cap as `computePreview`'s (src/lib/session.ts) — keeps a renamed chat's storage footprint bounded the same way an unrenamed one's derived title already is. */
-const TITLE_MAX_STORED = 120;
+/** Same cap as `chatPreview`'s (src/domain/chat) — keeps a renamed chat's storage footprint bounded the same way an unrenamed one's derived title already is, which is why it reads the domain's constant rather than repeating the number. */
+const TITLE_MAX_STORED = MAX_CHAT_PREVIEW_LENGTH;
 
 /**
  * Rename the active chat (decisions/24 §4, the header's inline-edit
  * affordance). Collapses whitespace and trims; an empty result UNSETS
  * `session.title` rather than storing `""`, so clearing the name reverts to
  * the derived title. Persists immediately but WITHOUT stamping `updatedAt`
- * (`saveSession(session, {immediate: true, touch: false})`) — renaming is
+ * (`chatStore.save(session, {immediate: true, touch: false})`) — renaming is
  * not conversation activity, and jumping the chat to the top of History
  * because it was relabelled would be surprising (decision 24 §5). No-op if
  * no session is loaded yet, consistent with every other mutator here.
@@ -1133,7 +1130,7 @@ export async function renameActiveChat(title: string): Promise<void> {
   } else {
     delete session.title;
   }
-  await saveSession(session, { immediate: true, touch: false });
+  await chatStore.save(session, { immediate: true, touch: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -1194,7 +1191,7 @@ export function setServerTools(next: MergedTool[]): void {
 }
 
 // Re-exported so consumers can type tool lists / the call log without
-// reaching into src/lib/protocol.ts or src/lib/session.ts directly for
+// reaching into src/lib/protocol.ts or the chat store directly for
 // these two types.
 export type { SerializedTool };
 export type { ToolCallLogEntry };

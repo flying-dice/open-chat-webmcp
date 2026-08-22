@@ -12,7 +12,7 @@
   // accessible name (the verify harness locates them by name —
   // decisions/28's consequences).
   import { untrack } from "svelte";
-  import type { ProviderConfig } from "../../lib/providers/registry";
+  import type { ProviderConfig } from "../../domain/providers";
   import { getPreset, type ProviderModel } from "../../domain/providers";
   import type { TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";

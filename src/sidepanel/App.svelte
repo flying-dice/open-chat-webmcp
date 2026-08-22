@@ -36,9 +36,9 @@
   import { initActiveTabSync } from "./services/activeTab";
   import { initMcpToolsSync } from "./services/mcpTools";
   import { runAgentTurn } from "./services/agentLoop";
-  import { createProviderClient } from "../lib/providers/registry";
+  import { createProviderClient } from "../lib/providers/clients";
   import { iconForProvider } from "../lib/providerIcon";
-  import { flushAllSessions } from "../lib/session";
+  import { chatStore } from "../infra/chrome-storage";
   import { selection } from "./stores/selection.svelte";
   import {
     addAssistantNote,
@@ -144,9 +144,9 @@
     const teardownMcpToolsSync = initMcpToolsSync();
 
     // Card 59 item 2: `chrome.storage.local` writes are debounced per chat
-    // (src/lib/session.ts's DEBOUNCE_MS/MAX_WAIT_MS), so the tail of a
+    // (the chat-store adapter's DEBOUNCE_MS/MAX_WAIT_MS), so the tail of a
     // streamed reply can still be sitting unwritten when the panel closes.
-    // `flushAllSessions` forces every chat with a write in flight to commit
+    // `chatStore.flushAll` forces every chat with a write in flight to commit
     // synchronously — not just the visible one, since decisions/25 §3/card
     // 58's `liveSessions` means more than one chat can be generating at
     // once. `pagehide` (not `beforeunload`, which an MV3 extension page is
@@ -155,7 +155,7 @@
     // and mid-stream work is meant to keep running) is Chrome's reliable
     // signal that this document is actually going away.
     const handlePageHide = () => {
-      void flushAllSessions();
+      void chatStore.flushAll();
     };
     window.addEventListener("pagehide", handlePageHide);
 

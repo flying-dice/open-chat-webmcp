@@ -19,7 +19,7 @@
 // mcpTestResultDisplay.ts, not here — this module only classifies.
 
 import { discoverAllServerTools, type McpCallOptions } from "../../lib/mcp/client";
-import type { McpServerConfig } from "../../lib/mcp/registry";
+import type { McpServerConfig } from "../../domain/tools";
 import type { McpConnectionInfo, McpTool } from "../../domain/tools";
 
 export type McpTestOutcome =

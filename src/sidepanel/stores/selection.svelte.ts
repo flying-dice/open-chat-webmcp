@@ -48,34 +48,31 @@
 // reads/writes only the `selection` field, and does so through
 // `panel.svelte.ts`'s `getSessionSelection`/`setSessionSelection`, which
 // operate on the SAME live object every other session mutator writes to.
-// `resolveSelection` (from the registry, the same resolver
-// `src/lib/session.ts`'s `resolveSessionSelection` wraps) is called
-// directly against that plain `{providerId, model} | undefined` value — no
-// `ChatSession` needed for that either.
+// `resolveSelection` (src/domain/providers — a domain rule over the
+// `ProviderRegistry` port, no longer wrapped by a second
+// `resolveSessionSelection` in the session module, which card 74 deleted) is
+// called directly against that plain `{providerId, model} | undefined`
+// value — no `ChatSession` needed for that either.
 
-import {
-  createProviderClient,
-  getDefaultSelection,
-  listProviders,
-  resolveSelection,
-  setDefaultSelection,
-  type ProviderConfig,
-  type ProviderSelection,
-} from "../../lib/providers/registry";
 import {
   describeProviderError,
   isSelectable,
   resolveCapabilities,
   resolveCapability,
+  resolveSelection,
   type ChatProvider,
   type ModelCapabilities,
+  type ProviderConfig,
   type ProviderError,
   type ProviderModel,
+  type ProviderSelection,
+  type SelectionResolution,
 } from "../../domain/providers";
-import type { SelectionResolution } from "../../lib/session";
+import { providerRegistry } from "../../infra/chrome-storage";
+import { createProviderClient } from "../../lib/providers/clients";
 import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
 
-export type { SelectionResolution } from "../../lib/session";
+export type { SelectionResolution } from "../../domain/providers";
 
 /** One row in a provider's model list, with its capability lookup resolved (or still in flight — see the doc comment on `capability` below). */
 export interface ModelListEntry {
@@ -222,7 +219,7 @@ function ensureModelsLoaded(): void {
 async function loadProviders(): Promise<void> {
   providersStatus = "loading";
   try {
-    providers = await listProviders();
+    providers = await providerRegistry.listProviders();
     providersStatus = "loaded";
 
     // Drop model-list state for providers that no longer exist, so a
@@ -272,7 +269,7 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
     ensureModelsLoaded();
   }
 
-  const defaultSelection = await getDefaultSelection();
+  const defaultSelection = await providerRegistry.getDefaultSelection();
 
   // Seed a brand-new session with the global default the first time this
   // tab is seen — but write it through panel's live session (never a
@@ -289,7 +286,7 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
     if (applied) persisted = defaultSelection;
   }
 
-  resolution = await resolveSelection(persisted);
+  resolution = await resolveSelection(providerRegistry, persisted);
 }
 
 // ---------------------------------------------------------------------------
@@ -441,8 +438,8 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   // Card 35: a click here IS the deliberate choice — explicit: true.
   await setSessionSelection(tabId, next, true);
 
-  const currentDefault = await getDefaultSelection();
-  if (!currentDefault) await setDefaultSelection(next);
+  const currentDefault = await providerRegistry.getDefaultSelection();
+  if (!currentDefault) await providerRegistry.setDefaultSelection(next);
 
   resolution = { status: "ok", config, model };
 }

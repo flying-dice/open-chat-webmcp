@@ -35,11 +35,12 @@ import type {
   ModelCapabilities,
   ProviderError,
   ProviderHeader,
+  ProviderConfig,
   ProviderModel,
   ProviderResult,
   ToolCall,
 } from "../../domain/providers";
-import { registerProviderType, type ProviderConfig } from "./registry";
+import { registerProviderType } from "./clients";
 
 // ---------------------------------------------------------------------------
 // Config defaults
@@ -749,8 +750,8 @@ export function createOpenAiProvider(config: ProviderConfig): ChatProvider {
   };
 }
 
-// Self-registers on import, mirroring how src/lib/providers/registry.ts
-// registers Ollama's factory at its own bottom. registry.ts is off-limits to
+// Self-registers on import, mirroring how src/lib/providers/clients.ts
+// registers Ollama's factory at its own bottom. That module was off-limits to
 // this card (owned by concurrent work), so this module registers itself
 // instead of adding a line there — whichever module first imports
 // "./providers/openai" (the provider-registry UI of card 22, or a later

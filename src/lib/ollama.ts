@@ -31,39 +31,43 @@
 import type { SerializedTool } from "./protocol";
 import type {
   ModelCapabilities,
+  ModelCapabilityCache,
+  ProviderDefaultsStore,
   ProviderError,
   ProviderHeader,
   ProviderResult,
 } from "../domain/providers";
 
 // ---------------------------------------------------------------------------
-// Configuration (chrome.storage.local)
+// Configuration
+//
+// CARD 74: this module used to keep its own `chrome.storage.local` store
+// here — `ollama:baseUrl` and `ollama:cap:<digest>`, read and written from
+// the middle of a wire client. Both are now ports the caller supplies
+// (`ProviderDefaultsStore`, `ModelCapabilityCache`, src/domain/providers),
+// implemented by src/infra/chrome-storage and injected at the one
+// registration site in src/lib/providers/clients.ts. Nothing below touches
+// storage, which is what lets card 75 move this file to src/infra/ollama
+// without dragging a repository along.
 // ---------------------------------------------------------------------------
-
-const STORAGE_KEY_BASE_URL = "ollama:baseUrl";
-const STORAGE_KEY_CAPABILITY_PREFIX = "ollama:cap:";
 
 /** Default Ollama base URL when nothing has been configured yet. */
 export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
 /**
- * Read the configured Ollama base URL, falling back to
- * {@link DEFAULT_OLLAMA_BASE_URL}. A standalone fallback for callers that
- * don't go through the provider registry (src/lib/providers/registry.ts) —
- * the registry's Ollama entries carry their own `baseUrl` and pass it
- * explicitly to every call below instead of relying on this default.
+ * Resolve the base URL for a call: an explicit one wins, then whatever the
+ * caller's {@link ProviderDefaultsStore} has stored for `"ollama"`, then
+ * {@link DEFAULT_OLLAMA_BASE_URL}. A registry entry carries its own
+ * `baseUrl` and always takes the first branch — the store is only what a
+ * caller with no registry entry falls back to.
  */
-export async function getBaseUrl(): Promise<string> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY_BASE_URL);
-  const value = stored[STORAGE_KEY_BASE_URL];
-  return typeof value === "string" && value.length > 0
-    ? value
-    : DEFAULT_OLLAMA_BASE_URL;
-}
-
-/** Persist the Ollama base URL. No trailing slash expected. */
-export async function setBaseUrl(url: string): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY_BASE_URL]: url });
+async function resolveBaseUrl(
+  explicit: string | undefined,
+  defaults: ProviderDefaultsStore | undefined,
+): Promise<string> {
+  if (explicit) return explicit;
+  const stored = await defaults?.getBaseUrl("ollama");
+  return stored ?? DEFAULT_OLLAMA_BASE_URL;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,8 +315,10 @@ export async function listModels(opts?: {
   signal?: AbortSignal;
   baseUrl?: string;
   headers?: ProviderHeader[];
+  /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
+  defaults?: ProviderDefaultsStore;
 }): Promise<ProviderResult<OllamaModel[]>> {
-  const baseUrl = opts?.baseUrl ?? (await getBaseUrl());
+  const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
   const result = await ollamaFetchJson<{ models?: unknown }>(
     baseUrl,
     "/api/tags",
@@ -334,40 +340,27 @@ export async function listModels(opts?: {
 // getCapabilities(model) — POST /api/show, digest-cached
 // ---------------------------------------------------------------------------
 
-function capabilityStorageKey(digest: string): string {
-  return `${STORAGE_KEY_CAPABILITY_PREFIX}${digest}`;
-}
-
-const TOOL_CAPABILITY_STATUSES = ["tool-capable", "no-tools", "unknown"];
-
-async function readCachedCapabilities(
-  digest: string,
-): Promise<ModelCapabilities | undefined> {
-  const key = capabilityStorageKey(digest);
-  const stored = await chrome.storage.local.get(key);
-  const value = stored[key];
-  return isRecord(value) &&
-    TOOL_CAPABILITY_STATUSES.includes(value.status as string) &&
-    (value.detail === undefined || Array.isArray(value.detail))
-    ? (value as unknown as ModelCapabilities)
-    : undefined;
-}
-
-async function writeCachedCapabilities(
-  digest: string,
-  value: ModelCapabilities,
-): Promise<void> {
-  await chrome.storage.local.set({ [capabilityStorageKey(digest)]: value });
+/** Everything `getCapabilities` accepts, shared with its bulk wrapper so the two can never drift. */
+interface OllamaCapabilityOptions {
+  signal?: AbortSignal;
+  baseUrl?: string;
+  forceRefresh?: boolean;
+  headers?: ProviderHeader[];
+  /** Where a previous answer for this model's digest is looked up and filed. Omit and every call hits the network — correct, just slower. */
+  capabilityCache?: ModelCapabilityCache;
+  /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
+  defaults?: ProviderDefaultsStore;
 }
 
 /**
  * Get whether `model` supports tool calling, via `POST /api/show`.
  *
  * The answer only changes when a model is re-pulled (which changes its
- * digest), so results are cached in `chrome.storage.local` keyed by digest
- * and this never re-hits the network for a digest it has already seen unless
- * `forceRefresh` is set. Callers building a model picker should issue these
- * concurrently across models — see {@link getCapabilitiesForModels}.
+ * digest), so results are cached by digest in whatever
+ * {@link ModelCapabilityCache} the caller supplies, and this never re-hits
+ * the network for a digest it has already seen unless `forceRefresh` is set.
+ * Callers building a model picker should issue these concurrently across
+ * models — see {@link getCapabilitiesForModels}.
  *
  * Ollama always has a definitive answer, so this only ever resolves to
  * `"tool-capable"` or `"no-tools"` — never `"unknown"`. `"unknown"` exists on
@@ -376,19 +369,14 @@ async function writeCachedCapabilities(
  */
 export async function getCapabilities(
   model: Pick<OllamaModel, "name" | "digest">,
-  opts?: {
-    signal?: AbortSignal;
-    baseUrl?: string;
-    forceRefresh?: boolean;
-    headers?: ProviderHeader[];
-  },
+  opts?: OllamaCapabilityOptions,
 ): Promise<ProviderResult<ModelCapabilities>> {
   if (!opts?.forceRefresh) {
-    const cached = await readCachedCapabilities(model.digest);
+    const cached = await opts?.capabilityCache?.get("ollama", model.digest);
     if (cached) return { ok: true, value: cached };
   }
 
-  const baseUrl = opts?.baseUrl ?? (await getBaseUrl());
+  const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
   const result = await ollamaFetchJson<{ capabilities?: unknown }>(
     baseUrl,
     "/api/show",
@@ -411,7 +399,7 @@ export async function getCapabilities(
     detail: capabilities,
   };
 
-  await writeCachedCapabilities(model.digest, value);
+  await opts?.capabilityCache?.set("ollama", model.digest, value);
   return { ok: true, value };
 }
 
@@ -424,12 +412,7 @@ export async function getCapabilities(
  */
 export async function getCapabilitiesForModels(
   models: Pick<OllamaModel, "name" | "digest">[],
-  opts?: {
-    signal?: AbortSignal;
-    baseUrl?: string;
-    forceRefresh?: boolean;
-    headers?: ProviderHeader[];
-  },
+  opts?: OllamaCapabilityOptions,
 ): Promise<ProviderResult<ModelCapabilities>[]> {
   return Promise.all(models.map((model) => getCapabilities(model, opts)));
 }
@@ -535,6 +518,8 @@ export interface OllamaChatParams {
   baseUrl?: string;
   /** Custom request headers (decisions/15-custom-headers-are-credentials.md) — e.g. for an Ollama server sitting behind a gateway. */
   headers?: ProviderHeader[];
+  /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
+  defaults?: ProviderDefaultsStore;
 }
 
 function normalizeToolCall(
@@ -648,7 +633,7 @@ export async function* chat(
   params: OllamaChatParams,
 ): AsyncGenerator<OllamaStreamEvent, void, void> {
   const { model, messages, tools, signal, headers } = params;
-  const baseUrl = params.baseUrl ?? (await getBaseUrl());
+  const baseUrl = await resolveBaseUrl(params.baseUrl, params.defaults);
 
   // One counter per call to `chat`, so every tool call's synthesized id is
   // unique for the lifetime of this stream regardless of how many NDJSON

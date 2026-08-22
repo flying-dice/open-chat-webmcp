@@ -45,20 +45,24 @@
 //     the spec's mitigation against a token issued for one resource being
 //     replayed against another.
 //
-// Never-throw discipline (mirrors client.ts and registry.ts): every exported
-// function returns an `McpResult`, never throws.
+// Never-throw discipline (mirrors client.ts): every exported function
+// returns an `McpResult`, never throws.
 //
-// This module depends on registry.ts (for `McpServerConfig`/`McpOAuthAuth`
-// and to persist a refreshed token via `updateServer`) but is never imported
-// BY registry.ts — client.ts is the only consumer, calling `getValidAuth`
-// from its `connect()` (see client.ts's `resolveAuthHeader`), and card 63's
-// management UI will call `discoverAuthorizationServer`/`registerClient`/
+// `McpServerConfig`/`McpOAuthAuth` come from src/domain/tools since card 74;
+// client.ts is the only consumer of this module, calling `getValidAuth` from
+// its `connect()` (see client.ts's `resolveAuthHeader`), and card 63's
+// management UI calls `discoverAuthorizationServer`/`registerClient`/
 // `runAuthorizationFlow` directly from a click handler to drive the sign-in
-// flow. No cycle: types.ts <- registry.ts <- oauth.ts <- client.ts.
+// flow.
+//
+// CARD 76 owns the refreshed-token WRITE below. Card 74 only moved it off
+// the deleted `src/lib/mcp/registry.ts` and onto the `McpServerRegistry`
+// port; it is still an adapter writing a config store from inside the
+// transport stack (decisions/29's named inversion), and it is still reached
+// through the interim wiring rather than injected. Card 76 dissolves both.
 
-import { updateServer } from "./registry";
-import type { McpOAuthAuth, McpServerConfig } from "./registry";
-import type { McpError, McpResult } from "../../domain/tools";
+import type { McpError, McpOAuthAuth, McpResult, McpServerConfig } from "../../domain/tools";
+import { mcpServerRegistry } from "../../infra/chrome-storage";
 
 // ---------------------------------------------------------------------------
 // Small internal utilities
@@ -183,7 +187,7 @@ async function generatePkce(): Promise<{ verifier: string; challenge: string }> 
 // RFC 9728 + RFC 8414 — authorization server discovery
 // ---------------------------------------------------------------------------
 
-/** The authorization-server metadata this module (and `McpOAuthAuth.authorizationServer` in registry.ts) deals in — a deliberate subset of RFC 8414's full metadata document, just the three endpoints the rest of this flow needs. */
+/** The authorization-server metadata this module (and `McpOAuthAuth.authorizationServer` in src/domain/tools) deals in — a deliberate subset of RFC 8414's full metadata document, just the three endpoints the rest of this flow needs. */
 export type McpAuthorizationServerInfo = McpOAuthAuth["authorizationServer"];
 
 /**
@@ -545,7 +549,7 @@ function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): McpResult<Mc
  * expiry — treated as valid until a 401 says otherwise) or still comfortably
  * (>{@link EXPIRY_SKEW_MS}) in the future. Otherwise refreshes via the
  * `refresh_token` grant at `authorizationServer.tokenEndpoint`, persisting
- * the refreshed tokens back through registry.ts's `updateServer`.
+ * the refreshed tokens back through the `McpServerRegistry` port.
  *
  * Persistence is best-effort: `config.id` may be an unsaved draft (e.g.
  * `"draft"`, the literal id the options form's test-connection path uses
@@ -596,7 +600,7 @@ export async function getValidAuth(config: McpServerConfig): Promise<McpResult<M
   const parsed = parseRefreshedToken(refreshed.value, auth);
   if (!parsed.ok) return parsed;
 
-  await updateServer(config.id, { auth: parsed.value });
+  await mcpServerRegistry.updateServer(config.id, { auth: parsed.value });
 
   return parsed;
 }

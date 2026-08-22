@@ -17,7 +17,7 @@
 // `shouldAutoRunServerTool` below — never a single function branching on
 // kind, so an edit to one can never quietly change the other:
 //
-//   PAGE tools (decisions/05, decisions/17, src/lib/settings.ts's
+//   PAGE tools (decisions/05, decisions/17, the `SettingsStore` port's
 //   `ApprovalPolicy` — unchanged by this card):
 //     - "auto-run-all" -> everything runs automatically, no exceptions.
 //     - "always-confirm" -> everything requires approval, INCLUDING a
@@ -28,7 +28,7 @@
 //       annotations at all, requires approval (absence of a hint is treated
 //       as mutating, never as safe).
 //
-//   SERVER (MCP) tools (decisions/20, src/lib/settings.ts's separate
+//   SERVER (MCP) tools (decisions/20, the `SettingsStore` port's separate
 //   `McpApprovalPolicy` — new in this card, default `"always-confirm"`):
 //     - "always-confirm" (default) -> everything requires approval,
 //       REGARDLESS of `readOnlyHint` — a remote server's self-assertion
@@ -88,8 +88,8 @@ import {
   type ToolCall,
 } from "../../domain/providers";
 import type { RuntimeCallToolRequest, RuntimeCallToolResponse } from "../../lib/protocol";
-import type { ChatSession, ToolCallMode } from "../../lib/session";
-import { getApprovalPolicy, getMcpApprovalPolicy } from "../../lib/settings";
+import type { ChatSession, ToolCallMode } from "../../domain/chat";
+import { settingsStore } from "../../infra/chrome-storage";
 import { getToolsForTab } from "./activeTab";
 import { getMergedToolsForTab } from "./mcpTools";
 import {
@@ -584,7 +584,7 @@ async function streamOneTurn(
  * on the very next call.
  */
 async function shouldAutoRunPageTool(tool: MergedTool | undefined): Promise<boolean> {
-  const policy = await getApprovalPolicy();
+  const policy = await settingsStore.getApprovalPolicy();
   const readOnly = tool?.annotations.readOnlyHint === true;
   return policy === "auto-run-all" || (readOnly && policy !== "always-confirm");
 }
@@ -597,7 +597,7 @@ async function shouldAutoRunPageTool(tool: MergedTool | undefined): Promise<bool
  * about itself is not, alone, grounds to act unseen on the user's behalf.
  */
 async function shouldAutoRunServerTool(tool: MergedTool | undefined): Promise<boolean> {
-  const policy = await getMcpApprovalPolicy();
+  const policy = await settingsStore.getMcpApprovalPolicy();
   if (policy === "auto-run-all") return true;
   if (policy === "trust-read-only") return tool?.annotations.readOnlyHint === true;
   return false; // "always-confirm"

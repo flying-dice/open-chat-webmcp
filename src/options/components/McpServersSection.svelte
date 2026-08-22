@@ -4,7 +4,7 @@
   // decisions/15-custom-headers-are-credentials.md): the third options-page
   // section, mounted alongside ProvidersSection (card 22) and
   // SettingsSection (card 13) in src/options/App.svelte, on top of
-  // src/lib/mcp/registry.ts — which already implements every storage
+  // the `McpServerRegistry` port — which already implements every storage
   // operation this component calls. Deliberately mirrors
   // ProvidersSection.svelte's shape (state layout, permission-badge
   // lifecycle, optimistic reorder) rather than inventing a new pattern for
@@ -17,14 +17,8 @@
   // Card/Alert/Empty/Button shell ProvidersSection got, kept in step with it
   // for the same reason the state layout is.
   import { onMount } from "svelte";
-  import {
-    addServer,
-    listServers,
-    removeServer,
-    reorderServers,
-    updateServer,
-    type McpServerConfig,
-  } from "../../lib/mcp/registry";
+  import type { McpServerConfig } from "../../domain/tools";
+  import { mcpServerRegistry } from "../../infra/chrome-storage";
   import { hasHostPermission, requestHostPermission } from "../../lib/permissions";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
   import McpServerForm from "./McpServerForm.svelte";
@@ -55,7 +49,7 @@
   }
 
   async function refresh(): Promise<void> {
-    servers = await listServers();
+    servers = await mcpServerRegistry.listServers();
     await refreshPermissions();
   }
 
@@ -80,13 +74,13 @@
   });
 
   async function handleAddSubmit(data: Omit<McpServerConfig, "id">): Promise<void> {
-    await addServer(data);
+    await mcpServerRegistry.addServer(data);
     adding = false;
     await refresh();
   }
 
   async function handleEditSubmit(id: string, data: Omit<McpServerConfig, "id">): Promise<void> {
-    await updateServer(id, data);
+    await mcpServerRegistry.updateServer(id, data);
     editingId = null;
     await refresh();
   }
@@ -96,14 +90,14 @@
       `Remove "${server.name}"? Its tools will no longer be offered to the model, and its stored token and headers will be deleted.`,
     );
     if (!ok) return;
-    await removeServer(server.id);
+    await mcpServerRegistry.removeServer(server.id);
     delete testOutcomes[server.id];
     delete permissionGranted[server.id];
     await refresh();
   }
 
   async function handleToggleEnabled(server: McpServerConfig): Promise<void> {
-    await updateServer(server.id, { enabled: !server.enabled });
+    await mcpServerRegistry.updateServer(server.id, { enabled: !server.enabled });
     await refresh();
   }
 
@@ -113,7 +107,7 @@
     const next = [...servers];
     [next[index], next[target]] = [next[target], next[index]];
     servers = next; // optimistic reorder while the write lands
-    await reorderServers(next.map((s) => s.id));
+    await mcpServerRegistry.reorderServers(next.map((s) => s.id));
   }
 
   /**

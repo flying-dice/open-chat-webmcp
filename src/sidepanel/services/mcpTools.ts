@@ -31,7 +31,8 @@
 // function). This module only ever forwards that already-safe text.
 
 import { discoverAllServerTools, callServerTool } from "../../lib/mcp/client";
-import { listEnabledServers, type McpServerConfig } from "../../lib/mcp/registry";
+import type { McpServerConfig } from "../../domain/tools";
+import { mcpServerRegistry } from "../../infra/chrome-storage";
 import { hasHostPermission } from "../../lib/mcp/permissions";
 import {
   buildServerMergedTools,
@@ -77,7 +78,7 @@ function cachedServerTools(): MergedTool[] {
 }
 
 async function refreshNow(): Promise<void> {
-  const servers = await listEnabledServers();
+  const servers = await mcpServerRegistry.listEnabledServers();
 
   const checks = await Promise.all(
     servers.map(async (config) => ({

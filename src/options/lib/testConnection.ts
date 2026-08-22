@@ -1,6 +1,6 @@
 // "Test connection" for the provider registry UI (card 22). Resolves
 // through the provider's own `ChatProvider` client — built via
-// `createProviderClient` (src/lib/providers/registry.ts) exactly the way
+// `createProviderClient` (src/lib/providers/clients.ts) exactly the way
 // the side panel would — never a bespoke fetch of our own, so a client's
 // auth headers, wire quirks, and error classification are exercised for
 // real rather than approximated here.
@@ -11,7 +11,8 @@
 // outcome and its own plain-language fix below, instead of a single generic
 // "connection failed".
 
-import { createProviderClient, type ProviderConfig } from "../../lib/providers/registry";
+import type { ProviderConfig } from "../../domain/providers";
+import { createProviderClient } from "../../lib/providers/clients";
 
 export type TestOutcome =
   | { kind: "success"; modelCount: number }

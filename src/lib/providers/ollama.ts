@@ -11,11 +11,13 @@ import type {
   ChatParams,
   ChatProvider,
   ChatStreamEvent,
+  ModelCapabilityCache,
+  ProviderConfig,
+  ProviderDefaultsStore,
   ProviderModel,
   ProviderResult,
   ToolCall,
 } from "../../domain/providers";
-import type { ProviderConfig } from "./registry";
 import {
   chat as ollamaChat,
   getCapabilities as ollamaGetCapabilities,
@@ -65,6 +67,18 @@ function toChatMessage(message: OllamaChatMessage): ChatMessage {
       ? { toolCalls: message.tool_calls.map(toChatToolCall) }
       : {}),
   };
+}
+
+/**
+ * The storage ports the raw client needs (card 74). Supplied at the
+ * registration site (src/lib/providers/clients.ts) rather than reached for
+ * here, so neither this adapter nor src/lib/ollama.ts imports an adapter —
+ * which is what lets card 75 move both into src/infra/ollama without
+ * breaking `adapters-do-not-import-adapters`.
+ */
+export interface OllamaProviderStores {
+  capabilityCache?: ModelCapabilityCache;
+  defaults?: ProviderDefaultsStore;
 }
 
 async function* adaptChatStream(
@@ -119,7 +133,10 @@ async function* adaptChatStream(
  * Ollama behind a gateway that wants its own headers, not just the local,
  * auth-free case this client was originally built for.
  */
-export function createOllamaProvider(config: ProviderConfig): ChatProvider {
+export function createOllamaProvider(
+  config: ProviderConfig,
+  stores: OllamaProviderStores = {},
+): ChatProvider {
   const baseUrl = config.baseUrl;
   const headers = config.headers;
 
@@ -139,7 +156,14 @@ export function createOllamaProvider(config: ProviderConfig): ChatProvider {
     getCapabilities(model, opts) {
       return ollamaGetCapabilities(
         { name: model.id, digest: model.cacheKey ?? model.id },
-        { baseUrl, headers, signal: opts?.signal, forceRefresh: opts?.forceRefresh },
+        {
+          baseUrl,
+          headers,
+          signal: opts?.signal,
+          forceRefresh: opts?.forceRefresh,
+          capabilityCache: stores.capabilityCache,
+          defaults: stores.defaults,
+        },
       );
     },
 

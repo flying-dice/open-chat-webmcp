@@ -7,7 +7,7 @@
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): same shadcn
   // Badge/Button treatment ProviderRow.svelte got, kept deliberately
   // identical so the two registries still read as the same kind of list.
-  import type { McpServerConfig } from "../../lib/mcp/registry";
+  import type { McpServerConfig } from "../../domain/tools";
   import type { McpTestOutcome } from "../lib/mcpTestConnection";
   import { testResultClass, testResultMessage, testResultTools } from "../lib/mcpTestResultDisplay";
   import { Badge } from "$lib/components/ui/badge";

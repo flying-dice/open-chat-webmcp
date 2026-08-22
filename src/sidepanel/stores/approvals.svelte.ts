@@ -35,14 +35,8 @@ import type {
   ApprovalRequest,
   ApprovalRequester,
 } from "../services/agentLoop";
-import {
-  getApprovalPolicy,
-  getMcpApprovalPolicy,
-  onApprovalPolicyChange,
-  onMcpApprovalPolicyChange,
-  type ApprovalPolicy,
-  type McpApprovalPolicy,
-} from "../../lib/settings";
+import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
+import { settingsStore } from "../../infra/chrome-storage";
 import { panel } from "./panel.svelte";
 import type { ToolCall } from "../../domain/providers";
 import type { MergedTool } from "../../domain/tools";
@@ -101,10 +95,10 @@ export const approvals = {
  * unsubscribe function that tears both down.
  */
 export function initApprovalPolicySync(): () => void {
-  void getApprovalPolicy().then((p) => (pagePolicy = p));
-  void getMcpApprovalPolicy().then((p) => (mcpPolicy = p));
-  const unsubPage = onApprovalPolicyChange((p) => (pagePolicy = p));
-  const unsubMcp = onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
+  void settingsStore.getApprovalPolicy().then((p) => (pagePolicy = p));
+  void settingsStore.getMcpApprovalPolicy().then((p) => (mcpPolicy = p));
+  const unsubPage = settingsStore.onApprovalPolicyChange((p) => (pagePolicy = p));
+  const unsubMcp = settingsStore.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
   return () => {
     unsubPage();
     unsubMcp();

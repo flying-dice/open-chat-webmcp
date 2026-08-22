@@ -7,14 +7,14 @@
   // send-every-field-on-submit posture — because this is exactly the same
   // kind of add/edit-a-remote-endpoint-with-optional-auth-and-headers form
   // the provider registry already established. The one real difference:
-  // headers here are a `Record<string, string>` (src/lib/mcp/registry.ts's
+  // headers here are a `Record<string, string>` (src/domain/tools's
   // `McpServerConfig.headers`), not an array of `{key, value}` — so this
   // form still edits an array of rows locally (for stable `{#each}` keys
   // while a row is mid-edit) but converts to/from a Record at the
   // load/submit boundary instead of passing the array straight through.
   //
   // Reserved-header validation reuses `validateServerHeaders`
-  // (src/lib/mcp/registry.ts) — the MCP-specific version of
+  // (src/domain/tools) — the MCP-specific version of
   // ProviderForm.svelte's `reservedHeaderReason` (src/domain/providers/provider.ts, off
   // limits to this card) — rather than re-deriving the same rule a third
   // time.
@@ -25,7 +25,7 @@
     type McpServerAuth,
     type McpServerConfig,
     type McpTransportPreference,
-  } from "../../lib/mcp/registry";
+  } from "../../domain/tools";
   import {
     discoverAuthorizationServer,
     registerClient,
@@ -73,7 +73,7 @@
   let transport = $state<McpTransportPreference>(untrack(() => initial?.transport ?? "auto"));
   let enabled = untrack(() => initial?.enabled ?? true);
 
-  // Card 62 widened `McpServerAuth` (src/lib/mcp/registry.ts) to a
+  // Card 62 widened `McpServerAuth` (src/domain/tools) to a
   // bearer/oauth union; this form now offers a three-way choice — None /
   // Bearer token / Sign in with OAuth — mirroring the `transport` `<select>`
   // above. `authMode` decides which of the two credential states below
@@ -192,7 +192,7 @@
    * Refuse a reserved header, or a name duplicated across rows, right where
    * it's being typed (decisions/15: "refused visibly at edit time, not
    * dropped silently at request time"). Uses `validateServerHeaders`
-   * (src/lib/mcp/registry.ts) for the reserved-name check — the same
+   * (src/domain/tools) for the reserved-name check — the same
    * function `client.ts` uses defensively at request-build time — so this
    * form and the transport agree on exactly which headers are reserved.
    */

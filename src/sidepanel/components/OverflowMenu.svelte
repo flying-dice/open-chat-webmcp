@@ -33,7 +33,8 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { cn } from "$lib/utils";
-  import { listChatSummaries, type ChatSummary } from "../../lib/session";
+  import type { ChatSummary } from "../../domain/chat";
+  import { chatStore } from "../../infra/chrome-storage";
   import { openChatInTab, panel, type ConnectionStatus } from "../stores/panel.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
   import { titleFromSummary } from "../lib/chatTitle";
@@ -67,7 +68,7 @@
   const hasMore = $derived(summaries.length > RECENT_LIMIT);
 
   function handleOpenChange(open: boolean): void {
-    if (open) void listChatSummaries().then((s) => (summaries = s));
+    if (open) void chatStore.listChatSummaries().then((s) => (summaries = s));
   }
 
   async function handleOpenChat(id: string): Promise<void> {

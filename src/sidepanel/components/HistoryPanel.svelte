@@ -2,7 +2,7 @@
   /**
    * History view (card 34, decisions/13-global-tab-aware-chat-history.md):
    * every stored chat, newest first, across every site — not just this
-   * tab's. Reads/deletes go straight to src/lib/session.ts (the same
+   * tab's. Reads/deletes go straight to the `ChatStore` port (the same
    * pattern src/options/components/SettingsSection.svelte already uses for
    * its "clear all history" list), since a `ChatSummary` never holds a live
    * message array that could go stale against the panel's single-owner
@@ -19,7 +19,8 @@
    * Re-skinned onto shadcn's Item/ScrollArea/Empty primitives (card 70,
    * decisions/28) — no behaviour change, presentation only.
    */
-  import { deleteChat, listChatSummaries, type ChatSummary } from "../../lib/session";
+  import type { ChatSummary } from "../../domain/chat";
+  import { chatStore } from "../../infra/chrome-storage";
   import { discardActiveChatIfDeleted, openChatInTab, panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
@@ -47,7 +48,7 @@
   let deletingId = $state<string | undefined>(undefined);
 
   async function refresh(): Promise<void> {
-    summaries = await listChatSummaries();
+    summaries = await chatStore.listChatSummaries();
   }
 
   // Re-list every time this view mounts (switching to it from Chat/Tools &
@@ -81,7 +82,7 @@
 
     deletingId = summary.id;
     try {
-      await deleteChat(summary.id);
+      await chatStore.deleteChat(summary.id);
       // If this was the chat currently open in this tab, point the tab at
       // a fresh one — otherwise the next message sent would silently
       // recreate the chat we just deleted (see that function's doc

@@ -24,10 +24,12 @@
  * ── Enforced today vs. deferred ──────────────────────────────────────────
  *
  * Card 73 stood up `src/domain` and `src/infra` and moved only the modules
- * that were ALREADY infrastructure-free. `src/lib` still holds nine
- * infra-heavy modules (session.ts, both registries, ollama.ts, mcp/client.ts,
- * mcp/oauth.ts, settings.ts, permissions.ts, protocol.ts) that cards 74-79
- * move into `src/infra/*`. So the full Decision 29 direction rule —
+ * that were ALREADY infrastructure-free. Card 74 then took the four
+ * `chrome.storage` repositories (session.ts, both registries, settings.ts)
+ * and ollama.ts's private store, leaving `src/lib` holding ollama.ts's wire
+ * half, mcp/client.ts, mcp/oauth.ts, permissions.ts, protocol.ts and the
+ * provider client factory — which cards 75-79 move into `src/infra/*`. So
+ * the full Decision 29 direction rule —
  * "composition root → infra → domain, and nothing else" — is not satisfiable
  * by today's tree and would fail on the first run, which would make the guard
  * something people skip rather than something that holds.
@@ -131,20 +133,22 @@ module.exports = {
       to: { path: `^src/(${SURFACES})/`, pathNot: "^src/$1/" },
     },
     {
-      // WARN, not error, and deliberately so: the tree has exactly two
-      // cycles today and neither is card 73's to fix.
+      // WARN, not error, and deliberately so.
       //
-      //   1. src/lib/providers/ollama.ts ⇄ src/lib/providers/registry.ts —
-      //      REAL, and precisely the "provider-type registration by
-      //      side-effect import" inversion decisions/29 calls out. The
-      //      adapter imports the registry to register ITSELF into the
-      //      service locator the registry also owns. Card 79's explicit
-      //      composition-root wiring deletes it; promote this rule to
-      //      `error` in that card.
-      //   2. ToolArgValue.svelte and SchemaProperty.svelte import
-      //      themselves — they render recursive JSON/JSON-Schema trees, and
-      //      a self-import is how a Svelte component recurses. Not a defect
-      //      and never will be.
+      // Card 73 recorded two cycles here. The first —
+      // src/lib/providers/ollama.ts ⇄ src/lib/providers/registry.ts, the
+      // "provider-type registration by side-effect import" inversion
+      // decisions/29 calls out — is GONE as of card 74, incidentally rather
+      // than by design: `ProviderConfig` moved to src/domain/providers, so
+      // the Ollama adapter no longer imports the module that constructs it,
+      // and what is left of registry.ts is renamed clients.ts. The service
+      // locator itself is still there and is still card 79's to delete.
+      //
+      // What remains is ToolArgValue.svelte importing ITSELF — it renders a
+      // recursive JSON tree, and a self-import is how a Svelte component
+      // recurses. Not a defect and never will be, so this rule cannot be
+      // promoted to `error` even now that the real cycle is gone; it would
+      // have to carry an exception for the recursive components first.
       //
       // Warnings are reported and do not fail the guard (same "visible,
       // accepted debt" treatment decisions/31 gives a ≤0.5 clean-code
@@ -174,10 +178,11 @@ module.exports = {
     // each comment makes it true. Uncomment there; do not soften.
     // =====================================================================
 
-    // Cards 74-79 (the last one to empty src/lib turns this on). src/lib is
-    // the pre-DDD grab bag: it holds domain rules, four chrome.storage
-    // repositories, three wire clients and the shared UI kit all at once.
-    // When it is gone, nothing may recreate it.
+    // Cards 75-79 (the last one to empty src/lib turns this on). src/lib was
+    // the pre-DDD grab bag: domain rules, four chrome.storage repositories,
+    // three wire clients and the shared UI kit all at once. Card 74 took the
+    // repositories; the wire clients and the provider client factory are
+    // what is left. When it is gone, nothing may recreate it.
     // {
     //   name: "no-src-lib",
     //   severity: "error",
@@ -191,9 +196,11 @@ module.exports = {
     // },
 
     // Card 78/79 (once the options page's 7-of-11 direct chrome.* components
-    // and the side panel's stores talk to injected ports instead). Today the
-    // UI imports src/lib/providers/registry.ts and src/lib/session.ts
-    // directly, which after those moves becomes a UI → infra edge.
+    // and the side panel's stores talk to injected ports instead). Card 74
+    // made this edge REAL rather than pending: the UI now imports the port
+    // instances from src/infra/chrome-storage/wiring.ts, the interim shared
+    // bundle whose own header describes exactly what deleting it takes.
+    // Turning this rule on is what proves the bundle is gone.
     // {
     //   name: "ui-does-not-import-infra",
     //   severity: "error",

@@ -1,7 +1,7 @@
 <script lang="ts">
   // Provider registry management (card 22,
   // decisions/10-provider-registry-and-credential-storage.md): the CRUD +
-  // reorder + set-default UI on top of src/lib/providers/registry.ts, which
+  // reorder + set-default UI on top of the `ProviderRegistry` port, which
   // already implements every storage operation this component calls —
   // nothing here talks to chrome.storage directly.
   //
@@ -12,18 +12,12 @@
   // byte-for-byte what they were.
   import { onMount } from "svelte";
   import {
-    addProvider,
-    createProviderClient,
-    getDefaultSelection,
-    listProviders,
-    removeProvider,
-    reorderProviders,
     resolveSelection,
-    setDefaultSelection,
-    updateProvider,
     type ProviderConfig,
     type ProviderSelection,
-  } from "../../lib/providers/registry";
+  } from "../../domain/providers";
+  import { providerRegistry } from "../../infra/chrome-storage";
+  import { createProviderClient } from "../../lib/providers/clients";
   import {
     describeProviderError,
     isSelectable,
@@ -182,7 +176,7 @@
       staleDefaultReason = undefined;
       return;
     }
-    const resolved = await resolveSelection(defaultSelection);
+    const resolved = await resolveSelection(providerRegistry, defaultSelection);
     if (resolved.status !== "ok") {
       staleDefaultReason = "The provider it points to has been removed.";
       return;
@@ -199,8 +193,8 @@
   }
 
   async function refresh(): Promise<void> {
-    providers = await listProviders();
-    defaultSelection = await getDefaultSelection();
+    providers = await providerRegistry.listProviders();
+    defaultSelection = await providerRegistry.getDefaultSelection();
 
     // Drop model-option state for providers that no longer exist, so a
     // deleted provider can't leave a stale entry behind if it's ever
@@ -233,14 +227,14 @@
   });
 
   async function handleAddSubmit(data: Omit<ProviderConfig, "id">): Promise<void> {
-    await addProvider(data);
+    await providerRegistry.addProvider(data);
     addStep = "closed";
     chosenPreset = undefined;
     await refresh();
   }
 
   async function handleEditSubmit(id: string, data: Omit<ProviderConfig, "id">): Promise<void> {
-    await updateProvider(id, data);
+    await providerRegistry.updateProvider(id, data);
     editingId = null;
     await refresh();
   }
@@ -250,7 +244,7 @@
       `Remove "${provider.name}"? Any tab session currently using it will be left with a dangling provider and prompted to pick a replacement.`,
     );
     if (!ok) return;
-    await removeProvider(provider.id);
+    await providerRegistry.removeProvider(provider.id);
     delete testOutcomes[provider.id];
     delete permissionGranted[provider.id];
     await refresh();
@@ -262,7 +256,7 @@
     const next = [...providers];
     [next[index], next[target]] = [next[target], next[index]];
     providers = next; // optimistic reorder while the write lands
-    await reorderProviders(next.map((p) => p.id));
+    await providerRegistry.reorderProviders(next.map((p) => p.id));
   }
 
   /** Whether `provider`'s model options are still loading — the row shows a loading state, no reason yet (card 52). */
@@ -312,7 +306,7 @@
     const options = defaultModelOptionsFor(provider);
     if (!options.some((o) => o.model.id === modelId)) return;
 
-    await setDefaultSelection({ providerId: provider.id, model: modelId });
+    await providerRegistry.setDefaultSelection({ providerId: provider.id, model: modelId });
     defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }

@@ -9,7 +9,8 @@ decision records that explain why.
 
 Every chat session — one per tab — is written to `chrome.storage.local`
 **unencrypted**, debounced during streaming and flushed on unload
-(`src/lib/session.ts`, `decisions/07-session-state-and-persistence.md`).
+(`src/infra/chrome-storage/chat-store.ts`,
+`decisions/07-session-state-and-persistence.md`).
 That history includes:
 
 - Everything you typed.

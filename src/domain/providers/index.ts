@@ -4,11 +4,17 @@
 // (decisions/11), and the static catalogue of predefined backends
 // (decisions/21).
 //
+// Card 74 added the driven side: `ProviderRegistry` (the configured-provider
+// CRUD and the default selection, with `resolveSelection`'s tri-state
+// dangling detection as a domain rule over it) plus the two small ports that
+// were src/lib/ollama.ts's private storage side-door — `ProviderDefaultsStore`
+// and `ModelCapabilityCache`.
+//
 // Pure TypeScript — no `chrome.*`, no `fetch`, no DOM, no Svelte. The wire
-// clients that IMPLEMENT `ChatProvider` (Ollama, OpenAI-compatible) and the
-// `chrome.storage` repository that persists provider configs are adapters
-// (src/infra/ollama, src/infra/openai, src/infra/chrome-storage) and land
-// there in cards 74-79; `provider.ts` is the port they will implement.
+// clients that IMPLEMENT `ChatProvider` (Ollama, OpenAI-compatible) are
+// adapters (src/infra/ollama, src/infra/openai) and land there in card 75;
+// the `chrome.storage` implementations of the ports above already live in
+// src/infra/chrome-storage.
 //
 // This barrel is the context's public face: other contexts and the outer
 // layers import `src/domain/providers`, never a file inside it.
@@ -16,3 +22,5 @@
 export * from "./provider";
 export * from "./capability";
 export * from "./presets";
+export * from "./registry";
+export * from "./config-store";

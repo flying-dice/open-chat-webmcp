@@ -1,7 +1,7 @@
 <script lang="ts">
   // Chat history controls (decisions/13-global-tab-aware-chat-history.md,
   // which revises decisions/07-session-state-and-persistence.md on this
-  // point): a clear-all action over src/lib/session.ts's
+  // point): a clear-all action over the `ChatStore` port's
   // `listChatSummaries` / `clearAllChats`, showing what's actually stored
   // so "Clear all history" isn't a blind destructive button. Chats are
   // global now, not per-tab — this lists every stored chat regardless of
@@ -21,7 +21,8 @@
   // (chat count, message count, "cannot be undone") is in the dialog's
   // description instead, so nothing is deleted with less warning than before.
   import { onMount } from "svelte";
-  import { clearAllChats, listChatSummaries, type ChatSummary } from "../../lib/session";
+  import type { ChatSummary } from "../../domain/chat";
+  import { chatStore } from "../../infra/chrome-storage";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import * as Alert from "$lib/components/ui/alert";
   import * as Card from "$lib/components/ui/card";
@@ -33,11 +34,11 @@
   let sessions = $state<ChatSummary[]>([]);
   let sessionsLoading = $state(true);
   let clearingHistory = $state(false);
-  /** The AlertDialog replacing the old `confirm()` — closed explicitly once `clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
+  /** The AlertDialog replacing the old `confirm()` — closed explicitly once `chatStore.clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
   let confirmOpen = $state(false);
 
   async function refreshSessions(): Promise<void> {
-    sessions = await listChatSummaries();
+    sessions = await chatStore.listChatSummaries();
   }
 
   onMount(() => {
@@ -58,7 +59,7 @@
     if (sessions.length === 0) return;
     clearingHistory = true;
     try {
-      await clearAllChats();
+      await chatStore.clearAllChats();
       sessions = [];
     } finally {
       clearingHistory = false;

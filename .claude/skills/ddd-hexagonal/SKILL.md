@@ -121,7 +121,7 @@ kit, not our architecture — exempt from these rules, never imports domain.
 alike) plus `scripts/guard-boundaries.mjs` for the platform GLOBALS
 (`chrome.*`, `fetch`, `document`) that are not imports and so are invisible
 to any import lint. Run it before you claim a move is done. Rules that are
-not yet satisfiable — `src/lib` still holds infra pending cards 74-79 — are
+not yet satisfiable — `src/lib` still holds infra pending cards 75-79 — are
 written out and commented in that config, each naming the card that turns it
 on; uncomment there rather than rewriting.
 
