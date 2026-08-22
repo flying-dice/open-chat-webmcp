@@ -17,8 +17,15 @@
 import type { TranscriptEntry } from "./message";
 import type { ChatSummary } from "./session";
 
-/** Shown when a chat has nothing to derive a title from yet. */
-export const UNTITLED_CHAT = "New chat";
+// UNTITLED_CHAT REMOVED (card 102, decisions/37-i18n-paraglide.md):
+// decisions/34 keeps copy out of the domain layer, and "New chat" was the
+// one hardcoded English string left in this file. `titleFromMessages`/
+// `titleFromSummary` below now take the fallback as a required `untitled`
+// parameter instead — the same shape `createChatService` already takes
+// `originLabel` in — so every call site supplies its own (localized) text
+// rather than this module inventing English. All three call sites
+// (src/sidepanel/App.svelte, HistoryListItem.svelte, OverflowMenu.svelte)
+// pass `m.chatTitle_untitled()`.
 
 /**
  * How much of the first message a title shows. Short enough that it never
@@ -40,30 +47,39 @@ function truncate(text: string, max: number): string {
 /**
  * Title for the chat currently loaded in the panel. `explicitTitle` — the
  * live session's own `title` — wins when set; otherwise derived from the
- * first user message.
+ * first user message. `untitled` is shown when there is nothing to derive a
+ * title from yet (card 102: the caller's localized fallback, e.g.
+ * `m.chatTitle_untitled()` — this module invents no English of its own).
  */
 export function titleFromMessages(
   messages: readonly TranscriptEntry[],
+  untitled: string,
   explicitTitle?: string,
 ): string {
   if (explicitTitle) return truncate(firstLine(explicitTitle), TITLE_MAX_LENGTH);
   const firstUser = messages.find((m) => m.role === "user");
   const text = firstUser ? firstLine(firstUser.content) : "";
-  return text ? truncate(text, TITLE_MAX_LENGTH) : UNTITLED_CHAT;
+  return text ? truncate(text, TITLE_MAX_LENGTH) : untitled;
 }
 
 /**
  * Title for a chat in a LIST (the overflow menu's recent chats and the
  * History rows). An explicit `summary.title` wins; otherwise the preview,
- * then the origin rather than "New chat" — in a list of many chats, knowing
+ * then the origin rather than `untitled` — in a list of many chats, knowing
  * which site one belongs to is more use than knowing it was never named.
+ * `untitled` is the caller's localized fallback for the one case none of
+ * those exist (card 102, mirrors {@link titleFromMessages}).
  */
-export function titleFromSummary(summary: ChatSummary, max = TITLE_MAX_LENGTH): string {
+export function titleFromSummary(
+  summary: ChatSummary,
+  untitled: string,
+  max = TITLE_MAX_LENGTH,
+): string {
   const title = summary.title ? firstLine(summary.title) : "";
   if (title) return truncate(title, max);
   const preview = summary.preview ? firstLine(summary.preview) : "";
   if (preview) return truncate(preview, max);
-  return summary.origin || UNTITLED_CHAT;
+  return summary.origin || untitled;
 }
 
 /**

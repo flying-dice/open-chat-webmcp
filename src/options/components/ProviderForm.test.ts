@@ -17,6 +17,7 @@ import {
 } from "../testing/fake-services";
 import type { ProviderConfig } from "../../domain/providers";
 import { fail, ok } from "../../domain/result";
+import { m } from "../../paraglide/messages.js";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
 // `afterEach` are Vitest GLOBALS (test.globals, which this project
@@ -105,11 +106,13 @@ describe("ProviderForm", () => {
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "   ");
-    await user.type(screen.getByLabelText("Base URL"), "http://localhost:11434");
-    await user.click(screen.getByRole("button", { name: /Add provider/ }));
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "   ");
+    await user.type(screen.getByLabelText(m.providerForm_baseUrlLabel()), "http://localhost:11434");
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(m.providers_addProviderAction()) }),
+    );
 
-    expect(await screen.findByText("Enter a display name.")).toBeInTheDocument();
+    expect(await screen.findByText(m.enterDisplayNameError())).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -118,15 +121,15 @@ describe("ProviderForm", () => {
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "My Provider");
-    const urlInput = screen.getByLabelText("Base URL");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "My Provider");
+    const urlInput = screen.getByLabelText(m.providerForm_baseUrlLabel());
     await user.clear(urlInput);
     await user.type(urlInput, "not-a-url");
-    await user.click(screen.getByRole("button", { name: /Add provider/ }));
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(m.providers_addProviderAction()) }),
+    );
 
-    expect(
-      await screen.findByText("Enter a valid http:// or https:// base URL."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(m.providerForm_invalidBaseUrlError())).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -135,11 +138,13 @@ describe("ProviderForm", () => {
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "Local Ollama");
-    const urlInput = screen.getByLabelText("Base URL");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "Local Ollama");
+    const urlInput = screen.getByLabelText(m.providerForm_baseUrlLabel());
     await user.clear(urlInput);
     await user.type(urlInput, "http://localhost:11434");
-    await user.click(screen.getByRole("button", { name: /Add provider/ }));
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(m.providers_addProviderAction()) }),
+    );
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const submitted = onSubmit.mock.calls[0]![0];
@@ -160,16 +165,22 @@ describe("ProviderForm", () => {
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "Local Ollama");
-    const urlInput = screen.getByLabelText("Base URL");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "Local Ollama");
+    const urlInput = screen.getByLabelText(m.providerForm_baseUrlLabel());
     await user.clear(urlInput);
     await user.type(urlInput, "http://localhost:11434");
-    await user.click(screen.getByRole("button", { name: /Add provider/ }));
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(m.providers_addProviderAction()) }),
+    );
 
-    expect(await screen.findByText(/Couldn't save this provider/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(m.providerForm_saveFailedWhat())),
+    ).toBeInTheDocument();
     // Not stuck on "Saving…": the button is usable again for a retry.
-    expect(screen.getByRole("button", { name: /Add provider/ })).toBeEnabled();
-    expect(screen.getByLabelText("Display name")).toHaveValue("Local Ollama");
+    expect(
+      screen.getByRole("button", { name: new RegExp(m.providers_addProviderAction()) }),
+    ).toBeEnabled();
+    expect(screen.getByLabelText(m.displayNameLabel())).toHaveValue("Local Ollama");
   });
 
   it("cancel calls onCancel without submitting", async () => {
@@ -178,7 +189,7 @@ describe("ProviderForm", () => {
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel } });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: m.cancelAction() }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
@@ -202,11 +213,11 @@ describe("ProviderForm", () => {
     const keyInput = screen.getByLabelText(/API key/) as HTMLInputElement;
     expect(keyInput).toHaveAttribute("type", "password");
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: m.showAction() }));
     expect(keyInput).toHaveAttribute("type", "text");
-    expect(screen.getByRole("button", { name: "Hide" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m.hideAction() })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(screen.getByRole("button", { name: m.hideAction() }));
     expect(keyInput).toHaveAttribute("type", "password");
   });
 
@@ -220,12 +231,16 @@ describe("ProviderForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    await user.click(screen.getByRole("button", { name: "Add header" }));
-    await user.click(screen.getByRole("button", { name: "Add header" }));
-    expect(screen.getAllByPlaceholderText("Header name, e.g. x-api-key")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: m.headersEditor_addAction() }));
+    await user.click(screen.getByRole("button", { name: m.headersEditor_addAction() }));
+    expect(screen.getAllByPlaceholderText(m.headersEditor_namePlaceholder())).toHaveLength(2);
 
-    await user.click(screen.getAllByRole("button", { name: /Remove header/ })[0]!);
-    expect(screen.getAllByPlaceholderText("Header name, e.g. x-api-key")).toHaveLength(1);
+    await user.click(
+      screen.getAllByRole("button", {
+        name: new RegExp(m.headersEditor_removeAriaLabel({ name: "" }).trim()),
+      })[0]!,
+    );
+    expect(screen.getAllByPlaceholderText(m.headersEditor_namePlaceholder())).toHaveLength(1);
   });
 
   it("shows an inline error for a reserved header name and blocks submit", async () => {
@@ -233,20 +248,32 @@ describe("ProviderForm", () => {
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "Local Ollama");
-    const urlInput = screen.getByLabelText("Base URL");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "Local Ollama");
+    const urlInput = screen.getByLabelText(m.providerForm_baseUrlLabel());
     await user.clear(urlInput);
     await user.type(urlInput, "http://localhost:11434");
 
-    await user.click(screen.getByRole("button", { name: "Add header" }));
-    await user.type(screen.getByPlaceholderText("Header name, e.g. x-api-key"), "Content-Type");
-    await user.type(screen.getByPlaceholderText("Value"), "application/json");
+    await user.click(screen.getByRole("button", { name: m.headersEditor_addAction() }));
+    await user.type(screen.getByPlaceholderText(m.headersEditor_namePlaceholder()), "Content-Type");
+    await user.type(
+      screen.getByPlaceholderText(m.headersEditor_valuePlaceholder()),
+      "application/json",
+    );
 
-    expect(await screen.findByText(/Content-Type is set automatically/)).toBeInTheDocument();
+    // `reservedHeaderReason`'s own reserved-name wording
+    // (src/domain/providers/provider.ts) — out of this card's scope (see
+    // that function's doc comment), so still literal English here.
+    const reservedError =
+      "Content-Type is set automatically for this provider's wire format and can't be overridden.";
+    expect(await screen.findByText(reservedError)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Add provider/ }));
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(m.providers_addProviderAction()) }),
+    );
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(screen.getByText(/Header "Content-Type"/)).toBeInTheDocument();
+    expect(
+      screen.getByText(m.headerRows_prefixedError({ key: "Content-Type", error: reservedError })),
+    ).toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------
@@ -269,14 +296,16 @@ describe("ProviderForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    await user.type(screen.getByLabelText("Display name"), "Local Ollama");
-    const urlInput = screen.getByLabelText("Base URL");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "Local Ollama");
+    const urlInput = screen.getByLabelText(m.providerForm_baseUrlLabel());
     await user.clear(urlInput);
     await user.type(urlInput, "http://localhost:11434");
 
-    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    await user.click(screen.getByRole("button", { name: m.testConnectionAction() }));
 
-    expect(await screen.findByText(/Connected — found 0 models\./)).toBeInTheDocument();
+    expect(
+      await screen.findByText(m.testResultDisplay_providerSuccess({ count: 0 })),
+    ).toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------
@@ -289,8 +318,10 @@ describe("ProviderForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
-    await selectOption(user, "Provider type", "OpenAI-compatible");
-    expect(screen.getByLabelText(/API key/)).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(new RegExp(m.providerForm_apiKeyLabel())),
+    ).not.toBeInTheDocument();
+    await selectOption(user, m.providerForm_typeLabel(), m.providerType_openAiLabel());
+    expect(screen.getByLabelText(new RegExp(m.providerForm_apiKeyLabel()))).toBeInTheDocument();
   });
 });

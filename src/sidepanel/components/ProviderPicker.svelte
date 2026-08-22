@@ -66,11 +66,14 @@
   import {
     isSelectable,
     isSelectionUsable,
-    reasonForCapability,
     type ModelCapabilities,
     type ProviderModel,
   } from "../../domain/providers";
   import { capabilityBadge } from "../presentation/capabilityBadge";
+  // Card 102 (decisions/37-i18n-paraglide.md): the LOCALIZED wrapper — see
+  // src/ui/capabilityMessage.ts's own doc comment for why this lives
+  // UI-side rather than the domain export of the same-shaped function.
+  import { capabilityReason } from "../../ui/capabilityMessage";
   import type { ProviderConfig } from "../../domain/providers";
   import { m } from "../../paraglide/messages.js";
 
@@ -316,7 +319,7 @@
 
 {#snippet modelRow(row: Row, showProvider: boolean)}
   {@const badge = row.capability ? capabilityBadge(row.capability.status) : undefined}
-  {@const reason = reasonForCapability(row.capability)}
+  {@const reason = capabilityReason(row.capability)}
   {@const selectable = isSelectable(row.capability)}
   <Command.Item
     value={`${row.providerId}:${row.model.id}`}

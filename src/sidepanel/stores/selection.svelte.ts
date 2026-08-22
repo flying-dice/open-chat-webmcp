@@ -62,7 +62,6 @@
 // cast-on boolean, and this module holds the reactive copy the composer reads.
 
 import {
-  describeProviderError,
   isSelectable,
   resolveCapabilities,
   resolveCapability,
@@ -75,6 +74,11 @@ import {
   type SelectionResolution,
 } from "../../domain/providers";
 import { storageFailureMessage } from "../../ui/storageMessage";
+// Card 102 (decisions/37-i18n-paraglide.md): the LOCALIZED describeProviderError
+// — domain/providers/provider.ts's own export of the same name stays English,
+// for two domain-internal consumers this card left untouched (see that
+// function's doc comment); UI code always wants this one.
+import { describeProviderError } from "../../ui/providerMessage";
 import { chat, sidePanelServices } from "../app-services";
 import { reportNotice } from "./notices.svelte";
 import { m } from "../../paraglide/messages.js";

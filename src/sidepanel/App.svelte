@@ -67,7 +67,7 @@
       ? m.app_inspectorTitle()
       : view === "history"
         ? m.app_historyTitle()
-        : titleFromMessages(panel.messages, panel.activeChatTitle),
+        : titleFromMessages(panel.messages, m.chatTitle_untitled(), panel.activeChatTitle),
   );
 
   /** The model answering in this chat, shown on each assistant turn. `undefined` until something is actually resolved. */

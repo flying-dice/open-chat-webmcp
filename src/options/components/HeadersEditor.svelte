@@ -21,6 +21,7 @@
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
   import { headerRowError, type HeaderRow, type ReservedHeaderCheck } from "../forms/headerRows";
+  import { m } from "../../paraglide/messages.js";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import { Button } from "$lib/components/ui/button";
@@ -58,7 +59,7 @@
 </script>
 
 <Field.Field>
-  <Field.Label for={firstInputId}>Custom headers (optional)</Field.Label>
+  <Field.Label for={firstInputId}>{m.headersEditor_label()}</Field.Label>
   <Alert.Root class="bg-background">
     <Alert.Description>{@render description()}</Alert.Description>
   </Alert.Root>
@@ -72,7 +73,7 @@
             id={i === 0 ? firstInputId : undefined}
             type="text"
             bind:value={row.key}
-            placeholder="Header name, e.g. x-api-key"
+            placeholder={m.headersEditor_namePlaceholder()}
             autocomplete="off"
             aria-invalid={err ? "true" : undefined}
             class="text-sm"
@@ -80,7 +81,7 @@
           <Input
             type={showValues ? "text" : "password"}
             bind:value={row.value}
-            placeholder="Value"
+            placeholder={m.headersEditor_valuePlaceholder()}
             autocomplete="off"
             aria-invalid={err ? "true" : undefined}
             class="text-sm"
@@ -89,7 +90,7 @@
             variant="ghost"
             size="icon"
             onclick={() => removeRow(row.id)}
-            aria-label={`Remove header ${row.key || i + 1}`}
+            aria-label={m.headersEditor_removeAriaLabel({ name: row.key || String(i + 1) })}
           >
             <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
           </Button>
@@ -104,11 +105,11 @@
   <div class="flex items-center gap-2">
     <Button variant="ghost" size="sm" onclick={addRow}>
       <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
-      Add header
+      {m.headersEditor_addAction()}
     </Button>
     {#if rows.length > 0}
       <Button variant="ghost" size="sm" onclick={() => (showValues = !showValues)}>
-        {showValues ? "Hide values" : "Show values"}
+        {showValues ? m.headersEditor_hideValuesAction() : m.headersEditor_showValuesAction()}
       </Button>
     {/if}
   </div>

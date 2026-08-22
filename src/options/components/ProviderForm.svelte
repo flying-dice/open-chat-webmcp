@@ -46,7 +46,7 @@
     type ReservedHeaderCheck,
   } from "../forms/headerRows";
   import {
-    PERMISSION_DENIED_MESSAGE,
+    permissionDeniedMessage,
     requestHostPermission,
     trackHostPermission,
   } from "../forms/hostPermission.svelte";
@@ -54,6 +54,7 @@
   import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
   import HeadersEditor from "./HeadersEditor.svelte";
   import Markdown from "../../ui/components/Markdown.svelte";
+  import { m } from "../../paraglide/messages.js";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -127,7 +128,7 @@
     defaultBaseUrl: string;
   } = {
     value: "ollama",
-    label: "Ollama",
+    label: m.providerType_ollamaLabel(),
     needsApiKey: false,
     defaultBaseUrl: "http://localhost:11434",
   };
@@ -140,7 +141,7 @@
     OLLAMA_PROVIDER_TYPE,
     {
       value: "openai",
-      label: "OpenAI-compatible",
+      label: m.providerType_openAiLabel(),
       needsApiKey: true,
       defaultBaseUrl: DEFAULT_OPENAI_BASE_URL,
     },
@@ -257,7 +258,7 @@
     if (!originPatternForUrl(draft.baseUrl)) {
       testOutcome = {
         kind: "invalid-response",
-        message: "Enter a valid http:// or https:// base URL first.",
+        message: m.providerForm_invalidBaseUrlTestError(),
       };
       return;
     }
@@ -269,7 +270,7 @@
     testing = true;
     try {
       if (!(await requestHostPermission(draft.baseUrl, hostPermission))) {
-        testOutcome = { kind: "permission-denied", message: PERMISSION_DENIED_MESSAGE };
+        testOutcome = { kind: "permission-denied", message: permissionDeniedMessage() };
         return;
       }
       testOutcome = await testProviderConnection({ id: initial?.id ?? "draft", ...draft });
@@ -283,11 +284,11 @@
     formError = undefined;
 
     if (name.trim().length === 0) {
-      formError = "Enter a display name.";
+      formError = m.enterDisplayNameError();
       return;
     }
     if (!originPatternForUrl(baseUrl.trim())) {
-      formError = "Enter a valid http:// or https:// base URL.";
+      formError = m.providerForm_invalidBaseUrlError();
       return;
     }
     const headerError = firstHeaderError(headers, isReservedHeader);
@@ -302,7 +303,7 @@
     // The form stays open on a failed save (the parent only closes it on
     // success), so this is the one place the user can be told why — right
     // under the fields they would otherwise be asked to retype.
-    if (err) formError = storageFailureMessage("Couldn't save this provider", err);
+    if (err) formError = storageFailureMessage(m.providerForm_saveFailedWhat(), err);
   }
 
   /** The provider-type dropdown's trigger text — shadcn's `Select` renders whatever we put in the trigger, unlike the native `<select>` this replaced. */
@@ -314,7 +315,9 @@
     <div class="flex items-center gap-2">
       <Badge>{preset.label}</Badge>
       {#if onChangeBackend}
-        <Button variant="ghost" size="sm" onclick={onChangeBackend}>Change backend</Button>
+        <Button variant="ghost" size="sm" onclick={onChangeBackend}
+          >{m.providerForm_backendChangeAction()}</Button
+        >
       {/if}
     </div>
   {/if}
@@ -327,11 +330,18 @@
 
   <div class="flex flex-wrap gap-4">
     <Field.Field class="flex-1 basis-50">
-      <Field.Label for="pf-name">Display name</Field.Label>
-      <Input id="pf-name" type="text" bind:value={name} placeholder="e.g. Local Ollama" required class="text-sm" />
+      <Field.Label for="pf-name">{m.displayNameLabel()}</Field.Label>
+      <Input
+        id="pf-name"
+        type="text"
+        bind:value={name}
+        placeholder={m.providerForm_namePlaceholder()}
+        required
+        class="text-sm"
+      />
     </Field.Field>
     <Field.Field class="flex-1 basis-50">
-      <Field.Label for="pf-type">Provider type</Field.Label>
+      <Field.Label for="pf-type">{m.providerForm_typeLabel()}</Field.Label>
       <!-- Controlled rather than `bind:value`: `type` is a `ProviderType`, not
            a plain string, and the `$effect` above reacts to it changing — so
            the cast happens here, at the one place a new value arrives. -->
@@ -351,7 +361,7 @@
   </div>
 
   <Field.Field>
-    <Field.Label for="pf-url">Base URL</Field.Label>
+    <Field.Label for="pf-url">{m.providerForm_baseUrlLabel()}</Field.Label>
     <Input
       id="pf-url"
       type="text"
@@ -361,55 +371,55 @@
       class="text-sm"
     />
     {#if hostPermission.granted === false}
-      <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
+      <Badge variant="destructive" class="w-fit!">{m.permissionNeededForHostBadge()}</Badge>
     {:else if hostPermission.granted === true}
-      <Badge variant="outline" class="w-fit!">Permission granted</Badge>
+      <Badge variant="outline" class="w-fit!">{m.permissionGrantedBadge()}</Badge>
     {/if}
   </Field.Field>
 
   {#if showApiKeyField}
     <Field.Field>
       <Field.Label for="pf-key">
-        API key{activePreset && !activePreset.requiresKey ? "" : " (optional)"}
+        {m.providerForm_apiKeyLabel()}{activePreset && !activePreset.requiresKey
+          ? ""
+          : m.providerForm_apiKeyOptionalSuffix()}
       </Field.Label>
       <InputGroup.Root>
         <InputGroup.Input
           id="pf-key"
           type={showApiKey ? "text" : "password"}
           bind:value={apiKey}
-          placeholder="sk-…"
+          placeholder={m.providerForm_apiKeyPlaceholder()}
           autocomplete="off"
           class="text-sm"
         />
         <InputGroup.Addon align="inline-end">
           <InputGroup.Button onclick={() => (showApiKey = !showApiKey)}>
-            {showApiKey ? "Hide" : "Show"}
+            {showApiKey ? m.hideAction() : m.showAction()}
           </InputGroup.Button>
         </InputGroup.Addon>
       </InputGroup.Root>
       {#if activePreset?.docsUrl && activePreset.requiresKey}
         <Field.Description>
-          Get an API key from <a href={activePreset.docsUrl} target="_blank" rel="noreferrer"
+          {m.providerForm_getApiKeyPrefix()} <a href={activePreset.docsUrl} target="_blank" rel="noreferrer"
             >{activePreset.label}</a
-          >.
+          >{m.providerForm_getApiKeySuffix()}
         </Field.Description>
       {/if}
     </Field.Field>
   {:else if typeInfo.needsApiKey && activePreset?.local}
     <p class="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-      {activePreset.label} doesn't need an API key by default.
+      {m.providerForm_noApiKeyNeeded({ label: activePreset.label })}
       <Button variant="ghost" size="sm" onclick={() => (forceShowApiKeyField = true)}>
-        Add one anyway
+        {m.providerForm_addKeyAnywayAction()}
       </Button>
     </p>
   {/if}
 
+  <!-- Static, developer-authored, no untrusted interpolation — {@html} is
+       safe here (card 101's technique 1). -->
   {#snippet headersDescription()}
-    Sent on every request to this provider — for a gateway that wants its own <code
-      class="font-mono text-xs">x-api-key</code
-    >, a tenant or project header, a proxy <code class="font-mono text-xs">Authorization</code>, or a
-    Cloudflare Access service-token pair. A bearer token from the API key field above isn't enough
-    for those.
+    {@html m.providerForm_headersDescription()}
   {/snippet}
 
   <HeadersEditor
@@ -421,9 +431,7 @@
 
   <Alert.Root class="bg-background">
     <Alert.Description>
-      API keys and custom header values are stored unencrypted on this device
-      (chrome.storage.local) and never synced to your Google account. Anyone with access to this
-      browser profile can read them.
+      {m.providerForm_credentialWarning()}
     </Alert.Description>
   </Alert.Root>
 
@@ -436,7 +444,7 @@
     {#if testOutcome.kind === "unreachable" && testOutcome.fix}
       {@const fix = testOutcome.fix}
       <Alert.Root class="bg-background">
-        <Alert.Description>{fix.label}:</Alert.Description>
+        <Alert.Description>{m.providerForm_fixColon({ label: fix.label })}</Alert.Description>
       </Alert.Root>
       <Markdown source={fenceOf(fix.command)} />
     {/if}
@@ -444,11 +452,11 @@
 
   <div class="flex flex-wrap items-center gap-2">
     <Button type="submit" disabled={saving}>
-      {saving ? "Saving…" : mode === "add" ? "Add provider" : "Save changes"}
+      {saving ? m.savingLabel() : mode === "add" ? m.providers_addProviderAction() : m.saveChangesAction()}
     </Button>
     <Button variant="outline" onclick={handleTest} disabled={testing}>
-      {testing ? "Testing…" : "Test connection"}
+      {testing ? m.testingLabel() : m.testConnectionAction()}
     </Button>
-    <Button variant="ghost" onclick={onCancel}>Cancel</Button>
+    <Button variant="ghost" onclick={onCancel}>{m.cancelAction()}</Button>
   </div>
 </form>

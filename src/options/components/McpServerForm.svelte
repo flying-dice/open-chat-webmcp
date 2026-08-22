@@ -48,12 +48,13 @@
     type ReservedHeaderCheck,
   } from "../forms/headerRows";
   import {
-    PERMISSION_DENIED_MESSAGE,
+    permissionDeniedMessage,
     requestHostPermission,
     trackHostPermission,
   } from "../forms/hostPermission.svelte";
   import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
   import { bannerClass } from "../forms/testResultDisplay";
+  import { m } from "../../paraglide/messages.js";
   import HeadersEditor from "./HeadersEditor.svelte";
   import McpTestResult from "./McpTestResult.svelte";
   import * as Alert from "$lib/components/ui/alert";
@@ -85,22 +86,21 @@
     description: string;
   } = {
     value: "auto",
-    label: "Auto (recommended)",
-    description:
-      "Tries the modern Streamable HTTP transport first, falling back to legacy HTTP+SSE.",
+    label: m.mcpServerForm_transportAutoLabel(),
+    description: m.mcpServerForm_transportAutoDescription(),
   };
   const TRANSPORT_OPTIONS: { value: McpTransportPreference; label: string; description: string }[] =
     [
       AUTO_TRANSPORT_OPTION,
       {
         value: "streamable-http",
-        label: "Streamable HTTP",
-        description: "Pin to the modern transport only.",
+        label: m.mcpServerForm_transportStreamableLabel(),
+        description: m.mcpServerForm_transportStreamableDescription(),
       },
       {
         value: "sse",
-        label: "HTTP+SSE (legacy)",
-        description: "Pin to the deprecated transport only.",
+        label: m.mcpServerForm_transportSseLabel(),
+        description: m.mcpServerForm_transportSseDescription(),
       },
     ];
 
@@ -192,14 +192,16 @@
   );
 
   function oauthStatusText(): string {
-    if (!oauthAuth) return "Not connected.";
+    if (!oauthAuth) return m.mcpServerForm_oauthNotConnected();
     if (oauthNeedsReconnect) {
-      return "Needs reconnect — the access token has expired and there's no refresh token to renew it automatically.";
+      return m.mcpServerForm_oauthNeedsReconnect();
     }
     if (oauthAuth.expiresAt !== undefined) {
-      return `Connected — token valid until ${new Date(oauthAuth.expiresAt).toLocaleString()}.`;
+      return m.mcpServerForm_oauthConnectedUntil({
+        date: new Date(oauthAuth.expiresAt).toLocaleString(),
+      });
     }
-    return "Connected — no expiry known.";
+    return m.mcpServerForm_oauthConnectedNoExpiry();
   }
 
   /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../forms/headerRows.ts for why a row carries a synthetic id. */
@@ -244,12 +246,12 @@
   // own text. Both lists stay the single source of truth for their labels.
   const NONE_AUTH_MODE_OPTION: { value: AuthMode; label: string } = {
     value: "none",
-    label: "None",
+    label: m.mcpServerForm_authNoneLabel(),
   };
   const AUTH_MODE_OPTIONS: { value: AuthMode; label: string }[] = [
     NONE_AUTH_MODE_OPTION,
-    { value: "bearer", label: "Bearer token" },
-    { value: "oauth", label: "Sign in with OAuth" },
+    { value: "bearer", label: m.bearerTokenLabel() },
+    { value: "oauth", label: m.mcpServerForm_authOauthLabel() },
   ];
   let transportLabel = $derived(
     TRANSPORT_OPTIONS.find((t) => t.value === transport)?.label ?? AUTO_TRANSPORT_OPTION.label,
@@ -309,7 +311,7 @@
     if (!originPatternForUrl(draft.url)) {
       testOutcome = {
         kind: "invalid-response",
-        message: "Enter a valid http:// or https:// URL first.",
+        message: m.mcpServerForm_invalidUrlTestError(),
       };
       return;
     }
@@ -321,7 +323,7 @@
     testing = true;
     try {
       if (!(await requestHostPermission(draft.url, hostPermission))) {
-        testOutcome = { kind: "permission-denied", message: PERMISSION_DENIED_MESSAGE };
+        testOutcome = { kind: "permission-denied", message: permissionDeniedMessage() };
         return;
       }
       testOutcome = await testMcpServerConnection({ id: initial?.id ?? "draft", ...draft });
@@ -439,11 +441,11 @@
     formError = undefined;
 
     if (name.trim().length === 0) {
-      formError = "Enter a display name.";
+      formError = m.enterDisplayNameError();
       return;
     }
     if (!originPatternForUrl(url.trim())) {
-      formError = "Enter a valid http:// or https:// URL.";
+      formError = m.mcpServerForm_invalidUrlError();
       return;
     }
     const headerError = firstHeaderError(headers, isReservedHeader);
@@ -455,7 +457,7 @@
     saving = true;
     const [, err] = await onSubmit(buildData());
     saving = false;
-    if (err) formError = storageFailureMessage("Couldn't save this MCP server", err);
+    if (err) formError = storageFailureMessage(m.mcpServerForm_saveFailedWhat(), err);
   }
 </script>
 
@@ -463,18 +465,18 @@
 <form class="flex flex-col gap-4 rounded-2xl border bg-muted/30 p-4" onsubmit={handleSubmit}>
   <div class="flex flex-wrap gap-4">
     <Field.Field class="flex-1 basis-50">
-      <Field.Label for="mf-name">Display name</Field.Label>
+      <Field.Label for="mf-name">{m.displayNameLabel()}</Field.Label>
       <Input
         id="mf-name"
         type="text"
         bind:value={name}
-        placeholder="e.g. Internal ticket tracker"
+        placeholder={m.mcpServerForm_namePlaceholder()}
         required
         class="text-sm"
       />
     </Field.Field>
     <Field.Field class="flex-1 basis-50">
-      <Field.Label for="mf-transport">Transport</Field.Label>
+      <Field.Label for="mf-transport">{m.mcpServerForm_transportLabel()}</Field.Label>
       <Select.Root
         type="single"
         value={transport}
@@ -491,25 +493,30 @@
   </div>
 
   <Field.Field>
-    <Field.Label for="mf-url">MCP endpoint URL</Field.Label>
-    <Input id="mf-url" type="text" bind:value={url} placeholder="https://mcp.example.com/mcp" required class="text-sm" />
+    <Field.Label for="mf-url">{m.mcpServerForm_urlLabel()}</Field.Label>
+    <Input
+      id="mf-url"
+      type="text"
+      bind:value={url}
+      placeholder={m.mcpServerForm_urlPlaceholder()}
+      required
+      class="text-sm"
+    />
     {#if hostPermission.granted === false}
-      <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
+      <Badge variant="destructive" class="w-fit!">{m.permissionNeededForHostBadge()}</Badge>
     {:else if hostPermission.granted === true}
-      <Badge variant="outline" class="w-fit!">Permission granted</Badge>
+      <Badge variant="outline" class="w-fit!">{m.permissionGrantedBadge()}</Badge>
     {/if}
   </Field.Field>
 
   <Alert.Root class="bg-background">
     <Alert.Description>
-      Only remote HTTP/SSE MCP servers are supported — this extension can't spawn or speak to a
-      local stdio process. For a stdio-only server, put an off-the-shelf stdio-to-HTTP proxy in
-      front of it and enter the proxy's URL here instead.
+      {m.mcpServerForm_stdioNotice()}
     </Alert.Description>
   </Alert.Root>
 
   <Field.Field>
-    <Field.Label for="mf-auth-mode">Authentication</Field.Label>
+    <Field.Label for="mf-auth-mode">{m.mcpServerForm_authModeLabel()}</Field.Label>
     <Select.Root
       type="single"
       value={authMode}
@@ -526,19 +533,19 @@
 
   {#if authMode === "bearer"}
     <Field.Field>
-      <Field.Label for="mf-token">Bearer token</Field.Label>
+      <Field.Label for="mf-token">{m.bearerTokenLabel()}</Field.Label>
       <InputGroup.Root>
         <InputGroup.Input
           id="mf-token"
           type={showAuthToken ? "text" : "password"}
           bind:value={authToken}
-          placeholder="Sent as Authorization: Bearer …"
+          placeholder={m.mcpServerForm_bearerTokenPlaceholder()}
           autocomplete="off"
           class="text-sm"
         />
         <InputGroup.Addon align="inline-end">
           <InputGroup.Button onclick={() => (showAuthToken = !showAuthToken)}>
-            {showAuthToken ? "Hide" : "Show"}
+            {showAuthToken ? m.hideAction() : m.showAction()}
           </InputGroup.Button>
         </InputGroup.Addon>
       </InputGroup.Root>
@@ -550,29 +557,28 @@
              that duplicated the real Client ID label below it (two labels, one
              control). It is a group heading, not a label, so it is one now —
              the panel's fields and flow are otherwise untouched. -->
-        <Field.Title>Manual app registration</Field.Title>
+        <Field.Title>{m.mcpServerForm_manualRegistrationTitle()}</Field.Title>
         <Alert.Root class="bg-background">
           <Alert.Description>
-            <code class="font-mono text-xs">{oauthDiscovery.issuer}</code> doesn't support automatic
-            client registration. Create an OAuth app there using the callback URL below, then enter
-            the client ID it gives you (and a client secret too, if it requires one).
+            <code class="font-mono text-xs">{oauthDiscovery.issuer}</code>
+            {m.mcpServerForm_manualRegistrationNotice()}
           </Alert.Description>
         </Alert.Root>
 
-        <Field.Label for="mf-oauth-redirect">Callback / redirect URL</Field.Label>
+        <Field.Label for="mf-oauth-redirect">{m.mcpServerForm_redirectUrlLabel()}</Field.Label>
         <InputGroup.Root>
           <InputGroup.Input id="mf-oauth-redirect" type="text" value={redirectUri()} readonly class="text-sm" />
           <InputGroup.Addon align="inline-end">
             <InputGroup.Button onclick={copyRedirectUri}>
-              {redirectUriCopied ? "Copied" : "Copy"}
+              {redirectUriCopied ? m.copiedLabel() : m.markdown_copyButtonLabel()}
             </InputGroup.Button>
           </InputGroup.Addon>
         </InputGroup.Root>
 
-        <Field.Label for="mf-oauth-client-id">Client ID</Field.Label>
+        <Field.Label for="mf-oauth-client-id">{m.mcpServerForm_clientIdLabel()}</Field.Label>
         <Input id="mf-oauth-client-id" type="text" bind:value={manualClientId} autocomplete="off" class="text-sm" />
 
-        <Field.Label for="mf-oauth-client-secret">Client secret (optional)</Field.Label>
+        <Field.Label for="mf-oauth-client-secret">{m.mcpServerForm_clientSecretLabel()}</Field.Label>
         <InputGroup.Root>
           <InputGroup.Input
             id="mf-oauth-client-secret"
@@ -583,7 +589,7 @@
           />
           <InputGroup.Addon align="inline-end">
             <InputGroup.Button onclick={() => (showManualClientSecret = !showManualClientSecret)}>
-              {showManualClientSecret ? "Hide" : "Show"}
+              {showManualClientSecret ? m.hideAction() : m.showAction()}
             </InputGroup.Button>
           </InputGroup.Addon>
         </InputGroup.Root>
@@ -597,43 +603,44 @@
             onclick={handleOAuthContinueManual}
             disabled={oauthSigningIn || manualClientId.trim().length === 0}
           >
-            {oauthSigningIn ? "Signing in…" : "Continue"}
+            {oauthSigningIn ? m.mcpServerForm_signingInLabel() : m.mcpServerForm_continueAction()}
           </Button>
-          <Button variant="ghost" onclick={handleOAuthCancelManual}>Cancel</Button>
+          <Button variant="ghost" onclick={handleOAuthCancelManual}>{m.cancelAction()}</Button>
         </div>
       {:else}
         <!-- Card 71: was a <label for="mf-oauth-signin"> pointing at the status
              <p> below — a label can only name a form control, so this is a
              group title now. The status text itself is unchanged. -->
-        <Field.Title>OAuth sign-in</Field.Title>
+        <Field.Title>{m.mcpServerForm_oauthSignInTitle()}</Field.Title>
         <p class={oauthStatusClass}>{oauthStatusText()}</p>
         {#if oauthError}
           <Field.Error>{oauthError}</Field.Error>
         {/if}
         <div class="flex items-center gap-2">
           <Button variant="outline" onclick={handleOAuthSignIn} disabled={oauthSigningIn}>
-            {oauthSigningIn ? "Signing in…" : oauthAuth ? "Reconnect" : "Sign in"}
+            {oauthSigningIn
+              ? m.mcpServerForm_signingInLabel()
+              : oauthAuth
+                ? m.mcpServerForm_reconnectAction()
+                : m.mcpServerForm_signInAction()}
           </Button>
           {#if oauthAuth}
-            <Button variant="ghost" onclick={handleOAuthDisconnect}>Disconnect</Button>
+            <Button variant="ghost" onclick={handleOAuthDisconnect}>{m.mcpServerForm_disconnectAction()}</Button>
           {/if}
         </div>
         <Alert.Root class="bg-background">
           <Alert.Description>
-            Discovers the server's authorization server and opens a sign-in window. If the server
-            supports dynamic client registration (RFC 7591) this registers automatically; otherwise
-            you'll be asked for a client ID from an app you register with it yourself.
+            {m.mcpServerForm_oauthDiscoveryNotice()}
           </Alert.Description>
         </Alert.Root>
       {/if}
     </Field.Field>
   {/if}
 
+  <!-- Static, developer-authored, no untrusted interpolation — {@html} is
+       safe here (card 101's technique 1). -->
   {#snippet headersDescription()}
-    Sent on every request to this server — for a gateway that wants its own <code
-      class="font-mono text-xs">x-api-key</code
-    >, a tenant or project header, or a proxy <code class="font-mono text-xs">Authorization</code>. A
-    bearer token from the field above isn't enough for those.
+    {@html m.mcpServerForm_headersDescription()}
   {/snippet}
 
   <HeadersEditor
@@ -645,9 +652,7 @@
 
   <Alert.Root class="bg-background">
     <Alert.Description>
-      The bearer token, OAuth tokens, and custom header values above are stored unencrypted on this
-      device (chrome.storage.local) and never synced to your Google account. Anyone with access to
-      this browser profile's data can read them.
+      {m.mcpServerForm_credentialWarning()}
     </Alert.Description>
   </Alert.Root>
 
@@ -659,11 +664,11 @@
 
   <div class="flex flex-wrap items-center gap-2">
     <Button type="submit" disabled={saving}>
-      {saving ? "Saving…" : mode === "add" ? "Add server" : "Save changes"}
+      {saving ? m.savingLabel() : mode === "add" ? m.mcpServerForm_addAction() : m.saveChangesAction()}
     </Button>
     <Button variant="outline" onclick={handleTest} disabled={testing}>
-      {testing ? "Testing…" : "Test connection"}
+      {testing ? m.testingLabel() : m.testConnectionAction()}
     </Button>
-    <Button variant="ghost" onclick={onCancel}>Cancel</Button>
+    <Button variant="ghost" onclick={onCancel}>{m.cancelAction()}</Button>
   </div>
 </form>

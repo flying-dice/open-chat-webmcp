@@ -10,11 +10,13 @@
 // during a component's initialisation, like any other rune.
 
 import { originPatternForUrl } from "../../domain/permissions";
+import { m } from "../../paraglide/messages.js";
 import { optionsServices } from "../app-services";
 
-/** The one sentence both forms show when the user declines the Chrome prompt. Their outcome types differ (`TestOutcome` vs `McpTestOutcome`), but the fact being reported, and so the wording, does not. */
-export const PERMISSION_DENIED_MESSAGE =
-  "This extension doesn't have permission to contact this host yet, and the request was declined. Grant it (Chrome will prompt again next time, or grant it from chrome://extensions) before testing.";
+/** The one sentence both forms show when the user declines the Chrome prompt. Their outcome types differ (`TestOutcome` vs `McpTestOutcome`), but the fact being reported, and so the wording, does not. A function, not a module-level constant, so it reads the active locale at call time rather than freezing whatever was active the moment this module first loaded. */
+export function permissionDeniedMessage(): string {
+  return m.hostPermission_permissionDeniedMessage();
+}
 
 /** Live grant state for a typed-in URL: `true`/`false` once known, `undefined` while the check is in flight or the URL isn't yet a valid http(s) origin. */
 export interface HostPermissionState {

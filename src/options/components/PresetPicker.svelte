@@ -17,6 +17,7 @@
   // `IconName` the catalogue imported from src/ui/icons.ts. This picker has
   // never rendered it and still doesn't, so that change was invisible here.
   import { PROVIDER_PRESETS, type ProviderPreset } from "../../domain/providers";
+  import { m } from "../../paraglide/messages.js";
   import * as Alert from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
 
@@ -38,30 +39,33 @@
 <div class="flex flex-col gap-4 rounded-2xl border bg-muted/30 p-4">
   <Alert.Root class="bg-background">
     <Alert.Description>
-      Pick the backend you want to connect, then fill in what it actually needs — usually just an
-      API key. Every field is still editable afterwards, so this is just a starting point.
+      {m.presetPicker_description()}
     </Alert.Description>
   </Alert.Root>
 
   <div class="flex flex-col gap-2">
-    <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Local</h3>
+    <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      {m.presetPicker_localHeading()}
+    </h3>
     <div class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
       {#each localPresets as preset (preset.id)}
         <button type="button" class={TILE} onclick={() => onChoose(preset)}>
           <span class="text-sm font-medium">{preset.label}</span>
-          <span class="text-xs text-muted-foreground">No API key</span>
+          <span class="text-xs text-muted-foreground">{m.presetPicker_noApiKeyLabel()}</span>
         </button>
       {/each}
     </div>
   </div>
 
   <div class="flex flex-col gap-2">
-    <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Hosted</h3>
+    <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      {m.presetPicker_hostedHeading()}
+    </h3>
     <div class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
       {#each hostedPresets as preset (preset.id)}
         <button type="button" class={TILE} onclick={() => onChoose(preset)}>
           <span class="text-sm font-medium">{preset.label}</span>
-          <span class="text-xs text-muted-foreground">API key required</span>
+          <span class="text-xs text-muted-foreground">{m.presetPicker_apiKeyRequiredLabel()}</span>
         </button>
       {/each}
       <button
@@ -69,13 +73,13 @@
         class="{TILE} border-dashed bg-transparent"
         onclick={() => onChoose(undefined)}
       >
-        <span class="text-sm font-medium">Custom (OpenAI-compatible)</span>
-        <span class="text-xs text-muted-foreground">Any other OpenAI-compatible endpoint</span>
+        <span class="text-sm font-medium">{m.presetPicker_customLabel()}</span>
+        <span class="text-xs text-muted-foreground">{m.presetPicker_customDescription()}</span>
       </button>
     </div>
   </div>
 
   <div class="flex items-center gap-2">
-    <Button variant="ghost" onclick={onCancel}>Cancel</Button>
+    <Button variant="ghost" onclick={onCancel}>{m.cancelAction()}</Button>
   </div>
 </div>

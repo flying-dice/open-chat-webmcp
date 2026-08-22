@@ -156,7 +156,34 @@ export type ProviderError =
   | { kind: "not-supported"; message: string }
   | { kind: "invalid-response"; message: string };
 
-/** Ready-made user-facing copy for a {@link ProviderError}, for UI that doesn't want to hand-roll it. */
+/**
+ * Ready-made ENGLISH copy for a {@link ProviderError} — the single source of
+ * the sentence shape for the two DOMAIN-INTERNAL consumers that render it
+ * into a place a person reads without going through a UI layer at all:
+ * `src/domain/chat/turn.ts`'s terminal-error transcript message, and
+ * `resolveCapability` below (via `src/domain/providers/capability.ts`,
+ * `ModelCapabilities.detail`) as the fallback evidence for an unreachable
+ * provider's capability check. Both are pre-existing, larger-scope English
+ * debt outside this card's remit (card 101's journal names `turn.ts`
+ * explicitly; `resolveCapability`'s use is the same class of issue one hop
+ * removed) — deliberately left calling this domain-side function UNCHANGED,
+ * rather than broken by moving it, so this card's fix does not silently
+ * widen turn.ts's scope.
+ *
+ * UI CODE THAT WANTS LOCALIZED COPY FOR THE SAME {@link ProviderError} MUST
+ * NOT CALL THIS. Card 102 (decisions/37-i18n-paraglide.md) added
+ * `src/ui/providerMessage.ts`'s own `describeProviderError` — the same
+ * switch, translated via Paraglide — for exactly that: the side panel's
+ * `stores/selection.svelte.ts` and the options page's
+ * `ProvidersSection.svelte` both import the UI-side one now. Two
+ * implementations of the same shape is the accepted cost of decisions/34's
+ * "error copy stays out of the domain layer" rule meeting two pre-existing
+ * domain-internal consumers this card was told not to touch — a future card
+ * that also tackles `turn.ts`'s own larger-scope strings could fold this one
+ * away by having `ModelCapabilities` carry the raw `ProviderError` instead of
+ * pre-rendered `detail` text, and giving `turn.ts` a UI-independent way to
+ * report a terminal failure.
+ */
 export function describeProviderError(error: ProviderError): string {
   switch (error.kind) {
     case "unreachable-or-cors":

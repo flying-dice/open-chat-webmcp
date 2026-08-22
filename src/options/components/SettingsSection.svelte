@@ -59,21 +59,18 @@
   }[] = [
     {
       value: "default",
-      label: "Default (recommended)",
-      description:
-        "Tools the page marks readOnlyHint: true run automatically, shown as a collapsed card in the chat. Every other tool call — including ones with no annotation at all — waits for you to approve it before it runs.",
+      label: m.settingsSection_defaultPolicyLabel(),
+      description: m.settingsSection_defaultPolicyDescription(),
     },
     {
       value: "always-confirm",
-      label: "Always confirm",
-      description:
-        "Every tool call waits for your approval, even ones the page marks read-only. Slower, but nothing runs without you seeing it first.",
+      label: m.settingsSection_alwaysConfirmPolicyLabel(),
+      description: m.settingsSection_alwaysConfirmPolicyDescription(),
     },
     {
       value: "auto-run-all",
-      label: "Auto-run everything",
-      description:
-        "Every tool call runs immediately, with no approval step at all — including calls that submit forms, delete data, send messages, or otherwise change a live, logged-in site. The model can act on your behalf and you get no chance to review a call before it happens. Only choose this if you fully trust both the model you're chatting with and every site you open the side panel on.",
+      label: m.settingsSection_autoRunAllPolicyLabel(),
+      description: m.settingsSection_autoRunAllPolicyDescription(),
       danger: true,
     },
   ];
@@ -91,21 +88,21 @@
   }[] = [
     {
       value: "always-confirm",
-      label: "Always confirm (recommended, default)",
-      description:
-        "Every MCP server tool call waits for your approval, regardless of what the server itself claims about being read-only. A remote service's self-report isn't something you can see the effect of the way you can a page, so this is the strictest of the three options here — deliberately stricter than the page policy's default above.",
+      label: m.settingsSection_mcpAlwaysConfirmLabel(),
+      description: m.settingsSection_mcpAlwaysConfirmDescription(),
     },
     {
       value: "trust-read-only",
-      label: "Trust read-only servers",
-      description:
-        "Tools an MCP server marks readOnlyHint: true run automatically, shown as a collapsed card in the chat, same as the page policy's default. Only choose this for servers you trust to report that hint honestly — it's a claim the server makes about itself, not something this extension verifies.",
+      label: m.settingsSection_mcpTrustReadOnlyLabel(),
+      description: m.settingsSection_mcpTrustReadOnlyDescription(),
     },
     {
       value: "auto-run-all",
-      label: "Auto-run everything",
-      description:
-        "Every MCP server tool call runs immediately, no approval step at all — including calls that modify or delete data on a service authenticated as you, invisibly to whatever you're currently looking at. Only choose this if you fully trust every server you've added below.",
+      // Byte-identical wording to the page policy's own "Auto-run everything"
+      // (settingsSection_autoRunAllPolicyLabel) — reused rather than
+      // duplicated, same word for the same concept in the same component.
+      label: m.settingsSection_autoRunAllPolicyLabel(),
+      description: m.settingsSection_mcpAutoRunAllDescription(),
       danger: true,
     },
   ];
@@ -207,10 +204,7 @@
       .settings.getApprovalPolicy()
       .then(([p, err]) => {
         if (err)
-          policyFailure = storageFailureMessage(
-            "Couldn't read your saved tool-approval policy",
-            err,
-          );
+          policyFailure = storageFailureMessage(m.settingsSection_readPolicyFailedWhat(), err);
         else policy = p;
       })
       .finally(() => (policyLoading = false));
@@ -219,7 +213,7 @@
       .then(([p, err]) => {
         if (err)
           mcpPolicyFailure = storageFailureMessage(
-            "Couldn't read your saved MCP server approval policy",
+            m.settingsSection_readMcpPolicyFailedWhat(),
             err,
           );
         else mcpPolicy = p;
@@ -263,7 +257,7 @@
     const [, err] = await optionsServices().settings.setApprovalPolicy(next);
     if (err) {
       policy = previous;
-      policyFailure = storageFailureMessage("Couldn't save that tool-approval policy", err);
+      policyFailure = storageFailureMessage(m.settingsSection_savePolicyFailedWhat(), err);
       return;
     }
     policyFailure = undefined;
@@ -275,10 +269,7 @@
     const [, err] = await optionsServices().settings.setMcpApprovalPolicy(next);
     if (err) {
       mcpPolicy = previous;
-      mcpPolicyFailure = storageFailureMessage(
-        "Couldn't save that MCP server approval policy",
-        err,
-      );
+      mcpPolicyFailure = storageFailureMessage(m.settingsSection_saveMcpPolicyFailedWhat(), err);
       return;
     }
     mcpPolicyFailure = undefined;
@@ -321,10 +312,11 @@
 <section aria-labelledby="approval-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="approval-heading" class="text-base font-medium tracking-tight">Tool approval</h2>
+      <h2 id="approval-heading" class="text-base font-medium tracking-tight">
+        {m.settingsSection_approvalHeading()}
+      </h2>
       <Card.Description>
-        Controls when a tool call from the page's own WebMCP tools runs immediately versus waiting
-        for you to approve it first (decisions/05-tool-approval-policy.md).
+        {m.settingsSection_approvalDescription()}
       </Card.Description>
     </Card.Header>
 
@@ -337,7 +329,7 @@
         </Alert.Root>
       {/if}
       {#if policyLoading}
-        <p class="text-sm text-muted-foreground">Loading…</p>
+        <p class="text-sm text-muted-foreground">{m.loadingLabel()}</p>
       {:else}
         <RadioGroup
           value={policy}
@@ -354,7 +346,7 @@
                 <Field.Content>
                   <Field.Title>
                     {option.label}
-                    {#if option.danger}<Badge variant="destructive">Risk</Badge>{/if}
+                    {#if option.danger}<Badge variant="destructive">{m.settingsSection_riskBadge()}</Badge>{/if}
                   </Field.Title>
                   <Field.Description>{option.description}</Field.Description>
                 </Field.Content>
@@ -363,15 +355,11 @@
           {/each}
         </RadioGroup>
 
+        <!-- Static, developer-authored, no untrusted interpolation —
+             {@html} is safe here (card 101's technique 1). -->
         <Alert.Root class="bg-muted/40">
           <Alert.Description>
-            Tool safety annotations like <code class="font-mono text-xs">readOnlyHint</code> are
-            supplied by the page itself, not verified by the extension — a hostile page can label a
-            genuinely destructive tool "read-only" to slip it past this policy. This setting is UX
-            guidance for the common case, not a security boundary; the actual boundary is which
-            sites you've chosen to open the side panel on and grant this extension permission to
-            reach. Every call, auto-run or approved, is still recorded in the tool-call log so
-            nothing happens invisibly.
+            {@html m.settingsSection_safetyAnnotationsNotice()}
           </Alert.Description>
         </Alert.Root>
       {/if}
@@ -382,12 +370,11 @@
 <section aria-labelledby="mcp-approval-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="mcp-approval-heading" class="text-base font-medium tracking-tight">MCP server tool approval</h2>
+      <h2 id="mcp-approval-heading" class="text-base font-medium tracking-tight">
+        {m.settingsSection_mcpApprovalHeading()}
+      </h2>
       <Card.Description>
-        A SEPARATE setting from "Tool approval" above
-        (decisions/20-approval-policy-is-per-tool-source.md) — controls when a call to one of your
-        configured MCP servers' tools runs immediately versus waiting for your approval. Changing
-        the page policy above never affects this one, or the other way around.
+        {m.settingsSection_mcpApprovalDescription()}
       </Card.Description>
     </Card.Header>
 
@@ -398,7 +385,7 @@
         </Alert.Root>
       {/if}
       {#if mcpPolicyLoading}
-        <p class="text-sm text-muted-foreground">Loading…</p>
+        <p class="text-sm text-muted-foreground">{m.loadingLabel()}</p>
       {:else}
         <RadioGroup
           value={mcpPolicy}
@@ -415,7 +402,7 @@
                 <Field.Content>
                   <Field.Title>
                     {option.label}
-                    {#if option.danger}<Badge variant="destructive">Risk</Badge>{/if}
+                    {#if option.danger}<Badge variant="destructive">{m.settingsSection_riskBadge()}</Badge>{/if}
                   </Field.Title>
                   <Field.Description>{option.description}</Field.Description>
                 </Field.Content>
@@ -426,12 +413,7 @@
 
         <Alert.Root class="bg-muted/40">
           <Alert.Description>
-            A remote server is not something you're looking at the way you are the current page —
-            you have no ambient evidence a call actually was read-only, and its blast radius can be
-            an account, a repo, or a ticket queue rather than one tab. That is why this policy
-            defaults to "Always confirm" rather than mirroring the page policy's default, and why
-            the two settings are kept fully independent. Manage which servers are configured from
-            the MCP Servers section below.
+            {m.settingsSection_mcpSafetyNotice()}
           </Alert.Description>
         </Alert.Root>
       {/if}

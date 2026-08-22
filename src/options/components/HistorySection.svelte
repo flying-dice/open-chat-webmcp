@@ -60,7 +60,7 @@
     // reading of a failed read on this particular section, whose only button
     // deletes everything it lists.
     if (err) {
-      failure = storageFailureMessage("Couldn't load your stored chats", err);
+      failure = storageFailureMessage(m.historySection_loadFailedWhat(), err);
       return;
     }
     failure = undefined;
@@ -72,7 +72,7 @@
   });
 
   function formatOrigin(origin: string): string {
-    return origin || "(unknown origin)";
+    return origin || m.historySection_unknownOrigin();
   }
 
   function formatUpdatedAt(ms: number): string {
@@ -90,7 +90,7 @@
     // because a delete-everything button that appears to do nothing is the
     // other way to lose the user's trust here.
     const [, err] = await optionsServices().chats.clearAllChats();
-    if (err) failure = storageFailureMessage("Couldn't clear your chat history", err);
+    if (err) failure = storageFailureMessage(m.historySection_clearFailedWhat(), err);
     else {
       failure = undefined;
       sessions = [];
@@ -103,13 +103,14 @@
 <section aria-labelledby="history-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="history-heading" class="text-base font-medium tracking-tight">Chat history</h2>
+      <h2 id="history-heading" class="text-base font-medium tracking-tight">
+        {m.historySection_heading()}
+      </h2>
       <Card.Description>
-        Every chat is listed here, newest first, no matter which tab or site it happened on — a chat
-        is its own thing now, not tied to a tab (decisions/13-global-tab-aware-chat-history.md). Open
-        and delete individual chats from the side panel's History view; this page only offers
-        clear-all. Provider connections — base URL, API keys, default model — are managed in
-        <a href="#providers-heading" class="underline underline-offset-4">Chat providers</a> above.
+        <!-- Static rich copy, no untrusted interpolation — the in-page
+             fragment link is fully developer-authored (card 101's technique
+             1). -->
+        {@html m.historySection_description()}
       </Card.Description>
     </Card.Header>
 
@@ -122,24 +123,21 @@
 
       <Alert.Root class="bg-muted/40">
         <Alert.Description>
-          Conversation history — including page content and tool-call results from sites you've
-          chatted with, even authenticated ones — is stored unencrypted on this device
-          (<code class="font-mono text-xs">chrome.storage.local</code>). Anyone with access to this
-          browser profile's data can read it. Nothing here is synced off the device.
+          {@html m.historySection_storageWarning()}
         </Alert.Description>
       </Alert.Root>
 
       {#if sessionsLoading}
-        <p class="text-sm text-muted-foreground">Loading…</p>
+        <p class="text-sm text-muted-foreground">{m.loadingLabel()}</p>
       {:else if sessions.length === 0}
         <Empty.Root class="border p-8">
           <Empty.Header>
             <Empty.Media variant="icon">
               <HugeiconsIcon icon={Message01Icon} strokeWidth={2} />
             </Empty.Media>
-            <Empty.Title>No stored sessions</Empty.Title>
+            <Empty.Title>{m.historySection_emptyTitle()}</Empty.Title>
             <Empty.Description>
-              Nothing to clear yet — open the side panel on a WebMCP-capable site to start one.
+              {m.historySection_emptyDescription()}
             </Empty.Description>
           </Empty.Header>
         </Empty.Root>
@@ -149,8 +147,8 @@
             <div class="flex flex-col gap-0.5 rounded-xl border px-3 py-2">
               <span class="font-medium break-all">{formatOrigin(session.origin)}</span>
               <span class="text-xs text-muted-foreground">
-                {session.messageCount} message{session.messageCount === 1 ? "" : "s"} ·
-                {session.toolCallCount} tool call{session.toolCallCount === 1 ? "" : "s"} · updated
+                {m.historyListItem_messageCount({ count: session.messageCount })} ·
+                {m.historyListItem_toolCallCount({ count: session.toolCallCount })} · updated
                 {formatUpdatedAt(session.updatedAt)}
               </span>
             </div>
@@ -164,7 +162,7 @@
               disabled={clearingHistory}
             >
               {clearingHistory
-                ? "Clearing…"
+                ? m.historySection_clearingLabel()
                 : m.historyClearAllButton({ count: sessions.length })}
             </AlertDialog.Trigger>
             <AlertDialog.Content>
@@ -173,13 +171,11 @@
                   {m.historyClearConfirmTitle({ count: sessions.length })}
                 </AlertDialog.Title>
                 <AlertDialog.Description>
-                  That's {totalMessages} message{totalMessages === 1 ? "" : "s"} in total. This
-                  removes every conversation and tool-call log, on every site and every tab. This
-                  cannot be undone.
+                  {m.historySection_clearConfirmDescription({ totalMessages })}
                 </AlertDialog.Description>
               </AlertDialog.Header>
               <AlertDialog.Footer>
-                <AlertDialog.Cancel disabled={clearingHistory}>Cancel</AlertDialog.Cancel>
+                <AlertDialog.Cancel disabled={clearingHistory}>{m.cancelAction()}</AlertDialog.Cancel>
                 <AlertDialog.Action
                   variant="destructive"
                   disabled={clearingHistory}
@@ -191,7 +187,7 @@
                     handleClearAll();
                   }}
                 >
-                  {clearingHistory ? "Clearing…" : "Delete everything"}
+                  {clearingHistory ? m.historySection_clearingLabel() : m.historySection_deleteEverythingAction()}
                 </AlertDialog.Action>
               </AlertDialog.Footer>
             </AlertDialog.Content>

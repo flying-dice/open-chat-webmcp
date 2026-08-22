@@ -128,6 +128,11 @@ describe("isSelectable", () => {
 });
 
 describe("reasonForCapability", () => {
+  // Card 102 (decisions/37-i18n-paraglide.md): the "no detail at all" English
+  // fallback sentences this function used to invent moved UI-side —
+  // src/ui/capabilityMessage.ts's `capabilityReason` (own test file) is what
+  // now supplies them. This domain function is data-only: no detail means
+  // `undefined`, full stop.
   it("returns undefined when there is no capability yet", () => {
     expect(reasonForCapability(undefined)).toBeUndefined();
   });
@@ -138,10 +143,8 @@ describe("reasonForCapability", () => {
     );
   });
 
-  it("falls back to a default sentence when status is unknown with no detail", () => {
-    expect(reasonForCapability({ status: "unknown" })).toBe(
-      "Tool support not verified for this model.",
-    );
+  it("returns undefined when status is unknown with no detail (no English fallback)", () => {
+    expect(reasonForCapability({ status: "unknown" })).toBeUndefined();
   });
 
   it("uses the detail text when status is no-tools and detail is present", () => {
@@ -150,10 +153,8 @@ describe("reasonForCapability", () => {
     ).toBe("no tools capability reported");
   });
 
-  it("falls back to a default sentence when status is no-tools with no detail", () => {
-    expect(reasonForCapability({ status: "no-tools" })).toBe(
-      "This model doesn't support tool calling.",
-    );
+  it("returns undefined when status is no-tools with no detail (no English fallback)", () => {
+    expect(reasonForCapability({ status: "no-tools" })).toBeUndefined();
   });
 
   it("returns the joined detail for tool-capable when present, else undefined", () => {

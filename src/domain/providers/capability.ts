@@ -82,18 +82,19 @@ export function isSelectable(capability: ModelCapabilities | undefined): boolean
 
 /**
  * The inline reason to show next to a model explaining why it is or isn't
- * selectable — the exact fallback wording every surface built on
- * {@link ModelCapabilities} should use, so a `"no-tools"`/`"unknown"` model
- * reads identically whether it showed up disabled in the side panel's picker
- * or blocked "Set as default" on the options page.
+ * selectable — `capability.detail` joined into one line, when the provider
+ * (or `resolveCapability`'s own describeProviderError fallback) supplied any.
+ *
+ * Card 102 (decisions/37-i18n-paraglide.md): this function used to ALSO
+ * supply the two English fallback sentences for a `"no-tools"`/`"unknown"`
+ * capability with no detail at all — moved UI-side, since decisions/34 keeps
+ * copy out of the domain layer. `src/ui/capabilityMessage.ts`'s
+ * `capabilityReason` is the one both surfaces (the side panel's
+ * `ProviderPicker.svelte`, the options page's `ProvidersSection.svelte`)
+ * should call for the LOCALIZED version of the exact same fallback; this
+ * domain function keeps returning `undefined` in that case rather than
+ * inventing English.
  */
 export function reasonForCapability(capability: ModelCapabilities | undefined): string | undefined {
-  if (!capability) return undefined;
-  if (capability.status === "unknown") {
-    return capability.detail?.join(" ") ?? "Tool support not verified for this model.";
-  }
-  if (capability.status === "no-tools") {
-    return capability.detail?.join(" ") ?? "This model doesn't support tool calling.";
-  }
-  return capability.detail?.join(" ");
+  return capability?.detail?.join(" ");
 }

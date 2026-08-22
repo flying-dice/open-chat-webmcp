@@ -22,6 +22,7 @@
     mcpTestResultMessage,
     mcpTestResultTools,
   } from "../forms/testResultDisplay";
+  import { m } from "../../paraglide/messages.js";
   import { Button } from "$lib/components/ui/button";
 
   interface Props {
@@ -41,8 +42,8 @@
   {#if tools}
     <div class="flex">
       <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
-        {toolsExpanded ? "Hide" : "Show"}
-        {tools.length} tool{tools.length === 1 ? "" : "s"}
+        {toolsExpanded ? m.hideAction() : m.showAction()}
+        {m.mcpTestResult_toolCountLabel({ count: tools.length })}
       </Button>
     </div>
     {#if toolsExpanded}

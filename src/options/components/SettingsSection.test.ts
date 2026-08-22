@@ -25,6 +25,7 @@ import { ok, fail } from "../../domain/result";
 import type { Result } from "../../domain/result";
 import type { StorageError } from "../../domain/storage";
 import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
+import { m } from "../../paraglide/messages.js";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
 // `afterEach` are Vitest GLOBALS (test.globals in vitest.config.ts, which
@@ -105,18 +106,18 @@ describe("SettingsSection", () => {
     render(SettingsSection);
 
     // Both cards start loading — neither policy has resolved yet.
-    expect(screen.getAllByText("Loading…")).toHaveLength(2);
+    expect(screen.getAllByText(m.loadingLabel())).toHaveLength(2);
 
     resolvePagePolicy(ok("default"));
     await waitFor(() => expect(pageRadio("default")).toBeInTheDocument());
     // The MCP card's own promise is still unresolved — its loading state
     // must not have been affected by resolving the page policy's.
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getByText(m.loadingLabel())).toBeInTheDocument();
     expect(document.getElementById("mcp-approval-policy-always-confirm")).not.toBeInTheDocument();
 
     resolveMcpPolicy(ok("always-confirm"));
     await waitFor(() => expect(mcpRadio("always-confirm")).toBeInTheDocument());
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(screen.queryByText(m.loadingLabel())).not.toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------
@@ -240,7 +241,9 @@ describe("SettingsSection", () => {
 
     await user.click(pageRadio("auto-run-all"));
 
-    expect(await screen.findByText(/Couldn't save that tool-approval policy/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(m.settingsSection_savePolicyFailedWhat())),
+    ).toBeInTheDocument();
   });
 
   // decisions/20 again: a failed MCP write must not put its message anywhere
@@ -257,9 +260,11 @@ describe("SettingsSection", () => {
     await user.click(mcpRadio("trust-read-only"));
 
     expect(
-      await screen.findByText(/Couldn't save that MCP server approval policy/),
+      await screen.findByText(new RegExp(m.settingsSection_saveMcpPolicyFailedWhat())),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Couldn't save that tool-approval policy/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(new RegExp(m.settingsSection_savePolicyFailedWhat())),
+    ).not.toBeInTheDocument();
   });
 
   // Card 95: a policy that could not be READ leaves the group showing the
@@ -273,7 +278,7 @@ describe("SettingsSection", () => {
     render(SettingsSection);
 
     expect(
-      await screen.findByText(/Couldn't read your saved tool-approval policy/),
+      await screen.findByText(new RegExp(m.settingsSection_readPolicyFailedWhat())),
     ).toBeInTheDocument();
     expect(pageRadio("default")).toHaveAttribute("aria-checked", "true");
   });
@@ -303,6 +308,6 @@ describe("SettingsSection", () => {
     await waitFor(() => expect(pageRadio("default")).toBeInTheDocument());
     await waitFor(() => expect(mcpRadio("always-confirm")).toBeInTheDocument());
 
-    expect(screen.getAllByText("Risk")).toHaveLength(2);
+    expect(screen.getAllByText(m.settingsSection_riskBadge())).toHaveLength(2);
   });
 });

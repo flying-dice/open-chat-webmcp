@@ -16,6 +16,7 @@
   import { getPreset, type ProviderModel } from "../../domain/providers";
   import type { TestOutcome } from "../forms/testConnection";
   import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
+  import { m } from "../../paraglide/messages.js";
   import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Select from "$lib/components/ui/select";
@@ -104,12 +105,13 @@
 
   /** The chosen model's display name for the `Select` trigger — shadcn's trigger renders whatever we put in it, unlike the native `<select>` this replaced, which showed the selected `<option>`'s text itself. */
   let selectedModelLabel = $derived(
-    defaultModelOptions.find((m) => m.id === selectedModelId)?.name ?? "Select a model",
+    defaultModelOptions.find((option) => option.id === selectedModelId)?.name ??
+      m.providerRow_selectModelPlaceholder(),
   );
 
   const TYPE_LABELS: Record<ProviderConfig["type"], string> = {
-    ollama: "Ollama",
-    openai: "OpenAI-compatible",
+    ollama: m.providerType_ollamaLabel(),
+    openai: m.providerType_openAiLabel(),
   };
 
   /**
@@ -134,7 +136,7 @@
         size="icon-xs"
         onclick={onMoveUp}
         disabled={isFirst}
-        aria-label={`Move ${provider.name} up`}
+        aria-label={m.providerRow_moveUpAriaLabel({ name: provider.name })}
       >
         <HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
       </Button>
@@ -143,7 +145,7 @@
         size="icon-xs"
         onclick={onMoveDown}
         disabled={isLast}
-        aria-label={`Move ${provider.name} down`}
+        aria-label={m.providerRow_moveDownAriaLabel({ name: provider.name })}
       >
         <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
       </Button>
@@ -157,40 +159,36 @@
     <Badge variant="outline">{backendLabel}</Badge>
     {#if isDefault}
       {#if defaultInvalidReason}
-        <Badge variant="destructive" title={defaultInvalidReason}>Default — needs attention</Badge>
+        <Badge variant="destructive" title={defaultInvalidReason}
+          >{m.providerRow_defaultNeedsAttentionBadge()}</Badge
+        >
       {:else}
-        <Badge>Default</Badge>
+        <Badge>{m.providerRow_defaultBadge()}</Badge>
       {/if}
     {/if}
     {#if provider.headers && provider.headers.length > 0}
-      <span
-        class="text-xs text-muted-foreground"
-        title="Header values are masked here — open Edit to view or change them."
-      >
-        {provider.headers.length} custom header{provider.headers.length === 1 ? "" : "s"}
+      <span class="text-xs text-muted-foreground" title={m.headerValuesMaskedTitle()}>
+        {m.customHeaderCountLabel({ count: provider.headers.length })}
       </span>
     {/if}
     {#if permissionGranted === false}
-      <Badge
-        variant="destructive"
-        title="This extension hasn't been granted permission to contact this host — it will never connect until you grant it."
-      >
-        Permission needed
+      <Badge variant="destructive" title={m.permissionNeededTitle()}>
+        {m.permissionNeededBadge()}
       </Badge>
     {:else if permissionGranted === true}
-      <Badge variant="outline" title="This extension can contact this host.">Permission granted</Badge>
+      <Badge variant="outline" title={m.permissionGrantedTitle()}>{m.permissionGrantedBadge()}</Badge>
     {/if}
 
     <div class="ml-auto flex flex-wrap items-center gap-1">
       <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
-        {testing ? "Testing…" : "Test connection"}
+        {testing ? m.testingLabel() : m.testConnectionAction()}
       </Button>
       {#if !isDefault}
         {#if defaultModelsLoading}
-          <Button variant="outline" size="sm" disabled>Checking…</Button>
+          <Button variant="outline" size="sm" disabled>{m.providerRow_checkingLabel()}</Button>
         {:else if defaultModelOptions.length > 0}
           <Select.Root type="single" bind:value={selectedModelId}>
-            <Select.Trigger size="sm" aria-label={`Default model for ${provider.name}`}>
+            <Select.Trigger size="sm" aria-label={m.providerRow_defaultModelAriaLabel({ name: provider.name })}>
               {selectedModelLabel}
             </Select.Trigger>
             <Select.Content>
@@ -200,12 +198,12 @@
             </Select.Content>
           </Select.Root>
           <Button variant="outline" size="sm" onclick={() => onSetDefault(selectedModelId)}>
-            Set as default
+            {m.providerRow_setDefaultAction()}
           </Button>
         {/if}
       {/if}
-      <Button variant="outline" size="sm" onclick={onEdit}>Edit</Button>
-      <Button variant="outline" size="sm" onclick={onRemove}>Remove</Button>
+      <Button variant="outline" size="sm" onclick={onEdit}>{m.editAction()}</Button>
+      <Button variant="outline" size="sm" onclick={onRemove}>{m.removeAction()}</Button>
     </div>
   </div>
 
@@ -220,7 +218,7 @@
     {#if testOutcome.kind === "unreachable" && testOutcome.fix}
       {@const fix = testOutcome.fix}
       <Alert.Root class="bg-muted/40">
-        <Alert.Description>{fix.label}:</Alert.Description>
+        <Alert.Description>{m.providerForm_fixColon({ label: fix.label })}</Alert.Description>
       </Alert.Root>
       <Markdown source={fenceOf(fix.command)} />
     {/if}

@@ -32,6 +32,7 @@ import { createOpenAiProvider } from "../infra/openai";
 // Generated i18n runtime (card 100, decisions/37-i18n-paraglide.md) — see the
 // side panel root for why a root is where `getLocale()` is read.
 import { getLocale, getTextDirection } from "../paraglide/runtime.js";
+import { m } from "../paraglide/messages.js";
 
 import { initOptionsServices } from "./app-services";
 
@@ -77,6 +78,11 @@ startDarkModeSync();
 // which persists to localStorage and reloads the document, re-running this
 // line with the new value.
 applyDocumentLocale(getLocale(), getTextDirection());
+
+// `index.html`'s static `<title>` is the pre-JS fallback — this brings it
+// into the same locale as the rest of the document post-mount, same
+// reasoning as the sidepanel root's identical line (src/sidepanel/main.ts).
+document.title = m.optionsPageTitle();
 
 // `#app` is in this surface's own index.html, so its absence is a packaging
 // bug, not a runtime condition — decisions/34-errors-as-values.md's "throw

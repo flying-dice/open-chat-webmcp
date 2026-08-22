@@ -13,6 +13,7 @@
 // "connection failed".
 
 import type { ProviderConfig } from "../../domain/providers";
+import { m } from "../../paraglide/messages.js";
 import { optionsServices } from "../app-services";
 
 export type TestOutcome =
@@ -63,7 +64,7 @@ export async function testProviderConnection(config: ProviderConfig): Promise<Te
     case "auth":
       return {
         kind: "auth",
-        message: `Authentication failed (${error.status}). Check that the API key entered for this provider is correct and hasn't expired.`,
+        message: m.testConnection_authFailed({ status: error.status }),
       };
     case "unreachable-or-cors":
       // Already carries a provider-specific fix (Ollama's client names the
@@ -78,14 +79,16 @@ export async function testProviderConnection(config: ProviderConfig): Promise<Te
     case "http":
       return {
         kind: "http",
-        message: `Provider returned ${error.status} ${error.statusText}${
-          error.body ? `: ${error.body}` : ""
-        }`,
+        message: m.testConnection_httpMessage({
+          status: error.status,
+          statusText: error.statusText,
+          detail: error.body ? `: ${error.body}` : "",
+        }),
       };
     case "invalid-response":
       return {
         kind: "invalid-response",
-        message: `The response couldn't be understood: ${error.message}`,
+        message: m.testConnection_invalidResponseMessage({ message: error.message }),
       };
     case "aborted":
       return { kind: "aborted" };

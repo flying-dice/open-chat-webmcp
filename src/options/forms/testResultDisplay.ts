@@ -27,6 +27,7 @@
 // saved row never drift into inconsistent wording for the same underlying
 // error kind.
 
+import { m } from "../../paraglide/messages.js";
 import type { McpTestOutcome } from "./mcpTestConnection";
 import type { TestOutcome } from "./testConnection";
 
@@ -72,7 +73,7 @@ export function providerTestResultClass(outcome: TestOutcome): string {
 export function providerTestResultMessage(outcome: TestOutcome): string {
   switch (outcome.kind) {
     case "success":
-      return `Connected — found ${outcome.modelCount} model${outcome.modelCount === 1 ? "" : "s"}.`;
+      return m.testResultDisplay_providerSuccess({ count: outcome.modelCount });
     case "not-supported":
     case "auth":
     case "unreachable":
@@ -81,9 +82,9 @@ export function providerTestResultMessage(outcome: TestOutcome): string {
     case "permission-denied":
       return outcome.message;
     case "aborted":
-      return "Test was cancelled.";
+      return m.testCancelledMessage();
     case "unexpected":
-      return `Unexpected error: ${outcome.message}`;
+      return m.testResultDisplay_unexpectedError({ message: outcome.message });
   }
 }
 
@@ -115,26 +116,30 @@ export function mcpTestResultMessage(outcome: McpTestOutcome): string {
       const identity = serverIdentity(outcome);
       const protocol = `protocol ${outcome.connection.protocolVersion}`;
       if (outcome.tools.length === 0) {
-        return `Connected${identity} — ${protocol}. The handshake succeeded but the server exposes no tools, so it won't contribute anything to the model's tool list.`;
+        return m.testResultDisplay_mcpSuccessEmpty({ identity, protocol });
       }
-      return `Connected${identity} — ${protocol}. Found ${outcome.tools.length} tool${outcome.tools.length === 1 ? "" : "s"}:`;
+      return m.testResultDisplay_mcpSuccessWithTools({
+        count: outcome.tools.length,
+        identity,
+        protocol,
+      });
     }
     case "not-mcp-endpoint":
-      return `This doesn't look like an MCP server. ${outcome.message} If you pasted the URL of a normal web page, that's the likely cause — this needs the server's MCP endpoint URL, not a page meant to be viewed in a browser.`;
+      return m.testResultDisplay_mcpNotMcpEndpoint({ message: outcome.message });
     case "auth":
-      return `The server rejected authentication. ${outcome.message}`;
+      return m.testResultDisplay_mcpAuthRejected({ message: outcome.message });
     case "unreachable":
       return outcome.message;
     case "timeout":
       return outcome.message;
     case "protocol-mismatch":
-      return `The server speaks a different MCP protocol version than this extension supports. ${outcome.message}`;
+      return m.testResultDisplay_mcpProtocolMismatch({ message: outcome.message });
     case "rpc-error":
-      return `The server is an MCP endpoint but reported an error for this request. ${outcome.message}`;
+      return m.testResultDisplay_mcpRpcError({ message: outcome.message });
     case "invalid-response":
-      return `The server responded, but with something this extension couldn't understand as MCP. ${outcome.message}`;
+      return m.testResultDisplay_mcpInvalidResponse({ message: outcome.message });
     case "aborted":
-      return "Test was cancelled.";
+      return m.testCancelledMessage();
     case "permission-denied":
       return outcome.message;
   }

@@ -128,7 +128,7 @@
           onSelect={() => void handleOpenChat(summary.id)}
         >
           <Icon name="subject" class="size-4" />
-          <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary)}</span>
+          <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary, m.chatTitle_untitled())}</span>
         </DropdownMenu.Item>
       {/each}
     {/if}

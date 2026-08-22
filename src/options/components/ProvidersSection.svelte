@@ -29,9 +29,7 @@
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import {
-    describeProviderError,
     isSelectable,
-    reasonForCapability,
     resolveCapabilities,
     resolveCapability,
     type ChatProvider,
@@ -40,6 +38,13 @@
     type ProviderPreset,
   } from "../../domain/providers";
   import { testProviderConnection, type TestOutcome } from "../forms/testConnection";
+  // Card 102 (decisions/37-i18n-paraglide.md): the LOCALIZED wrappers — see
+  // src/ui/providerMessage.ts and src/ui/capabilityMessage.ts's own doc
+  // comments for why these live UI-side rather than the domain exports of
+  // the same-shaped functions.
+  import { describeProviderError } from "../../ui/providerMessage";
+  import { capabilityReason } from "../../ui/capabilityMessage";
+  import { m } from "../../paraglide/messages.js";
   import PresetPicker from "./PresetPicker.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderRow from "./ProviderRow.svelte";
@@ -146,6 +151,9 @@
     if (defaultModelOptionsTokens[provider.id] !== token) return; // superseded by a later reload for this provider
 
     if (listErr) {
+      // The UI-side `describeProviderError` (src/ui/providerMessage.ts,
+      // imported above) already returns localized copy — nothing here needs
+      // to re-wrap it through `m`.
       if (listErr.kind === "not-supported") {
         defaultModelOptionsState[provider.id] = {
           status: "not-supported",
@@ -197,7 +205,7 @@
       return;
     }
     if (resolved.status !== "ok") {
-      staleDefaultReason = "The provider it points to has been removed.";
+      staleDefaultReason = m.providersSection_providerRemoved();
       return;
     }
     const client = optionsServices().createProviderClient(resolved.config);
@@ -205,9 +213,15 @@
       id: resolved.model,
       name: resolved.model,
     });
+    // `capabilityReason` (src/ui/capabilityMessage.ts, imported above)
+    // already supplies a localized fallback for "no detail at all" — the
+    // `?? m.providersSection_cannotConfirmToolCapable()` below only ever
+    // covers `capability` genuinely being `undefined`, which
+    // `resolveCapability` never actually returns; kept as a defensive
+    // last resort rather than an `!`.
     staleDefaultReason = isSelectable(capability)
       ? undefined
-      : (reasonForCapability(capability) ?? "This model can't be confirmed as tool-capable.");
+      : (capabilityReason(capability) ?? m.providersSection_cannotConfirmToolCapable());
   }
 
   async function refresh(): Promise<void> {
@@ -219,13 +233,13 @@
     // empty-looking provider list is exactly the state someone would "fix"
     // by re-adding a provider they already have.
     if (listErr) {
-      failure = storageFailureMessage("Couldn't load your saved providers", listErr);
+      failure = storageFailureMessage(m.providersSection_loadFailedWhat(), listErr);
       return;
     }
     providers = loaded;
     const [storedDefault, defaultErr] = await registry.getDefaultSelection();
     if (defaultErr) {
-      failure = storageFailureMessage("Couldn't read which provider is your default", defaultErr);
+      failure = storageFailureMessage(m.providersSection_readDefaultFailedWhat(), defaultErr);
       return;
     }
     failure = undefined;
@@ -297,12 +311,11 @@
   }
 
   async function handleRemove(provider: ProviderConfig): Promise<void> {
-    const confirmed = confirm(
-      `Remove "${provider.name}"? Any tab session currently using it will be left with a dangling provider and prompted to pick a replacement.`,
-    );
+    const confirmed = confirm(m.providersSection_removeConfirm({ name: provider.name }));
     if (!confirmed) return;
     const [, err] = await optionsServices().providers.removeProvider(provider.id);
-    if (err) return reportWriteFailure(`Couldn't remove "${provider.name}"`, err);
+    if (err)
+      return reportWriteFailure(m.providersSection_removeFailedWhat({ name: provider.name }), err);
     delete testOutcomes[provider.id];
     delete permissionGranted[provider.id];
     await refresh();
@@ -325,7 +338,7 @@
     // why card 95 says so on screen rather than in the console: `refresh()`
     // on the next mount silently puts the rows back, and a user who was not
     // told would read that as the extension forgetting their arrangement.
-    if (err) reportWriteFailure("Couldn't save the new provider order", err);
+    if (err) reportWriteFailure(m.providersSection_reorderFailedWhat(), err);
   }
 
   /** Whether `provider`'s model options are still loading — the row shows a loading state, no reason yet (card 52). */
@@ -356,10 +369,10 @@
     const state = defaultModelOptionsState[provider.id];
     if (!state || state.status === "loading") return undefined; // still resolving — no verdict to report yet
     if (state.status === "not-supported") {
-      return "This provider can't list its models. Pick a model for it once in the side panel instead — that seeds the default automatically.";
+      return m.providersSection_setDefaultBlockedNotSupported();
     }
     if (state.status === "error") return state.message;
-    return state.options.length > 0 ? undefined : "No tool-capable models found on this provider.";
+    return state.options.length > 0 ? undefined : m.providersSection_setDefaultBlockedNoModels();
   }
 
   /**
@@ -381,7 +394,7 @@
       providerId: provider.id,
       model: modelId,
     });
-    if (err) return reportWriteFailure("Couldn't set the default provider and model", err);
+    if (err) return reportWriteFailure(m.providersSection_setDefaultFailedWhat(), err);
     defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }
@@ -407,8 +420,7 @@
             ...testOutcomes,
             [provider.id]: {
               kind: "permission-denied",
-              message:
-                "This extension doesn't have permission to contact this host. Grant it when Chrome prompts, or from chrome://extensions, then try again.",
+              message: m.permissionDeniedRetryMessage(),
             },
           };
           return;
@@ -424,10 +436,11 @@
 <section aria-labelledby="providers-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="providers-heading" class="text-base font-medium tracking-tight">Chat providers</h2>
+      <h2 id="providers-heading" class="text-base font-medium tracking-tight">
+        {m.providersSection_heading()}
+      </h2>
       <Card.Description>
-        Register the Ollama or OpenAI-compatible endpoints the side panel can chat through. Exactly
-        one provider (and model) is the default the panel opens with.
+        {m.providersSection_description()}
       </Card.Description>
     </Card.Header>
 
@@ -443,9 +456,7 @@
 
       <Alert.Root class="bg-muted/40">
         <Alert.Description>
-          API keys and custom header values are stored unencrypted on this device
-          (chrome.storage.local) and never synced to your Google account. Anyone with access to this
-          browser profile's data can read them.
+          {m.providersSection_credentialWarning()}
         </Alert.Description>
       </Alert.Root>
 
@@ -456,15 +467,13 @@
              seeding new chats. -->
         <Alert.Root variant="destructive">
           <Alert.Description>
-            The default provider/model can no longer be confirmed as tool-capable: {staleDefaultReason}
-            New chats seeded from it will need a different model picked in the side panel before
-            they can use page tools. Pick a new default below.
+            {m.providersSection_staleDefaultWarning({ reason: staleDefaultReason })}
           </Alert.Description>
         </Alert.Root>
       {/if}
 
       {#if loading}
-        <p class="text-sm text-muted-foreground">Loading providers…</p>
+        <p class="text-sm text-muted-foreground">{m.loadingProvidersLabel()}</p>
       {:else}
         {#if providers.length === 0 && addStep === "closed"}
           <Empty.Root class="border p-8">
@@ -472,12 +481,9 @@
               <Empty.Media variant="icon">
                 <HugeiconsIcon icon={PlugSocketIcon} strokeWidth={2} />
               </Empty.Media>
-              <Empty.Title>No providers registered yet</Empty.Title>
+              <Empty.Title>{m.providersSection_emptyTitle()}</Empty.Title>
               <Empty.Description>
-                Add a provider below to let the side panel connect to Ollama or an
-                OpenAI-compatible endpoint. Until then, the side panel has nothing to chat through —
-                this is separate from having no tool-capable models on a provider you've already
-                added.
+                {m.providersSection_emptyDescription()}
               </Empty.Description>
             </Empty.Header>
           </Empty.Root>
@@ -540,7 +546,7 @@
           <div class="flex justify-end">
             <Button onclick={() => (addStep = "choose")}>
               <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
-              Add provider
+              {m.providers_addProviderAction()}
             </Button>
           </div>
         {/if}

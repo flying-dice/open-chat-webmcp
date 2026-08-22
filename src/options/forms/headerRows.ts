@@ -22,6 +22,8 @@
 // duplicate names, and which error a caller sees first — is the same
 // question in both places and is answered once, here.
 
+import { m } from "../../paraglide/messages.js";
+
 export interface HeaderRow {
   id: number;
   key: string;
@@ -50,15 +52,15 @@ export function headerRowError(
   const key = row.key.trim();
   const value = row.value.trim();
   if (key.length === 0 && value.length === 0) return undefined;
-  if (key.length === 0) return "Enter a header name, or remove this row.";
-  if (value.length === 0) return "Enter a value, or remove this row.";
+  if (key.length === 0) return m.headerRows_missingName();
+  if (value.length === 0) return m.headerRows_missingValue();
 
   const reserved = isReserved(key, value);
   if (reserved) return reserved;
 
   const lower = key.toLowerCase();
   const duplicates = rows.filter((h) => h.key.trim().toLowerCase() === lower).length;
-  if (duplicates > 1) return `"${key}" is already set on another row above.`;
+  if (duplicates > 1) return m.headerRows_duplicateName({ key });
 
   return undefined;
 }
@@ -70,7 +72,12 @@ export function firstHeaderError(
 ): string | undefined {
   for (const row of rows) {
     const err = headerRowError(row, rows, isReserved);
-    if (err) return `Header "${row.key.trim() || "(empty)"}": ${err}`;
+    if (err) {
+      return m.headerRows_prefixedError({
+        key: row.key.trim() || m.headerRows_emptyPlaceholder(),
+        error: err,
+      });
+    }
   }
   return undefined;
 }

@@ -85,7 +85,7 @@
 
     <ItemContent>
       <ItemTitle class="w-full">
-        <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary)}</span>
+        <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary, m.chatTitle_untitled())}</span>
         {#if active}
           <Badge variant="secondary" class="shrink-0">{m.historyListItem_currentBadge()}</Badge>
         {/if}

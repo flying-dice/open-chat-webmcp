@@ -9,6 +9,7 @@
   // identical so the two registries still read as the same kind of list.
   import type { McpServerConfig } from "../../domain/tools";
   import type { McpTestOutcome } from "../forms/mcpTestConnection";
+  import { m } from "../../paraglide/messages.js";
   import McpTestResult from "./McpTestResult.svelte";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
@@ -58,7 +59,7 @@
         size="icon-xs"
         onclick={onMoveUp}
         disabled={isFirst}
-        aria-label={`Move ${server.name} up`}
+        aria-label={m.mcpServerRow_moveUpAriaLabel({ name: server.name })}
       >
         <HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
       </Button>
@@ -67,7 +68,7 @@
         size="icon-xs"
         onclick={onMoveDown}
         disabled={isLast}
-        aria-label={`Move ${server.name} down`}
+        aria-label={m.mcpServerRow_moveDownAriaLabel({ name: server.name })}
       >
         <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
       </Button>
@@ -79,19 +80,13 @@
     </div>
 
     {#if !server.enabled}
-      <Badge
-        variant="outline"
-        title="Disabled servers contribute no tools and their host permission is not requested."
-      >
-        Disabled
+      <Badge variant="outline" title={m.mcpServerRow_disabledTitle()}>
+        {m.mcpServerRow_disabledBadge()}
       </Badge>
     {/if}
     {#if server.auth?.type === "bearer" && server.auth.token}
-      <Badge
-        variant="outline"
-        title="A bearer token is configured — masked here, open Edit to view or change it."
-      >
-        Bearer token
+      <Badge variant="outline" title={m.mcpServerRow_bearerTokenTitle()}>
+        {m.bearerTokenLabel()}
       </Badge>
     {/if}
     <!--
@@ -103,42 +98,33 @@
     -->
     <!-- TODO: clean-code - 0.3 - COUPLING: the "needs reconnect" rule (expiresAt <= Date.now() && !refreshToken) is duplicated inline in McpServerForm.svelte's oauthNeedsReconnect instead of living once in src/domain/tools. -->
     {#if server.auth?.type === "oauth" && server.auth.expiresAt !== undefined && server.auth.expiresAt <= Date.now() && !server.auth.refreshToken}
-      <Badge
-        variant="destructive"
-        title="This server's OAuth token has expired and there's no refresh token to renew it automatically — open Edit and sign in again."
-      >
-        Reconnect needed
+      <Badge variant="destructive" title={m.mcpServerRow_reconnectNeededTitle()}>
+        {m.mcpServerRow_reconnectNeededBadge()}
       </Badge>
     {/if}
 
     {#if headerCount > 0}
-      <span
-        class="text-xs text-muted-foreground"
-        title="Header values are masked here — open Edit to view or change them."
-      >
-        {headerCount} custom header{headerCount === 1 ? "" : "s"}
+      <span class="text-xs text-muted-foreground" title={m.headerValuesMaskedTitle()}>
+        {m.customHeaderCountLabel({ count: headerCount })}
       </span>
     {/if}
     {#if permissionGranted === false}
-      <Badge
-        variant="destructive"
-        title="This extension hasn't been granted permission to contact this host — it will never connect until you grant it."
-      >
-        Permission needed
+      <Badge variant="destructive" title={m.permissionNeededTitle()}>
+        {m.permissionNeededBadge()}
       </Badge>
     {:else if permissionGranted === true}
-      <Badge variant="outline" title="This extension can contact this host.">Permission granted</Badge>
+      <Badge variant="outline" title={m.permissionGrantedTitle()}>{m.permissionGrantedBadge()}</Badge>
     {/if}
 
     <div class="ml-auto flex flex-wrap items-center gap-1">
       <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
-        {testing ? "Testing…" : "Test connection"}
+        {testing ? m.testingLabel() : m.testConnectionAction()}
       </Button>
       <Button variant="outline" size="sm" onclick={onToggleEnabled}>
-        {server.enabled ? "Disable" : "Enable"}
+        {server.enabled ? m.disableAction() : m.enableAction()}
       </Button>
-      <Button variant="outline" size="sm" onclick={onEdit}>Edit</Button>
-      <Button variant="outline" size="sm" onclick={onRemove}>Remove</Button>
+      <Button variant="outline" size="sm" onclick={onEdit}>{m.editAction()}</Button>
+      <Button variant="outline" size="sm" onclick={onRemove}>{m.removeAction()}</Button>
     </div>
   </div>
 

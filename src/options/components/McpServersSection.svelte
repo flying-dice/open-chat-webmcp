@@ -23,6 +23,7 @@
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
+  import { m } from "../../paraglide/messages.js";
   import McpServerForm from "./McpServerForm.svelte";
   import McpServerRow from "./McpServerRow.svelte";
   import * as Alert from "$lib/components/ui/alert";
@@ -60,7 +61,7 @@
     // "your servers are gone", which is a worse lie here than anywhere else
     // on this page — these rows carry stored tokens.
     if (err) {
-      failure = storageFailureMessage("Couldn't load your saved MCP servers", err);
+      failure = storageFailureMessage(m.mcpServersSection_loadFailedWhat(), err);
       return;
     }
     failure = undefined;
@@ -111,12 +112,11 @@
   }
 
   async function handleRemove(server: McpServerConfig): Promise<void> {
-    const confirmed = confirm(
-      `Remove "${server.name}"? Its tools will no longer be offered to the model, and its stored token and headers will be deleted.`,
-    );
+    const confirmed = confirm(m.mcpServersSection_removeConfirm({ name: server.name }));
     if (!confirmed) return;
     const [, err] = await optionsServices().mcpServers.removeServer(server.id);
-    if (err) return reportWriteFailure(`Couldn't remove "${server.name}"`, err);
+    if (err)
+      return reportWriteFailure(m.mcpServersSection_removeFailedWhat({ name: server.name }), err);
     delete testOutcomes[server.id];
     delete permissionGranted[server.id];
     await refresh();
@@ -131,7 +131,9 @@
     // the only thing that distinguishes that from a click that missed.
     if (err) {
       return reportWriteFailure(
-        server.enabled ? `Couldn't turn "${server.name}" off` : `Couldn't turn "${server.name}" on`,
+        server.enabled
+          ? m.mcpServersSection_turnOffFailedWhat({ name: server.name })
+          : m.mcpServersSection_turnOnFailedWhat({ name: server.name }),
         err,
       );
     }
@@ -152,7 +154,7 @@
     const [, err] = await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
     // Same as ProvidersSection's twin: the optimistic swap already happened,
     // so a failure leaves the list ahead of storage until the next refresh.
-    if (err) reportWriteFailure("Couldn't save the new server order", err);
+    if (err) reportWriteFailure(m.mcpServersSection_reorderFailedWhat(), err);
   }
 
   /**
@@ -176,8 +178,7 @@
             ...testOutcomes,
             [server.id]: {
               kind: "permission-denied",
-              message:
-                "This extension doesn't have permission to contact this host. Grant it when Chrome prompts, or from chrome://extensions, then try again.",
+              message: m.permissionDeniedRetryMessage(),
             },
           };
           return;
@@ -193,13 +194,11 @@
 <section aria-labelledby="mcp-servers-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="mcp-servers-heading" class="text-base font-medium tracking-tight">MCP servers</h2>
+      <h2 id="mcp-servers-heading" class="text-base font-medium tracking-tight">
+        {m.mcpServersSection_heading()}
+      </h2>
       <Card.Description>
-        An MCP server exposes tools the model can call that have nothing to do with the current page
-        — a ticket tracker, a search index, an internal service. Its tools are merged into the same
-        list the page's own tools appear in, namespaced by server so nothing collides — but a server
-        tool call is judged by its own, separate, stricter approval policy, not the page's
-        (decisions/20-approval-policy-is-per-tool-source.md). See "MCP server tool approval" above.
+        {m.mcpServersSection_description()}
       </Card.Description>
     </Card.Header>
 
@@ -212,14 +211,12 @@
 
       <Alert.Root class="bg-muted/40">
         <Alert.Description>
-          The bearer token and custom header values you set below are stored unencrypted on this
-          device (chrome.storage.local) and never synced to your Google account. Anyone with access
-          to this browser profile's data can read them.
+          {m.mcpServersSection_credentialWarning()}
         </Alert.Description>
       </Alert.Root>
 
       {#if loading}
-        <p class="text-sm text-muted-foreground">Loading MCP servers…</p>
+        <p class="text-sm text-muted-foreground">{m.mcpServersSection_loadingLabel()}</p>
       {:else}
         {#if servers.length === 0 && !adding}
           <Empty.Root class="border p-8">
@@ -227,12 +224,9 @@
               <Empty.Media variant="icon">
                 <HugeiconsIcon icon={Wrench01Icon} strokeWidth={2} />
               </Empty.Media>
-              <Empty.Title>No MCP servers registered yet</Empty.Title>
+              <Empty.Title>{m.mcpServersSection_emptyTitle()}</Empty.Title>
               <Empty.Description>
-                Only remote HTTP/SSE MCP servers are supported here — this extension can't spawn or
-                speak to a local stdio process the way a desktop MCP client can. To reach a
-                stdio-only server, put an off-the-shelf stdio-to-HTTP proxy in front of it and add
-                the proxy's URL below instead.
+                {m.mcpServersSection_emptyDescription()}
               </Empty.Description>
             </Empty.Header>
           </Empty.Root>
@@ -272,7 +266,7 @@
           <div class="flex justify-end">
             <Button onclick={() => (adding = true)}>
               <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
-              Add MCP server
+              {m.mcpServersSection_addAction()}
             </Button>
           </div>
         {/if}

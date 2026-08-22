@@ -28,6 +28,7 @@ import {
 } from "../testing/fake-services";
 import { fail } from "../../domain/result";
 import type { McpServerConfig } from "../../domain/tools";
+import { m } from "../../paraglide/messages.js";
 
 // Same reasoning as SettingsSection.test.ts / ProviderForm.test.ts: this
 // project doesn't set `test.globals` in vitest.config.ts, so
@@ -71,7 +72,7 @@ describe("McpServersSection", () => {
     await waitFor(() => expect(screen.getByText("Ticket tracker")).toBeInTheDocument());
     // Sanity check on the row's own state before the failure below, so a
     // later assertion that it's UNCHANGED actually means something.
-    expect(screen.getByRole("button", { name: "Disable" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m.disableAction() })).toBeInTheDocument();
 
     // From here on, the store can no longer be read at all — as real as a
     // `chrome.storage` quota fault or the extension context invalidating
@@ -83,7 +84,7 @@ describe("McpServersSection", () => {
     // server's enabled state is the least destructive one available from
     // this section's own UI (no native `confirm()` dialog to drive, unlike
     // Remove).
-    await user.click(screen.getByRole("button", { name: "Disable" }));
+    await user.click(screen.getByRole("button", { name: m.disableAction() }));
 
     // The write itself still landed (the fake registry's `updateServer`
     // wasn't touched), but the section's list only ever gets REPLACED by a
@@ -94,11 +95,13 @@ describe("McpServersSection", () => {
     // By text, not by `role="alert"`: shadcn's `Alert.Root` sets that role on
     // every variant, including this section's standing credentials notice.
     await waitFor(() =>
-      expect(screen.getByText(/Couldn't load your saved MCP servers/)).toBeInTheDocument(),
+      expect(
+        screen.getByText(new RegExp(m.mcpServersSection_loadFailedWhat())),
+      ).toBeInTheDocument(),
     );
     expect(screen.getByText("Ticket tracker")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Disable" })).toBeInTheDocument();
-    expect(screen.queryByText("No MCP servers registered yet")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m.disableAction() })).toBeInTheDocument();
+    expect(screen.queryByText(m.mcpServersSection_emptyTitle())).not.toBeInTheDocument();
   });
 
   // Card 95: the WRITE half. A toggle that did not land leaves the switch
@@ -113,11 +116,15 @@ describe("McpServersSection", () => {
     render(McpServersSection);
 
     await waitFor(() => expect(screen.getByText("Ticket tracker")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Disable" }));
+    await user.click(screen.getByRole("button", { name: m.disableAction() }));
 
     await waitFor(() =>
-      expect(screen.getByText(/Couldn't turn "Ticket tracker" off/)).toBeInTheDocument(),
+      expect(
+        screen.getByText(
+          new RegExp(m.mcpServersSection_turnOffFailedWhat({ name: "Ticket tracker" })),
+        ),
+      ).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: "Disable" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: m.disableAction() })).toBeInTheDocument();
   });
 });

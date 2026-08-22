@@ -12,6 +12,7 @@ import { createFakeOptionsServices, initFakeOptionsServices } from "../testing/f
 import type { McpOAuthAuth, McpSignInCompletion } from "../../domain/tools";
 import { ok, type Result } from "../../domain/result";
 import type { StorageError } from "../../domain/storage";
+import { m } from "../../paraglide/messages.js";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
 // `afterEach` are Vitest GLOBALS (test.globals in vitest.config.ts, which
@@ -128,11 +129,17 @@ describe("McpServerForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    expect(screen.getByRole("button", { name: "Transport" })).toHaveTextContent(
-      "Auto (recommended)",
+    expect(
+      screen.getByRole("button", { name: m.mcpServerForm_transportLabel() }),
+    ).toHaveTextContent(m.mcpServerForm_transportAutoLabel());
+    await selectOption(
+      user,
+      m.mcpServerForm_transportLabel(),
+      m.mcpServerForm_transportStreamableLabel(),
     );
-    await selectOption(user, "Transport", "Streamable HTTP");
-    expect(screen.getByRole("button", { name: "Transport" })).toHaveTextContent("Streamable HTTP");
+    expect(
+      screen.getByRole("button", { name: m.mcpServerForm_transportLabel() }),
+    ).toHaveTextContent(m.mcpServerForm_transportStreamableLabel());
   });
 
   it("shows the bearer token field only in bearer auth mode", async () => {
@@ -141,21 +148,23 @@ describe("McpServerForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    expect(screen.queryByLabelText("Bearer token")).not.toBeInTheDocument();
-    expect(screen.queryByText("OAuth sign-in")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(m.bearerTokenLabel())).not.toBeInTheDocument();
+    expect(screen.queryByText(m.mcpServerForm_oauthSignInTitle())).not.toBeInTheDocument();
 
-    await selectOption(user, "Authentication", "Bearer token");
-    expect(screen.getByLabelText("Bearer token")).toBeInTheDocument();
-    expect(screen.queryByText("OAuth sign-in")).not.toBeInTheDocument();
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.bearerTokenLabel());
+    expect(screen.getByLabelText(m.bearerTokenLabel())).toBeInTheDocument();
+    expect(screen.queryByText(m.mcpServerForm_oauthSignInTitle())).not.toBeInTheDocument();
 
-    await selectOption(user, "Authentication", "Sign in with OAuth");
-    expect(screen.queryByLabelText("Bearer token")).not.toBeInTheDocument();
-    expect(screen.getByText("OAuth sign-in")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authOauthLabel());
+    expect(screen.queryByLabelText(m.bearerTokenLabel())).not.toBeInTheDocument();
+    expect(screen.getByText(m.mcpServerForm_oauthSignInTitle())).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: m.mcpServerForm_signInAction() }),
+    ).toBeInTheDocument();
 
-    await selectOption(user, "Authentication", "None");
-    expect(screen.queryByLabelText("Bearer token")).not.toBeInTheDocument();
-    expect(screen.queryByText("OAuth sign-in")).not.toBeInTheDocument();
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authNoneLabel());
+    expect(screen.queryByLabelText(m.bearerTokenLabel())).not.toBeInTheDocument();
+    expect(screen.queryByText(m.mcpServerForm_oauthSignInTitle())).not.toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------
@@ -175,11 +184,11 @@ describe("McpServerForm", () => {
     // non-empty value does) while still failing the component's own
     // `name.trim().length === 0` check, which is what actually exercises this
     // validation path.
-    await user.type(screen.getByLabelText("Display name"), "   ");
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await user.click(screen.getByRole("button", { name: "Add server" }));
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "   ");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_addAction() }));
 
-    expect(await screen.findByText("Enter a display name.")).toBeInTheDocument();
+    expect(await screen.findByText(m.enterDisplayNameError())).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -188,11 +197,11 @@ describe("McpServerForm", () => {
     const onSubmit = vi.fn(async () => ok());
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "My server");
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "not-a-url");
-    await user.click(screen.getByRole("button", { name: "Add server" }));
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "My server");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "not-a-url");
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_addAction() }));
 
-    expect(await screen.findByText("Enter a valid http:// or https:// URL.")).toBeInTheDocument();
+    expect(await screen.findByText(m.mcpServerForm_invalidUrlError())).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -201,16 +210,16 @@ describe("McpServerForm", () => {
     const onSubmit = vi.fn(async () => ok());
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "My server");
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "My server");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
 
-    await user.click(screen.getByRole("button", { name: "Add header" }));
-    const nameInput = screen.getByPlaceholderText("Header name, e.g. x-api-key");
-    const valueInput = screen.getByPlaceholderText("Value");
+    await user.click(screen.getByRole("button", { name: m.headersEditor_addAction() }));
+    const nameInput = screen.getByPlaceholderText(m.headersEditor_namePlaceholder());
+    const valueInput = screen.getByPlaceholderText(m.headersEditor_valuePlaceholder());
     await user.type(nameInput, "content-type");
     await user.type(valueInput, "application/json");
 
-    await user.click(screen.getByRole("button", { name: "Add server" }));
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_addAction() }));
 
     // Two elements now carry this substring — the HeadersEditor row's own
     // inline error (rendered reactively as soon as the row is invalid, no
@@ -240,13 +249,15 @@ describe("McpServerForm", () => {
     render(McpServerForm, {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await selectOption(user, "Authentication", "Sign in with OAuth");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authOauthLabel());
 
-    const signInButton = screen.getByRole("button", { name: "Sign in" });
+    const signInButton = screen.getByRole("button", { name: m.mcpServerForm_signInAction() });
     await user.click(signInButton);
 
-    expect(await screen.findByRole("button", { name: "Signing in…" })).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: m.mcpServerForm_signingInLabel() }),
+    ).toBeDisabled();
 
     // No `expiresAt` override needed — `fakeOAuthAuth()`'s base object never
     // sets it, which is already "no expiry known": passing `expiresAt:
@@ -255,9 +266,13 @@ describe("McpServerForm", () => {
     // (deliberately, per src/domain/tools/servers.ts) does not.
     resolveBegin({ status: "signed-in", auth: fakeOAuthAuth() });
 
-    expect(await screen.findByRole("button", { name: "Reconnect" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeInTheDocument();
-    expect(screen.getByText("Connected — no expiry known.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: m.mcpServerForm_reconnectAction() }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: m.mcpServerForm_disconnectAction() }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(m.mcpServerForm_oauthConnectedNoExpiry())).toBeInTheDocument();
   });
 
   it("shows the sign-in error and lets the user retry", async () => {
@@ -267,13 +282,15 @@ describe("McpServerForm", () => {
     render(McpServerForm, {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await selectOption(user, "Authentication", "Sign in with OAuth");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authOauthLabel());
 
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_signInAction() }));
 
     expect(await screen.findByText("boom")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: m.mcpServerForm_signInAction() }),
+    ).toBeInTheDocument();
   });
 
   it("hands off to the manual-client-id panel and lets a typed id enable Continue", async () => {
@@ -293,16 +310,16 @@ describe("McpServerForm", () => {
     render(McpServerForm, {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await selectOption(user, "Authentication", "Sign in with OAuth");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authOauthLabel());
 
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_signInAction() }));
 
-    expect(await screen.findByText("Manual app registration")).toBeInTheDocument();
-    const continueButton = screen.getByRole("button", { name: "Continue" });
+    expect(await screen.findByText(m.mcpServerForm_manualRegistrationTitle())).toBeInTheDocument();
+    const continueButton = screen.getByRole("button", { name: m.mcpServerForm_continueAction() });
     expect(continueButton).toBeDisabled();
 
-    await user.type(screen.getByLabelText("Client ID"), "my-client-id");
+    await user.type(screen.getByLabelText(m.mcpServerForm_clientIdLabel()), "my-client-id");
     expect(continueButton).toBeEnabled();
 
     await user.click(continueButton);
@@ -310,7 +327,9 @@ describe("McpServerForm", () => {
     expect(services.mcpSignIn.completeManual).toHaveBeenCalledWith(
       expect.objectContaining({ clientId: "my-client-id" }),
     );
-    expect(await screen.findByRole("button", { name: "Reconnect" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: m.mcpServerForm_reconnectAction() }),
+    ).toBeInTheDocument();
   });
 
   it("disconnects a signed-in OAuth credential", async () => {
@@ -318,16 +337,20 @@ describe("McpServerForm", () => {
     render(McpServerForm, {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await selectOption(user, "Authentication", "Sign in with OAuth");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
-    await screen.findByRole("button", { name: "Reconnect" });
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authOauthLabel());
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_signInAction() }));
+    await screen.findByRole("button", { name: m.mcpServerForm_reconnectAction() });
 
-    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_disconnectAction() }));
 
-    expect(screen.getByText("Not connected.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Disconnect" })).not.toBeInTheDocument();
+    expect(screen.getByText(m.mcpServerForm_oauthNotConnected())).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: m.mcpServerForm_signInAction() }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: m.mcpServerForm_disconnectAction() }),
+    ).not.toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------
@@ -340,11 +363,17 @@ describe("McpServerForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    await user.click(screen.getByRole("button", { name: "Add header" }));
-    expect(screen.getByPlaceholderText("Header name, e.g. x-api-key")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: m.headersEditor_addAction() }));
+    expect(screen.getByPlaceholderText(m.headersEditor_namePlaceholder())).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Remove header/ }));
-    expect(screen.queryByPlaceholderText("Header name, e.g. x-api-key")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(m.headersEditor_removeAriaLabel({ name: "" }).trim()),
+      }),
+    );
+    expect(
+      screen.queryByPlaceholderText(m.headersEditor_namePlaceholder()),
+    ).not.toBeInTheDocument();
   });
 
   it("reserves Authorization only once auth is actually configured", async () => {
@@ -353,15 +382,22 @@ describe("McpServerForm", () => {
       props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
     });
 
-    await user.click(screen.getByRole("button", { name: "Add header" }));
-    await user.type(screen.getByPlaceholderText("Header name, e.g. x-api-key"), "Authorization");
-    await user.type(screen.getByPlaceholderText("Value"), "Bearer xyz");
+    await user.click(screen.getByRole("button", { name: m.headersEditor_addAction() }));
+    await user.type(
+      screen.getByPlaceholderText(m.headersEditor_namePlaceholder()),
+      "Authorization",
+    );
+    await user.type(screen.getByPlaceholderText(m.headersEditor_valuePlaceholder()), "Bearer xyz");
 
-    // No auth configured yet (authMode is "none") — not reserved.
+    // No auth configured yet (authMode is "none") — not reserved. This
+    // reserved-name message is `validateServerHeaders`'s own
+    // (src/domain/tools/servers.ts) — out of this card's scope (domain
+    // copy not extracted by this card, same as ProviderForm's
+    // reservedHeaderReason), so still a literal English regex here.
     expect(screen.queryByText(/Authorization" is already set/)).not.toBeInTheDocument();
 
-    await selectOption(user, "Authentication", "Bearer token");
-    await user.type(screen.getByLabelText("Bearer token"), "a-real-token");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.bearerTokenLabel());
+    await user.type(screen.getByLabelText(m.bearerTokenLabel()), "a-real-token");
 
     expect(await screen.findByText(/Authorization" is already set/)).toBeInTheDocument();
   });
@@ -376,7 +412,7 @@ describe("McpServerForm", () => {
     const onCancel = vi.fn();
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel } });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: m.cancelAction() }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
@@ -396,14 +432,14 @@ describe("McpServerForm", () => {
     const user = userEvent.setup();
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "My server");
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await selectOption(user, "Authentication", "Bearer token");
-    await user.type(screen.getByLabelText("Bearer token"), "secret-token");
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "My server");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.bearerTokenLabel());
+    await user.type(screen.getByLabelText(m.bearerTokenLabel()), "secret-token");
 
-    await user.click(screen.getByRole("button", { name: "Add server" }));
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_addAction() }));
 
-    expect(await screen.findByRole("button", { name: "Saving…" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: m.savingLabel() })).toBeDisabled();
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "My server",
@@ -422,13 +458,13 @@ describe("McpServerForm", () => {
     const user = userEvent.setup();
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
-    await user.type(screen.getByLabelText("Display name"), "My server");
-    await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
-    await selectOption(user, "Authentication", "Sign in with OAuth");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
-    await screen.findByRole("button", { name: "Reconnect" });
+    await user.type(screen.getByLabelText(m.displayNameLabel()), "My server");
+    await user.type(screen.getByLabelText(m.mcpServerForm_urlLabel()), "https://mcp.example.com");
+    await selectOption(user, m.mcpServerForm_authModeLabel(), m.mcpServerForm_authOauthLabel());
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_signInAction() }));
+    await screen.findByRole("button", { name: m.mcpServerForm_reconnectAction() });
 
-    await user.click(screen.getByRole("button", { name: "Add server" }));
+    await user.click(screen.getByRole("button", { name: m.mcpServerForm_addAction() }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
