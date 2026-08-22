@@ -19,7 +19,9 @@
   // shape. Header VALUES get the exact same treatment as `apiKey`: masked
   // by default, stored local-only (registry.ts), never synced. The editor
   // itself is HeadersEditor.svelte, shared with McpServerForm.svelte since
-  // card 81; this form supplies only its own reserved-name rule and copy.
+  // card 81; this form supplies only its own reserved-name rule
+  // (`reservedHeaderReason`), rendered to localized copy via
+  // src/ui/reservedHeaderMessage.ts (card 107).
   //
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
   // `.form`/`.field`/`.api-key-field` became shadcn `Field` + `Input` +
@@ -39,6 +41,7 @@
   import type { Result } from "../../domain/result";
   import type { StorageError } from "../../domain/storage";
   import { storageFailureMessage } from "../../ui/storageMessage";
+  import { providerReservedHeaderMessage } from "../../ui/reservedHeaderMessage";
   import {
     firstHeaderError,
     toHeaderRows,
@@ -170,8 +173,10 @@
    * provider type or clearing the API key re-evaluates every row's check
    * live.
    */
-  const isReservedHeader: ReservedHeaderCheck = (key) =>
-    reservedHeaderReason(key, { type, apiKeyConfigured: apiKey.trim().length > 0 });
+  const isReservedHeader: ReservedHeaderCheck = (key) => {
+    const reason = reservedHeaderReason(key, { type, apiKeyConfigured: apiKey.trim().length > 0 });
+    return reason ? providerReservedHeaderMessage(reason) : undefined;
+  };
 
   let saving = $state(false);
   let formError = $state<string | undefined>(undefined);

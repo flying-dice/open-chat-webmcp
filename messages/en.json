@@ -381,6 +381,10 @@
   "headerRows_duplicateName": "“{key}” is already set on a row above.",
   "headerRows_emptyPlaceholder": "(empty)",
   "headerRows_prefixedError": "Header “{key}”: {error}",
+  "reservedHeader_wireFormat": "“{header}” is set automatically for this provider's wire format and can't be overridden.",
+  "reservedHeader_authorizationApiKey": "Authorization is already set from the API key configured above. Remove the API key first if you need to set this header yourself.",
+  "reservedHeader_clientControlled": "“{header}” is set automatically by the client and can't be overridden.",
+  "reservedHeader_authorizationBearerToken": "A bearer token is configured for this server, so “Authorization” is already set. Remove the token or this header.",
 
   "hostPermission_permissionDeniedMessage": "The permission request was declined, so the extension still can't reach this host. Grant it before testing. Chrome will ask again next time, or you can grant it from chrome://extensions.",
 
@@ -482,7 +486,7 @@
   "providerForm_getApiKeySuffix": ".",
   "providerForm_noApiKeyNeeded": "{label} doesn't need an API key by default.",
   "providerForm_addKeyAnywayAction": "Add one anyway",
-  "providerForm_headersDescription": "Sent on every request to this provider: a gateway that wants its own <code class=\"font-mono text-xs\">x-api-key</code>, a tenant or project header, a proxy <code class=\"font-mono text-xs\">Authorization</code>, or a Cloudflare Access service-token pair. The API key field above can't cover those.",
+  "providerForm_headersDescription": "Sent on every request to this provider: a gateway that wants its own <code class=\"font-mono text-code\">x-api-key</code>, a tenant or project header, a proxy <code class=\"font-mono text-code\">Authorization</code>, or a Cloudflare Access service-token pair. The API key field above can't cover those.",
   "providerForm_credentialWarning": "API keys and custom header values are stored unencrypted on this device (chrome.storage.local) and are never synced to your Google account. Anyone with access to this browser profile's data can read them.",
   "providerForm_fixColon": "{label}:",
   "providerForm_invalidBaseUrlTestError": "Enter a valid http:// or https:// base URL first.",
@@ -541,7 +545,7 @@
   "mcpServerForm_reconnectAction": "Reconnect",
   "mcpServerForm_disconnectAction": "Disconnect",
   "mcpServerForm_oauthDiscoveryNotice": "Finds the server's authorization server and opens a sign-in window. If it supports dynamic client registration (RFC 7591), that happens automatically; if not, you'll be asked for a client ID from an app you register with it yourself.",
-  "mcpServerForm_headersDescription": "Sent on every request to this server: a gateway that wants its own <code class=\"font-mono text-xs\">x-api-key</code>, a tenant or project header, or a proxy <code class=\"font-mono text-xs\">Authorization</code>. The bearer token field above can't cover those.",
+  "mcpServerForm_headersDescription": "Sent on every request to this server: a gateway that wants its own <code class=\"font-mono text-code\">x-api-key</code>, a tenant or project header, or a proxy <code class=\"font-mono text-code\">Authorization</code>. The bearer token field above can't cover those.",
   "mcpServerForm_credentialWarning": "The bearer token, OAuth tokens, and custom header values above are stored unencrypted on this device (chrome.storage.local) and are never synced to your Google account. Anyone with access to this browser profile's data can read them.",
   "mcpServerForm_addAction": "Add server",
   "mcpServerForm_invalidUrlError": "Enter a valid http:// or https:// URL.",

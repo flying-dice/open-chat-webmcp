@@ -79,11 +79,24 @@ export interface ProviderHeader {
 }
 
 /**
+ * Why a candidate header name is reserved — a discriminant for which rule
+ * tripped, plus the canonical header name as data (card 107,
+ * decisions/37-i18n-paraglide.md). Domain layer, so no English here: a UI
+ * surface renders this via `src/ui/reservedHeaderMessage.ts`'s
+ * `providerReservedHeaderMessage`, the same code/copy split
+ * `src/ui/providerMessage.ts` established for `ProviderError`.
+ */
+export type ReservedHeaderReason =
+  | { kind: "content-type"; header: string }
+  | { kind: "accept"; header: string }
+  | { kind: "authorization-api-key"; header: string };
+
+/**
  * Whether `name` is a header a `ChatProvider` client controls for
  * correctness and a user-defined header (decision 15) can therefore never
  * override — checked case-insensitively, since HTTP header names are.
- * Returns the reason to show inline at edit time when reserved, `undefined`
- * when the name is free to use.
+ * Returns the {@link ReservedHeaderReason} to show inline at edit time when
+ * reserved, `undefined` when the name is free to use.
  *
  * - `Content-Type` is reserved for every provider type: both clients
  *   (src/infra/ollama/client.ts, src/infra/openai) always send JSON
@@ -99,22 +112,22 @@ export interface ProviderHeader {
  *   concept at all, so `Authorization` is always free there — useful for a
  *   gateway sitting in front of a local Ollama server.
  */
-// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/tools/servers.ts's validateServerHeaders/CLIENT_CONTROLLED_HEADERS — one returns an issue array for MCP servers, this returns a single reason string for providers, with no shared source tying the rule together.
+// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/tools/servers.ts's validateServerHeaders/CLIENT_CONTROLLED_HEADERS — one returns an issue array for MCP servers, this returns a single reason value for providers, with no shared source tying the rule together.
 export function reservedHeaderReason(
   name: string,
   opts: { type: ProviderType; apiKeyConfigured: boolean },
-): string | undefined {
+): ReservedHeaderReason | undefined {
   const lower = name.trim().toLowerCase();
   if (lower.length === 0) return undefined;
 
   if (lower === "content-type") {
-    return "Content-Type is set automatically for this provider's wire format and can't be overridden.";
+    return { kind: "content-type", header: "Content-Type" };
   }
   if (opts.type === "openai" && lower === "accept") {
-    return "Accept is set automatically for this provider's wire format and can't be overridden.";
+    return { kind: "accept", header: "Accept" };
   }
   if (opts.type === "openai" && lower === "authorization" && opts.apiKeyConfigured) {
-    return "Authorization is already set from the API key configured above — remove the API key first if you need to set this header yourself.";
+    return { kind: "authorization-api-key", header: "Authorization" };
   }
   return undefined;
 }

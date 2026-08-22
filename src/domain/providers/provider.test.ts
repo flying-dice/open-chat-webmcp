@@ -82,21 +82,32 @@ describe("reservedHeaderReason", () => {
   });
 
   test.each<ProviderType>(["ollama", "openai"])(
-    "reserves Content-Type for %s regardless of case",
+    "reserves Content-Type for %s regardless of case, as the content-type code",
     (type) => {
-      expect(reservedHeaderReason("Content-Type", { type, apiKeyConfigured: false })).toBeDefined();
-      expect(reservedHeaderReason("CONTENT-TYPE", { type, apiKeyConfigured: false })).toBeDefined();
-      expect(reservedHeaderReason("content-type", { type, apiKeyConfigured: true })).toBeDefined();
+      expect(reservedHeaderReason("Content-Type", { type, apiKeyConfigured: false })).toEqual({
+        kind: "content-type",
+        header: "Content-Type",
+      });
+      expect(reservedHeaderReason("CONTENT-TYPE", { type, apiKeyConfigured: false })).toEqual({
+        kind: "content-type",
+        header: "Content-Type",
+      });
+      expect(reservedHeaderReason("content-type", { type, apiKeyConfigured: true })).toEqual({
+        kind: "content-type",
+        header: "Content-Type",
+      });
     },
   );
 
-  it("reserves Accept only for openai, case-insensitively", () => {
-    expect(
-      reservedHeaderReason("Accept", { type: "openai", apiKeyConfigured: false }),
-    ).toBeDefined();
-    expect(
-      reservedHeaderReason("accept", { type: "openai", apiKeyConfigured: true }),
-    ).toBeDefined();
+  it("reserves Accept only for openai, case-insensitively, as the accept code", () => {
+    expect(reservedHeaderReason("Accept", { type: "openai", apiKeyConfigured: false })).toEqual({
+      kind: "accept",
+      header: "Accept",
+    });
+    expect(reservedHeaderReason("accept", { type: "openai", apiKeyConfigured: true })).toEqual({
+      kind: "accept",
+      header: "Accept",
+    });
     expect(
       reservedHeaderReason("Accept", { type: "ollama", apiKeyConfigured: false }),
     ).toBeUndefined();
@@ -105,13 +116,13 @@ describe("reservedHeaderReason", () => {
     ).toBeUndefined();
   });
 
-  it("reserves Authorization only for openai, and only while an API key is configured", () => {
+  it("reserves Authorization only for openai, and only while an API key is configured, as the authorization-api-key code", () => {
     expect(
       reservedHeaderReason("Authorization", { type: "openai", apiKeyConfigured: true }),
-    ).toBeDefined();
+    ).toEqual({ kind: "authorization-api-key", header: "Authorization" });
     expect(
       reservedHeaderReason("authorization", { type: "openai", apiKeyConfigured: true }),
-    ).toBeDefined();
+    ).toEqual({ kind: "authorization-api-key", header: "Authorization" });
     expect(
       reservedHeaderReason("Authorization", { type: "openai", apiKeyConfigured: false }),
     ).toBeUndefined();

@@ -260,11 +260,10 @@ describe("ProviderForm", () => {
       "application/json",
     );
 
-    // `reservedHeaderReason`'s own reserved-name wording
-    // (src/domain/providers/provider.ts) — out of this card's scope (see
-    // that function's doc comment), so still literal English here.
-    const reservedError =
-      "Content-Type is set automatically for this provider's wire format and can't be overridden.";
+    // Localized via src/ui/reservedHeaderMessage.ts's `providerReservedHeaderMessage`
+    // (card 107) over `reservedHeaderReason`'s `{ kind: "content-type" }` code
+    // (src/domain/providers/provider.ts).
+    const reservedError = m.reservedHeader_wireFormat({ header: "Content-Type" });
     expect(await screen.findByText(reservedError)).toBeInTheDocument();
 
     await user.click(

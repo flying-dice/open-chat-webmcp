@@ -226,10 +226,12 @@ describe("McpServerForm", () => {
     // submit needed) and the form-level `formError` banner (which restates
     // the same message once submit reaches `firstHeaderError`) — so this
     // asserts at least one match rather than the exactly-one `findByText`.
+    // Localized via src/ui/reservedHeaderMessage.ts's `mcpReservedHeaderMessage`
+    // (card 107) over `validateServerHeaders`'s `"client-controlled"` code
+    // (src/domain/tools/servers.ts) — the header name keeps the typed casing.
+    const reservedError = m.reservedHeader_clientControlled({ header: "content-type" });
     await waitFor(() => {
-      expect(
-        screen.getAllByText(/is set automatically by the client and cannot be overridden/).length,
-      ).toBeGreaterThan(0);
+      expect(screen.getAllByText(reservedError).length).toBeGreaterThan(0);
     });
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -389,17 +391,17 @@ describe("McpServerForm", () => {
     );
     await user.type(screen.getByPlaceholderText(m.headersEditor_valuePlaceholder()), "Bearer xyz");
 
-    // No auth configured yet (authMode is "none") — not reserved. This
-    // reserved-name message is `validateServerHeaders`'s own
-    // (src/domain/tools/servers.ts) — out of this card's scope (domain
-    // copy not extracted by this card, same as ProviderForm's
-    // reservedHeaderReason), so still a literal English regex here.
-    expect(screen.queryByText(/Authorization" is already set/)).not.toBeInTheDocument();
+    // No auth configured yet (authMode is "none") — not reserved. Localized
+    // via src/ui/reservedHeaderMessage.ts's `mcpReservedHeaderMessage` (card
+    // 107) over `validateServerHeaders`'s `"authorization-bearer-token"` code
+    // (src/domain/tools/servers.ts).
+    const reservedError = m.reservedHeader_authorizationBearerToken();
+    expect(screen.queryByText(reservedError)).not.toBeInTheDocument();
 
     await selectOption(user, m.mcpServerForm_authModeLabel(), m.bearerTokenLabel());
     await user.type(screen.getByLabelText(m.bearerTokenLabel()), "a-real-token");
 
-    expect(await screen.findByText(/Authorization" is already set/)).toBeInTheDocument();
+    expect(await screen.findByText(reservedError)).toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------

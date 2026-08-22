@@ -18,7 +18,8 @@
   // `reservedHeaderReason` (src/domain/providers/provider.ts) — rather than
   // re-deriving the same rule a third time; each form hands its own rule to
   // the shared editor, since which headers are reserved is the one thing the
-  // two registries genuinely disagree about.
+  // two registries genuinely disagree about. Both rules render through the
+  // same localized copy now (src/ui/reservedHeaderMessage.ts, card 107).
   import { untrack } from "svelte";
   import {
     validateServerHeaders,
@@ -41,6 +42,7 @@
   import type { StorageError } from "../../domain/storage";
   import { copyText } from "../../ui/clipboard";
   import { storageFailureMessage } from "../../ui/storageMessage";
+  import { mcpReservedHeaderMessage } from "../../ui/reservedHeaderMessage";
   import {
     firstHeaderError,
     toHeaderRows,
@@ -227,7 +229,7 @@
   const isReservedHeader: ReservedHeaderCheck = (key, value) => {
     const issues = validateServerHeaders({ [key]: value }, { hasAuthToken: hasConfiguredAuth() });
     const [first] = issues;
-    return first?.reason;
+    return first ? mcpReservedHeaderMessage(first.header, first.code) : undefined;
   };
 
   let saving = $state(false);

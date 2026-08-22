@@ -132,7 +132,12 @@ async function main() {
         // reserved-name check once BOTH halves of a row are non-blank.
         const secondRow = secondKey.locator("xpath=ancestor::div[contains(@class,'items-start')]");
         await secondRow.locator('input[placeholder="Value"]').fill("anything");
-        const reservedError = page.getByText("Content-Type is set automatically", { exact: false });
+        const reservedError = page.getByText(
+          "is set automatically for this provider's wire format",
+          {
+            exact: false,
+          },
+        );
         await reservedError.waitFor({ state: "visible", timeout: 5000 });
         shots.push(await shoot(page, "options-smoke-provider-header-reserved-error"));
 

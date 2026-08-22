@@ -95,12 +95,22 @@ export type McpServerConfigCore = Omit<McpServerConfig, "auth" | "headers">;
 // ---------------------------------------------------------------------------
 
 /** Header names the client controls for correctness and never lets a custom header override (decisions/15). Compared case-insensitively. `authorization` is only actually reserved when the server has auth configured — see {@link validateServerHeaders}. */
-// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/providers/provider.ts's reservedHeaderReason — one returns an issue array for MCP servers, the other a single reason string for providers, with no shared source tying the rule together.
+// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/providers/provider.ts's reservedHeaderReason — one returns an issue array for MCP servers, the other a single reason value for providers, with no shared source tying the rule together.
 export const CLIENT_CONTROLLED_HEADERS = ["content-type", "accept"] as const;
+
+/**
+ * Which rule reserved a header — a discriminant only, no English (card 107,
+ * decisions/37-i18n-paraglide.md). The offending header's own name (in
+ * whatever case the user typed it) lives on {@link McpHeaderValidationIssue}
+ * alongside this, since one `"client-controlled"` issue can be either
+ * `content-type` or `accept`. A UI surface renders the pair via
+ * `src/ui/reservedHeaderMessage.ts`'s `mcpReservedHeaderMessage`.
+ */
+export type McpReservedHeaderCode = "client-controlled" | "authorization-bearer-token";
 
 export interface McpHeaderValidationIssue {
   header: string;
-  reason: string;
+  code: McpReservedHeaderCode;
 }
 
 /**
@@ -123,18 +133,11 @@ export function validateServerHeaders(
     // we are asking about. Widening the receiver (not the argument) keeps the
     // check honest — an unreserved name still answers `false`.
     if ((CLIENT_CONTROLLED_HEADERS as readonly string[]).includes(lower)) {
-      issues.push({
-        header: name,
-        reason: `"${name}" is set automatically by the client and cannot be overridden.`,
-      });
+      issues.push({ header: name, code: "client-controlled" });
       continue;
     }
     if (lower === "authorization" && opts?.hasAuthToken) {
-      issues.push({
-        header: name,
-        reason:
-          'A bearer token is configured for this server, so "Authorization" is already set. Remove the token or this header.',
-      });
+      issues.push({ header: name, code: "authorization-bearer-token" });
     }
   }
   return issues;
