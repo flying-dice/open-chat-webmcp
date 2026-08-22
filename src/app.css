@@ -27,10 +27,35 @@
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
+  /* CARD 115 — two light-mode tokens nudged darker to clear WCAG AA (4.5:1)
+     on the surfaces they are actually painted on. Both were shadcn Zinc's own
+     values (0.552 and 0.577) and both FAILED axe's `color-contrast` at
+     serious impact on real, shipped screens:
+
+       --muted-foreground  #71717b on --secondary/--muted #f4f4f5 measured
+         4.39:1 — the whole context strip above the composer (page title, tool
+         count, "Share page content"), plus every Field.Description on a card
+         in the options page (4.35:1 there). It passes on white (4.83:1),
+         which is why it survived every previous pass: the failure only shows
+         on the tinted surfaces. 0.535 measures 4.66:1 on #f3f3f4 and 5.17:1
+         on white.
+
+       --destructive  #e7000b on its own 10% tint #fde5e7 measured 3.98:1 —
+         the "Risk" badge on the two most consequential settings on the
+         options page, and the tonal destructive badges in the panel. The tint
+         is derived FROM the token, so darkening the text darkens the
+         background under it too and the ratio moves less than it looks like
+         it should: 0.545 only reached 4.37:1, and 0.52 measures 4.75:1. It
+         also improves, rather than trades away, the white text on the solid
+         destructive button.
+
+     Neither delta is perceptible side by side (ΔL 0.017 and 0.057); both are
+     re-measured by verify/checks/axe.mjs on every run, so a future palette
+     edit that reverts them fails loudly instead of silently. */
+  --muted-foreground: oklch(0.535 0.016 285.938);
   --accent: oklch(0.967 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.52 0.245 27.325);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);

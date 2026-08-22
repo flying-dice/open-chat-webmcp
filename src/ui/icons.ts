@@ -61,6 +61,7 @@ export type StandardIconName =
   | "close"
   | "content_copy"
   | "diamond"
+  | "download"
   | "edit_square"
   | "expand_more"
   | "explore"

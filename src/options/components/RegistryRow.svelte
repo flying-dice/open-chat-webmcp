@@ -46,7 +46,19 @@
     permissionGranted: boolean | undefined;
     /** How many custom headers this config carries; `0` renders nothing. Values are never shown (decisions/15 — they are credentials), only counted. */
     headerCount: number;
-    /** Dims the whole row — a disabled MCP server. Providers have no such state. */
+    /**
+     * Marks the row as inactive — a disabled MCP server. Providers have no
+     * such state.
+     *
+     * CARD 115: this used to be `opacity-60` over the whole row, which axe
+     * caught as a serious `color-contrast` failure on the endpoint URL and
+     * the permission badge — 60% opacity multiplies down every colour
+     * underneath it, so a disabled server's URL (the very thing you read
+     * before deciding to re-enable it) fell below 4.5:1. It was also saying
+     * the same thing twice: McpServerRow already renders an explicit
+     * "Disabled" badge right there. A muted fill marks the row instead, and
+     * the badge does the talking.
+     */
     dimmed?: boolean;
     /** Registry-specific badges, rendered between the title and the shared header-count/permission pair. */
     badges?: Snippet;
@@ -74,7 +86,7 @@
   }: Props = $props();
 </script>
 
-<div class="flex flex-col gap-2 rounded-2xl border p-3" class:opacity-60={dimmed}>
+<div class="flex flex-col gap-2 rounded-2xl border p-3" class:bg-muted={dimmed}>
   <div class="flex flex-wrap items-center gap-2">
     <div class="flex flex-col gap-0.5">
       <Button

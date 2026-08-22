@@ -32,6 +32,7 @@ import { createReport } from "./lib/report.mjs";
 import { assert, assertSetEqual, pollUntil } from "./lib/assert.mjs";
 import { screenshotSurfaces } from "./checks/screenshots.mjs";
 import { checkPageContext } from "./checks/pageContext.mjs";
+import { checkAxe } from "./checks/axe.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCREENSHOT_DIR = path.join(ROOT, "verify", "output", "screenshots");
@@ -62,6 +63,7 @@ const CHECK_NAMES = [
   "page-context",
   "worker-restart",
   "screenshots",
+  "axe",
   "webmcp-unavailable",
 ];
 
@@ -496,6 +498,21 @@ async function main() {
         return { count, files };
       },
       "screenshots",
+    );
+
+    // ---------------------------------------------------------------------
+    // axe-core over the same seeded screens (card 115). BEST EFFORT for the
+    // same reason the screenshots are — it drives real UI and a drifted
+    // selector should not take the suite down — but loud either way:
+    // checks/axe.mjs throws with the rule, the screen and the offending
+    // selectors on any serious/critical violation, and names the screen it
+    // could not reach otherwise. Registered here rather than launching its
+    // own browser; it stays runnable alone as `node verify/checks/axe.mjs`.
+    // ---------------------------------------------------------------------
+    await report.runBestEffort(
+      "axe-core: no serious/critical accessibility violations on the seeded side panel (chat, tools & call log, history) or the options page, light theme",
+      () => checkAxe(context, extensionId),
+      "axe",
     );
 
     // ---------------------------------------------------------------------

@@ -5,6 +5,17 @@
   // slot they gate is already named logically (`data-icon=inline-end/start`),
   // but the reserved gutter itself was physical, so it stayed on the same
   // visual side under RTL instead of following the icon.
+  //
+  // Local edit (card 115): the `destructive` variant's tint is OPAQUE now —
+  // `color-mix(… var(--destructive) 10%, var(--background))` in place of
+  // `bg-destructive/10`. An alpha tint composites against whatever surface the
+  // badge happens to land on, so the same badge measured 4.75:1 on a card and
+  // 4.28:1 on a muted row (axe, serious) — the "Permission needed" badge on a
+  // disabled MCP server, which is precisely the badge someone is trying to
+  // read. Mixing against `--background` instead pins the rendered colour to
+  // what the design intends everywhere, so the contrast is a property of the
+  // variant rather than of its neighbours. Same 10%/20% recipe, same
+  // appearance on the surface it was designed against.
   export const badgeVariants = tv({
     base: "h-5 gap-1 rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium transition-all has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 [&>svg]:size-3! group/badge inline-flex w-fit shrink-0 items-center justify-center overflow-hidden whitespace-nowrap transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none",
     variants: {
@@ -12,7 +23,7 @@
         default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
         secondary: "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+          "bg-[color-mix(in_oklab,var(--destructive)_10%,var(--background))] text-destructive focus-visible:ring-destructive/20 dark:bg-[color-mix(in_oklab,var(--destructive)_20%,var(--background))] dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
         outline:
           "border-border bg-input/30 text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost: "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",

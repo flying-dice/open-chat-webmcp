@@ -357,14 +357,31 @@
               for={`approval-policy-${option.value}`}
               class={option.danger ? "has-data-checked:border-destructive/40" : undefined}
             >
+              <!-- CARD 115 — `<label for>` NEVER NAMED THESE. axe reported
+                   `button-name` (critical) on all six policy radios: bits-ui
+                   renders a RadioGroup item as `<button role="radio">`, and a
+                   `<label for>` only names a LABELABLE element (input,
+                   select, textarea, …) — never a button. So the entire
+                   approval-policy choice, the most consequential setting in
+                   this extension, was six unnamed buttons to a screen reader.
+                   `aria-labelledby`/`aria-describedby` point at the wording
+                   already on screen, so the announced name is exactly the
+                   visible one and no message key is duplicated. -->
               <Field.Field orientation="horizontal">
-                <RadioGroupItem value={option.value} id={`approval-policy-${option.value}`} />
+                <RadioGroupItem
+                  value={option.value}
+                  id={`approval-policy-${option.value}`}
+                  aria-labelledby={`approval-policy-${option.value}-title`}
+                  aria-describedby={`approval-policy-${option.value}-description`}
+                />
                 <Field.Content>
-                  <Field.Title>
+                  <Field.Title id={`approval-policy-${option.value}-title`}>
                     {option.label}
                     {#if option.danger}<Badge variant="destructive">{m.settingsSection_riskBadge()}</Badge>{/if}
                   </Field.Title>
-                  <Field.Description>{option.description}</Field.Description>
+                  <Field.Description id={`approval-policy-${option.value}-description`}
+                    >{option.description}</Field.Description
+                  >
                 </Field.Content>
               </Field.Field>
             </Field.Label>
@@ -413,14 +430,22 @@
               for={`mcp-approval-policy-${option.value}`}
               class={option.danger ? "has-data-checked:border-destructive/40" : undefined}
             >
+              <!-- Same `button-name` fix as the page-policy group above. -->
               <Field.Field orientation="horizontal">
-                <RadioGroupItem value={option.value} id={`mcp-approval-policy-${option.value}`} />
+                <RadioGroupItem
+                  value={option.value}
+                  id={`mcp-approval-policy-${option.value}`}
+                  aria-labelledby={`mcp-approval-policy-${option.value}-title`}
+                  aria-describedby={`mcp-approval-policy-${option.value}-description`}
+                />
                 <Field.Content>
-                  <Field.Title>
+                  <Field.Title id={`mcp-approval-policy-${option.value}-title`}>
                     {option.label}
                     {#if option.danger}<Badge variant="destructive">{m.settingsSection_riskBadge()}</Badge>{/if}
                   </Field.Title>
-                  <Field.Description>{option.description}</Field.Description>
+                  <Field.Description id={`mcp-approval-policy-${option.value}-description`}
+                    >{option.description}</Field.Description
+                  >
                 </Field.Content>
               </Field.Field>
             </Field.Label>
