@@ -1,5 +1,5 @@
 ---
-status: Accepted
+status: Superseded
 date: 2026-08-19
 ---
 # Decision 18 — The side panel adopts Material 3 expressive, at Chrome's Gemini-panel scale
@@ -95,3 +95,5 @@ behind them and a control that silently does nothing is worse than its absence:
 - Icon paths are third-party Apache-2.0 source vendored into the repo, which
   carries an attribution obligation (SPDX header in `src/lib/icons.ts`, credit
   in `README.md`).
+
+> Superseded by [Decision 28](28-shadcn-svelte-maia-zinc.md) — the UI moved to shadcn-svelte (Maia style, Zinc base color) on 2026-08-22.

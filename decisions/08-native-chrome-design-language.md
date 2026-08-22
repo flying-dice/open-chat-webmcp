@@ -1,5 +1,5 @@
 ---
-status: Accepted
+status: Superseded
 date: 2026-08-19
 ---
 # Decision 08 — The UI adopts Chrome's own design language, not a custom brand
@@ -53,3 +53,5 @@ single file to audit and adjust.
   evolves. Keeping it in one file makes that a small, contained update.
 - Accessibility comes largely for free — native controls keep their keyboard
   behaviour and focus rings, which a custom component set would have to rebuild.
+
+> Superseded by [Decision 28](28-shadcn-svelte-maia-zinc.md) — the UI moved to shadcn-svelte (Maia style, Zinc base color) on 2026-08-22.
