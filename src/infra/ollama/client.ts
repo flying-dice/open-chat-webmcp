@@ -366,7 +366,8 @@ interface OllamaCapabilityOptions {
  * {@link ModelCapabilityCache} the caller supplies, and this never re-hits
  * the network for a digest it has already seen unless `forceRefresh` is set.
  * Callers building a model picker should issue these concurrently across
- * models — see {@link getCapabilitiesForModels}.
+ * models — `resolveCapabilities` in src/domain/providers/capability.ts does
+ * exactly that, for every provider.
  *
  * Ollama always has a definitive answer, so this only ever resolves to
  * `"tool-capable"` or `"no-tools"` — never `"unknown"`. `"unknown"` exists on
@@ -407,21 +408,6 @@ export async function getCapabilities(
 
   await opts?.capabilityCache?.set("ollama", model.digest, value);
   return { ok: true, value };
-}
-
-/**
- * Convenience wrapper: fetch capabilities for every model concurrently
- * (decisions/06-tool-capable-models-only.md's "issued concurrently and
- * cached thereafter," carried forward unchanged by
- * decisions/11-provider-capability-detection.md). Each entry's result is
- * independent, so one model's error does not fail the others.
- */
-// TODO: clean-code - 0.6 - DEAD: getCapabilitiesForModels has zero callers anywhere, including its own doc-comment self-reference above getCapabilities; the concurrent-capability job it exists for is done by src/domain/providers/capability.ts's resolveCapabilities instead.
-export async function getCapabilitiesForModels(
-  models: Pick<OllamaModel, "name" | "digest">[],
-  opts?: OllamaCapabilityOptions,
-): Promise<ProviderResult<ModelCapabilities>[]> {
-  return Promise.all(models.map((model) => getCapabilities(model, opts)));
 }
 
 // ---------------------------------------------------------------------------

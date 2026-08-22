@@ -24,9 +24,9 @@
 // inert bytes.
 
 import {
-  chatPreview,
   createChat,
   MAX_RETAINED_CHATS,
+  summarizeChat,
   type ChatSaveOptions,
   type ChatSession,
   type ChatStore,
@@ -304,16 +304,7 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
     await withIndexLock(async () => {
       const index = await readChatIndex();
       const nextIndex = index.filter((e) => e.id !== plain.id);
-      nextIndex.push({
-        id: plain.id,
-        origin: plain.origin,
-        createdAt: plain.createdAt,
-        updatedAt: plain.updatedAt,
-        messageCount: plain.messages.length,
-        toolCallCount: plain.toolCalls.length,
-        preview: chatPreview(plain.messages),
-        title: plain.title,
-      });
+      nextIndex.push(summarizeChat(plain));
       await writeChatIndex(nextIndex);
       await evictIfNeededLocked();
     });

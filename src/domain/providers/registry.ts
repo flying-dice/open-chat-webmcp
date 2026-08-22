@@ -132,11 +132,3 @@ export async function resolveSelection(
         model: selection.model,
       };
 }
-
-// TODO: clean-code - 0.6 - DEAD: resolveDefaultSelection has zero callers anywhere — every real call site (ProvidersSection.svelte, src/sidepanel/stores/selection.svelte.ts) inlines getDefaultSelection() + resolveSelection() instead of calling this wrapper.
-/** Convenience: resolve the global default selection directly. Equivalent to `resolveSelection(registry, await registry.getDefaultSelection())`. */
-export async function resolveDefaultSelection(
-  registry: ProviderRegistry,
-): Promise<SelectionResolution> {
-  return resolveSelection(registry, await registry.getDefaultSelection());
-}

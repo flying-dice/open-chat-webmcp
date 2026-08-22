@@ -61,9 +61,3 @@ export class StorageError extends Error {
     this.kind = kind;
   }
 }
-
-// TODO: clean-code - 0.6 - DEAD: isStorageError has zero callers anywhere — every catch site either doesn't narrow the error or uses `instanceof StorageError` directly.
-/** Narrow an unknown rejection to a {@link StorageError} — for a caller that wants to branch on `kind` rather than just report the failure. */
-export function isStorageError(value: unknown): value is StorageError {
-  return value instanceof StorageError;
-}

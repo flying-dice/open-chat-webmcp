@@ -17,7 +17,9 @@
   // offered for every provider type, not just OpenAI-compatible ones — a
   // local Ollama server can sit behind a gateway too, and needs the same
   // shape. Header VALUES get the exact same treatment as `apiKey`: masked
-  // by default, stored local-only (registry.ts), never synced.
+  // by default, stored local-only (registry.ts), never synced. The editor
+  // itself is HeadersEditor.svelte, shared with McpServerForm.svelte since
+  // card 81; this form supplies only its own reserved-name rule and copy.
   //
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
   // `.form`/`.field`/`.api-key-field` became shadcn `Field` + `Input` +
@@ -34,9 +36,20 @@
   } from "../../domain/providers";
   import { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
   import { originPatternForUrl } from "../../domain/permissions";
-  import { optionsServices } from "../app-services";
+  import {
+    firstHeaderError,
+    toHeaderRows,
+    type HeaderRow,
+    type ReservedHeaderCheck,
+  } from "../lib/headerRows";
+  import {
+    PERMISSION_DENIED_MESSAGE,
+    requestHostPermission,
+    trackHostPermission,
+  } from "../lib/hostPermission.svelte";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import { providerTestResultClass, providerTestResultMessage } from "../lib/testResultDisplay";
+  import HeadersEditor from "./HeadersEditor.svelte";
   import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
@@ -45,8 +58,6 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
@@ -117,70 +128,19 @@
   let apiKey = $state(untrack(() => initial?.apiKey ?? ""));
   let showApiKey = $state(false);
 
-  /**
-   * Custom request headers (decisions/15-custom-headers-are-credentials.md).
-   * Each row carries a synthetic `id` distinct from `key`/`value` so
-   * `{#each ... (row.id)}` stays stable while the user is mid-edit on a
-   * duplicate or not-yet-valid key — keying on `key` itself would make two
-   * rows collide, or a row jump position, while its name is still being typed.
-   */
-  // TODO: clean-code - 0.55 - DRY: HeaderRow shape/CRUD, the permission-grant $effect, the "request permission then test" handleTest flow, and the header-editor markup are all independently re-declared in McpServerForm.svelte (see its HeaderRow interface, handleTest and the custom-headers Field.Field block).
-  interface HeaderRow {
-    id: number;
-    key: string;
-    value: string;
-  }
-  let nextHeaderRowId = untrack(() => (initial?.headers?.length ?? 0) + 1);
+  /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../lib/headerRows.ts for why a row carries a synthetic id. */
   let headers = $state<HeaderRow[]>(
-    untrack(() =>
-      (initial?.headers ?? []).map((h, i) => ({ id: i, key: h.key, value: h.value })),
-    ),
+    untrack(() => toHeaderRows((initial?.headers ?? []).map((h) => [h.key, h.value] as const))),
   );
-  let showHeaderValues = $state(false);
-
-  function addHeaderRow(): void {
-    headers = [...headers, { id: nextHeaderRowId++, key: "", value: "" }];
-  }
-  function removeHeaderRow(id: number): void {
-    headers = headers.filter((h) => h.id !== id);
-  }
 
   /**
-   * Refuse a reserved header, or a name duplicated across rows, right where
-   * it's being typed — decision 15's "refused visibly at edit time, not
-   * dropped silently at request time." A row with both fields still blank
-   * (the just-added, not-yet-filled-in row) is not an error. Reads `type`
-   * and `apiKey` reactively, so switching provider type or clearing the API
-   * key re-evaluates every row's reserved-name check live.
+   * This form's reserved-name rule, handed to the shared editor and to
+   * `firstHeaderError`. Reads `type` and `apiKey` reactively, so switching
+   * provider type or clearing the API key re-evaluates every row's check
+   * live.
    */
-  function headerRowError(row: HeaderRow): string | undefined {
-    const key = row.key.trim();
-    const value = row.value.trim();
-    if (key.length === 0 && value.length === 0) return undefined;
-    if (key.length === 0) return "Enter a header name, or remove this row.";
-    if (value.length === 0) return "Enter a value, or remove this row.";
-
-    const reserved = reservedHeaderReason(key, {
-      type,
-      apiKeyConfigured: apiKey.trim().length > 0,
-    });
-    if (reserved) return reserved;
-
-    const lower = key.toLowerCase();
-    const duplicates = headers.filter((h) => h.key.trim().toLowerCase() === lower).length;
-    if (duplicates > 1) return `"${key}" is already set on another row above.`;
-
-    return undefined;
-  }
-
-  /** First header validation failure across every row, or `undefined` if all are clean — shared by "Test connection" and submit so neither sends a request built from an invalid header. */
-  function firstHeaderError(): string | undefined {
-    for (const row of headers) {
-      const err = headerRowError(row);
-      if (err) return `Header "${row.key.trim() || "(empty)"}": ${err}`;
-    }
-    return undefined;
-  }
+  const isReservedHeader: ReservedHeaderCheck = (key) =>
+    reservedHeaderReason(key, { type, apiKeyConfigured: apiKey.trim().length > 0 });
 
   let saving = $state(false);
   let formError = $state<string | undefined>(undefined);
@@ -223,15 +183,7 @@
   // so "Test connection" can tell the user up front whether it will need to
   // prompt for a host permission (decisions/09's `optional_host_permissions`
   // flow, generalized by this card).
-  let permissionGranted = $state<boolean | undefined>(undefined);
-  $effect(() => {
-    const url = baseUrl.trim();
-    permissionGranted = undefined;
-    if (!originPatternForUrl(url)) return;
-    optionsServices().permissions.has(url).then((granted) => {
-      permissionGranted = granted;
-    });
-  });
+  const hostPermission = trackHostPermission(() => baseUrl);
 
   let testing = $state(false);
   let testOutcome = $state<TestOutcome | undefined>(undefined);
@@ -264,11 +216,10 @@
   }
 
   /**
-   * "Test connection" — MUST call `permissions.request` as the first
-   * `await` in this click-bound handler when permission isn't already known
-   * to be granted (decisions/09): the browser only honours the request while
-   * still inside the user gesture that triggered it, so no other async work
-   * runs ahead of it here.
+   * "Test connection" — `requestHostPermission` is the first `await` here on
+   * purpose (decisions/09): the browser only honours the request while still
+   * inside the user gesture that triggered it, so no other async work may run
+   * ahead of it.
    */
   async function handleTest(): Promise<void> {
     testOutcome = undefined;
@@ -277,24 +228,16 @@
       testOutcome = { kind: "invalid-response", message: "Enter a valid http:// or https:// base URL first." };
       return;
     }
-    const headerError = firstHeaderError();
+    const headerError = firstHeaderError(headers, isReservedHeader);
     if (headerError) {
       testOutcome = { kind: "invalid-response", message: headerError };
       return;
     }
     testing = true;
     try {
-      if (permissionGranted !== true) {
-        const granted = await optionsServices().permissions.request(draft.baseUrl);
-        permissionGranted = granted;
-        if (!granted) {
-          testOutcome = {
-            kind: "permission-denied",
-            message:
-              "This extension doesn't have permission to contact this host yet, and the request was declined. Grant it (Chrome will prompt again next time, or grant it from chrome://extensions) before testing.",
-          };
-          return;
-        }
+      if (!(await requestHostPermission(draft.baseUrl, hostPermission))) {
+        testOutcome = { kind: "permission-denied", message: PERMISSION_DENIED_MESSAGE };
+        return;
       }
       testOutcome = await testProviderConnection({ id: initial?.id ?? "draft", ...draft });
     } finally {
@@ -314,7 +257,7 @@
       formError = "Enter a valid http:// or https:// base URL.";
       return;
     }
-    const headerError = firstHeaderError();
+    const headerError = firstHeaderError(headers, isReservedHeader);
     if (headerError) {
       formError = headerError;
       return;
@@ -384,9 +327,9 @@
       placeholder={typeInfo.defaultBaseUrl}
       required
     />
-    {#if permissionGranted === false}
+    {#if hostPermission.granted === false}
       <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
-    {:else if permissionGranted === true}
+    {:else if hostPermission.granted === true}
       <Badge variant="outline" class="w-fit!">Permission granted</Badge>
     {/if}
   </Field.Field>
@@ -427,66 +370,20 @@
     </p>
   {/if}
 
-  <Field.Field>
-    <Field.Label for="pf-header-0-key">Custom headers (optional)</Field.Label>
-    <Alert.Root class="bg-background">
-      <Alert.Description>
-        Sent on every request to this provider — for a gateway that wants its own <code
-          class="font-mono text-xs">x-api-key</code
-        >, a tenant or project header, a proxy <code class="font-mono text-xs">Authorization</code>,
-        or a Cloudflare Access service-token pair. A bearer token from the API key field above isn't
-        enough for those.
-      </Alert.Description>
-    </Alert.Root>
+  {#snippet headersDescription()}
+    Sent on every request to this provider — for a gateway that wants its own <code
+      class="font-mono text-xs">x-api-key</code
+    >, a tenant or project header, a proxy <code class="font-mono text-xs">Authorization</code>, or a
+    Cloudflare Access service-token pair. A bearer token from the API key field above isn't enough
+    for those.
+  {/snippet}
 
-    {#if headers.length > 0}
-      <div class="flex flex-col gap-1">
-        {#each headers as row, i (row.id)}
-          {@const err = headerRowError(row)}
-          <div class="flex items-start gap-1">
-            <Input
-              id={i === 0 ? "pf-header-0-key" : undefined}
-              type="text"
-              bind:value={row.key}
-              placeholder="Header name, e.g. x-api-key"
-              autocomplete="off"
-              aria-invalid={err ? "true" : undefined}
-            />
-            <Input
-              type={showHeaderValues ? "text" : "password"}
-              bind:value={row.value}
-              placeholder="Value"
-              autocomplete="off"
-              aria-invalid={err ? "true" : undefined}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              onclick={() => removeHeaderRow(row.id)}
-              aria-label={`Remove header ${row.key || i + 1}`}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            </Button>
-          </div>
-          {#if err}
-            <Field.Error>{err}</Field.Error>
-          {/if}
-        {/each}
-      </div>
-    {/if}
-
-    <div class="flex items-center gap-2">
-      <Button variant="ghost" size="sm" onclick={addHeaderRow}>
-        <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
-        Add header
-      </Button>
-      {#if headers.length > 0}
-        <Button variant="ghost" size="sm" onclick={() => (showHeaderValues = !showHeaderValues)}>
-          {showHeaderValues ? "Hide values" : "Show values"}
-        </Button>
-      {/if}
-    </div>
-  </Field.Field>
+  <HeadersEditor
+    bind:rows={headers}
+    isReserved={isReservedHeader}
+    firstInputId="pf-header-0-key"
+    description={headersDescription}
+  />
 
   <Alert.Root class="bg-background">
     <Alert.Description>

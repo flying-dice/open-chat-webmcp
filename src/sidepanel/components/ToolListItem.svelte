@@ -36,6 +36,7 @@
   import type { SerializedTool, ToolAnnotations } from "../../domain/tools";
   import type { McpToolAnnotations, ToolOrigin } from "../../domain/tools";
   import { originLabel } from "../lib/toolOrigin";
+  import AnnotationBadges from "./AnnotationBadges.svelte";
   import ToolSchema from "./ToolSchema.svelte";
   import * as Card from "$lib/components/ui/card";
   import * as Collapsible from "$lib/components/ui/collapsible";
@@ -53,12 +54,7 @@
 
   let expanded = $state(false);
 
-  // TODO: clean-code - 0.55 - DRY: derives the same five-value annotation block (readOnly, untrustedContent, unannotated, isServerTool, destructive) and renders the same four-Badge conditional block as ApprovalCard.svelte — a shared AnnotationBadges component would remove this.
-  const readOnly = $derived(tool.annotations?.readOnlyHint === true);
-  const untrustedContent = $derived(tool.annotations?.untrustedContentHint === true);
-  const unannotated = $derived(!tool.annotations || (!readOnly && !untrustedContent));
   const isServerTool = $derived(tool.origin.kind === "server");
-  const destructive = $derived(tool.mcpAnnotations?.destructiveHint === true);
 </script>
 
 <Card.Root size="sm" class="w-full min-w-0 gap-2">
@@ -69,18 +65,7 @@
         <Badge variant="outline" class={isServerTool ? "border-primary text-primary" : ""}>
           {originLabel(tool.origin)}
         </Badge>
-        {#if readOnly}
-          <Badge variant="outline">read-only</Badge>
-        {/if}
-        {#if untrustedContent}
-          <Badge variant="destructive">untrusted content</Badge>
-        {/if}
-        {#if destructive}
-          <Badge variant="destructive">server: destructive</Badge>
-        {/if}
-        {#if unannotated}
-          <Badge variant="outline" class="border-dashed text-muted-foreground">unannotated</Badge>
-        {/if}
+        <AnnotationBadges annotations={tool.annotations} mcpAnnotations={tool.mcpAnnotations} />
       </span>
     </div>
 

@@ -1,24 +1,24 @@
 <script lang="ts">
-  // TODO: clean-code - 0.5 - SRP: Bundles five largely independent UI concerns — basic fields, bearer-token entry, a full OAuth sign-in state machine with a nested manual-app-registration sub-flow, custom-header row CRUD+validation, and connection-test orchestration — in one component.
+  // TODO: clean-code - 0.5 - SRP: Bundles four largely independent UI concerns — basic fields, bearer-token entry, a full OAuth sign-in state machine with a nested manual-app-registration sub-flow, and connection-test orchestration — in one component.
   // Add/edit form for one MCP server config (card 39,
   // decisions/14-backend-mcp-servers.md,
   // decisions/15-custom-headers-are-credentials.md). Deliberately mirrors
   // ProviderForm.svelte's shape closely — same "uncontrolled after mount"
-  // seeding via `untrack`, same custom-headers editor pattern, same
-  // send-every-field-on-submit posture — because this is exactly the same
-  // kind of add/edit-a-remote-endpoint-with-optional-auth-and-headers form
-  // the provider registry already established. The one real difference:
-  // headers here are a `Record<string, string>` (src/domain/tools's
-  // `McpServerConfig.headers`), not an array of `{key, value}` — so this
-  // form still edits an array of rows locally (for stable `{#each}` keys
-  // while a row is mid-edit) but converts to/from a Record at the
-  // load/submit boundary instead of passing the array straight through.
+  // seeding via `untrack`, same send-every-field-on-submit posture, and (as
+  // of card 81) literally the same custom-headers editor and host-permission
+  // helpers — because this is exactly the same kind of
+  // add/edit-a-remote-endpoint-with-optional-auth-and-headers form the
+  // provider registry already established. The one real difference: headers
+  // here are a `Record<string, string>` (src/domain/tools's
+  // `McpServerConfig.headers`), not an array of `{key, value}` — so this form
+  // converts to and from the editor's rows at the load/submit boundary.
   //
   // Reserved-header validation reuses `validateServerHeaders`
-  // (src/domain/tools) — the MCP-specific version of
-  // ProviderForm.svelte's `reservedHeaderReason` (src/domain/providers/provider.ts, off
-  // limits to this card) — rather than re-deriving the same rule a third
-  // time.
+  // (src/domain/tools) — the MCP-specific version of ProviderForm.svelte's
+  // `reservedHeaderReason` (src/domain/providers/provider.ts) — rather than
+  // re-deriving the same rule a third time; each form hands its own rule to
+  // the shared editor, since which headers are reserved is the one thing the
+  // two registries genuinely disagree about.
   import { untrack } from "svelte";
   import {
     validateServerHeaders,
@@ -37,8 +37,20 @@
   // submits. Nothing below names `chrome`.
   import { optionsServices } from "../app-services";
   import { originPatternForUrl } from "../../domain/permissions";
+  import {
+    firstHeaderError,
+    toHeaderRows,
+    type HeaderRow,
+    type ReservedHeaderCheck,
+  } from "../lib/headerRows";
+  import {
+    PERMISSION_DENIED_MESSAGE,
+    requestHostPermission,
+    trackHostPermission,
+  } from "../lib/hostPermission.svelte";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
-  import { mcpTestResultClass, mcpTestResultMessage, mcpTestResultTools } from "../lib/testResultDisplay";
+  import HeadersEditor from "./HeadersEditor.svelte";
+  import McpTestResult from "./McpTestResult.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -46,8 +58,6 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
   interface Props {
     mode: "add" | "edit";
@@ -166,26 +176,10 @@
     return "Connected — no expiry known.";
   }
 
-  // TODO: clean-code - 0.55 - DRY: HeaderRow shape/CRUD, the permission-grant $effect, the "request permission then test" handleTest flow, and the header-editor markup are all independently re-declared in ProviderForm.svelte (see its HeaderRow interface, handleTest and header-editor markup).
-  interface HeaderRow {
-    id: number;
-    key: string;
-    value: string;
-  }
-  const initialHeaderEntries = untrack(() => Object.entries(initial?.headers ?? {}));
-  let nextHeaderRowId = untrack(() => initialHeaderEntries.length + 1);
+  /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../lib/headerRows.ts for why a row carries a synthetic id. */
   let headers = $state<HeaderRow[]>(
-    initialHeaderEntries.map(([key, value], i) => ({ id: i, key, value })),
+    untrack(() => toHeaderRows(Object.entries(initial?.headers ?? {}))),
   );
-  let showHeaderValues = $state(false);
-  let toolsExpanded = $state(false);
-
-  function addHeaderRow(): void {
-    headers = [...headers, { id: nextHeaderRowId++, key: "", value: "" }];
-  }
-  function removeHeaderRow(id: number): void {
-    headers = headers.filter((h) => h.id !== id);
-  }
 
   /** Whether the draft currently has *some* auth that will put an `Authorization` header on the wire — a bearer token with text, or any held OAuth credential — regardless of which mode is selected. Feeds `validateServerHeaders`'s reserved-header check the same way `client.ts`'s own `hasResolvableAuth` decides whether `Authorization` is reserved. */
   function hasConfiguredAuth(): boolean {
@@ -195,57 +189,25 @@
   }
 
   /**
-   * Refuse a reserved header, or a name duplicated across rows, right where
-   * it's being typed (decisions/15: "refused visibly at edit time, not
-   * dropped silently at request time"). Uses `validateServerHeaders`
-   * (src/domain/tools) for the reserved-name check — the same
-   * function `client.ts` uses defensively at request-build time — so this
-   * form and the transport agree on exactly which headers are reserved.
+   * This form's reserved-name rule, handed to the shared editor and to
+   * `firstHeaderError`. Uses `validateServerHeaders` (src/domain/tools) — the
+   * same function `client.ts` uses defensively at request-build time — so
+   * this form and the transport agree on exactly which headers are reserved.
+   * Reads the auth state reactively, so switching auth mode or clearing a
+   * token re-evaluates every row live.
    */
-  function headerRowError(row: HeaderRow): string | undefined {
-    const key = row.key.trim();
-    const value = row.value.trim();
-    if (key.length === 0 && value.length === 0) return undefined;
-    if (key.length === 0) return "Enter a header name, or remove this row.";
-    if (value.length === 0) return "Enter a value, or remove this row.";
-
-    const issues = validateServerHeaders(
-      { [key]: value },
-      { hasAuthToken: hasConfiguredAuth() },
-    );
-    if (issues.length > 0) return issues[0].reason;
-
-    const lower = key.toLowerCase();
-    const duplicates = headers.filter((h) => h.key.trim().toLowerCase() === lower).length;
-    if (duplicates > 1) return `"${key}" is already set on another row above.`;
-
-    return undefined;
-  }
-
-  /** First header validation failure across every row, or `undefined` if all are clean — shared by "Test connection" and submit so neither sends a request built from an invalid header. */
-  function firstHeaderError(): string | undefined {
-    for (const row of headers) {
-      const err = headerRowError(row);
-      if (err) return `Header "${row.key.trim() || "(empty)"}": ${err}`;
-    }
-    return undefined;
-  }
+  const isReservedHeader: ReservedHeaderCheck = (key, value) => {
+    const issues = validateServerHeaders({ [key]: value }, { hasAuthToken: hasConfiguredAuth() });
+    return issues.length > 0 ? issues[0].reason : undefined;
+  };
 
   let saving = $state(false);
   let formError = $state<string | undefined>(undefined);
 
   // Live permission-grant state for whatever URL is currently typed, so
   // "Test connection" can tell the user up front whether it will need to
-  // prompt for a host permission (mirrors ProviderForm.svelte).
-  let permissionGranted = $state<boolean | undefined>(undefined);
-  $effect(() => {
-    const u = url.trim();
-    permissionGranted = undefined;
-    if (!originPatternForUrl(u)) return;
-    optionsServices().permissions.has(u).then((granted) => {
-      permissionGranted = granted;
-    });
-  });
+  // prompt for a host permission (the same tracker ProviderForm.svelte uses).
+  const hostPermission = trackHostPermission(() => url);
 
   let testing = $state(false);
   let testOutcome = $state<McpTestOutcome | undefined>(undefined);
@@ -305,11 +267,10 @@
   }
 
   /**
-   * "Test connection" — MUST call `permissions.request` as the first
-   * `await` in this click-bound handler when permission isn't already known
-   * to be granted (decisions/14, mirroring decisions/09's rule for
-   * providers): the browser only honours the request while still inside the
-   * user gesture that triggered it.
+   * "Test connection" — `requestHostPermission` is the first `await` here on
+   * purpose (decisions/14, mirroring decisions/09's rule for providers): the
+   * browser only honours the request while still inside the user gesture that
+   * triggered it.
    */
   async function handleTest(): Promise<void> {
     testOutcome = undefined;
@@ -318,24 +279,16 @@
       testOutcome = { kind: "invalid-response", message: "Enter a valid http:// or https:// URL first." };
       return;
     }
-    const headerError = firstHeaderError();
+    const headerError = firstHeaderError(headers, isReservedHeader);
     if (headerError) {
       testOutcome = { kind: "invalid-response", message: headerError };
       return;
     }
     testing = true;
     try {
-      if (permissionGranted !== true) {
-        const granted = await optionsServices().permissions.request(draft.url);
-        permissionGranted = granted;
-        if (!granted) {
-          testOutcome = {
-            kind: "permission-denied",
-            message:
-              "This extension doesn't have permission to contact this host yet, and the request was declined. Grant it (Chrome will prompt again next time, or grant it from chrome://extensions) before testing.",
-          };
-          return;
-        }
+      if (!(await requestHostPermission(draft.url, hostPermission))) {
+        testOutcome = { kind: "permission-denied", message: PERMISSION_DENIED_MESSAGE };
+        return;
       }
       testOutcome = await testMcpServerConnection({ id: initial?.id ?? "draft", ...draft });
     } finally {
@@ -370,8 +323,8 @@
     oauthSigningIn = true;
     try {
       const result = await optionsServices().mcpSignIn.begin(url.trim(), {
-        alreadyGranted: permissionGranted === true,
-        onServerPermission: (granted) => (permissionGranted = granted),
+        alreadyGranted: hostPermission.granted === true,
+        onServerPermission: (granted) => (hostPermission.granted = granted),
       });
       if (result.status === "error") {
         oauthError = result.message;
@@ -459,7 +412,7 @@
       formError = "Enter a valid http:// or https:// URL.";
       return;
     }
-    const headerError = firstHeaderError();
+    const headerError = firstHeaderError(headers, isReservedHeader);
     if (headerError) {
       formError = headerError;
       return;
@@ -509,9 +462,9 @@
   <Field.Field>
     <Field.Label for="mf-url">MCP endpoint URL</Field.Label>
     <Input id="mf-url" type="text" bind:value={url} placeholder="https://mcp.example.com/mcp" required />
-    {#if permissionGranted === false}
+    {#if hostPermission.granted === false}
       <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
-    {:else if permissionGranted === true}
+    {:else if hostPermission.granted === true}
       <Badge variant="outline" class="w-fit!">Permission granted</Badge>
     {/if}
   </Field.Field>
@@ -643,65 +596,19 @@
     </Field.Field>
   {/if}
 
-  <Field.Field>
-    <Field.Label for="mf-header-0-key">Custom headers (optional)</Field.Label>
-    <Alert.Root class="bg-background">
-      <Alert.Description>
-        Sent on every request to this server — for a gateway that wants its own <code
-          class="font-mono text-xs">x-api-key</code
-        >, a tenant or project header, or a proxy <code class="font-mono text-xs">Authorization</code
-        >. A bearer token from the field above isn't enough for those.
-      </Alert.Description>
-    </Alert.Root>
+  {#snippet headersDescription()}
+    Sent on every request to this server — for a gateway that wants its own <code
+      class="font-mono text-xs">x-api-key</code
+    >, a tenant or project header, or a proxy <code class="font-mono text-xs">Authorization</code>. A
+    bearer token from the field above isn't enough for those.
+  {/snippet}
 
-    {#if headers.length > 0}
-      <div class="flex flex-col gap-1">
-        {#each headers as row, i (row.id)}
-          {@const err = headerRowError(row)}
-          <div class="flex items-start gap-1">
-            <Input
-              id={i === 0 ? "mf-header-0-key" : undefined}
-              type="text"
-              bind:value={row.key}
-              placeholder="Header name, e.g. x-api-key"
-              autocomplete="off"
-              aria-invalid={err ? "true" : undefined}
-            />
-            <Input
-              type={showHeaderValues ? "text" : "password"}
-              bind:value={row.value}
-              placeholder="Value"
-              autocomplete="off"
-              aria-invalid={err ? "true" : undefined}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              onclick={() => removeHeaderRow(row.id)}
-              aria-label={`Remove header ${row.key || i + 1}`}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            </Button>
-          </div>
-          {#if err}
-            <Field.Error>{err}</Field.Error>
-          {/if}
-        {/each}
-      </div>
-    {/if}
-
-    <div class="flex items-center gap-2">
-      <Button variant="ghost" size="sm" onclick={addHeaderRow}>
-        <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
-        Add header
-      </Button>
-      {#if headers.length > 0}
-        <Button variant="ghost" size="sm" onclick={() => (showHeaderValues = !showHeaderValues)}>
-          {showHeaderValues ? "Hide values" : "Show values"}
-        </Button>
-      {/if}
-    </div>
-  </Field.Field>
+  <HeadersEditor
+    bind:rows={headers}
+    isReserved={isReservedHeader}
+    firstInputId="mf-header-0-key"
+    description={headersDescription}
+  />
 
   <Alert.Root class="bg-background">
     <Alert.Description>
@@ -715,40 +622,7 @@
     <Field.Error>{formError}</Field.Error>
   {/if}
 
-  {#if testOutcome}
-    <p class={mcpTestResultClass(testOutcome)}>{mcpTestResultMessage(testOutcome)}</p>
-    {#if mcpTestResultTools(testOutcome)}
-      <!-- TODO: clean-code - 0.55 - DRY: this "show N tools" toggle button plus the expandable, index-keyed tool list is copy-pasted verbatim from McpServerRow.svelte's matching list (down to the each_key_duplicate war-story comment) instead of a shared DiscoveredToolsList component. -->
-      {@const tools = mcpTestResultTools(testOutcome) ?? []}
-      <div class="flex">
-        <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
-          {toolsExpanded ? "Hide" : "Show"}
-          {tools.length} tool{tools.length === 1 ? "" : "s"}
-        </Button>
-      </div>
-      {#if toolsExpanded}
-        <ul class="flex list-disc flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
-          <!-- Keyed by index, not `tool.name`: this is a raw server-reported
-               list, un-deduplicated (unlike the sidepanel's merged tool list,
-               which `buildServerMergedTools` — src/domain/tools/merge.ts —
-               disambiguates). A real server can report two tools whose
-               `title ?? name` fallback collides (confirmed against GitHub's
-               MCP server, which crashed this exact `{#each}` with Svelte's
-               `each_key_duplicate` error before this fix) — index is always
-               unique for a wholesale-replaced, non-reorderable snapshot list
-               like this one. -->
-          {#each tools as tool, i (i)}
-            <li>
-              <code class="font-mono text-foreground">{tool.name}</code>{#if tool.description}<span
-                >
-                  — {tool.description}</span
-                >{/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {/if}
-  {/if}
+  <McpTestResult outcome={testOutcome} />
 
   <div class="flex flex-wrap items-center gap-2">
     <Button type="submit" disabled={saving}>

@@ -60,7 +60,7 @@
 
   let open = $state(false);
 
-  // TODO: clean-code - 0.3 - COUPLING: re-derives the same readOnly/untrustedContent/isServerTool booleans from a tool's annotations/origin as ApprovalCard.svelte instead of sharing one derivation — a change to what counts as "read-only" or "server tool" has to be mirrored in both.
+  // TODO: clean-code - 0.3 - COUPLING: re-derives the same readOnly/untrustedContent/isServerTool booleans from a tool's annotations/origin as AnnotationBadges.svelte (which ApprovalCard.svelte and ToolListItem.svelte now share) instead of joining that one derivation — a change to what counts as "read-only" or "server tool" has to be mirrored in both. Not folded in by card 81: this row derives from a transcript message's toolAnnotations/toolOrigin, not from a tool, and renders a different, smaller badge set.
   const readOnly = $derived(message.toolAnnotations?.readOnlyHint === true);
   const untrustedContent = $derived(message.toolAnnotations?.untrustedContentHint === true);
   const isServerTool = $derived(message.toolOrigin?.kind === "server");

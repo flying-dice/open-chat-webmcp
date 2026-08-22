@@ -21,9 +21,11 @@
 // different sentence below; that is copy, not duplication.
 //
 // Consumers: ProviderForm.svelte + ProviderRow.svelte (the provider half),
-// McpServerForm.svelte + McpServerRow.svelte (the MCP half). Each pair shares
-// these functions specifically so testing a draft and testing a saved row
-// never drift into inconsistent wording for the same underlying error kind.
+// and McpTestResult.svelte (the MCP half — the one component both
+// McpServerForm.svelte and McpServerRow.svelte render, since card 81). Each
+// half shares these functions specifically so testing a draft and testing a
+// saved row never drift into inconsistent wording for the same underlying
+// error kind.
 
 import type { McpTestOutcome } from "./mcpTestConnection";
 import type { TestOutcome } from "./testConnection";

@@ -9,7 +9,7 @@
   // identical so the two registries still read as the same kind of list.
   import type { McpServerConfig } from "../../domain/tools";
   import type { McpTestOutcome } from "../lib/mcpTestConnection";
-  import { mcpTestResultClass, mcpTestResultMessage, mcpTestResultTools } from "../lib/testResultDisplay";
+  import McpTestResult from "./McpTestResult.svelte";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { HugeiconsIcon } from "@hugeicons/svelte";
@@ -47,8 +47,6 @@
   }: Props = $props();
 
   const headerCount = $derived(Object.keys(server.headers ?? {}).length);
-
-  let toolsExpanded = $state(false);
 </script>
 
 <!-- TODO: clean-code - 0.4 - DRY: the move-up/move-down button pair, the outer row wrapper, the "Permission needed"/"Permission granted" badge pair, and the masked-header-count line are markup-identical to ProviderRow.svelte's row shell — a shared ReorderButtons/row-shell component would remove this. -->
@@ -144,33 +142,5 @@
     </div>
   </div>
 
-  {#if testOutcome}
-    <p class={mcpTestResultClass(testOutcome)}>{mcpTestResultMessage(testOutcome)}</p>
-    {#if mcpTestResultTools(testOutcome)}
-      <!-- TODO: clean-code - 0.55 - DRY: this "show N tools" toggle button plus the expandable, index-keyed tool list is copy-pasted verbatim from McpServerForm.svelte's matching list (down to the each_key_duplicate war-story comment) instead of a shared DiscoveredToolsList component. -->
-      {@const tools = mcpTestResultTools(testOutcome) ?? []}
-      <div class="flex">
-        <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
-          {toolsExpanded ? "Hide" : "Show"}
-          {tools.length} tool{tools.length === 1 ? "" : "s"}
-        </Button>
-      </div>
-      {#if toolsExpanded}
-        <ul class="flex list-disc flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
-          <!-- Keyed by index, not `tool.name` — see McpServerForm.svelte's
-               matching list for why: a raw, un-deduplicated server tool list
-               can have colliding display names (confirmed against GitHub's
-               real MCP server, which crashed this exact block otherwise). -->
-          {#each tools as tool, i (i)}
-            <li>
-              <code class="font-mono text-foreground">{tool.name}</code>{#if tool.description}<span
-                >
-                  — {tool.description}</span
-                >{/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {/if}
-  {/if}
+  <McpTestResult outcome={testOutcome} />
 </div>

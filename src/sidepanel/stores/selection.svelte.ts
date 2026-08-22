@@ -1,4 +1,4 @@
-// TODO: clean-code - 0.3 - SRP: combines provider-list loading, per-provider model-loading/capability resolution, and selection persistence with an unrelated picker open/close UI toggle (pickerOpen/openPicker/closePicker/togglePicker).
+// TODO: clean-code - 0.3 - SRP: combines provider-list loading, per-provider model-loading/capability resolution, and selection persistence with an unrelated picker open/close UI toggle (pickerOpen/openPicker/closePicker).
 // Provider + model selection for the side panel's picker (card 23, flattened
 // by card 51 per decisions/22-flat-model-picker.md, decisions/10-provider-registry-and-credential-storage.md,
 // decisions/11-provider-capability-detection.md).
@@ -492,12 +492,6 @@ export function openPicker(): void {
 /** Close the shared picker popover — ProviderPicker.svelte's click-outside/Escape/pick-a-model handlers call this. */
 export function closePicker(): void {
   pickerOpen = false;
-}
-
-// TODO: clean-code - 0.6 - DEAD: togglePicker has zero callers — ProviderPicker.svelte actually wires Popover.Root's onOpenChange straight to openPicker/closePicker instead; the doc comment below describes wiring that was never built.
-/** Toggle the shared picker popover — ProviderPicker.svelte's trigger chip calls this. */
-export function togglePicker(): void {
-  pickerOpen = !pickerOpen;
 }
 
 // ---------------------------------------------------------------------------

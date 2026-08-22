@@ -167,7 +167,6 @@ export function chatPreview(messages: readonly TranscriptEntry[]): string | unde
     : trimmed;
 }
 
-// TODO: clean-code - 0.6 - DEAD: summarizeChat has zero callers anywhere; the ChatSummary view it builds is instead assembled by hand in src/infra/chrome-storage/chat-store.ts (which calls chatPreview directly), duplicating this function's job with only the hand-rolled copy actually wired up.
 /** The `ChatSummary` view of a chat — what a history list shows, derived here so the index an adapter writes and the list a caller reads can never disagree. */
 export function summarizeChat(session: ChatSession): ChatSummary {
   return {

@@ -54,9 +54,9 @@
   import type { PendingApproval } from "../stores/approvals.svelte";
   import { approve, deny } from "../stores/approvals.svelte";
   import { originLabel } from "../lib/toolOrigin";
+  import AnnotationBadges from "./AnnotationBadges.svelte";
   import ToolArgs from "./ToolArgs.svelte";
   import * as Card from "$lib/components/ui/card";
-  import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Label } from "$lib/components/ui/label";
 
@@ -76,13 +76,8 @@
     denyButton?.focus();
   });
 
-  // TODO: clean-code - 0.55 - DRY: derives the same five-value annotation block (readOnly, untrustedContent, unannotated, isServerTool, destructive) and renders the same four-Badge conditional block as ToolListItem.svelte — a shared AnnotationBadges component would remove this.
   const tool = $derived(request.tool);
-  const readOnly = $derived(tool?.annotations?.readOnlyHint === true);
-  const untrustedContent = $derived(tool?.annotations?.untrustedContentHint === true);
-  const unannotated = $derived(!tool?.annotations || (!readOnly && !untrustedContent));
   const isServerTool = $derived(tool?.origin.kind === "server");
-  const destructive = $derived(tool?.mcpAnnotations?.destructiveHint === true);
 </script>
 
 <Card.Root
@@ -94,18 +89,7 @@
     <div class="flex items-center justify-between gap-2">
       <span class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Approval needed</span>
       <div class="flex flex-wrap justify-end gap-1">
-        {#if readOnly}
-          <Badge variant="outline">read-only</Badge>
-        {/if}
-        {#if untrustedContent}
-          <Badge variant="destructive">untrusted content</Badge>
-        {/if}
-        {#if destructive}
-          <Badge variant="destructive">server: destructive</Badge>
-        {/if}
-        {#if unannotated}
-          <Badge variant="outline" class="border-dashed text-muted-foreground">unannotated</Badge>
-        {/if}
+        <AnnotationBadges annotations={tool?.annotations} mcpAnnotations={tool?.mcpAnnotations} />
       </div>
     </div>
     <Card.Title class="font-mono text-base font-semibold break-words">{request.call.name}</Card.Title>
