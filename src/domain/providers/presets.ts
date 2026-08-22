@@ -30,8 +30,15 @@
 // correction here can be surfaced to (or applied for) anyone who added a
 // provider from this preset and never edited the field themselves.
 
-import type { ProviderType } from "../provider";
-import type { IconName } from "../icons";
+// Card 73 (decisions/29) moved this catalogue into the `providers` bounded
+// context and cut its last outward edge: `icon` used to be typed `IconName`
+// from src/lib/icons.ts, i.e. the domain depended on which glyphs the UI
+// happens to ship. It is now a plain icon KEY — a stable name this catalogue
+// chooses — and the UI resolves it against its own icon set
+// (src/lib/providerIcon.ts). Renaming or restyling a glyph is now a UI-only
+// change; adding a preset here needs no icon-set edit to typecheck.
+
+import type { ProviderType } from "./provider";
 
 export interface ProviderPreset {
   /** Stable; stored on `ProviderConfig.presetId` (registry.ts) when a provider is added from this preset. Never reuse an id for a different backend. */
@@ -61,8 +68,11 @@ export interface ProviderPreset {
    * whichever provider happens to be selected today. A deliberately generic
    * glyph, not that vendor's real mark — same trademark-avoidance rule as
    * `sparkle` in src/lib/icons.ts, just applied per-vendor instead of once.
+   *
+   * An opaque KEY, not a glyph: the UI maps it to something drawable
+   * (src/lib/providerIcon.ts) and falls back if it doesn't recognise one.
    */
-  icon: IconName;
+  icon: string;
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -196,20 +206,23 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
 ];
 
-/** Fallback for a provider with no matching preset — a hand-added "Custom (OpenAI-compatible)" provider, or a `presetId` that no longer matches this catalog. See {@link iconForProvider}. */
-const DEFAULT_PROVIDER_ICON: IconName = "smart_toy";
+/** Fallback for a provider with no matching preset — a hand-added "Custom (OpenAI-compatible)" provider, or a `presetId` that no longer matches this catalog. See {@link iconKeyForProvider}. */
+const DEFAULT_PROVIDER_ICON_KEY = "smart_toy";
 
 /**
- * The icon to show next to a provider's models (picker rows, transcript
+ * The icon KEY to show next to a provider's models (picker rows, transcript
  * header) — {@link getPreset}'s icon when `presetId` still matches a known
  * backend, else a type-appropriate fallback so an unrecognized provider
  * still reads as "local runtime" vs. "some OpenAI-compatible API" rather
  * than defaulting to one specific vendor's glyph.
+ *
+ * Returns a key, never a glyph: `iconForProvider` in src/lib/providerIcon.ts
+ * is the UI-layer resolver that turns it into something Icon.svelte can draw.
  */
-export function iconForProvider(provider: { type: ProviderType; presetId?: string }): IconName {
+export function iconKeyForProvider(provider: { type: ProviderType; presetId?: string }): string {
   const preset = getPreset(provider.presetId);
   if (preset) return preset.icon;
-  return provider.type === "ollama" ? "ollama" : DEFAULT_PROVIDER_ICON;
+  return provider.type === "ollama" ? "ollama" : DEFAULT_PROVIDER_ICON_KEY;
 }
 
 /** Look up a preset by its stored `ProviderConfig.presetId`. `undefined` for an id that doesn't (or no longer) matches any catalog entry — e.g. a since-removed preset, or absence meaning Custom (decisions/21: "no migration required, absence is a valid state"). Callers must treat that the same as "no preset" rather than erroring. */

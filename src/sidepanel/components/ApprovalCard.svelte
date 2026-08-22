@@ -53,7 +53,7 @@
    */
   import type { PendingApproval } from "../stores/approvals.svelte";
   import { approve, deny } from "../stores/approvals.svelte";
-  import { originLabel } from "../../lib/mcp/merge";
+  import { originLabel } from "../lib/toolOrigin";
   import ToolArgs from "./ToolArgs.svelte";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";

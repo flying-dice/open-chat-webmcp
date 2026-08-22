@@ -29,7 +29,7 @@
    */
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
-  import { originLabel } from "../../lib/mcp/merge";
+  import { originLabel } from "../lib/toolOrigin";
   import { formatDuration } from "../lib/duration";
   import ToolArgs from "./ToolArgs.svelte";
   import ToolArgValue from "./ToolArgValue.svelte";

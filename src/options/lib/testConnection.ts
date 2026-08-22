@@ -5,7 +5,7 @@
 // auth headers, wire quirks, and error classification are exercised for
 // real rather than approximated here.
 //
-// The point of this module: collapse nothing. `ProviderError` (src/lib/provider.ts)
+// The point of this module: collapse nothing. `ProviderError` (src/domain/providers/provider.ts)
 // already distinguishes auth failures, unreachable-or-CORS, "this endpoint
 // doesn't support model listing", and a few other kinds — each gets its own
 // outcome and its own plain-language fix below, instead of a single generic
@@ -22,7 +22,7 @@ export type TestOutcome =
       message: string;
       /**
        * Carried straight through from `ProviderError`'s `unreachable-or-cors`
-       * kind (src/lib/provider.ts) when the client supplied one — e.g.
+       * kind (src/domain/providers/provider.ts) when the client supplied one — e.g.
        * Ollama's copyable `OLLAMA_ORIGINS`/`launchctl setenv` fix
        * (src/lib/ollama.ts's `originRejectedError`). `undefined` when
        * there's no single command to hand back. UI built on this should

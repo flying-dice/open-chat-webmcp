@@ -64,12 +64,14 @@ import {
 } from "../../lib/providers/registry";
 import {
   describeProviderError,
+  isSelectable,
+  resolveCapabilities,
+  resolveCapability,
   type ChatProvider,
   type ModelCapabilities,
   type ProviderError,
   type ProviderModel,
-} from "../../lib/provider";
-import { isSelectable, resolveCapabilities, resolveCapability } from "../../lib/providers/capability";
+} from "../../domain/providers";
 import type { SelectionResolution } from "../../lib/session";
 import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
 
@@ -112,7 +114,7 @@ export type ModelsState =
   /**
    * The provider has no model-listing API (`ProviderError.kind === "not-supported"`,
    * e.g. some OpenAI-compatible hosts) — the picker falls back to letting the
-   * user type a model id, per `src/lib/provider.ts`'s `listModels` doc comment.
+   * user type a model id, per `src/domain/providers/provider.ts`'s `listModels` doc comment.
    */
   | { status: "not-supported"; message: string; manualEntry: ModelListEntry | undefined };
 

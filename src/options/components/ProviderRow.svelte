@@ -13,8 +13,7 @@
   // decisions/28's consequences).
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../lib/providers/registry";
-  import { getPreset } from "../../lib/providers/presets";
-  import type { ProviderModel } from "../../lib/provider";
+  import { getPreset, type ProviderModel } from "../../domain/providers";
   import type { TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
   import Markdown from "../../lib/components/Markdown.svelte";
@@ -49,7 +48,7 @@
     /**
      * This provider's tool-capable models (already filtered by the parent,
      * src/options/components/ProvidersSection.svelte, via the shared
-     * src/lib/providers/capability.ts — the same list the side panel's
+     * src/domain/providers/capability.ts — the same list the side panel's
      * picker would offer). Empty means blocked; see
      * `defaultModelBlockedReason` for why.
      */

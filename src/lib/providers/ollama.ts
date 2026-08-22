@@ -1,9 +1,9 @@
 // `ChatProvider` adapter for the raw Ollama REST client in src/lib/ollama.ts
 // — translates between Ollama's wire habits (NDJSON, no auth, no call ids)
-// and the shared vocabulary in src/lib/provider.ts
+// and the shared vocabulary in src/domain/providers/provider.ts
 // (decisions/09-provider-agnostic-chat-transport.md,
 // decisions/11-provider-capability-detection.md). Ollama is the one
-// adapting here, not the other way round — see src/lib/provider.ts's header
+// adapting here, not the other way round — see src/domain/providers/provider.ts's header
 // comment for why the interface is shaped the way it is.
 
 import type {
@@ -14,7 +14,7 @@ import type {
   ProviderModel,
   ProviderResult,
   ToolCall,
-} from "../provider";
+} from "../../domain/providers";
 import type { ProviderConfig } from "./registry";
 import {
   chat as ollamaChat,
@@ -133,7 +133,7 @@ export function createOllamaProvider(config: ProviderConfig): ChatProvider {
     },
 
     // Ollama's `ModelCapabilities` result is already the shared shape
-    // (src/lib/ollama.ts imports it from src/lib/provider.ts directly), so
+    // (src/lib/ollama.ts imports it from src/domain/providers/provider.ts directly), so
     // there is nothing to convert here beyond supplying the digest cache
     // key from `model.cacheKey`.
     getCapabilities(model, opts) {

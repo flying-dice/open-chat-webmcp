@@ -32,8 +32,8 @@
 // `Mcp-Session-Id` a server may hand back) is honored WITHIN one call's
 // handshake+operation, never carried across calls.
 //
-// Never-throw discipline (mirrors src/lib/provider.ts, and this module's own
-// src/lib/mcp/types.ts): every exported function returns an `McpResult`,
+// Never-throw discipline (mirrors src/domain/providers/provider.ts, and this module's own
+// src/domain/tools/types.ts): every exported function returns an `McpResult`,
 // never throws — including on a malformed/hostile server response.
 //
 // Per-server failure isolation (decisions/14: "must never stop the page's
@@ -44,7 +44,7 @@
 // server resolves to a `status: "error"` entry within its own budget rather
 // than rejecting the batch or blocking a faster server's result.
 //
-// This module intentionally does not import from src/lib/provider.ts,
+// This module intentionally does not import from src/domain/providers/provider.ts,
 // src/lib/protocol.ts, or src/lib/providers/**: those are owned by
 // concurrent work on this repo. `McpResult`/`McpError` in ./types.ts are a
 // deliberate parallel to `ProviderResult`/`ProviderError`, not a re-export.
@@ -62,7 +62,7 @@ import type {
   McpTool,
   McpToolContent,
   McpToolCallResult,
-} from "./types";
+} from "../../domain/tools";
 
 // ---------------------------------------------------------------------------
 // Protocol version

@@ -62,12 +62,13 @@
   import { Input } from "$lib/components/ui/input";
   import { cn } from "$lib/utils";
   import {
-    capabilityBadge,
     isSelectable,
     reasonForCapability,
-  } from "../../lib/providers/capability";
+    type ModelCapabilities,
+    type ProviderModel,
+  } from "../../domain/providers";
+  import { capabilityBadge } from "../lib/capabilityBadge";
   import type { ProviderConfig } from "../../lib/providers/registry";
-  import type { ModelCapabilities, ProviderModel } from "../../lib/provider";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders

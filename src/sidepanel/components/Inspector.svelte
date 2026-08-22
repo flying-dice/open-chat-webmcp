@@ -15,7 +15,7 @@
    * same two values, same labels, same default ("tools").
    */
   import type { SerializedTool } from "../../lib/protocol";
-  import type { MergedTool } from "../../lib/mcp/merge";
+  import type { MergedTool } from "../../domain/tools";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
   import ToolsPanel from "./ToolsPanel.svelte";
   import CallLogPanel from "./CallLogPanel.svelte";

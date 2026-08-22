@@ -1,7 +1,7 @@
 // Typed, UI-free REST client for a local Ollama server: model listing,
 // tool-capability detection, and streaming chat. This is the raw wire-level
 // client; src/lib/providers/ollama.ts wraps it to implement the shared
-// `ChatProvider` interface (src/lib/provider.ts,
+// `ChatProvider` interface (src/domain/providers/provider.ts,
 // decisions/09-provider-agnostic-chat-transport.md) that card 21 (OpenAI)
 // and cards 22/23 (registry UI, panel picker) build against. This module
 // stays Ollama-specific on purpose — its exported names (`OllamaModel`,
@@ -34,7 +34,7 @@ import type {
   ProviderError,
   ProviderHeader,
   ProviderResult,
-} from "./provider";
+} from "../domain/providers";
 
 // ---------------------------------------------------------------------------
 // Configuration (chrome.storage.local)

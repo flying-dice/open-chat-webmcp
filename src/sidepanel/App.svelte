@@ -37,7 +37,7 @@
   import { initMcpToolsSync } from "./services/mcpTools";
   import { runAgentTurn } from "./services/agentLoop";
   import { createProviderClient } from "../lib/providers/registry";
-  import { iconForProvider } from "../lib/providers/presets";
+  import { iconForProvider } from "../lib/providerIcon";
   import { flushAllSessions } from "../lib/session";
   import { selection } from "./stores/selection.svelte";
   import {

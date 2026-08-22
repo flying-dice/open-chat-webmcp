@@ -34,17 +34,15 @@ import { discoverAllServerTools, callServerTool } from "../../lib/mcp/client";
 import { listEnabledServers, type McpServerConfig } from "../../lib/mcp/registry";
 import { hasHostPermission } from "../../lib/mcp/permissions";
 import {
+  buildServerMergedTools,
+  combineWithPageTools,
   describeMcpError,
+  type MergedTool,
+  type MergedToolCallOutcome,
   type McpServerDiscovery,
   type McpToolCallResult,
   type McpToolContent,
-} from "../../lib/mcp/types";
-import {
-  buildServerMergedTools,
-  combineWithPageTools,
-  type MergedTool,
-  type MergedToolCallOutcome,
-} from "../../lib/mcp/merge";
+} from "../../domain/tools";
 import type { SerializedTool } from "../../lib/protocol";
 import { setServerTools } from "../stores/panel.svelte";
 

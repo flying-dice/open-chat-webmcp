@@ -86,18 +86,22 @@ import {
   type ChatProvider,
   type ProviderError,
   type ToolCall,
-} from "../../lib/provider";
+} from "../../domain/providers";
 import type { RuntimeCallToolRequest, RuntimeCallToolResponse } from "../../lib/protocol";
 import type { ChatSession, ToolCallMode } from "../../lib/session";
 import { getApprovalPolicy, getMcpApprovalPolicy } from "../../lib/settings";
 import { getToolsForTab } from "./activeTab";
 import { getMergedToolsForTab } from "./mcpTools";
 import {
-  originLabel,
   toSerializedTools,
   type MergedTool,
   type MergedToolCallOutcome,
-} from "../../lib/mcp/merge";
+} from "../../domain/tools";
+// The system prompt names each tool's origin in the SAME words the approval
+// card and the call log use (src/sidepanel/lib/toolOrigin.ts) — that
+// consistency is decisions/19 §6, so this deliberately reaches for the UI's
+// wording module rather than re-phrasing it here.
+import { originLabel } from "../lib/toolOrigin";
 import {
   addAssistantNote,
   addToolCall,
@@ -548,7 +552,7 @@ async function streamOneTurn(
       }
     }
   } catch (err) {
-    // Belt-and-braces: src/lib/provider.ts contracts every client to never
+    // Belt-and-braces: src/domain/providers/provider.ts contracts every client to never
     // throw from `chat()`, but a stream that violates that must not kill
     // the loop — treat it the same as a terminal error event.
     terminalError = {

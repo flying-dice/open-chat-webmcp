@@ -24,16 +24,19 @@
     type ProviderConfig,
     type ProviderSelection,
   } from "../../lib/providers/registry";
-  import { describeProviderError, type ChatProvider, type ModelCapabilities, type ProviderModel } from "../../lib/provider";
   import {
+    describeProviderError,
     isSelectable,
     reasonForCapability,
     resolveCapabilities,
     resolveCapability,
-  } from "../../lib/providers/capability";
+    type ChatProvider,
+    type ModelCapabilities,
+    type ProviderModel,
+    type ProviderPreset,
+  } from "../../domain/providers";
   import { hasHostPermission, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
-  import type { ProviderPreset } from "../../lib/providers/presets";
   import PresetPicker from "./PresetPicker.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderRow from "./ProviderRow.svelte";
@@ -52,7 +55,7 @@
    * Card 52: one provider's tool-capable model options for the "Set as
    * default" dropdown — loaded the same way the side panel's picker loads a
    * provider's model list (`client.listModels()` + `resolveCapabilities`,
-   * both shared via src/lib/providers/capability.ts), narrowed down to what
+   * both shared via src/domain/providers/capability.ts), narrowed down to what
    * a single dropdown needs rather than the panel's full grouped-list UI
    * (decisions/23's accepted "options page duplicates a small slice of the
    * side panel's per-provider model-loading shape").

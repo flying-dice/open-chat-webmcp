@@ -6,7 +6,7 @@
 // client and the `ChatProvider` adapter in one file — unlike Ollama's split
 // (src/lib/ollama.ts + src/lib/providers/ollama.ts), OpenAI's wire shapes
 // (roles, content, tool calls with an `id`) are already close enough to the
-// shared vocabulary in src/lib/provider.ts that there is no separate
+// shared vocabulary in src/domain/providers/provider.ts that there is no separate
 // "OpenAI-native" type family worth introducing.
 //
 // The two things that differ from Ollama's client and are the actual work
@@ -38,7 +38,7 @@ import type {
   ProviderModel,
   ProviderResult,
   ToolCall,
-} from "../provider";
+} from "../../domain/providers";
 import { registerProviderType, type ProviderConfig } from "./registry";
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ function extractErrorMessage(body: string | undefined): string | undefined {
  * then this client's own correctness-critical headers set on top — `Headers`
  * comparisons and `.set` are case-insensitive, so setting them last means
  * they always win regardless of what the user typed or how it's cased, the
- * same guarantee `reservedHeaderReason` (src/lib/provider.ts) describes at
+ * same guarantee `reservedHeaderReason` (src/domain/providers/provider.ts) describes at
  * edit time. This is defense in depth, not the primary enforcement — the
  * options UI (src/options/components/ProviderForm.svelte) is what refuses a
  * reserved header *visibly*, before it's ever saved.

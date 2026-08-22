@@ -34,8 +34,8 @@
    * state instead of a hand-rolled boolean + `{#if}`.
    */
   import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
-  import type { McpToolAnnotations } from "../../lib/mcp/types";
-  import { originLabel, type ToolOrigin } from "../../lib/mcp/merge";
+  import type { McpToolAnnotations, ToolOrigin } from "../../domain/tools";
+  import { originLabel } from "../lib/toolOrigin";
   import ToolSchema from "./ToolSchema.svelte";
   import * as Card from "$lib/components/ui/card";
   import * as Collapsible from "$lib/components/ui/collapsible";

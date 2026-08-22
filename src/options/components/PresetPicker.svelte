@@ -12,11 +12,11 @@
   // button — the whole tile is the click target, and a button is the only
   // element that gives that keyboard and screen-reader semantics for free.
   //
-  // NOTE for card 73: `PROVIDER_PRESETS` entries also carry an `icon`
-  // (`iconForProvider`, src/lib/providers/presets.ts) naming a glyph in
-  // src/lib/icons.ts. This picker has never rendered it and still doesn't,
-  // so nothing here depends on that presets→icons coupling card 73 removes.
-  import { PROVIDER_PRESETS, type ProviderPreset } from "../../lib/providers/presets";
+  // `PROVIDER_PRESETS` entries also carry an `icon`, which since card 73 is
+  // an opaque KEY the UI resolves (src/lib/providerIcon.ts) rather than an
+  // `IconName` the catalogue imported from src/lib/icons.ts. This picker has
+  // never rendered it and still doesn't, so that change was invisible here.
+  import { PROVIDER_PRESETS, type ProviderPreset } from "../../domain/providers";
   import * as Alert from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
 

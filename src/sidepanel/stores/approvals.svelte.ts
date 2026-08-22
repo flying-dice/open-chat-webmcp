@@ -44,8 +44,8 @@ import {
   type McpApprovalPolicy,
 } from "../../lib/settings";
 import { panel } from "./panel.svelte";
-import type { ToolCall } from "../../lib/provider";
-import type { MergedTool } from "../../lib/mcp/merge";
+import type { ToolCall } from "../../domain/providers";
+import type { MergedTool } from "../../domain/tools";
 
 /** Which skip-list a pending request's "don't ask again" checkbox would write to, if checked — see the module doc comment for why these are two distinct keyspaces that must never mix. `undefined` when no key could be formed (no page origin known — shouldn't happen in practice, a tool call implies an active tab). */
 export type SkipTarget = { kind: "page"; key: string } | { kind: "server"; key: string } | undefined;

@@ -62,8 +62,8 @@
 // `pagehide` listener; before that card this comment described intent that
 // had never actually been connected to anything.
 
-import type { ChatMessage } from "./provider";
-import type { ToolOrigin } from "./mcp/merge";
+import type { ChatMessage } from "../domain/providers";
+import type { ToolOrigin } from "../domain/tools";
 import {
   resolveSelection,
   type ProviderSelection,

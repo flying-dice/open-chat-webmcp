@@ -139,7 +139,7 @@
 // exists for exactly one sanctioned exception (agentLoop.ts's one-shot
 // capture at the top of a turn — see its own doc comment below).
 
-import type { ChatMessage, ToolCall } from "../../lib/provider";
+import type { ChatMessage, ToolCall } from "../../domain/providers";
 import type { ProviderSelection } from "../../lib/providers/registry";
 import {
   completeToolCall,
@@ -154,8 +154,7 @@ import {
   type ToolCallMode,
 } from "../../lib/session";
 import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
-import type { McpToolAnnotations } from "../../lib/mcp/types";
-import type { MergedTool, ToolOrigin } from "../../lib/mcp/merge";
+import type { McpToolAnnotations, MergedTool, ToolOrigin } from "../../domain/tools";
 
 export type MessageRole = "user" | "assistant" | "tool";
 

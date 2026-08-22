@@ -7,9 +7,9 @@
    *
    * The `name`-based prop API is unchanged from the pre-migration version
    * on purpose: Transcript.svelte, ActivityIndicator.svelte and
-   * src/lib/providers/presets.ts all pass an `IconName` through here (or
-   * through IconButton) and are out of this card's scope, so this stayed a
-   * drop-in replacement rather than a new API every caller has to adopt.
+   * src/lib/providerIcon.ts all pass an `IconName` through here (or through
+   * IconButton) and are out of this card's scope, so this stayed a drop-in
+   * replacement rather than a new API every caller has to adopt.
    *
    * Hugeicons render with `fill: none` + `stroke: currentColor` (outline
    * icons); the two custom paths are solid marks (`fill: currentColor`) —

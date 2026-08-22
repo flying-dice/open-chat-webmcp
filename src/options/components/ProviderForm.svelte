@@ -26,9 +26,13 @@
   // toggle just lives in an `InputGroup` addon instead of a sibling button.
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../lib/providers/registry";
-  import { reservedHeaderReason, type ProviderType } from "../../lib/provider";
+  import {
+    getPreset,
+    reservedHeaderReason,
+    type ProviderPreset,
+    type ProviderType,
+  } from "../../domain/providers";
   import { DEFAULT_OPENAI_BASE_URL } from "../../lib/providers/openai";
-  import { getPreset, type ProviderPreset } from "../../lib/providers/presets";
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";

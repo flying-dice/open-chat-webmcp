@@ -114,5 +114,16 @@ must run in a bare Node test with zero mocks of platform APIs.
 `src/lib/components/ui/` (generated shadcn-svelte source) is vendored UI
 kit, not our architecture — exempt from these rules, never imports domain.
 
+## The lint
+
+`npm run guard:boundaries` is the enforcement: `.dependency-cruiser.cjs`
+(direction, cross-surface, barrel-only context edges — `.ts` and `.svelte`
+alike) plus `scripts/guard-boundaries.mjs` for the platform GLOBALS
+(`chrome.*`, `fetch`, `document`) that are not imports and so are invisible
+to any import lint. Run it before you claim a move is done. Rules that are
+not yet satisfiable — `src/lib` still holds infra pending cards 74-79 — are
+written out and commented in that config, each naming the card that turns it
+on; uncomment there rather than rewriting.
+
 When a change genuinely needs to break one of these rules, that's a
 decision record (`decisions/`), not a drive-by.

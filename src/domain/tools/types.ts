@@ -2,12 +2,12 @@
 // This is the file cards 38 (merging server tools into the agent loop) and 39
 // (management UI) code against, alongside client.ts (the transport) and
 // registry.ts (config CRUD). Deliberately does not import anything from
-// src/lib/provider.ts or src/lib/protocol.ts: those files are owned by
+// src/domain/providers/provider.ts or src/lib/protocol.ts: those files are owned by
 // concurrent work on this repo (see the card), so the shapes below are a
 // parallel, MCP-specific vocabulary rather than a re-export or an extension
 // of those files. Where the shapes are conceptually similar (`McpResult` /
 // `ProviderResult`, `McpError` / `ProviderError`), that's a deliberate
-// mirror of src/lib/provider.ts's never-throw discipline, not a shared type.
+// mirror of src/domain/providers/provider.ts's never-throw discipline, not a shared type.
 //
 // Wire format target: MCP protocol version "2025-06-18" (the current spec at
 // https://modelcontextprotocol.io/specification/2025-06-18/), with the
@@ -15,7 +15,7 @@
 // negotiates down to — see SUPPORTED_PROTOCOL_VERSIONS in client.ts.
 
 // ---------------------------------------------------------------------------
-// Never-throw result plumbing (mirrors src/lib/provider.ts's ProviderResult/
+// Never-throw result plumbing (mirrors src/domain/providers/provider.ts's ProviderResult/
 // ProviderError shape and rationale)
 // ---------------------------------------------------------------------------
 

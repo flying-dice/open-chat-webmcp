@@ -74,7 +74,7 @@
     notices?: Snippet;
     /** Label for the model that produced the replies, shown in each assistant turn's header row. `undefined` when nothing is selected yet. */
     modelLabel?: string;
-    /** Icon for the provider that produced the replies (src/lib/providers/presets.ts's `iconForProvider`), shown next to `modelLabel`. Falls back to `sparkle` when nothing is resolved yet. */
+    /** Icon for the provider that produced the replies (src/lib/providerIcon.ts's `iconForProvider`, resolving the icon KEY src/domain/providers' preset catalogue names), shown next to `modelLabel`. Falls back to `sparkle` when nothing is resolved yet. */
     modelIcon?: IconName;
   }
 

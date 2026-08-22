@@ -15,7 +15,7 @@
   //
   // Reserved-header validation reuses `validateServerHeaders`
   // (src/lib/mcp/registry.ts) — the MCP-specific version of
-  // ProviderForm.svelte's `reservedHeaderReason` (src/lib/provider.ts, off
+  // ProviderForm.svelte's `reservedHeaderReason` (src/domain/providers/provider.ts, off
   // limits to this card) — rather than re-deriving the same rule a third
   // time.
   import { untrack } from "svelte";
@@ -32,7 +32,7 @@
     runAuthorizationFlow,
     type McpAuthorizationServerInfo,
   } from "../../lib/mcp/oauth";
-  import { describeMcpError } from "../../lib/mcp/types";
+  import { describeMcpError } from "../../domain/tools";
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../../lib/permissions";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
   import { testResultClass, testResultMessage, testResultTools } from "../lib/mcpTestResultDisplay";
@@ -790,7 +790,7 @@
         <ul class="flex list-disc flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
           <!-- Keyed by index, not `tool.name`: this is a raw server-reported
                list, un-deduplicated (unlike the sidepanel's merged tool list,
-               which `buildServerMergedTools` — src/lib/mcp/merge.ts —
+               which `buildServerMergedTools` — src/domain/tools/merge.ts —
                disambiguates). A real server can report two tools whose
                `title ?? name` fallback collides (confirmed against GitHub's
                MCP server, which crashed this exact `{#each}` with Svelte's

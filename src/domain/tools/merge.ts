@@ -30,14 +30,24 @@
 //      are actually built (this module stays free of chrome.* APIs so it's
 //      plain, synchronous, and easy to unit-reason-about).
 //
-// Deliberately independent of src/lib/provider.ts (mirrors client.ts's own
-// "concurrent work" note) except for importing `ToolAnnotations` from
-// src/lib/protocol.ts, which this module treats as a stable, narrow
-// vocabulary type (two optional booleans) rather than a live dependency on
-// that file's own evolution.
+// Deliberately independent of src/domain/providers (mirrors client.ts's own
+// "concurrent work" note) except for `ToolAnnotations`/`SerializedTool` from
+// ./tool.ts, which this module treats as a stable, narrow vocabulary rather
+// than a live dependency on any one carrier's evolution.
+//
+// Card 73 moved this module out of src/lib/mcp into the `tools` bounded
+// context and cut its two outward edges on the way (decisions/29):
+//   - `originLabel` (a user-facing STRING) is presentation and now lives in
+//     src/sidepanel/lib/toolOrigin.ts; this module returns the `ToolOrigin`
+//     code and the UI does the wording.
+//   - `McpServerConfig` came from src/lib/mcp/registry.ts, a `chrome.storage`
+//     repository — an inward edge from domain to infrastructure. Everything
+//     here ever reads off a server config is `{id, name}`, so the domain now
+//     names that minimum itself ({@link ToolServerIdentity}) and stays
+//     generic over whatever richer config the adapter actually hands its
+//     executor.
 
-import type { ToolAnnotations, SerializedTool } from "../protocol";
-import type { McpServerConfig } from "./registry";
+import type { SerializedTool, ToolAnnotations } from "./tool";
 import type { McpServerDiscovery, McpToolAnnotations } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -49,9 +59,17 @@ export type ToolOrigin =
   | { kind: "page" }
   | { kind: "server"; serverId: string; serverName: string };
 
-/** Short label for `origin`, safe to render anywhere a tool is named — "this page" or the server's own display name. Never abbreviates or hides the server name: decisions/19 §6 is a correctness requirement, not decoration. */
-export function originLabel(origin: ToolOrigin): string {
-  return origin.kind === "page" ? "this page" : origin.serverName;
+/**
+ * The only thing the merge algebra needs to know about a connected MCP
+ * server: its stable id (for slug assignment and `ToolOrigin`) and its
+ * display name (for slugging and, downstream, for naming where a tool runs).
+ * `McpServerConfig` (the stored, credential-carrying shape in the infra
+ * registry) is structurally assignable to this, so callers pass their real
+ * config and the domain never sees the URL, transport, auth, or headers.
+ */
+export interface ToolServerIdentity {
+  id: string;
+  name: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,8 +206,8 @@ export type PageToolExecutor = (
 ) => Promise<MergedToolCallOutcome>;
 
 /** Invokes one server tool by (config, toolName) — bound in src/sidepanel/services/mcpTools.ts, which wraps client.ts's `callServerTool` with the permission check and error-shape translation decisions/19 §4/§6 require. Never throws. */
-export type ServerToolExecutor = (
-  config: McpServerConfig,
+export type ServerToolExecutor<TServer extends ToolServerIdentity = ToolServerIdentity> = (
+  config: TServer,
   toolName: string,
   args: Record<string, unknown>,
   opts: { signal?: AbortSignal },
@@ -211,9 +229,9 @@ export type ServerToolExecutor = (
  * whoever reads the discovery list directly (e.g. the options page's
  * connection test, or a future status readout), not this merge step.
  */
-export function buildServerMergedTools(
-  entries: readonly { config: McpServerConfig; discovery: McpServerDiscovery }[],
-  execute: ServerToolExecutor,
+export function buildServerMergedTools<TServer extends ToolServerIdentity>(
+  entries: readonly { config: TServer; discovery: McpServerDiscovery }[],
+  execute: ServerToolExecutor<TServer>,
 ): MergedTool[] {
   const slugs = assignServerSlugs(entries.map((e) => ({ id: e.config.id, name: e.config.name })));
   const used = new Set<string>();

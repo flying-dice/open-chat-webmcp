@@ -18,7 +18,13 @@
 // by `ProviderError` should widen that union in an additive change, never
 // throw a bespoke error to route around it.
 
-import type { SerializedTool } from "./protocol";
+// Card 73 (decisions/29) moved this file from src/lib/provider.ts into the
+// `providers` bounded context. Its one cross-context dependency —
+// `SerializedTool`, the shape `chat()` takes tool definitions in — now comes
+// from the `tools` context's BARREL rather than from src/lib/protocol.ts,
+// the `chrome.runtime` messaging adapter that used to declare it. Contexts
+// plug together through barrels, never by reaching into each other's files.
+import type { SerializedTool } from "../tools";
 
 // ---------------------------------------------------------------------------
 // Identity

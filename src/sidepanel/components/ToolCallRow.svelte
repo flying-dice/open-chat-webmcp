@@ -41,7 +41,7 @@
    * carve-out.
    */
   import type { PanelMessage } from "../stores/panel.svelte";
-  import { originLabel } from "../../lib/mcp/merge";
+  import { originLabel } from "../lib/toolOrigin";
   import { panel } from "../stores/panel.svelte";
   import { formatDuration } from "../lib/duration";
   import { cn } from "$lib/utils";

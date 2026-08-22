@@ -58,7 +58,7 @@
 
 import { updateServer } from "./registry";
 import type { McpOAuthAuth, McpServerConfig } from "./registry";
-import type { McpError, McpResult } from "./types";
+import type { McpError, McpResult } from "../../domain/tools";
 
 // ---------------------------------------------------------------------------
 // Small internal utilities

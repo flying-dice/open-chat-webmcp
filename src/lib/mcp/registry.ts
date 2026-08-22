@@ -26,7 +26,7 @@
 // that plainly next to the token/header fields is card 39's (management UI)
 // job, not this module's.
 
-import type { McpError } from "./types";
+import type { McpError } from "../../domain/tools";
 
 // ---------------------------------------------------------------------------
 // Config shape

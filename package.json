@@ -8,6 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "guard": "npm run guard:boundaries && npm run guard:clean-code",
+    "guard:boundaries": "depcruise src --config .dependency-cruiser.cjs && node scripts/guard-boundaries.mjs",
+    "guard:clean-code": "node scripts/guard-clean-code.mjs",
     "demo": "vite --config demo/vite.config.ts",
     "launch": "node scripts/launch-chrome.mjs",
     "verify": "node verify/run.mjs"
@@ -21,6 +24,7 @@
     "@tsconfig/svelte": "^5.0.8",
     "@types/chrome": "^0.2.6",
     "@types/node": "^24.13.3",
+    "dependency-cruiser": "^18.2.0",
     "playwright": "^1.62.1",
     "shadcn-svelte": "^1.5.0",
     "svelte": "^5.56.8",

@@ -11,7 +11,7 @@
 // trip.
 //
 // The point of this module, per the card: collapse nothing. `McpError`
-// (src/lib/mcp/types.ts) already distinguishes unreachable, timeout, auth,
+// (src/domain/tools/types.ts) already distinguishes unreachable, timeout, auth,
 // "not an MCP endpoint", protocol mismatch, an RPC-level error, and a
 // malformed response — every one of those gets its own outcome kind below,
 // carried straight through with the client's own message, rather than one
@@ -20,7 +20,7 @@
 
 import { discoverAllServerTools, type McpCallOptions } from "../../lib/mcp/client";
 import type { McpServerConfig } from "../../lib/mcp/registry";
-import type { McpConnectionInfo, McpTool } from "../../lib/mcp/types";
+import type { McpConnectionInfo, McpTool } from "../../domain/tools";
 
 export type McpTestOutcome =
   | { kind: "success"; connection: McpConnectionInfo; tools: McpTool[] }
@@ -71,7 +71,7 @@ export async function testMcpServerConnection(
     case "invalid-response":
       return { kind: "invalid-response", message: error.message };
     case "permission":
-      // Card 38 added this `McpError` kind (src/lib/mcp/types.ts) for its
+      // Card 38 added this `McpError` kind (src/domain/tools/types.ts) for its
       // own out-of-band permission check (decisions/19 §4) — client.ts
       // itself never produces it, so this arm is unreachable from a real
       // `discoverAllServerTools` call today. Handled anyway so the switch

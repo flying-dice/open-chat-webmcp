@@ -23,7 +23,7 @@
    */
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
-  import { originLabel } from "../../lib/mcp/merge";
+  import { originLabel } from "../lib/toolOrigin";
   import type { TurnPhase } from "../stores/panel.svelte";
   import type { IconName } from "../../lib/icons";
   import { formatDuration } from "../lib/duration";

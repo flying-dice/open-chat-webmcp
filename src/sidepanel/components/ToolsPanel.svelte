@@ -30,7 +30,7 @@
    * render through shadcn's Empty component now, same copy as before.
    */
   import type { SerializedTool } from "../../lib/protocol";
-  import type { MergedTool } from "../../lib/mcp/merge";
+  import type { MergedTool } from "../../domain/tools";
   import ToolListItem from "./ToolListItem.svelte";
   import Icon from "./Icon.svelte";
   import * as Empty from "$lib/components/ui/empty";

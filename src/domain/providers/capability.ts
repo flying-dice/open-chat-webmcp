@@ -12,10 +12,20 @@
 //
 // Nothing here talks to chrome.storage or knows about Svelte state — it's
 // pure functions over the `ChatProvider`/`ModelCapabilities` vocabulary in
-// src/lib/provider.ts, so either surface can call it synchronously or from
-// an async load path however fits its own state shape.
+// ./provider.ts, so either surface can call it synchronously or from an
+// async load path however fits its own state shape.
+//
+// Card 73 moved this module into the `providers` bounded context and left
+// its one presentational export behind: `capabilityBadge` (a glyph + a
+// label) is wording, not policy, and now lives in
+// src/sidepanel/lib/capabilityBadge.ts. What stays here answers questions —
+// "what is this model's capability", "is it selectable", "why not" — in the
+// domain's own `ToolCapabilityStatus` vocabulary. `reasonForCapability` is
+// the deliberate exception: its strings are the provider's own
+// `capability.detail` text plus a fallback sentence, and decisions/11 makes
+// that exact wording a cross-surface contract.
 
-import { describeProviderError, type ChatProvider, type ModelCapabilities, type ProviderModel, type ToolCapabilityStatus } from "../provider";
+import { describeProviderError, type ChatProvider, type ModelCapabilities, type ProviderModel } from "./provider";
 
 /**
  * Resolve one model's capability through `client.getCapabilities`, folding a
@@ -64,18 +74,6 @@ export async function resolveCapabilities(
  */
 export function isSelectable(capability: ModelCapabilities | undefined): boolean {
   return capability?.status === "tool-capable";
-}
-
-/** Compact badge (icon glyph + label) for a capability status — shared verbatim so no surface built on this drifts on wording. */
-export function capabilityBadge(status: ToolCapabilityStatus): { icon: string; label: string } {
-  switch (status) {
-    case "no-tools":
-      return { icon: "⊘", label: "No tools" };
-    case "unknown":
-      return { icon: "?", label: "Unverified" };
-    case "tool-capable":
-      return { icon: "✓", label: "Tool-capable" };
-  }
 }
 
 /**

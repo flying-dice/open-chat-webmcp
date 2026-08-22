@@ -21,7 +21,7 @@
 // the options UI's (card 22) job to state plainly next to the API key field,
 // not this module's.
 
-import type { ChatProvider, ProviderHeader, ProviderType } from "../provider";
+import type { ChatProvider, ProviderHeader, ProviderType } from "../../domain/providers";
 import { createOllamaProvider } from "./ollama";
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ export interface ProviderConfig {
   /** Custom request headers sent on every call (decision 15). Values are credentials — see {@link ProviderHeader}. Empty/absent means none configured. */
   headers?: ProviderHeader[];
   /**
-   * The `ProviderPreset.id` (src/lib/providers/presets.ts) this provider was
+   * The `ProviderPreset.id` (src/domain/providers/presets.ts) this provider was
    * added from, if any (decisions/21-provider-presets.md). OPTIONAL, and
    * absence is a valid state, not a defect: every provider stored before
    * this card, and every "Custom (OpenAI-compatible)" add, has no
