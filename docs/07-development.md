@@ -119,6 +119,11 @@ Two details worth knowing:
 | `npm run verify` | the Chrome-for-Testing harness. `-- --check <name>` runs one |
 | `npm run verify:smoke` | the options-page form smoke (no model needed) |
 | `npm run verify:smoke:live` | the live end-to-end turn against a local Ollama |
+| `npm run verify:smoke:history` | History via the real UI: open a chat, delete another, reach empty state (seeded, no model) |
+| `npm run verify:smoke:sharing` | the sharing gate + selection chip through the real UI (no model) |
+| `npm run verify:smoke:inspector` | Inspector origin badges after a real MCP discovery round trip against a tiny stub server (no model) |
+| `npm run verify:smoke:approval` | the approval flow — approve/deny/skip-for-session — through the real ApprovalCard, against a local Ollama |
+| `npm run verify:smoke:turn-control` | stop mid-turn and tab-switch mid-turn (card 77's guarantee), against a local Ollama |
 | `npm run compile:i18n` | Paraglide codegen (also runs on `postinstall`) |
 
 ## Running one test
@@ -164,10 +169,24 @@ not a faster gate.
 | Screenshot matrix | same run, best-effort | No: reported `SKIP` (naming the missing shot) rather than failing |
 | Options-form smoke | `npm run verify:smoke` | No — slower, UI-driven, needs no model |
 | Live turn smoke | `npm run verify:smoke:live` | No — needs a local Ollama with a tool-capable model; exits 0 when Ollama isn't reachable |
+| History scenario | `npm run verify:smoke:history` | No — UI-driven, needs no model |
+| Sharing-gate scenario | `npm run verify:smoke:sharing` | No — UI-driven, needs no model |
+| Inspector scenario | `npm run verify:smoke:inspector` | No — UI-driven, spins up its own tiny MCP stub server, needs no model |
+| Approval-flow scenario | `npm run verify:smoke:approval` | No — needs a local Ollama with a tool-capable model; exits 0 when Ollama isn't reachable |
+| Turn-control scenario | `npm run verify:smoke:turn-control` | No — needs a local Ollama with a tool-capable model; exits 0 when Ollama isn't reachable |
 
-The two smokes are deliberately **not** wired into `npm run verify`, `npm run
-guard` or CI: one depends on a model being pulled locally, and neither is
-something a required gate may assume.
+None of the smokes above are wired into `npm run verify`, `npm run guard` or
+CI: two depend on a model being pulled locally, all of them are slower and
+UI-driven than a required gate should be, and — per card 112's own findings —
+even the no-model ones drive a real, sometimes-contended browser and are
+better read as regression scripts a human runs deliberately than as a gate
+that has to be green on every push. Card 112 (boards/project-backlog/112-verify-scenario-pack.md)
+covers the flows a human would otherwise regression-test by hand: the
+approval card's approve/deny/skip-for-session, stop-mid-turn and tab-switch-
+mid-turn (card 77's "a turn belongs to a chat, not to whichever tab is
+visible" guarantee), History's open/delete/empty-state, and the sharing gate
++ selection chip (card 119) end to end. Its own journal has the flake
+posture and run evidence for each.
 
 ## The guard suite
 

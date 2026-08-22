@@ -27,58 +27,19 @@ import { fileURLToPath } from "node:url";
 import { mkdirSync } from "node:fs";
 import { buildExtension } from "../lib/build.mjs";
 import { startDemoServer, stopDemoServer, DEMO_INDEX_URL } from "../lib/demoServer.mjs";
-import { launchExtension, sidepanelUrl } from "../lib/browser.mjs";
+import { launchExtension } from "../lib/browser.mjs";
 import { createReport } from "../lib/report.mjs";
 import { assert } from "../lib/assert.mjs";
+import {
+  OLLAMA_ORIGIN,
+  pickToolCapableModel,
+  writeLiveProviderStorage,
+  reloadIntoSeededWorld,
+  confirmModelSelection,
+} from "../lib/liveOllama.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const SCREENSHOT_DIR = path.join(ROOT, "verify", "output", "screenshots");
-const OLLAMA_ORIGIN = "http://localhost:11434";
-
-/** Picks the first model Ollama reports with `"tools"` in its capabilities — the same signal src/infra/ollama/client.ts's `getCapabilities` (POST /api/show) uses, read here off the cheaper /api/tags listing instead. */
-async function pickToolCapableModel() {
-  let res;
-  try {
-    res = await fetch(`${OLLAMA_ORIGIN}/api/tags`, { signal: AbortSignal.timeout(5000) });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-  const body = await res.json();
-  const models = Array.isArray(body?.models) ? body.models : [];
-  const withTools = models.find(
-    (m) => Array.isArray(m.capabilities) && m.capabilities.includes("tools"),
-  );
-  return withTools ? (withTools.model ?? withTools.name) : null;
-}
-
-/**
- * Writes the one seeded provider straight into `chrome.storage.sync` from an
- * extension-origin page — same "navigate once, write, reload into the
- * seeded world" two-step verify/checks/screenshots.mjs uses, since storage
- * writes are async and must complete before the app's first mount reads
- * them. No MCP servers, no chat history: a genuinely fresh install pointed
- * at one real provider.
- */
-async function seedLiveProvider(page, extensionId, { providerId, providerName, model }) {
-  await page.goto(sidepanelUrl(extensionId));
-  await page.evaluate(
-    async ({ provider, selection }) => {
-      await chrome.storage.sync.set({
-        "providers:list": [provider],
-        "providers:default": selection,
-        "settings:approvalPolicy": "default",
-        "settings:mcpApprovalPolicy": "trust-read-only",
-      });
-    },
-    {
-      provider: { id: providerId, name: providerName, baseUrl: OLLAMA_ORIGIN, type: "ollama" },
-      selection: { providerId, model },
-    },
-  );
-  await page.goto(sidepanelUrl(extensionId));
-  await page.waitForLoadState("domcontentloaded");
-}
 
 async function main() {
   const report = createReport();
@@ -114,17 +75,20 @@ async function main() {
     const providerName = "Ollama (live smoke)";
 
     const panel = await context.newPage();
-    await seedLiveProvider(panel, extensionId, { providerId, providerName, model });
+    await writeLiveProviderStorage(panel, extensionId, { providerId, providerName, model });
 
-    // Opened AFTER the panel, so it becomes the active tab in this window —
-    // the same tab-activation signal a real user switching tabs sends, and
-    // what src/infra/chrome-runtime/tab-sync.ts's chrome.tabs.onActivated
-    // listener reacts to.
+    // Opened BEFORE the panel's reload — card 112 found that reloading the
+    // panel's own tab and only THEN opening a second tab races
+    // src/infra/chrome-runtime/tab-sync.ts into mis-tracking the newly
+    // active tab as restricted (see reloadIntoSeededWorld's own comment,
+    // verify/lib/liveOllama.mjs). Opening every other tab first and
+    // reloading the panel last avoids it.
     const demoPage = await context.newPage();
     await demoPage.goto(DEMO_INDEX_URL);
     await demoPage.waitForFunction(() => document.getElementById("status")?.dataset.kind === "ok", {
       timeout: 10000,
     });
+    await reloadIntoSeededWorld(panel, extensionId);
 
     await report.run(
       "Real side panel picks up the active demo tab and its page tools",
@@ -148,22 +112,8 @@ async function main() {
         // (`needsConfirmation`) until a real click through the picker marks
         // it explicit — the composer stays blocked until then, exactly as
         // it would for a first-time user. Drives the actual UI, not a
-        // storage shortcut.
-        const trigger = panel.locator(".picker__trigger");
-        await trigger.waitFor({ state: "visible", timeout: 15000 });
-        await trigger.click();
-        // Scoped to the popover's own [aria-label="Choose a model"] content,
-        // not the whole page — the trigger chip ITSELF already shows text
-        // matching `model` ("Confirm Ollama (live smoke) · <model>"), so an
-        // unscoped text search could match and click the trigger again
-        // instead of a row inside the open popover.
-        const popover = panel.locator('[aria-label="Choose a model"]');
-        await popover.waitFor({ state: "visible", timeout: 20000 });
-        const modelOption = popover.getByText(model, { exact: false }).first();
-        await modelOption.waitFor({ state: "visible", timeout: 20000 });
-        await modelOption.click();
-        const textarea = panel.getByRole("textbox", { name: "Message" });
-        await textarea.waitFor({ state: "visible", timeout: 10000 });
+        // storage shortcut. (verify/lib/liveOllama.mjs, card 112.)
+        await confirmModelSelection(panel, model);
         return { confirmed: true };
       },
     );
