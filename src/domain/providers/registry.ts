@@ -11,9 +11,19 @@
 // credentials — which it states by typing them, and which the adapter
 // enforces by routing them.
 //
-// Every port method rejects with `StorageError` (src/domain/storage) and
-// nothing else.
+// Every port method returns `Result<T, StorageError>` (../result,
+// ../storage) — card 92, decisions/34-errors-as-values.md. So do
+// {@link resolveProvider} and {@link resolveSelection}: they are domain
+// rules OVER the port, and a rule that reads through a fallible port is
+// itself fallible. Note what they do NOT fold into the error side — a
+// provider that has been deleted stays a `"dangling"` STATUS, because the
+// caller renders something different for it (decisions/10's
+// "pick a replacement provider" prompt). "The store could not be read" and
+// "the store says it is gone" are different answers and stay different types.
 
+import type { Result } from "../result";
+import type { StorageError } from "../storage";
+import { fail, ok } from "../result";
 import type { ProviderHeader, ProviderType } from "./provider";
 
 /**
@@ -86,30 +96,30 @@ export type SelectionResolution =
  */
 export interface ProviderRegistry {
   /** Every registered provider, in display order, credentials merged in. */
-  listProviders(): Promise<ProviderConfig[]>;
+  listProviders(): Promise<Result<ProviderConfig[], StorageError>>;
 
   /** One provider by id, credentials merged in. `undefined` if `id` isn't registered — see {@link resolveProvider} for the "was this deleted" case a selection needs. */
-  getProvider(id: string): Promise<ProviderConfig | undefined>;
+  getProvider(id: string): Promise<Result<ProviderConfig | undefined, StorageError>>;
 
   /** Register a new provider; assigns and returns its `id`. */
-  addProvider(input: Omit<ProviderConfig, "id">): Promise<ProviderConfig>;
+  addProvider(input: Omit<ProviderConfig, "id">): Promise<Result<ProviderConfig, StorageError>>;
 
   /** Patch an existing provider. An explicit `undefined`/empty `apiKey`/`headers` CLEARS that credential. Returns the merged config, or `undefined` if `id` isn't registered. */
   updateProvider(
     id: string,
     patch: Partial<Omit<ProviderConfig, "id">>,
-  ): Promise<ProviderConfig | undefined>;
+  ): Promise<Result<ProviderConfig | undefined, StorageError>>;
 
   /** Remove a provider and its credentials. Also clears it as the default selection if it was set. */
-  removeProvider(id: string): Promise<void>;
+  removeProvider(id: string): Promise<Result<void, StorageError>>;
 
   /** Reorder to match `orderedIds`. Any id it omits is DROPPED — reordering is not a way to delete, so pass every current id back. */
-  reorderProviders(orderedIds: string[]): Promise<void>;
+  reorderProviders(orderedIds: string[]): Promise<Result<void, StorageError>>;
 
   /** The user's default provider + model, if one has been set (decisions/10: "exactly one active provider + active model pair is tracked as the default"). */
-  getDefaultSelection(): Promise<ProviderSelection | undefined>;
+  getDefaultSelection(): Promise<Result<ProviderSelection | undefined, StorageError>>;
 
-  setDefaultSelection(selection: ProviderSelection): Promise<void>;
+  setDefaultSelection(selection: ProviderSelection): Promise<Result<void, StorageError>>;
 }
 
 /**
@@ -125,9 +135,10 @@ export interface ProviderRegistry {
 export async function resolveProvider(
   registry: ProviderRegistry,
   providerId: string,
-): Promise<ProviderResolution> {
-  const config = await registry.getProvider(providerId);
-  return config ? { status: "ok", config } : { status: "dangling" };
+): Promise<Result<ProviderResolution, StorageError>> {
+  const [config, err] = await registry.getProvider(providerId);
+  if (err) return fail(err);
+  return ok(config ? { status: "ok", config } : { status: "dangling" });
 }
 
 /**
@@ -140,16 +151,19 @@ export async function resolveProvider(
 export async function resolveSelection(
   registry: ProviderRegistry,
   selection: ProviderSelection | undefined,
-): Promise<SelectionResolution> {
-  if (!selection) return { status: "none" };
-  const resolved = await resolveProvider(registry, selection.providerId);
-  return resolved.status === "ok"
-    ? { status: "ok", config: resolved.config, model: selection.model }
-    : {
-        status: "dangling",
-        providerId: selection.providerId,
-        model: selection.model,
-      };
+): Promise<Result<SelectionResolution, StorageError>> {
+  if (!selection) return ok({ status: "none" });
+  const [resolved, err] = await resolveProvider(registry, selection.providerId);
+  if (err) return fail(err);
+  return ok(
+    resolved.status === "ok"
+      ? { status: "ok", config: resolved.config, model: selection.model }
+      : {
+          status: "dangling",
+          providerId: selection.providerId,
+          model: selection.model,
+        },
+  );
 }
 
 /**

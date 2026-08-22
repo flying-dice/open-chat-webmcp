@@ -111,7 +111,7 @@ const chat = createChatService({
   // learn a number.
   toolCallTimeoutMs: AGENT_LOOP_TOOL_CALL_TIMEOUT_MS,
   trace: (event, detail) => trace(event, detail),
-  reportWriteFailure: (message, cause) => console.error(message, cause),
+  reportStorageFailure: (message, cause) => console.error(message, cause),
 });
 
 const toolsForTab = createTabToolsLookup({ trace });
@@ -158,6 +158,11 @@ startTabSync({ session: chat, view: tabSyncView, trace });
 // panel document stays open and mid-stream work is meant to keep running) is
 // Chrome's reliable signal that this document is actually going away.
 window.addEventListener("pagehide", () => {
+  // The `Result` is deliberately dropped, and this is the one place in the
+  // repo where dropping one is the WHOLE point: the document is going away,
+  // so there is nobody left to tell and nothing left to retry with. Card 92
+  // still spells it out rather than leaving a bare `void`, because "we
+  // decided not to look" and "we forgot to look" must not read the same.
   void storage.chatStore.flushAll();
 });
 

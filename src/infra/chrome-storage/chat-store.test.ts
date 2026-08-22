@@ -1,13 +1,17 @@
 // Tests for the chat repository — round-trips, the debounced write
 // scheduler, index write serialization, and the eviction backstop (card 83,
 // card 74's journal: recreating the 33 ad-hoc Node assertions against an
-// in-memory fake as committed tests).
+// in-memory fake as committed tests). Card 92 turned every `ChatStore`
+// method's failure into a returned `Result` rather than a rejection
+// (decisions/34-errors-as-values.md).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChat, MAX_RETAINED_CHATS, type ChatSession } from "../../domain/chat";
+import { StorageError } from "../../domain/storage";
 import { createChromeStorageChatStore } from "./chat-store";
 import { createStorageAreaGateway } from "./area";
 import { createFakeChromeStorage } from "./testing/fake-chrome-storage";
+import { unwrap } from "./testing/unwrap";
 
 function setup() {
   const fake = createFakeChromeStorage();
@@ -32,8 +36,8 @@ describe("round-trips", () => {
     const chat = createChat("https://example.com");
     chat.messages.push({ role: "user", content: "hi" } as ChatSession["messages"][number]);
 
-    await store.save(chat, { immediate: true });
-    const loaded = await store.getChat(chat.id);
+    await unwrap(store.save(chat, { immediate: true }));
+    const loaded = await unwrap(store.getChat(chat.id));
 
     expect(loaded?.id).toBe(chat.id);
     expect(loaded?.messages).toEqual(chat.messages);
@@ -41,30 +45,30 @@ describe("round-trips", () => {
 
   it("getChat returns undefined for an id that was never saved", async () => {
     const { store } = setup();
-    await expect(store.getChat("nope")).resolves.toBeUndefined();
+    await expect(unwrap(store.getChat("nope"))).resolves.toBeUndefined();
   });
 
   it("deleteChat removes the chat, its index entry, and any tab pointer targeting it", async () => {
     const { store, fake } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true });
-    await store.setCurrentChatForTab(7, chat.id, "https://example.com");
+    await unwrap(store.save(chat, { immediate: true }));
+    await unwrap(store.setCurrentChatForTab(7, chat.id, "https://example.com"));
 
-    await store.deleteChat(chat.id);
+    await unwrap(store.deleteChat(chat.id));
 
-    await expect(store.getChat(chat.id)).resolves.toBeUndefined();
-    await expect(store.listChatSummaries()).resolves.toEqual([]);
+    await expect(unwrap(store.getChat(chat.id))).resolves.toBeUndefined();
+    await expect(unwrap(store.listChatSummaries())).resolves.toEqual([]);
     expect(fake.local.raw()["tabchat:7"]).toBeUndefined();
   });
 
   it("clearAllChats removes every chat:* and tabchat:* key but leaves unrelated keys alone", async () => {
     const { store, fake } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true });
-    await store.setCurrentChatForTab(3, chat.id, "https://example.com");
+    await unwrap(store.save(chat, { immediate: true }));
+    await unwrap(store.setCurrentChatForTab(3, chat.id, "https://example.com"));
     fake.local.seed({ "debug:tab-sync-tracing": true });
 
-    await store.clearAllChats();
+    await unwrap(store.clearAllChats());
 
     const raw = fake.local.raw();
     expect(Object.keys(raw).some((k) => k.startsWith("chat:"))).toBe(false);
@@ -79,10 +83,10 @@ describe("round-trips", () => {
     const newer = createChat("https://b.example");
     newer.updatedAt = 200;
 
-    await store.save(older, { immediate: true, touch: false });
-    await store.save(newer, { immediate: true, touch: false });
+    await unwrap(store.save(older, { immediate: true, touch: false }));
+    await unwrap(store.save(newer, { immediate: true, touch: false }));
 
-    const summaries = await store.listChatSummaries();
+    const summaries = await unwrap(store.listChatSummaries());
     expect(summaries.map((s) => s.id)).toEqual([newer.id, older.id]);
   });
 });
@@ -90,7 +94,7 @@ describe("round-trips", () => {
 describe("getOrCreateChatForTab", () => {
   it("returns a fresh, unresolved chat when the tab has no pointer", async () => {
     const { store } = setup();
-    const result = await store.getOrCreateChatForTab(1, "https://example.com");
+    const result = await unwrap(store.getOrCreateChatForTab(1, "https://example.com"));
     expect(result.resolved).toBe(false);
     expect(result.chat.origin).toBe("https://example.com");
   });
@@ -98,10 +102,10 @@ describe("getOrCreateChatForTab", () => {
   it("resolves the pointed-at chat when the pointer's tabOrigin matches", async () => {
     const { store } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true });
-    await store.setCurrentChatForTab(1, chat.id, "https://example.com");
+    await unwrap(store.save(chat, { immediate: true }));
+    await unwrap(store.setCurrentChatForTab(1, chat.id, "https://example.com"));
 
-    const result = await store.getOrCreateChatForTab(1, "https://example.com");
+    const result = await unwrap(store.getOrCreateChatForTab(1, "https://example.com"));
     expect(result.resolved).toBe(true);
     expect(result.chat.id).toBe(chat.id);
   });
@@ -109,22 +113,37 @@ describe("getOrCreateChatForTab", () => {
   it("does NOT resolve when the pointer's tabOrigin no longer matches (recycled tab id guard)", async () => {
     const { store } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true });
-    await store.setCurrentChatForTab(1, chat.id, "https://example.com");
+    await unwrap(store.save(chat, { immediate: true }));
+    await unwrap(store.setCurrentChatForTab(1, chat.id, "https://example.com"));
 
-    const result = await store.getOrCreateChatForTab(1, "https://different.example");
+    const result = await unwrap(store.getOrCreateChatForTab(1, "https://different.example"));
     expect(result.resolved).toBe(false);
     expect(result.chat.id).not.toBe(chat.id);
   });
 
   it("does NOT resolve when the pointer targets a chat that no longer exists (deleted or corrupt)", async () => {
     const { store, fake } = setup();
-    await store.setCurrentChatForTab(1, "ghost-id", "https://example.com");
+    await unwrap(store.setCurrentChatForTab(1, "ghost-id", "https://example.com"));
     fake.local.seed({ "chat:ghost-id": { not: "a valid chat session" } });
 
-    const result = await store.getOrCreateChatForTab(1, "https://example.com");
+    const result = await unwrap(store.getOrCreateChatForTab(1, "https://example.com"));
     expect(result.resolved).toBe(false);
     expect(result.chat.id).not.toBe("ghost-id");
+  });
+
+  // CARD 92: a storage failure while resolving a tab's chat must not be
+  // papered over by minting a fresh chat — that would silently hand the
+  // user an empty transcript with no hint that their real history is still
+  // there. It has to come back as `fail(err)` so the caller can tell "no
+  // pointer" (ok, fresh chat) apart from "storage didn't answer" (fail).
+  it("returns fail(err) rather than minting a fresh chat when the pointer read fails", async () => {
+    const { store, fake } = setup();
+    fake.local.failNext("get", new Error("Extension context invalidated."));
+
+    const [result, err] = await store.getOrCreateChatForTab(1, "https://example.com");
+
+    expect(err).toBeInstanceOf(StorageError);
+    expect(result).toBeUndefined();
   });
 });
 
@@ -132,11 +151,13 @@ describe("debounced write scheduling", () => {
   it("writes once for a burst of saves inside the debounce window, not once per save", async () => {
     const { store, fake } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true }); // baseline: 1 chat write + 1 index write
+    await unwrap(store.save(chat, { immediate: true })); // baseline: 1 chat write + 1 index write
     const setCallsBeforeBurst = fake.local.callCount("set");
 
     for (let i = 0; i < 10; i++) {
       chat.messages.push({ role: "user", content: `msg ${i}` } as ChatSession["messages"][number]);
+      // A scheduled (non-immediate) save always returns `ok()` — it means
+      // "accepted", not "written" — so there is nothing to unwrap here.
       await store.save(chat);
       await vi.advanceTimersByTimeAsync(50); // well under the 400ms debounce
     }
@@ -148,7 +169,7 @@ describe("debounced write scheduling", () => {
 
     // Exactly one commit landed: one write for chat:<id>, one for chat:index.
     expect(fake.local.callCount("set")).toBe(setCallsBeforeBurst + 2);
-    const loaded = await store.getChat(chat.id);
+    const loaded = await unwrap(store.getChat(chat.id));
     expect(loaded?.messages).toHaveLength(10);
   });
 
@@ -158,7 +179,7 @@ describe("debounced write scheduling", () => {
     await store.save(chat); // debounced, nothing written yet
     expect(fake.local.raw()[`chat:${chat.id}`]).toBeUndefined();
 
-    await store.flush(chat.id);
+    await unwrap(store.flush(chat.id));
 
     expect(fake.local.raw()[`chat:${chat.id}`]).toBeDefined();
     const setCallsAfterFlush = fake.local.callCount("set");
@@ -171,7 +192,7 @@ describe("debounced write scheduling", () => {
 
   it("flush() on a chat with nothing pending resolves immediately without writing", async () => {
     const { store, fake } = setup();
-    await store.flush("never-saved");
+    await unwrap(store.flush("never-saved"));
     expect(fake.local.callCount("set")).toBe(0);
   });
 
@@ -182,16 +203,16 @@ describe("debounced write scheduling", () => {
     await store.save(a);
     await store.save(b);
 
-    await store.flushAll();
+    await unwrap(store.flushAll());
 
-    await expect(store.getChat(a.id)).resolves.toBeDefined();
-    await expect(store.getChat(b.id)).resolves.toBeDefined();
+    await expect(unwrap(store.getChat(a.id))).resolves.toBeDefined();
+    await expect(unwrap(store.getChat(b.id))).resolves.toBeDefined();
   });
 
   it("the max-wait timer forces a commit even under continuous debounce-resetting activity", async () => {
     const { store, fake } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true });
+    await unwrap(store.save(chat, { immediate: true }));
     const baseline = fake.local.callCount("set");
 
     // Keep resetting the 400ms debounce timer every 300ms — it would never
@@ -211,7 +232,7 @@ describe("debounced write scheduling", () => {
   it("save({immediate: true}) bypasses debouncing and writes synchronously", async () => {
     const { store, fake } = setup();
     const chat = createChat("https://example.com");
-    await store.save(chat, { immediate: true });
+    await unwrap(store.save(chat, { immediate: true }));
     expect(fake.local.raw()[`chat:${chat.id}`]).toBeDefined();
   });
 
@@ -219,8 +240,8 @@ describe("debounced write scheduling", () => {
     const { store } = setup();
     const chat = createChat("https://example.com");
     chat.updatedAt = 12345;
-    await store.save(chat, { immediate: true, touch: false });
-    const loaded = await store.getChat(chat.id);
+    await unwrap(store.save(chat, { immediate: true, touch: false }));
+    const loaded = await unwrap(store.getChat(chat.id));
     expect(loaded?.updatedAt).toBe(12345);
   });
 
@@ -229,8 +250,8 @@ describe("debounced write scheduling", () => {
     const chat = createChat("https://example.com");
     chat.updatedAt = 1;
     vi.setSystemTime(999_000);
-    await store.save(chat, { immediate: true });
-    const loaded = await store.getChat(chat.id);
+    await unwrap(store.save(chat, { immediate: true }));
+    const loaded = await unwrap(store.getChat(chat.id));
     expect(loaded?.updatedAt).toBe(999_000);
   });
 });
@@ -243,7 +264,7 @@ describe("index write serialization under concurrent writers", () => {
 
     await Promise.all([store.save(a, { immediate: true }), store.save(b, { immediate: true })]);
 
-    const summaries = await store.listChatSummaries();
+    const summaries = await unwrap(store.listChatSummaries());
     expect(summaries.map((s) => s.id).sort()).toEqual([a.id, b.id].sort());
   });
 
@@ -253,7 +274,7 @@ describe("index write serialization under concurrent writers", () => {
 
     await Promise.all(chats.map((c) => store.save(c, { immediate: true })));
 
-    const summaries = await store.listChatSummaries();
+    const summaries = await unwrap(store.listChatSummaries());
     expect(summaries).toHaveLength(20);
   });
 });
@@ -269,13 +290,13 @@ describe("eviction backstop at MAX_RETAINED_CHATS", () => {
       chats.push(chat);
     }
     const oldest = chats[0]!;
-    await store.setCurrentChatForTab(999, oldest.id, oldest.origin);
+    await unwrap(store.setCurrentChatForTab(999, oldest.id, oldest.origin));
 
     for (const chat of chats) {
-      await store.save(chat, { immediate: true, touch: false });
+      await unwrap(store.save(chat, { immediate: true, touch: false }));
     }
 
-    const summaries = await store.listChatSummaries();
+    const summaries = await unwrap(store.listChatSummaries());
     expect(summaries).toHaveLength(MAX_RETAINED_CHATS);
     expect(summaries.some((s) => s.id === oldest.id)).toBe(false);
     expect(summaries.some((s) => s.id === chats[chats.length - 1]!.id)).toBe(true);
@@ -289,9 +310,9 @@ describe("eviction backstop at MAX_RETAINED_CHATS", () => {
     const { store } = setup();
     for (let i = 0; i < 5; i++) {
       const chat = createChat(`https://n${i}.example`);
-      await store.save(chat, { immediate: true });
+      await unwrap(store.save(chat, { immediate: true }));
     }
-    await expect(store.listChatSummaries()).resolves.toHaveLength(5);
+    await expect(unwrap(store.listChatSummaries())).resolves.toHaveLength(5);
   });
 });
 
@@ -299,7 +320,7 @@ describe("defensive reads of corrupt storage", () => {
   it("getChat drops a record that fails isChatSession validation, returning undefined rather than throwing", async () => {
     const { store, fake } = setup();
     fake.local.seed({ "chat:bad": { id: "bad", origin: "https://x", messages: "not-an-array" } });
-    await expect(store.getChat("bad")).resolves.toBeUndefined();
+    await expect(unwrap(store.getChat("bad"))).resolves.toBeUndefined();
   });
 
   it("listChatSummaries drops index entries that fail isChatIndexEntry validation", async () => {
@@ -317,7 +338,7 @@ describe("defensive reads of corrupt storage", () => {
         { id: "bad", origin: "https://x" }, // missing required numeric fields
       ],
     });
-    const summaries = await store.listChatSummaries();
+    const summaries = await unwrap(store.listChatSummaries());
     expect(summaries.map((s) => s.id)).toEqual(["ok"]);
   });
 });
@@ -329,7 +350,7 @@ describe("defensive reads of corrupt storage", () => {
 // ---------------------------------------------------------------------------
 
 describe("chaos: quota exceeded mid-write leaves a half-written index", () => {
-  it("a chat write that succeeds followed by an index write that hits quota leaves the chat orphaned but still readable, and rejects", async () => {
+  it("a chat write that succeeds followed by an index write that hits quota leaves the chat orphaned but still readable, and returns the error rather than throwing", async () => {
     const { fake, store } = setup();
     const session = createChat("https://example.com");
 
@@ -344,13 +365,17 @@ describe("chaos: quota exceeded mid-write leaves a half-written index", () => {
       return originalSet(entries);
     }) as typeof fake.chrome.storage.local.set;
 
-    await expect(store.save(session, { immediate: true })).rejects.toThrow(/quota/i);
+    // CARD 92: this used to be `.rejects.toThrow(/quota/i)`. The failure is
+    // now a returned `Err`, not a rejection — the promise resolves either way.
+    const [, err] = await store.save(session, { immediate: true });
+    expect(err).toBeInstanceOf(StorageError);
+    expect(err?.message).toMatch(/quota/i);
 
     // The chat's own record is NOT lost — `local.write` for the chat key
     // already resolved before the index write blew up.
-    await expect(store.getChat(session.id)).resolves.toMatchObject({ id: session.id });
+    await expect(unwrap(store.getChat(session.id))).resolves.toMatchObject({ id: session.id });
     // But it is invisible to a history listing: the index write never landed.
-    await expect(store.listChatSummaries()).resolves.toEqual([]);
+    await expect(unwrap(store.listChatSummaries())).resolves.toEqual([]);
   });
 });
 
@@ -358,10 +383,10 @@ describe("chaos: a debounced write landing after the chat it targets was deleted
   it("flush() after deleteChat() resurrects the chat — the 'don't resurrect a deleted chat' guard lives in ChatService, not this store", async () => {
     const { store } = setup();
     const session = createChat("https://example.com");
-    await store.save(session, { immediate: true });
+    await unwrap(store.save(session, { immediate: true }));
 
-    await store.deleteChat(session.id);
-    await expect(store.getChat(session.id)).resolves.toBeUndefined();
+    await unwrap(store.deleteChat(session.id));
+    await expect(unwrap(store.getChat(session.id))).resolves.toBeUndefined();
 
     // A caller that (unlike ChatService.discardIfDeleted) still holds a
     // reference to the deleted session and schedules a debounced write for
@@ -370,7 +395,7 @@ describe("chaos: a debounced write landing after the chat it targets was deleted
     session.messages.push({ id: "m1", role: "user", content: "too late", createdAt: Date.now() });
     await store.save(session);
     vi.advanceTimersByTime(2000);
-    await store.flush(session.id);
+    await unwrap(store.flush(session.id));
 
     // Documented current behaviour, not asserted as correct: the chat comes
     // back. The actual guard against this ("a later message can't resurrect
@@ -379,6 +404,6 @@ describe("chaos: a debounced write landing after the chat it targets was deleted
     // to a caller in this situation rather than continuing to write to the
     // stale one — so a caller that bypasses the service (as this test does,
     // by talking to the store directly) does not get that protection.
-    await expect(store.getChat(session.id)).resolves.toMatchObject({ id: session.id });
+    await expect(unwrap(store.getChat(session.id))).resolves.toMatchObject({ id: session.id });
   });
 });

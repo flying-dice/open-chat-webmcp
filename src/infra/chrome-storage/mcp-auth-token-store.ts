@@ -19,6 +19,9 @@
 // headers; `saveAuth` can do one thing. src/infra/mcp only ever sees the
 // latter.
 
+import { fail, ok } from "../../domain/result";
+import type { StorageError } from "../../domain/storage";
+import type { Result } from "../../domain/result";
 import type { McpAuthTokenStore, McpOAuthAuth, McpServerRegistry } from "../../domain/tools";
 
 /**
@@ -34,8 +37,12 @@ export function createChromeStorageMcpAuthTokenStore(
   registry: McpServerRegistry,
 ): McpAuthTokenStore {
   return {
-    async saveAuth(serverId: string, auth: McpOAuthAuth): Promise<void> {
-      await registry.updateServer(serverId, { auth });
+    async saveAuth(serverId: string, auth: McpOAuthAuth): Promise<Result<void, StorageError>> {
+      const [, err] = await registry.updateServer(serverId, { auth });
+      // The `undefined` record `updateServer` hands back for an unregistered
+      // id is deliberately DISCARDED rather than reported: an unknown id is a
+      // no-op by contract (see this function's doc comment), not a failure.
+      return err ? fail(err) : ok();
     },
   };
 }

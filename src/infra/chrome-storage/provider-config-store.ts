@@ -14,6 +14,7 @@
 // keyed by a model fingerprint that is machine-specific too — syncing either
 // would push noise at a small quota for no benefit.
 
+import { fail, ok } from "../../domain/result";
 import type {
   ModelCapabilities,
   ModelCapabilityCache,
@@ -37,13 +38,12 @@ export function createChromeStorageProviderDefaultsStore(
 ): ProviderDefaultsStore {
   return {
     async getBaseUrl(type) {
-      const value = await local.read(baseUrlKey(type));
-      return typeof value === "string" && value.length > 0 ? value : undefined;
+      const [value, err] = await local.read(baseUrlKey(type));
+      if (err) return fail(err);
+      return ok(typeof value === "string" && value.length > 0 ? value : undefined);
     },
 
-    async setBaseUrl(type, baseUrl) {
-      await local.write({ [baseUrlKey(type)]: baseUrl });
-    },
+    setBaseUrl: (type, baseUrl) => local.write({ [baseUrlKey(type)]: baseUrl }),
   };
 }
 
@@ -52,19 +52,23 @@ export function createChromeStorageModelCapabilityCache(
 ): ModelCapabilityCache {
   return {
     async get(type, fingerprint) {
-      const value = await local.read(capabilityKey(type, fingerprint));
+      const [value, err] = await local.read(capabilityKey(type, fingerprint));
+      if (err) return fail(err);
       // A cache miss and an unreadable entry are the same outcome on
       // purpose: the caller re-asks the provider and re-files the answer, so
-      // a malformed entry costs one round trip and then repairs itself.
-      return isRecord(value) &&
-        TOOL_CAPABILITY_STATUSES.includes(value.status as string) &&
-        (value.detail === undefined || Array.isArray(value.detail))
-        ? (value as unknown as ModelCapabilities)
-        : undefined;
+      // a malformed entry costs one round trip and then repairs itself. A
+      // storage FAILURE is not folded in with them (card 92) — the caller
+      // recovers the same way, but "the area did not answer" is worth a log
+      // line where "this entry is stale" is not.
+      return ok(
+        isRecord(value) &&
+          TOOL_CAPABILITY_STATUSES.includes(value.status as string) &&
+          (value.detail === undefined || Array.isArray(value.detail))
+          ? (value as unknown as ModelCapabilities)
+          : undefined,
+      );
     },
 
-    async set(type, fingerprint, value) {
-      await local.write({ [capabilityKey(type, fingerprint)]: value });
-    },
+    set: (type, fingerprint, value) => local.write({ [capabilityKey(type, fingerprint)]: value }),
   };
 }

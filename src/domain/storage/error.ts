@@ -3,19 +3,28 @@
 //
 // Every driven storage port in this repo — `ChatStore` (src/domain/chat),
 // `ProviderRegistry` (src/domain/providers), `McpServerRegistry`
-// (src/domain/tools), `SettingsStore` (src/domain/settings) — rejects with
+// (src/domain/tools), `SettingsStore` (src/domain/settings) — reports
 // exactly this type and nothing else. A `chrome.runtime.lastError` string, a
 // quota `DOMException`, a `SyntaxError` from a malformed record: an adapter
 // maps each of them INTO one of the five kinds below and keeps the original
 // on `cause` for logging. Nothing in `src/domain/*` ever sees the platform's
 // own error shape (.claude/skills/ddd-hexagonal/SKILL.md, "Driven ports").
 //
-// It is a THROWN error rather than a result union on purpose: every one of
-// these ports already rejected its promise on a storage failure before this
-// card, and no caller anywhere handles that rejection — turning them into
-// values would have quietly changed every call site's control flow under
-// the banner of a behaviour-preserving refactor. The vocabulary is the new
-// part; the shape of failure is not.
+// HOW IT TRAVELS (card 92, decisions/34-errors-as-values.md): as a VALUE, in
+// the error member of a `Result<T, StorageError>` (../result). Decision 32
+// originally had these ports THROW it, on the grounds that every one of them
+// already rejected and no caller handled the rejection — so turning them into
+// values would have changed every call site's control flow inside a refactor
+// billed as behaviour-preserving. Decision 34 makes exactly that change,
+// deliberately and on its own card: a quota failure is an EXPECTED outcome of
+// writing to `chrome.storage`, and an expected failure belongs in the
+// signature rather than in a comment. The VOCABULARY below is untouched by
+// that; only its delivery changed.
+//
+// It stays an `Error` subclass even though it is no longer thrown — that is
+// still the right shape for something carrying a `cause` and a stack, and a
+// caller reporting it upward (a `console.error`, a UI notice) has an object
+// worth reporting rather than a bare tag.
 
 /**
  * Why a storage operation failed, in the domain's own words.

@@ -236,23 +236,29 @@ function ensureModelsLoaded(): void {
 
 async function loadProviders(): Promise<void> {
   providersStatus = "loading";
-  try {
-    providers = await sidePanelServices().providers.listProviders();
-    providersStatus = "loaded";
-
-    // Drop model-list state for providers that no longer exist, so a
-    // deleted provider can't leave a stale group behind if it's ever
-    // re-added under a reused id.
-    const liveIds = new Set(providers.map((p) => p.id));
-    for (const id of Object.keys(providerModelsState)) {
-      if (!liveIds.has(id)) delete providerModelsState[id];
-    }
-
-    ensureModelsLoaded();
-  } catch {
+  // Card 92: the `try/catch` this replaces existed for exactly one failure —
+  // the registry read rejecting — and the tuple says so. The recovery is
+  // unchanged: empty list, `"error"` status, which is what the picker renders
+  // its "couldn't load providers" state from.
+  const [loaded, err] = await sidePanelServices().providers.listProviders();
+  if (err) {
     providers = [];
     providersStatus = "error";
+    return;
   }
+
+  providers = loaded;
+  providersStatus = "loaded";
+
+  // Drop model-list state for providers that no longer exist, so a
+  // deleted provider can't leave a stale group behind if it's ever
+  // re-added under a reused id.
+  const liveIds = new Set(providers.map((p) => p.id));
+  for (const id of Object.keys(providerModelsState)) {
+    if (!liveIds.has(id)) delete providerModelsState[id];
+  }
+
+  ensureModelsLoaded();
 }
 
 /**
@@ -288,7 +294,11 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
     ensureModelsLoaded();
   }
 
-  const defaultSelection = await sidePanelServices().providers.getDefaultSelection();
+  // A default that cannot be READ is treated as no default at all: the tab
+  // simply starts with nothing selected and the composer asks the user to
+  // pick, which is the same state a fresh profile is in. `loadProviders`
+  // above has already surfaced the read failure as `providersStatus`.
+  const [defaultSelection] = await sidePanelServices().providers.getDefaultSelection();
 
   // Seed a brand-new chat with the global default the first time this tab is
   // seen — but write it through the chat service's live session (never a
@@ -306,7 +316,15 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
   }
 
   selectionExplicit = stored?.explicit === true;
-  resolution = await resolveSelection(sidePanelServices().providers, stored?.selection);
+  const [resolved, resolveErr] = await resolveSelection(
+    sidePanelServices().providers,
+    stored?.selection,
+  );
+  // `"none"` on a failed read, for the same reason as the default above: the
+  // picker's "none" state prompts for a choice, whereas `"dangling"` would
+  // claim the user's provider had been DELETED, which is a different and
+  // wrong thing to tell them about a store that merely didn't answer.
+  resolution = resolveErr ? { status: "none" } : resolved;
 }
 
 // ---------------------------------------------------------------------------
@@ -461,9 +479,12 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   await chat().setSelection(tabId, next, true);
   selectionExplicit = true;
 
+  // Seeding the global default is a convenience, not part of committing the
+  // selection above — so a read or write failure here leaves the chat's own
+  // (already persisted) choice intact and simply doesn't seed.
   const registry = sidePanelServices().providers;
-  const currentDefault = await registry.getDefaultSelection();
-  if (!currentDefault) await registry.setDefaultSelection(next);
+  const [currentDefault, defaultErr] = await registry.getDefaultSelection();
+  if (!defaultErr && !currentDefault) await registry.setDefaultSelection(next);
 
   resolution = { status: "ok", config, model };
 }

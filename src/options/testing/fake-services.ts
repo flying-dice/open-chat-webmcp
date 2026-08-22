@@ -13,9 +13,17 @@
 // app-services. So this module's `initFakeOptionsServices` is the ONE seam
 // every options component test needs.
 //
+// CARD 92 (decisions/34-errors-as-values.md): every storage port — ChatStore,
+// ProviderRegistry, SettingsStore, McpServerRegistry — now returns
+// `Promise<Result<T, StorageError>>` instead of resolving/rejecting bare, so
+// these fakes read that way too: every "success" branch below is built with
+// `ok(...)` (src/domain/result.ts), never a hand-written `[value,
+// undefined]` tuple, and the module-level `storageFailure()` helper below
+// (see its own comment) is what a test reaches for to make one FAIL.
+//
 // USAGE:
 //
-//   import { initFakeOptionsServices, createFakeOptionsServices } from "../testing/fake-services";
+//   import { initFakeOptionsServices, createFakeOptionsServices, storageFailure } from "../testing/fake-services";
 //   import SettingsSection from "../components/SettingsSection.svelte";
 //
 //   describe("SettingsSection", () => {
@@ -23,7 +31,12 @@
 //     beforeAll(() => initFakeOptionsServices(services));
 //
 //     it("...", async () => {
-//       services.settings.getApprovalPolicy = async () => "always-confirm";
+//       services.settings.getApprovalPolicy = async () => ok("always-confirm");
+//       render(SettingsSection);
+//     });
+//
+//     it("...", async () => {
+//       services.settings.setApprovalPolicy = async () => fail(storageFailure());
 //       render(SettingsSection);
 //     });
 //   });
@@ -47,32 +60,58 @@ import type {
   McpToolGateway,
 } from "../../domain/tools";
 import type { HostPermissions } from "../../domain/permissions";
+import { ok } from "../../domain/result";
+import { StorageError, type StorageErrorKind } from "../../domain/storage";
 
 // Re-implemented here (rather than imported from the sidepanel testing
 // module) so this surface's tests never depend on src/sidepanel/** at all —
 // each surface's test helpers stay as independent as the surfaces themselves.
 
+/**
+ * Build a `StorageError` for a test that wants one storage-port call to
+ * FAIL — the fake's equivalent of the real adapter's own failure. Exists
+ * because every storage port below has multiple methods that can fail the
+ * same way, and every one of those tests wants the same three things: a
+ * real `StorageError` instance (not a bare string or a plain object a
+ * caller's `instanceof` check would reject), a plausible default `kind`,
+ * and a message worth reading in a failed assertion's diff. Defaulting
+ * `kind` to `"Unavailable"` matches the one real construction site
+ * (src/infra/chrome-storage/area.ts): it's the ordinary "the store didn't
+ * answer" case, and a test that cares about a DIFFERENT kind (e.g.
+ * `"Corrupt"`) passes it explicitly.
+ *
+ *   services.settings.setApprovalPolicy = async () => fail(storageFailure());
+ *   services.chats.listChatSummaries = async () => fail(storageFailure("Corrupt", "bad record"));
+ */
+export function storageFailure(
+  kind: StorageErrorKind = "Unavailable",
+  message = "fake storage failure",
+): StorageError {
+  return new StorageError(kind, message);
+}
+
 export function createFakeChatStore(overrides: Partial<ChatStore> = {}): ChatStore {
   return {
-    getChat: async () => undefined,
-    getOrCreateChatForTab: async () => ({
-      chat: {
-        id: "fake-chat",
-        origin: "https://example.com",
-        messages: [],
-        toolCalls: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-      resolved: false,
-    }),
-    setCurrentChatForTab: async () => undefined,
-    save: async () => undefined,
-    flush: async () => undefined,
-    flushAll: async () => undefined,
-    deleteChat: async () => undefined,
-    clearAllChats: async () => undefined,
-    listChatSummaries: async () => [],
+    getChat: async () => ok(undefined),
+    getOrCreateChatForTab: async () =>
+      ok({
+        chat: {
+          id: "fake-chat",
+          origin: "https://example.com",
+          messages: [],
+          toolCalls: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        resolved: false,
+      }),
+    setCurrentChatForTab: async () => ok(),
+    save: async () => ok(),
+    flush: async () => ok(),
+    flushAll: async () => ok(),
+    deleteChat: async () => ok(),
+    clearAllChats: async () => ok(),
+    listChatSummaries: async () => ok([]),
     ...overrides,
   };
 }
@@ -84,32 +123,35 @@ export function createFakeProviderRegistry(
   let providers = [...initial];
   let defaultSelection: ProviderSelection | undefined;
   return {
-    listProviders: async () => providers,
-    getProvider: async (id) => providers.find((p) => p.id === id),
+    listProviders: async () => ok(providers),
+    getProvider: async (id) => ok(providers.find((p) => p.id === id)),
     addProvider: async (input) => {
       const config: ProviderConfig = { ...input, id: `provider-${providers.length + 1}` };
       providers = [...providers, config];
-      return config;
+      return ok(config);
     },
     updateProvider: async (id, patch) => {
       const idx = providers.findIndex((p) => p.id === id);
       const current = providers[idx];
-      if (idx === -1 || !current) return undefined;
+      if (idx === -1 || !current) return ok(undefined);
       const updated: ProviderConfig = { ...current, ...patch };
       providers[idx] = updated;
-      return updated;
+      return ok(updated);
     },
     removeProvider: async (id) => {
       providers = providers.filter((p) => p.id !== id);
+      return ok();
     },
     reorderProviders: async (orderedIds) => {
       providers = orderedIds
         .map((id) => providers.find((p) => p.id === id))
         .filter((p): p is ProviderConfig => p !== undefined);
+      return ok();
     },
-    getDefaultSelection: async () => defaultSelection,
+    getDefaultSelection: async () => ok(defaultSelection),
     setDefaultSelection: async (selection) => {
       defaultSelection = selection;
+      return ok();
     },
     ...overrides,
   };
@@ -133,14 +175,16 @@ export function createFakeSettingsStore(overrides: Partial<SettingsStore> = {}):
   let approvalPolicy: ApprovalPolicy = "default";
   let mcpApprovalPolicy: McpApprovalPolicy = "always-confirm";
   return {
-    getApprovalPolicy: async () => approvalPolicy,
+    getApprovalPolicy: async () => ok(approvalPolicy),
     setApprovalPolicy: async (policy) => {
       approvalPolicy = policy;
+      return ok();
     },
     onApprovalPolicyChange: () => () => undefined,
-    getMcpApprovalPolicy: async () => mcpApprovalPolicy,
+    getMcpApprovalPolicy: async () => ok(mcpApprovalPolicy),
     setMcpApprovalPolicy: async (policy) => {
       mcpApprovalPolicy = policy;
+      return ok();
     },
     onMcpApprovalPolicyChange: () => () => undefined,
     ...overrides,
@@ -153,9 +197,9 @@ export function createFakeMcpServerRegistry(
 ): McpServerRegistry {
   let servers = [...initial];
   return {
-    listServers: async () => servers,
-    listEnabledServers: async () => servers.filter((s) => s.enabled),
-    getServer: async (id) => servers.find((s) => s.id === id),
+    listServers: async () => ok(servers),
+    listEnabledServers: async () => ok(servers.filter((s) => s.enabled)),
+    getServer: async (id) => ok(servers.find((s) => s.id === id)),
     addServer: async (input) => {
       const config: McpServerConfig = {
         enabled: true,
@@ -164,23 +208,25 @@ export function createFakeMcpServerRegistry(
         id: `server-${servers.length + 1}`,
       };
       servers = [...servers, config];
-      return config;
+      return ok(config);
     },
     updateServer: async (id, patch) => {
       const idx = servers.findIndex((s) => s.id === id);
       const current = servers[idx];
-      if (idx === -1 || !current) return undefined;
+      if (idx === -1 || !current) return ok(undefined);
       const updated: McpServerConfig = { ...current, ...patch };
       servers[idx] = updated;
-      return updated;
+      return ok(updated);
     },
     removeServer: async (id) => {
       servers = servers.filter((s) => s.id !== id);
+      return ok();
     },
     reorderServers: async (orderedIds) => {
       servers = orderedIds
         .map((id) => servers.find((s) => s.id === id))
         .filter((s): s is McpServerConfig => s !== undefined);
+      return ok();
     },
     ...overrides,
   };

@@ -5,6 +5,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { McpAuthTokenStore, McpOAuthAuth, McpServerConfig } from "../../domain/tools";
+import { fail, ok } from "../../domain/result";
+import { StorageError } from "../../domain/storage";
 import { createMcpOAuthClient } from "./oauth";
 import { jsonResponse } from "../testing/fetch-stub";
 
@@ -60,6 +62,7 @@ function fakeTokenStore(): McpAuthTokenStore & {
     saved,
     async saveAuth(serverId, auth) {
       saved.push({ serverId, auth });
+      return ok();
     },
   };
 }
@@ -227,29 +230,36 @@ describe("getValidAuth", () => {
     expect(tokenStore.saved).toEqual([]);
   });
 
-  it("a successful refresh whose token-store persistence FAILS still resolves ok — the never-throws surface swallows the storage error", async () => {
+  it("a successful refresh whose token-store persistence FAILS still resolves ok — the storage error is logged, not surfaced through the never-throws McpResult", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ access_token: "at-fresh", expires_in: 3600 })),
     );
+    // Card 92 (decisions/34-errors-as-values.md): `McpAuthTokenStore.saveAuth`
+    // now RETURNS its failure as a `Result` rather than rejecting — this is
+    // the port's real failure mode, not a thrown `Error` a `.catch` used to
+    // swallow silently.
+    const saveErr = new StorageError("Unavailable", "storage write failed: quota exceeded");
     const failingTokenStore: McpAuthTokenStore = {
-      saveAuth: vi.fn(async () => {
-        // Deliberately NOT phrased as a literal "chrome . storage . <area> . <op>"
-        // dotted chain — scripts/guard-boundaries.mjs's chrome.storage
-        // containment scan is a blunt textual scan over every non-comment
-        // line in src/ (not just src/domain), and that exact shape reads as
-        // a real call site even inside a string literal.
-        throw new Error("storage write failed: quota exceeded");
-      }),
+      saveAuth: vi.fn(async () => fail(saveErr)),
     };
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = createMcpOAuthClient({ tokenStore: failingTokenStore });
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
 
-    await expect(client.getValidAuth(serverConfig(auth))).resolves.toEqual({
-      ok: true,
-      value: expect.objectContaining({ accessToken: "at-fresh" }),
-    });
-    expect(failingTokenStore.saveAuth).toHaveBeenCalled();
+    try {
+      await expect(client.getValidAuth(serverConfig(auth))).resolves.toEqual({
+        ok: true,
+        value: expect.objectContaining({ accessToken: "at-fresh" }),
+      });
+      expect(failingTokenStore.saveAuth).toHaveBeenCalled();
+      // Best-effort persistence (module doc comment) does not mean silent:
+      // a store that will not accept a refreshed token is a real fault the
+      // user would otherwise only notice as a sign-in that never sticks.
+      expect(consoleWarn).toHaveBeenCalledExactlyOnceWith(expect.any(String), saveErr);
+    } finally {
+      consoleWarn.mockRestore();
+    }
   });
 
   it("a malformed refresh response (no access_token) is reported as invalid-response, nothing persisted", async () => {

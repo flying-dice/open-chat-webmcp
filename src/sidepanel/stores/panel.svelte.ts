@@ -58,6 +58,8 @@ import type {
   TranscriptEntry,
   TurnPhase,
 } from "../../domain/chat";
+import type { Result } from "../../domain/result";
+import type { StorageError } from "../../domain/storage";
 import type { MergedTool, SerializedTool } from "../../domain/tools";
 import { chat, sidePanelServices } from "../app-services";
 
@@ -362,8 +364,8 @@ declare global {
       liveSessionIds: string[];
       tracingEnabled: boolean;
     }) & {
-      enableTracing: () => Promise<void>;
-      disableTracing: () => Promise<void>;
+      enableTracing: () => Promise<Result<void, StorageError>>;
+      disableTracing: () => Promise<Result<void, StorageError>>;
     };
   }
 }

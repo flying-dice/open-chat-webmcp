@@ -34,6 +34,8 @@ import {
   type ResolvedTabChat,
 } from "../../domain/chat";
 import type { ChatMessage, ProviderSelection } from "../../domain/providers";
+import { allOk, fail, ok, type Result } from "../../domain/result";
+import type { StorageError } from "../../domain/storage";
 import { isRecord, type StorageAreaGateway } from "./area";
 
 /** Debounce window: a write is scheduled this long after the *last* change. Short enough that closing the panel soon after a stream ends still lands via the max-wait fallback below, not just this timer. */
@@ -214,7 +216,12 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
   /**
    * Runs `fn` only after every previously queued index operation has settled
    * (success or failure), and advances the queue regardless of `fn`'s own
-   * outcome so one rejected operation can never wedge every later one. NOT
+   * outcome so one failed operation can never wedge every later one. Since
+   * card 92 `fn` reports a storage failure as a returned `fail(...)` rather
+   * than a rejection, which the queue is indifferent to — the `then(fn, fn)`
+   * / two-arm advance stays because a genuine BUG inside `fn` still throws,
+   * and wedging every later index write on one is the failure mode this
+   * guards against. NOT
    * reentrant — never call this from inside another `withIndexLock` callback
    * (that is exactly why {@link evictIfNeededLocked} exists: so `commit` can
    * share ONE lock acquisition for both the index update and eviction
@@ -229,13 +236,14 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
     return run;
   }
 
-  async function readChatIndex(): Promise<ChatIndexEntry[]> {
-    const value = await local.read(CHAT_INDEX_KEY);
-    return Array.isArray(value) ? value.filter(isChatIndexEntry) : [];
+  async function readChatIndex(): Promise<Result<ChatIndexEntry[], StorageError>> {
+    const [value, err] = await local.read(CHAT_INDEX_KEY);
+    if (err) return fail(err);
+    return ok(Array.isArray(value) ? value.filter(isChatIndexEntry) : []);
   }
 
-  async function writeChatIndex(list: ChatIndexEntry[]): Promise<void> {
-    await local.write({ [CHAT_INDEX_KEY]: list });
+  function writeChatIndex(list: ChatIndexEntry[]): Promise<Result<void, StorageError>> {
+    return local.write({ [CHAT_INDEX_KEY]: list });
   }
 
   /**
@@ -251,31 +259,40 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
    * corrupt record does not raise `StorageError`'s `Corrupt`: raising would
    * turn a recoverable "that one chat is gone" into a failed history listing.
    */
-  async function readChatRaw(chatId: string): Promise<ChatSession | undefined> {
-    const value = await local.read(chatStorageKey(chatId));
-    if (value === undefined) return undefined;
-    if (isChatSession(value)) return value;
+  async function readChatRaw(
+    chatId: string,
+  ): Promise<Result<ChatSession | undefined, StorageError>> {
+    const [value, err] = await local.read(chatStorageKey(chatId));
+    if (err) return fail(err);
+    if (value === undefined) return ok(undefined);
+    if (isChatSession(value)) return ok(value);
     console.warn(
       `[webmcp][chat-store] chat ${chatId} exists in storage but failed isChatSession validation (first bad field: ${firstInvalidChatSessionField(value)})`,
     );
-    return undefined;
+    return ok(undefined);
   }
 
-  async function readTabPointer(tabId: number): Promise<TabPointer | undefined> {
-    const value = await local.read(tabPointerKey(tabId));
-    return isTabPointer(value) ? value : undefined;
+  async function readTabPointer(
+    tabId: number,
+  ): Promise<Result<TabPointer | undefined, StorageError>> {
+    const [value, err] = await local.read(tabPointerKey(tabId));
+    if (err) return fail(err);
+    return ok(isTabPointer(value) ? value : undefined);
   }
 
   /** Removes every `tabchat:*` pointer that targets one of `chatIds` — used when a chat is deleted (explicitly or by the backstop eviction) so a stale pointer can never resurrect it or hand a tab a chat id that no longer resolves to anything. */
-  async function removeTabPointersFor(chatIds: ReadonlySet<string>): Promise<void> {
-    if (chatIds.size === 0) return;
-    const all = await local.readAll();
+  async function removeTabPointersFor(
+    chatIds: ReadonlySet<string>,
+  ): Promise<Result<void, StorageError>> {
+    if (chatIds.size === 0) return ok();
+    const [all, err] = await local.readAll();
+    if (err) return fail(err);
     const stale = Object.keys(all).filter((k) => {
       if (!k.startsWith(TAB_POINTER_PREFIX)) return false;
       const v = all[k];
       return isTabPointer(v) && chatIds.has(v.chatId);
     });
-    await local.remove(stale);
+    return local.remove(stale);
   }
 
   /**
@@ -284,30 +301,40 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
    * exceeds the cap. Not the primary way chats go away — explicit deletion
    * is. Assumes the caller already holds the index lock.
    */
-  async function evictIfNeededLocked(): Promise<void> {
-    const index = await readChatIndex();
-    if (index.length <= MAX_RETAINED_CHATS) return;
+  async function evictIfNeededLocked(): Promise<Result<void, StorageError>> {
+    const [index, readErr] = await readChatIndex();
+    if (readErr) return fail(readErr);
+    if (index.length <= MAX_RETAINED_CHATS) return ok();
 
     const sorted = [...index].sort((a, b) => a.updatedAt - b.updatedAt);
     const evictCount = sorted.length - MAX_RETAINED_CHATS;
     const toEvict = sorted.slice(0, evictCount);
     const toKeep = sorted.slice(evictCount);
 
-    await local.remove(toEvict.map((e) => chatStorageKey(e.id)));
-    await writeChatIndex(toKeep);
-    await removeTabPointersFor(new Set(toEvict.map((e) => e.id)));
+    // Sequential, and each step gated on the one before it (card 92): the
+    // order — drop the records, then the index entries, then the pointers —
+    // is what keeps a partial eviction recoverable rather than leaving the
+    // index advertising chats whose bytes are already gone.
+    const [, removeErr] = await local.remove(toEvict.map((e) => chatStorageKey(e.id)));
+    if (removeErr) return fail(removeErr);
+    const [, indexErr] = await writeChatIndex(toKeep);
+    if (indexErr) return fail(indexErr);
+    return removeTabPointersFor(new Set(toEvict.map((e) => e.id)));
   }
 
-  async function commit(session: ChatSession): Promise<void> {
+  async function commit(session: ChatSession): Promise<Result<void, StorageError>> {
     const plain = toPlain(session);
-    await local.write({ [chatStorageKey(plain.id)]: plain });
+    const [, writeErr] = await local.write({ [chatStorageKey(plain.id)]: plain });
+    if (writeErr) return fail(writeErr);
 
-    await withIndexLock(async () => {
-      const index = await readChatIndex();
+    return withIndexLock(async () => {
+      const [index, readErr] = await readChatIndex();
+      if (readErr) return fail(readErr);
       const nextIndex = index.filter((e) => e.id !== plain.id);
       nextIndex.push(summarizeChat(plain));
-      await writeChatIndex(nextIndex);
-      await evictIfNeededLocked();
+      const [, indexErr] = await writeChatIndex(nextIndex);
+      if (indexErr) return fail(indexErr);
+      return evictIfNeededLocked();
     });
   }
 
@@ -319,26 +346,48 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
     pending.delete(chatId);
   }
 
+  /**
+   * A timer-driven flush has no caller to hand a `Result` back to — the
+   * debounce fired on its own. Card 92 replaces what used to be a bare
+   * `void store.flush(id)` over a promise that could REJECT (an unhandled
+   * rejection, with no chat id in it) with an explicit drop that names the
+   * chat. The scheduled write is best-effort by design (decisions/07): the
+   * next mutation reschedules one, and `flushAll` on teardown is the
+   * backstop.
+   */
+  function flushOnTimer(chatId: string): void {
+    void store.flush(chatId).then(([, err]) => {
+      if (err) {
+        console.warn(`[webmcp][chat-store] scheduled write for chat ${chatId} failed`, err);
+      }
+    });
+  }
+
   const store: ChatStore = {
     getChat(chatId) {
       return readChatRaw(chatId);
     },
 
-    async getOrCreateChatForTab(tabId, currentOrigin): Promise<ResolvedTabChat> {
-      const pointer = await readTabPointer(tabId);
+    async getOrCreateChatForTab(tabId, currentOrigin) {
+      const [pointer, pointerErr] = await readTabPointer(tabId);
+      if (pointerErr) return fail(pointerErr);
       if (pointer && pointer.tabOrigin === currentOrigin) {
-        const chat = await readChatRaw(pointer.chatId);
-        if (chat) return { chat, resolved: true };
+        const [chat, chatErr] = await readChatRaw(pointer.chatId);
+        if (chatErr) return fail(chatErr);
+        if (chat) return ok<ResolvedTabChat>({ chat, resolved: true });
       }
       // `resolved: false` on a pointer whose target is missing or corrupt is
       // deliberate (decisions/25 §2): a fresh chat's pointer MUST be written
       // in that case, or every subsequent message the tab sends has nowhere
-      // to be found and is silently lost too.
-      return { chat: createChat(currentOrigin), resolved: false };
+      // to be found and is silently lost too. A storage FAILURE is not that
+      // case and never reaches here — minting a fresh chat because the area
+      // did not answer would present the user with an empty transcript and
+      // no hint that their history is still there.
+      return ok<ResolvedTabChat>({ chat: createChat(currentOrigin), resolved: false });
     },
 
-    async setCurrentChatForTab(tabId, chatId, tabOrigin) {
-      await local.write({
+    setCurrentChatForTab(tabId, chatId, tabOrigin) {
+      return local.write({
         [tabPointerKey(tabId)]: { chatId, tabOrigin } satisfies TabPointer,
       });
     },
@@ -348,15 +397,14 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
 
       if (opts.immediate) {
         clearPending(session.id);
-        await commit(session);
-        return;
+        return commit(session);
       }
 
       const existing = pending.get(session.id);
       if (existing) clearTimeout(existing.timer);
 
       const timer = setTimeout(() => {
-        void store.flush(session.id);
+        flushOnTimer(session.id);
       }, DEBOUNCE_MS);
 
       // The max-wait timer is NOT re-armed on a subsequent change — it is
@@ -365,50 +413,64 @@ export function createChromeStorageChatStore(local: StorageAreaGateway): ChatSto
       const maxTimer =
         existing?.maxTimer ??
         setTimeout(() => {
-          void store.flush(session.id);
+          flushOnTimer(session.id);
         }, MAX_WAIT_MS);
 
       pending.set(session.id, { session, timer, maxTimer });
+      // Scheduling a write is not writing one: `ok()` here means "accepted",
+      // and the write's own outcome reaches the caller through `flush`.
+      return ok();
     },
 
     async flush(chatId) {
       const entry = pending.get(chatId);
-      if (!entry) return;
+      if (!entry) return ok();
       clearPending(chatId);
-      await commit(entry.session);
+      return commit(entry.session);
     },
 
     async flushAll() {
-      await Promise.all([...pending.keys()].map((chatId) => store.flush(chatId)));
+      const [, err] = allOk(
+        await Promise.all([...pending.keys()].map((chatId) => store.flush(chatId))),
+      );
+      // Every pending write is attempted before the first failure is
+      // reported — `Promise.all` starts them all — which is what a teardown
+      // call site needs: one bad chat must not cost the others their tail.
+      return err ? fail(err) : ok();
     },
 
     async deleteChat(chatId) {
       clearPending(chatId);
-      await local.remove(chatStorageKey(chatId));
+      const [, removeErr] = await local.remove(chatStorageKey(chatId));
+      if (removeErr) return fail(removeErr);
 
-      await withIndexLock(async () => {
-        const index = await readChatIndex();
-        await writeChatIndex(index.filter((e) => e.id !== chatId));
+      const [, indexErr] = await withIndexLock(async () => {
+        const [index, readErr] = await readChatIndex();
+        if (readErr) return fail(readErr);
+        return writeChatIndex(index.filter((e) => e.id !== chatId));
       });
+      if (indexErr) return fail(indexErr);
 
-      await removeTabPointersFor(new Set([chatId]));
+      return removeTabPointersFor(new Set([chatId]));
     },
 
-    async clearAllChats() {
+    clearAllChats() {
       for (const chatId of [...pending.keys()]) clearPending(chatId);
 
-      await withIndexLock(async () => {
-        const all = await local.readAll();
+      return withIndexLock(async () => {
+        const [all, err] = await local.readAll();
+        if (err) return fail(err);
         const keysToRemove = Object.keys(all).filter(
           (k) => k.startsWith(CHAT_KEY_PREFIX) || k.startsWith(TAB_POINTER_PREFIX),
         );
-        await local.remove(keysToRemove);
+        return local.remove(keysToRemove);
       });
     },
 
     async listChatSummaries() {
-      const index = await readChatIndex();
-      return [...index].sort((a, b) => b.updatedAt - a.updatedAt);
+      const [index, err] = await readChatIndex();
+      if (err) return fail(err);
+      return ok([...index].sort((a, b) => b.updatedAt - a.updatedAt));
     },
   };
 

@@ -69,10 +69,16 @@
   const hasMore = $derived(summaries.length > RECENT_LIMIT);
 
   function handleOpenChange(open: boolean): void {
-    if (open)
-      void sidePanelServices()
-        .chats.listChatSummaries()
-        .then((s) => (summaries = s));
+    if (!open) return;
+    // Card 92: a failed listing leaves whatever this menu last showed in
+    // place rather than blanking it — the recent list is a convenience, and
+    // card 95 is where the surfaces grow real error states.
+    void sidePanelServices()
+      .chats.listChatSummaries()
+      .then(([loaded, err]) => {
+        if (err) console.warn("[webmcp][history] could not list recent chats", err);
+        else summaries = loaded;
+      });
   }
 
   async function handleOpenChat(id: string): Promise<void> {

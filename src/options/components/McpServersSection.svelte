@@ -17,6 +17,7 @@
   // Card/Alert/Empty/Button shell ProvidersSection got, kept in step with it
   // for the same reason the state layout is.
   import { onMount } from "svelte";
+  import type { StorageError } from "../../domain/storage";
   import type { McpServerConfig } from "../../domain/tools";
   import { optionsServices } from "../app-services";
   import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
@@ -49,7 +50,14 @@
   }
 
   async function refresh(): Promise<void> {
-    servers = await optionsServices().mcpServers.listServers();
+    const [loaded, err] = await optionsServices().mcpServers.listServers();
+    // Card 92 / card 95: no error state on this section yet, so a failed
+    // read leaves the previous list showing and reports the reason.
+    if (err) {
+      console.warn("[webmcp][mcp] could not list servers", err);
+      return;
+    }
+    servers = loaded;
     await refreshPermissions();
   }
 
@@ -68,14 +76,21 @@
     });
   });
 
+  /** Card 92 — see ProvidersSection.svelte's twin: a write that failed must not be followed by the UI change that assumed it landed. Card 95 turns these into visible notices. */
+  function reportWriteFailure(what: string, cause: StorageError): void {
+    console.warn(`[webmcp][mcp] ${what}`, cause);
+  }
+
   async function handleAddSubmit(data: Omit<McpServerConfig, "id">): Promise<void> {
-    await optionsServices().mcpServers.addServer(data);
+    const [, err] = await optionsServices().mcpServers.addServer(data);
+    if (err) return reportWriteFailure("could not add the server", err);
     adding = false;
     await refresh();
   }
 
   async function handleEditSubmit(id: string, data: Omit<McpServerConfig, "id">): Promise<void> {
-    await optionsServices().mcpServers.updateServer(id, data);
+    const [, err] = await optionsServices().mcpServers.updateServer(id, data);
+    if (err) return reportWriteFailure("could not save the server", err);
     editingId = null;
     await refresh();
   }
@@ -85,14 +100,18 @@
       `Remove "${server.name}"? Its tools will no longer be offered to the model, and its stored token and headers will be deleted.`,
     );
     if (!ok) return;
-    await optionsServices().mcpServers.removeServer(server.id);
+    const [, err] = await optionsServices().mcpServers.removeServer(server.id);
+    if (err) return reportWriteFailure("could not remove the server", err);
     delete testOutcomes[server.id];
     delete permissionGranted[server.id];
     await refresh();
   }
 
   async function handleToggleEnabled(server: McpServerConfig): Promise<void> {
-    await optionsServices().mcpServers.updateServer(server.id, { enabled: !server.enabled });
+    const [, err] = await optionsServices().mcpServers.updateServer(server.id, {
+      enabled: !server.enabled,
+    });
+    if (err) return reportWriteFailure("could not change whether the server is enabled", err);
     await refresh();
   }
 
@@ -107,7 +126,10 @@
     next[index] = swapped;
     next[target] = current;
     servers = next; // optimistic reorder while the write lands
-    await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
+    const [, err] = await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
+    // Same as ProvidersSection's twin: the optimistic swap already happened,
+    // so a failure leaves the list ahead of storage until the next refresh.
+    if (err) reportWriteFailure("could not save the new server order", err);
   }
 
   /**

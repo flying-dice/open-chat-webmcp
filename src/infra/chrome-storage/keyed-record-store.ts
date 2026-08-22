@@ -31,6 +31,16 @@
 // different, and pushing them down into a shared "hooks" plumbing would
 // re-create the duplication one layer lower.
 
+// CARD 92: every method returns `Result<T, StorageError>`
+// (decisions/34-errors-as-values.md). Nothing here maps or classifies a
+// failure — ../area.ts already did that — so what the tuple checks below
+// actually buy is ORDERING: an `if (err) return fail(err)` after each write
+// is the explicit statement that a half-applied record (the core list
+// written, its credential parts not) stops there rather than being papered
+// over by a `Promise.all` whose rejection nobody was awaiting.
+
+import type { StorageError } from "../../domain/storage";
+import { allOk, fail, ok, type Result } from "../../domain/result";
 import type { StorageAreaGateway } from "./area";
 
 /**
@@ -75,27 +85,33 @@ export type KeyedRecord<TCore, TParts> = TCore & TParts;
 
 export interface KeyedRecordStore<TCore extends { id: string }, TParts> {
   /** The ordered core array with no credential reads at all — for operations that only rewrite ordering or membership. */
-  listCore(): Promise<TCore[]>;
+  listCore(): Promise<Result<TCore[], StorageError>>;
   /** Replace the ordered core array wholesale. */
-  writeCore(list: TCore[]): Promise<void>;
-  list(): Promise<KeyedRecord<TCore, TParts>[]>;
-  get(id: string): Promise<KeyedRecord<TCore, TParts> | undefined>;
+  writeCore(list: TCore[]): Promise<Result<void, StorageError>>;
+  list(): Promise<Result<KeyedRecord<TCore, TParts>[], StorageError>>;
+  get(id: string): Promise<Result<KeyedRecord<TCore, TParts> | undefined, StorageError>>;
   /** Append a record with a freshly generated id. Credentials go to the part area; nothing but the core reaches the list area. */
-  add(input: Omit<TCore, "id"> & Partial<TParts>): Promise<KeyedRecord<TCore, TParts>>;
+  add(
+    input: Omit<TCore, "id"> & Partial<TParts>,
+  ): Promise<Result<KeyedRecord<TCore, TParts>, StorageError>>;
   /**
    * Patch a record. A part is written only when its name is PRESENT in
    * `patch` — so `{}` leaves credentials alone while `{apiKey: undefined}`
    * clears one, which is the distinction both registries always drew and the
    * reason this takes `patch` rather than a whole record.
+   *
+   * An `id` that is not registered is `ok(undefined)`, not a failure: it is
+   * an ordinary lookup miss, and `NotFound` is reserved for the case where
+   * absence genuinely stops the caller (src/domain/storage).
    */
   update(
     id: string,
     patch: Partial<Omit<TCore, "id">> & Partial<TParts>,
-  ): Promise<KeyedRecord<TCore, TParts> | undefined>;
+  ): Promise<Result<KeyedRecord<TCore, TParts> | undefined, StorageError>>;
   /** Drop a record and every credential part filed under its id. */
-  remove(id: string): Promise<void>;
+  remove(id: string): Promise<Result<void, StorageError>>;
   /** Reorder to match `orderedIds`. Any id it omits is DROPPED — reordering is not a way to delete, so callers pass every current id back. */
-  reorder(orderedIds: string[]): Promise<void>;
+  reorder(orderedIds: string[]): Promise<Result<void, StorageError>>;
 }
 
 export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
@@ -111,49 +127,71 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
     return `${partFor(name).keyPrefix}${id}`;
   }
 
-  async function readParts(id: string): Promise<Partial<TParts>> {
-    const entries = await Promise.all(
-      partNames.map(async (name) => {
-        const raw = await spec.partArea.read(partStorageKey(name, id));
-        return [name, partFor(name).decode(raw)] as const;
-      }),
+  type PartEntry = readonly [name: string, value: unknown];
+
+  async function readParts(id: string): Promise<Result<Partial<TParts>, StorageError>> {
+    const [entries, err] = allOk<PartEntry, StorageError>(
+      await Promise.all(
+        partNames.map(async (name): Promise<Result<PartEntry, StorageError>> => {
+          const [raw, readErr] = await spec.partArea.read(partStorageKey(name, id));
+          if (readErr) return fail(readErr);
+          return ok([name, partFor(name).decode(raw)] as const);
+        }),
+      ),
     );
+    if (err) return fail(err);
+
     const merged: Record<string, unknown> = {};
     for (const [name, value] of entries) {
       if (value !== undefined) merged[name] = value;
     }
-    return merged as Partial<TParts>;
+    return ok(merged as Partial<TParts>);
   }
 
   /** Write one credential part, or CLEAR it when the value is absent or empty. The two are the same outcome on purpose — see {@link CredentialPart.isEmpty}. */
-  async function writePart(name: keyof TParts & string, id: string, value: unknown): Promise<void> {
+  function writePart(
+    name: keyof TParts & string,
+    id: string,
+    value: unknown,
+  ): Promise<Result<void, StorageError>> {
     const part = partFor(name);
     const key = partStorageKey(name, id);
-    if (value === undefined || part.isEmpty(value)) {
-      await spec.partArea.remove(key);
-    } else {
-      await spec.partArea.write({ [key]: value });
-    }
+    return value === undefined || part.isEmpty(value)
+      ? spec.partArea.remove(key)
+      : spec.partArea.write({ [key]: value });
   }
 
-  async function withParts(core: TCore): Promise<KeyedRecord<TCore, TParts>> {
-    const parts = await readParts(core.id);
-    return { ...core, ...parts } as KeyedRecord<TCore, TParts>;
+  /** Write every part of one patch concurrently, reporting the first failure. */
+  async function writeParts(
+    id: string,
+    parts: readonly { name: keyof TParts & string; value: unknown }[],
+  ): Promise<Result<void, StorageError>> {
+    const [, err] = allOk(
+      await Promise.all(parts.map(({ name, value }) => writePart(name, id, value))),
+    );
+    return err ? fail(err) : ok();
   }
 
-  async function listCore(): Promise<TCore[]> {
-    const value = await spec.listArea.read(spec.listKey);
-    if (!Array.isArray(value)) return [];
+  async function withParts(core: TCore): Promise<Result<KeyedRecord<TCore, TParts>, StorageError>> {
+    const [parts, err] = await readParts(core.id);
+    if (err) return fail(err);
+    return ok({ ...core, ...parts } as KeyedRecord<TCore, TParts>);
+  }
+
+  async function listCore(): Promise<Result<TCore[], StorageError>> {
+    const [value, err] = await spec.listArea.read(spec.listKey);
+    if (err) return fail(err);
+    if (!Array.isArray(value)) return ok([]);
     const out: TCore[] = [];
     for (const raw of value) {
       const decoded = spec.decodeCore(raw);
       if (decoded) out.push(decoded);
     }
-    return out;
+    return ok(out);
   }
 
-  async function writeCore(list: TCore[]): Promise<void> {
-    await spec.listArea.write({ [spec.listKey]: list });
+  function writeCore(list: TCore[]): Promise<Result<void, StorageError>> {
+    return spec.listArea.write({ [spec.listKey]: list });
   }
 
   /** Splits a patch into "core fields" and "credential parts" by the part names the spec declared — the one place the two halves of a record are told apart. */
@@ -178,53 +216,68 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
     writeCore,
 
     async list() {
-      const core = await listCore();
-      return Promise.all(core.map(withParts));
+      const [core, err] = await listCore();
+      if (err) return fail(err);
+      return allOk(await Promise.all(core.map(withParts)));
     },
 
     async get(id) {
-      const core = await listCore();
+      const [core, err] = await listCore();
+      if (err) return fail(err);
       const found = core.find((c) => c.id === id);
-      return found ? withParts(found) : undefined;
+      return found ? withParts(found) : ok(undefined);
     },
 
     async add(input) {
       const id = spec.generateId();
       const { core, parts } = splitPatch(input as Record<string, unknown>);
       const record = { ...core, id } as TCore;
-      await writeCore([...(await listCore()), record]);
-      await Promise.all(parts.map(({ name, value }) => writePart(name, id, value)));
+
+      const [existing, listErr] = await listCore();
+      if (listErr) return fail(listErr);
+      const [, coreErr] = await writeCore([...existing, record]);
+      if (coreErr) return fail(coreErr);
+      const [, partsErr] = await writeParts(id, parts);
+      if (partsErr) return fail(partsErr);
+
       return withParts(record);
     },
 
     async update(id, patch) {
-      const list = await listCore();
+      const [list, listErr] = await listCore();
+      if (listErr) return fail(listErr);
       const index = list.findIndex((c) => c.id === id);
-      if (index === -1) return undefined;
+      if (index === -1) return ok(undefined);
 
       const { core, parts } = splitPatch(patch as Record<string, unknown>);
       const updated = { ...list[index], ...core } as TCore;
       const next = [...list];
       next[index] = updated;
-      await writeCore(next);
+      const [, coreErr] = await writeCore(next);
+      if (coreErr) return fail(coreErr);
 
-      await Promise.all(parts.map(({ name, value }) => writePart(name, id, value)));
+      const [, partsErr] = await writeParts(id, parts);
+      if (partsErr) return fail(partsErr);
+
       return withParts(updated);
     },
 
     async remove(id) {
-      const list = await listCore();
-      await writeCore(list.filter((c) => c.id !== id));
-      await spec.partArea.remove(partNames.map((name) => partStorageKey(name, id)));
+      const [list, listErr] = await listCore();
+      if (listErr) return fail(listErr);
+      const [, coreErr] = await writeCore(list.filter((c) => c.id !== id));
+      if (coreErr) return fail(coreErr);
+      return spec.partArea.remove(partNames.map((name) => partStorageKey(name, id)));
     },
 
     async reorder(orderedIds) {
-      const list = await listCore();
+      const [list, err] = await listCore();
+      if (err) return fail(err);
       const byId = new Map(list.map((c) => [c.id, c] as const));
       const reordered = orderedIds
         .map((id) => byId.get(id))
         .filter((c): c is TCore => c !== undefined);
-      await writeCore(reordered);
+      return writeCore(reordered);
     },
   };
 }

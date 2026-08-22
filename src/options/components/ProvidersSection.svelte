@@ -24,6 +24,7 @@
     type ProviderConfig,
     type ProviderSelection,
   } from "../../domain/providers";
+  import type { StorageError } from "../../domain/storage";
   import { optionsServices } from "../app-services";
   import {
     describeProviderError,
@@ -187,7 +188,17 @@
       staleDefaultReason = undefined;
       return;
     }
-    const resolved = await resolveSelection(optionsServices().providers, defaultSelection);
+    const [resolved, resolveErr] = await resolveSelection(
+      optionsServices().providers,
+      defaultSelection,
+    );
+    if (resolveErr) {
+      // Card 92: an unreadable registry is not evidence that the default is
+      // stale, so this banner stays silent rather than accusing a provider
+      // that may be perfectly fine.
+      staleDefaultReason = undefined;
+      return;
+    }
     if (resolved.status !== "ok") {
       staleDefaultReason = "The provider it points to has been removed.";
       return;
@@ -208,8 +219,21 @@
 
   async function refresh(): Promise<void> {
     const registry = optionsServices().providers;
-    providers = await registry.listProviders();
-    defaultSelection = await registry.getDefaultSelection();
+    const [loaded, listErr] = await registry.listProviders();
+    // Card 92 / card 95: no error state on this section yet, so a failed
+    // read leaves the previous list showing and reports the reason rather
+    // than emptying the page and implying the user has no providers.
+    if (listErr) {
+      console.warn("[webmcp][providers] could not list providers", listErr);
+      return;
+    }
+    providers = loaded;
+    const [storedDefault, defaultErr] = await registry.getDefaultSelection();
+    if (defaultErr) {
+      console.warn("[webmcp][providers] could not read the default selection", defaultErr);
+      return;
+    }
+    defaultSelection = storedDefault;
 
     // Drop model-option state for providers that no longer exist, so a
     // deleted provider can't leave a stale entry behind if it's ever
@@ -237,15 +261,29 @@
     });
   });
 
+  /**
+   * Card 92: every write handler below bails on a returned `StorageError`
+   * instead of carrying on, which is exactly what the rejection it replaces
+   * did — a form that did not save must not close, a removed row must not
+   * disappear, a default that did not persist must not be shown as set. Card
+   * 95 replaces each `console.warn` with a notice the user can actually see;
+   * what must not regress in the meantime is the CONTROL FLOW.
+   */
+  function reportWriteFailure(what: string, cause: StorageError): void {
+    console.warn(`[webmcp][providers] ${what}`, cause);
+  }
+
   async function handleAddSubmit(data: Omit<ProviderConfig, "id">): Promise<void> {
-    await optionsServices().providers.addProvider(data);
+    const [, err] = await optionsServices().providers.addProvider(data);
+    if (err) return reportWriteFailure("could not add the provider", err);
     addStep = "closed";
     chosenPreset = undefined;
     await refresh();
   }
 
   async function handleEditSubmit(id: string, data: Omit<ProviderConfig, "id">): Promise<void> {
-    await optionsServices().providers.updateProvider(id, data);
+    const [, err] = await optionsServices().providers.updateProvider(id, data);
+    if (err) return reportWriteFailure("could not save the provider", err);
     editingId = null;
     await refresh();
   }
@@ -255,7 +293,8 @@
       `Remove "${provider.name}"? Any tab session currently using it will be left with a dangling provider and prompted to pick a replacement.`,
     );
     if (!ok) return;
-    await optionsServices().providers.removeProvider(provider.id);
+    const [, err] = await optionsServices().providers.removeProvider(provider.id);
+    if (err) return reportWriteFailure("could not remove the provider", err);
     delete testOutcomes[provider.id];
     delete permissionGranted[provider.id];
     await refresh();
@@ -272,7 +311,11 @@
     next[index] = swapped;
     next[target] = current;
     providers = next; // optimistic reorder while the write lands
-    await optionsServices().providers.reorderProviders(next.map((p) => p.id));
+    const [, err] = await optionsServices().providers.reorderProviders(next.map((p) => p.id));
+    // The optimistic swap above already happened, so a failure here leaves
+    // the list showing an order storage does not have. `refresh()` on the
+    // next mount corrects it; card 95 says so on screen.
+    if (err) reportWriteFailure("could not save the new provider order", err);
   }
 
   /** Whether `provider`'s model options are still loading — the row shows a loading state, no reason yet (card 52). */
@@ -324,10 +367,11 @@
     const options = defaultModelOptionsFor(provider);
     if (!options.some((o) => o.model.id === modelId)) return;
 
-    await optionsServices().providers.setDefaultSelection({
+    const [, err] = await optionsServices().providers.setDefaultSelection({
       providerId: provider.id,
       model: modelId,
     });
+    if (err) return reportWriteFailure("could not set the default provider and model", err);
     defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }

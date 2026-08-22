@@ -12,7 +12,17 @@
 // surfaces what the callback form reports via `chrome.runtime.lastError` as
 // a plain rejection — so catching the rejection IS catching `lastError`,
 // and neither ever escapes this module.
+//
+// CARD 92: every method returns `Result<T, StorageError>`
+// (decisions/34-errors-as-values.md) rather than throwing one. Decision 32
+// chose `throw` here because every caller already rejected and none handled
+// it; decision 34 supersedes that — a quota failure or an invalidated
+// extension context is an EXPECTED outcome of writing to `chrome.storage`,
+// so it belongs in the signature. These four `catch`es are now the whole of
+// the mapping: they are the last place a platform exception exists at all,
+// and no `throw` leaves this folder.
 
+import { fail, ok, type Result } from "../../domain/result";
 import { StorageError, type StorageErrorKind } from "../../domain/storage";
 
 /** Which `chrome.storage` area a key lives in. The credential split (decisions/10, 15) is expressed as a repository choosing one of these per key — see ./keyed-record-store.ts. */
@@ -66,13 +76,13 @@ function wrap(area: StorageAreaName, operation: string, cause: unknown): Storage
  */
 export interface StorageAreaGateway {
   readonly area: StorageAreaName;
-  /** The raw stored value for `key`, or `undefined` when the key is absent. Absence is NOT an error — a caller that needs "missing" to be a failure raises `NotFound` itself. */
-  read(key: string): Promise<unknown>;
+  /** The raw stored value for `key`, or `undefined` when the key is absent. Absence is NOT a failure — it is an `ok(undefined)`, and a caller that needs "missing" to be an error raises `NotFound` itself. */
+  read(key: string): Promise<Result<unknown, StorageError>>;
   /** Every key/value in the area. Used only where a prefix scan is genuinely required (tab pointers, clear-all); prefer {@link StorageAreaGateway.read}. */
-  readAll(): Promise<Record<string, unknown>>;
-  write(entries: Record<string, unknown>): Promise<void>;
-  /** Removing an absent key is a no-op, not an error — matching `chrome.storage`. Passing an empty list does nothing at all. */
-  remove(keys: string | string[]): Promise<void>;
+  readAll(): Promise<Result<Record<string, unknown>, StorageError>>;
+  write(entries: Record<string, unknown>): Promise<Result<void, StorageError>>;
+  /** Removing an absent key is a no-op, not a failure — matching `chrome.storage`. Passing an empty list does nothing at all. */
+  remove(keys: string | string[]): Promise<Result<void, StorageError>>;
 }
 
 export function createStorageAreaGateway(area: StorageAreaName): StorageAreaGateway {
@@ -91,34 +101,36 @@ export function createStorageAreaGateway(area: StorageAreaName): StorageAreaGate
     async read(key) {
       try {
         const stored = await chromeArea().get(key);
-        return stored[key];
+        return ok(stored[key]);
       } catch (cause) {
-        throw wrap(area, "get", cause);
+        return fail(wrap(area, "get", cause));
       }
     },
 
     async readAll() {
       try {
-        return await chromeArea().get(null);
+        return ok(await chromeArea().get(null));
       } catch (cause) {
-        throw wrap(area, "get(null)", cause);
+        return fail(wrap(area, "get(null)", cause));
       }
     },
 
     async write(entries) {
       try {
         await chromeArea().set(entries);
+        return ok();
       } catch (cause) {
-        throw wrap(area, "set", cause);
+        return fail(wrap(area, "set", cause));
       }
     },
 
     async remove(keys) {
-      if (Array.isArray(keys) && keys.length === 0) return;
+      if (Array.isArray(keys) && keys.length === 0) return ok();
       try {
         await chromeArea().remove(keys);
+        return ok();
       } catch (cause) {
-        throw wrap(area, "remove", cause);
+        return fail(wrap(area, "remove", cause));
       }
     },
   };

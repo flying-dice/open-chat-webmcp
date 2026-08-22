@@ -2,7 +2,9 @@
 // boundaries, garbage lines, abort), capability probing over /api/show, and
 // error mapping (including the 403 origin-rejection special case) (card 83).
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import type { ModelCapabilities, ModelCapabilityCache } from "../../domain/providers";
+import { ok } from "../../domain/result";
 import { createFakeChromeStorage } from "../chrome-storage/testing/fake-chrome-storage";
 import { chat, getCapabilities, listModels, type OllamaChatParams } from "./client";
 
@@ -168,12 +170,23 @@ describe("error mapping", () => {
 // ---------------------------------------------------------------------------
 
 describe("getCapabilities", () => {
-  function fakeCache() {
-    const store = new Map<string, unknown>();
+  /**
+   * An in-memory {@link ModelCapabilityCache}. Typed as the real port rather
+   * than handed over as `as never` (card 92): the cast is what let this fake
+   * keep returning bare values after the port moved to `Result` tuples, and
+   * the only thing that noticed was a runtime `TypeError` deep inside
+   * `ollamaFetchJson`. Typed, the compiler notices instead.
+   */
+  function fakeCache(): ModelCapabilityCache & {
+    get: Mock<ModelCapabilityCache["get"]>;
+    set: Mock<ModelCapabilityCache["set"]>;
+  } {
+    const store = new Map<string, ModelCapabilities>();
     return {
-      get: vi.fn(async (type: string, fp: string) => store.get(`${type}:${fp}`)),
-      set: vi.fn(async (type: string, fp: string, v: unknown) => {
+      get: vi.fn(async (type, fp) => ok(store.get(`${type}:${fp}`))),
+      set: vi.fn(async (type, fp, v) => {
         store.set(`${type}:${fp}`, v);
+        return ok();
       }),
     };
   }
@@ -186,7 +199,7 @@ describe("getCapabilities", () => {
 
     const result = await getCapabilities(
       { name: "m", digest: "d1" },
-      { baseUrl: "http://x", capabilityCache: cache as never },
+      { baseUrl: "http://x", capabilityCache: cache },
     );
     expect(result).toEqual({ ok: true, value: { status: "tool-capable", detail: [] } });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -201,7 +214,7 @@ describe("getCapabilities", () => {
 
     const result = await getCapabilities(
       { name: "llama3.1:8b", digest: "d1" },
-      { baseUrl: "http://localhost:11434", capabilityCache: cache as never },
+      { baseUrl: "http://localhost:11434", capabilityCache: cache },
     );
 
     expect(result).toEqual({
@@ -235,7 +248,7 @@ describe("getCapabilities", () => {
 
     await getCapabilities(
       { name: "m", digest: "d1" },
-      { baseUrl: "http://x", capabilityCache: cache as never, forceRefresh: true },
+      { baseUrl: "http://x", capabilityCache: cache, forceRefresh: true },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

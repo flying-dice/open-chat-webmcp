@@ -110,13 +110,23 @@
   let unsubscribeMcpPolicy: (() => void) | undefined;
 
   onMount(() => {
+    // Card 92: an unreadable policy leaves each radio group on the
+    // documented default it was initialised with — the same value the
+    // adapter substitutes for a stored value it cannot decode — rather than
+    // showing a blank group. Card 95 gives this section a real error notice.
     optionsServices()
       .settings.getApprovalPolicy()
-      .then((p) => (policy = p))
+      .then(([p, err]) => {
+        if (err) console.warn("[webmcp][settings] could not read the approval policy", err);
+        else policy = p;
+      })
       .finally(() => (policyLoading = false));
     optionsServices()
       .settings.getMcpApprovalPolicy()
-      .then((p) => (mcpPolicy = p))
+      .then(([p, err]) => {
+        if (err) console.warn("[webmcp][settings] could not read the MCP approval policy", err);
+        else mcpPolicy = p;
+      })
       .finally(() => (mcpPolicyLoading = false));
 
     // Keep this page's radio selection correct if the policy changes from
@@ -135,12 +145,19 @@
     unsubscribeMcpPolicy?.();
   });
 
+  // The two rethrows below are the LAST throws of an expected failure left
+  // in this component, and they are card 95's to remove (see
+  // scripts/throw-allowlist.json). Card 92 changed only their trigger: the
+  // settings port returns a `Result` now, so the failure is a checked value
+  // rather than a caught exception — but until this section renders an error
+  // notice, rethrowing is still what stops a failed write from leaving the
+  // radio silently out of step with storage. The rollback is the part that
+  // must not regress; the throw is the placeholder.
   async function handlePolicyChange(next: ApprovalPolicy): Promise<void> {
     const previous = policy;
     policy = next; // optimistic
-    try {
-      await optionsServices().settings.setApprovalPolicy(next);
-    } catch (err) {
+    const [, err] = await optionsServices().settings.setApprovalPolicy(next);
+    if (err) {
       policy = previous;
       throw err;
     }
@@ -149,9 +166,8 @@
   async function handleMcpPolicyChange(next: McpApprovalPolicy): Promise<void> {
     const previous = mcpPolicy;
     mcpPolicy = next; // optimistic
-    try {
-      await optionsServices().settings.setMcpApprovalPolicy(next);
-    } catch (err) {
+    const [, err] = await optionsServices().settings.setMcpApprovalPolicy(next);
+    if (err) {
       mcpPolicy = previous;
       throw err;
     }

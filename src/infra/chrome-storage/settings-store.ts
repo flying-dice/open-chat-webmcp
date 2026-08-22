@@ -14,6 +14,7 @@
 // three lines and the coupling it would buy back is the thing the decision
 // forbids.
 
+import { fail, ok } from "../../domain/result";
 import {
   DEFAULT_APPROVAL_POLICY,
   DEFAULT_MCP_APPROVAL_POLICY,
@@ -29,13 +30,12 @@ const SYNC_KEY_MCP_APPROVAL_POLICY = "settings:mcpApprovalPolicy";
 export function createChromeStorageSettingsStore(sync: StorageAreaGateway): SettingsStore {
   return {
     async getApprovalPolicy() {
-      const value = await sync.read(SYNC_KEY_APPROVAL_POLICY);
-      return isApprovalPolicy(value) ? value : DEFAULT_APPROVAL_POLICY;
+      const [value, err] = await sync.read(SYNC_KEY_APPROVAL_POLICY);
+      if (err) return fail(err);
+      return ok(isApprovalPolicy(value) ? value : DEFAULT_APPROVAL_POLICY);
     },
 
-    async setApprovalPolicy(policy) {
-      await sync.write({ [SYNC_KEY_APPROVAL_POLICY]: policy });
-    },
+    setApprovalPolicy: (policy) => sync.write({ [SYNC_KEY_APPROVAL_POLICY]: policy }),
 
     onApprovalPolicyChange(callback) {
       return subscribeToKey("sync", SYNC_KEY_APPROVAL_POLICY, (newValue) => {
@@ -47,13 +47,12 @@ export function createChromeStorageSettingsStore(sync: StorageAreaGateway): Sett
     },
 
     async getMcpApprovalPolicy() {
-      const value = await sync.read(SYNC_KEY_MCP_APPROVAL_POLICY);
-      return isMcpApprovalPolicy(value) ? value : DEFAULT_MCP_APPROVAL_POLICY;
+      const [value, err] = await sync.read(SYNC_KEY_MCP_APPROVAL_POLICY);
+      if (err) return fail(err);
+      return ok(isMcpApprovalPolicy(value) ? value : DEFAULT_MCP_APPROVAL_POLICY);
     },
 
-    async setMcpApprovalPolicy(policy) {
-      await sync.write({ [SYNC_KEY_MCP_APPROVAL_POLICY]: policy });
-    },
+    setMcpApprovalPolicy: (policy) => sync.write({ [SYNC_KEY_MCP_APPROVAL_POLICY]: policy }),
 
     onMcpApprovalPolicyChange(callback) {
       return subscribeToKey("sync", SYNC_KEY_MCP_APPROVAL_POLICY, (newValue) => {

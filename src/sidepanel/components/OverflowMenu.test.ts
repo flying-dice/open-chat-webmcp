@@ -7,10 +7,15 @@
 // file — see that helper's header comment for why never `vi.resetModules()`.
 import "@testing-library/svelte/vitest";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/svelte";
+import { render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import OverflowMenu from "./OverflowMenu.svelte";
-import { createFakeSidePanelServices, initFakeSidePanelServices } from "../testing/fake-services";
+import {
+  createFakeSidePanelServices,
+  initFakeSidePanelServices,
+  storageFailure,
+} from "../testing/fake-services";
+import { fail, ok } from "../../domain/result";
 import type { ChatSummary } from "../../domain/chat";
 import type { ConnectionStatus } from "../stores/panel.svelte";
 
@@ -40,7 +45,7 @@ describe("OverflowMenu", () => {
   });
 
   beforeEach(() => {
-    services.chats.listChatSummaries = async () => [];
+    services.chats.listChatSummaries = async () => ok([]);
     services.chat.openChat = async () => false;
     services.shell.openOptionsPage = vi.fn();
   });
@@ -69,7 +74,7 @@ describe("OverflowMenu", () => {
   }
 
   it("lists recent chats loaded from the fake chats port on open", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hello world" })];
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
     renderMenu();
     await openMenu();
 
@@ -85,7 +90,7 @@ describe("OverflowMenu", () => {
 
   it("only lists the first 5 chats, with a More row for the rest", async () => {
     services.chats.listChatSummaries = async () =>
-      Array.from({ length: 7 }, (_, i) => summary({ id: `c${i}`, preview: `chat ${i}` }));
+      ok(Array.from({ length: 7 }, (_, i) => summary({ id: `c${i}`, preview: `chat ${i}` })));
     renderMenu();
     await openMenu();
 
@@ -96,7 +101,7 @@ describe("OverflowMenu", () => {
   });
 
   it("opens a recent chat and calls onOpenChat only when openChat succeeds", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hello world" })];
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
     const openChat = vi.fn(async () => true);
     services.chat.openChat = openChat;
     const onOpenChat = vi.fn();
@@ -117,7 +122,7 @@ describe("OverflowMenu", () => {
   });
 
   it("does not call onOpenChat when openChat resolves false", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hello world" })];
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
     services.chat.openChat = async () => false;
     const onOpenChat = vi.fn();
     render(OverflowMenu, {
@@ -137,7 +142,7 @@ describe("OverflowMenu", () => {
 
   it("More calls onOpenHistory", async () => {
     services.chats.listChatSummaries = async () =>
-      Array.from({ length: 6 }, (_, i) => summary({ id: `c${i}`, preview: `chat ${i}` }));
+      ok(Array.from({ length: 6 }, (_, i) => summary({ id: `c${i}`, preview: `chat ${i}` })));
     const onOpenHistory = vi.fn();
     render(OverflowMenu, {
       props: {
@@ -190,5 +195,43 @@ describe("OverflowMenu", () => {
     await openMenu();
 
     expect(await screen.findByText("Connected")).toBeInTheDocument();
+  });
+
+  // Card 92: `handleOpenChange` (OverflowMenu.svelte) gets a `Result` back
+  // from `listChatSummaries` rather than a rejecting promise, and on `err` it
+  // only logs — `summaries` is left untouched — matching the same
+  // "don't blank what's already on screen" posture HistoryPanel.test.ts
+  // covers for the full history view. First open succeeds and populates the
+  // recent list; the menu is then closed and reopened with a FAILING read, so
+  // the second open is the one that must leave the first open's list in
+  // place rather than clearing it to "No chats yet.".
+  it("keeps the previously-loaded recent list, and logs, when a later open's storage read fails", async () => {
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    renderMenu();
+    await user.click(screen.getByRole("button", { name: "More options" }));
+    expect(await screen.findByText("hello world")).toBeInTheDocument();
+
+    // Close, then swap the fake to a failing read before opening again. As
+    // this file's own `afterEach` documents, bits-ui's DropdownMenu leaves
+    // `body`'s `pointer-events: none` guard in place until ITS OWN close
+    // transition runs — which jsdom never does — so a same-test reopen has
+    // to clear that style by hand, exactly as `afterEach` does between tests.
+    await user.keyboard("{Escape}");
+    document.body.style.pointerEvents = "";
+    const err = storageFailure();
+    services.chats.listChatSummaries = async () => fail(err);
+
+    await user.click(screen.getByRole("button", { name: "More options" }));
+
+    // The recent list from the first, successful open is still showing —
+    // the failed re-fetch did not blank it.
+    expect(await screen.findByText("hello world")).toBeInTheDocument();
+    expect(screen.queryByText("No chats yet.")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith("[webmcp][history] could not list recent chats", err),
+    );
   });
 });

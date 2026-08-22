@@ -37,6 +37,8 @@
 // Pure: no `chrome.*`, no `fetch`, no DOM, no Svelte.
 
 import type { ProviderSelection, ToolCall } from "../providers";
+import type { Result } from "../result";
+import type { StorageError } from "../storage";
 import type { ApprovalPolicyGate } from "../settings";
 import type { ToolOrigin } from "../tools";
 import {
@@ -166,15 +168,25 @@ export interface ChatServiceDeps {
   /** The outermost rung of the tool-call timeout ladder, in ms (see `RunTurnOptions.toolCallTimeoutMs`). */
   toolCallTimeoutMs: number;
   /**
-   * Where a failed background write is reported (card 59 item 3). Every
-   * transcript mutator persists fire-and-forget — they must stay
-   * synchronous-feeling for streaming, so this does not block or retry; it
-   * only makes a failure visible instead of a swallowed promise rejection.
+   * Where a storage failure this service ABSORBS is reported (card 59 item 3,
+   * widened by card 92).
+   *
+   * Two kinds of call site reach it. The first is every transcript mutator:
+   * they persist fire-and-forget — they must stay synchronous-feeling for
+   * streaming, so this does not block or retry; it only makes a failure
+   * visible instead of a swallowed promise rejection. The second arrived with
+   * decisions/34: `ChatStore` now RETURNS its failures, and the lifecycle
+   * methods below (`syncToTab`, `openChat`, …) still have `Promise<void>` /
+   * `Promise<boolean>` signatures that cannot carry one — card 95 is where
+   * this service's own driving API grows typed results and those call sites
+   * stop absorbing anything. Until then, absorbing is at least explicit and
+   * reported, which is more than the rejections it replaces ever were.
+   *
    * Defaults to `console.error`, which is not a platform API and exists in a
-   * bare Node test: the default is there so a save failure can never be
-   * silent by omission, not because the domain has an opinion about sinks.
+   * bare Node test: the default is there so a failure can never be silent by
+   * omission, not because the domain has an opinion about sinks.
    */
-  reportWriteFailure?: (message: string, cause: unknown) => void;
+  reportStorageFailure?: (message: string, cause: unknown) => void;
   /** Optional diagnostic trace for the swap path (card 59 item 1) — the panel gates this on its runtime tracing flag. */
   trace?: (event: string, detail: Record<string, unknown>) => void;
 }
@@ -198,8 +210,9 @@ function makeMessageId(): string {
 export function createChatService(deps: ChatServiceDeps): ChatService {
   const { store, policy } = deps;
   const presenter = deps.presenter ?? headlessPresenter;
-  const reportWriteFailure =
-    deps.reportWriteFailure ?? ((message: string, cause: unknown) => console.error(message, cause));
+  const reportStorageFailure =
+    deps.reportStorageFailure ??
+    ((message: string, cause: unknown) => console.error(message, cause));
   const trace = deps.trace ?? (() => undefined);
 
   let session: ChatSession | undefined;
@@ -237,14 +250,24 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
   /**
    * Fire-and-forget persistence. Every transcript mutator writes through here
-   * rather than `void store.save(...)`: a rejected write (a quota error, the
+   * rather than `void store.save(...)`: a failed write (a quota error, the
    * extension context invalidated mid-write) used to become an unhandled
-   * rejection with no signal and no record of which chat it was.
+   * rejection with no signal and no record of which chat it was, and is now
+   * a returned `StorageError` this reports against its chat id.
    */
   function save(target: ChatSession, opts?: { immediate?: boolean; touch?: boolean }): void {
-    void store.save(target, opts).catch((err: unknown) => {
-      reportWriteFailure(`[webmcp][chat] save failed for chat ${target.id}`, err);
+    void store.save(target, opts).then(([, err]) => {
+      if (err) reportStorageFailure(`[webmcp][chat] save failed for chat ${target.id}`, err);
     });
+  }
+
+  /** Awaited persistence for the lifecycle methods, which have nowhere to put a `StorageError` until card 95 gives them typed results. Reports and carries on — see `ChatServiceDeps.reportStorageFailure`. */
+  async function persist(
+    what: string,
+    operation: Promise<Result<unknown, StorageError>>,
+  ): Promise<void> {
+    const [, err] = await operation;
+    if (err) reportStorageFailure(`[webmcp][chat] ${what}`, err);
   }
 
   function findEntry(target: ChatSession, id: string): TranscriptEntry | undefined {
@@ -259,7 +282,16 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     async syncToTab(nextTabId, origin) {
       tabId = nextTabId;
       tabOrigin = origin;
-      const { chat, resolved } = await store.getOrCreateChatForTab(nextTabId, origin);
+      const [resolvedTab, readErr] = await store.getOrCreateChatForTab(nextTabId, origin);
+      if (readErr) {
+        // Leave the service pointed where it was rather than adopting a
+        // fabricated empty chat: an unreadable store is not the same fact as
+        // "this tab has no chat", and swapping the transcript out on it would
+        // show the user a blank conversation their history is still behind.
+        reportStorageFailure(`[webmcp][chat] could not resolve tab ${nextTabId}'s chat`, readErr);
+        return;
+      }
+      const { chat, resolved } = resolvedTab;
       // Consult the live registry BEFORE accepting what storage just handed
       // back: if that chat has a turn in flight, the freshly-read copy is
       // already stale, and even if it weren't it is a structurally-equal but
@@ -271,7 +303,12 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // §2, card 57): it is correct by construction, so rewriting it on every
       // sync is churn — and for a chat mid-generation it would be actively
       // wrong, re-stamping a pointer a background turn may need untouched.
-      if (!resolved) await store.setCurrentChatForTab(nextTabId, current.id, origin);
+      if (!resolved) {
+        await persist(
+          `tab pointer write failed for tab ${nextTabId}`,
+          store.setCurrentChatForTab(nextTabId, current.id, origin),
+        );
+      }
       trace("syncToTab", {
         tabId: nextTabId,
         chatId: current.id,
@@ -311,19 +348,36 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       const next = createChat(origin, carried);
       if (next.selection) next.selectionExplicit = carriedExplicit;
       adopt(next);
-      await store.setCurrentChatForTab(tabId, next.id, origin);
+      await persist(
+        `tab pointer write failed for tab ${tabId}`,
+        store.setCurrentChatForTab(tabId, next.id, origin),
+      );
     },
 
     async openChat(chatId) {
       if (tabId === undefined) return false;
       const live = liveSessions.get(chatId);
-      const chat = live ?? (await store.getChat(chatId));
+      let chat = live;
+      if (!chat) {
+        const [stored, err] = await store.getChat(chatId);
+        if (err) {
+          // `false` for an unreadable store as well as for a chat that no
+          // longer resolves: the caller's only affordance either way is to
+          // leave History open, and the reason is in the report.
+          reportStorageFailure(`[webmcp][chat] could not open chat ${chatId}`, err);
+          return false;
+        }
+        chat = stored;
+      }
       if (!chat) return false;
       const current = adopt(chat);
       // Deliberately does NOT touch `tabOrigin`: a real navigation afterwards
       // must still be measured against the tab's actual history, not against
       // the origin of whatever history entry was opened.
-      await store.setCurrentChatForTab(tabId, current.id, tabOrigin);
+      await persist(
+        `tab pointer write failed for tab ${tabId}`,
+        store.setCurrentChatForTab(tabId, current.id, tabOrigin),
+      );
       return true;
     },
 
@@ -339,7 +393,10 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       else delete session.title;
       // `touch: false` — History is ordered by `updatedAt`, and relabelling a
       // chat is not conversation activity (decisions/24 §5).
-      await store.save(session, { immediate: true, touch: false });
+      await persist(
+        `rename write failed for chat ${session.id}`,
+        store.save(session, { immediate: true, touch: false }),
+      );
     },
 
     getSelection(forTabId) {
@@ -351,7 +408,10 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       if (!session || tabId !== forTabId) return false;
       session.selection = next;
       session.selectionExplicit = explicit;
-      await store.save(session, { immediate: true });
+      await persist(
+        `selection write failed for chat ${session.id}`,
+        store.save(session, { immediate: true }),
+      );
       return true;
     },
 

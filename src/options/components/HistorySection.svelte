@@ -39,7 +39,14 @@
   let confirmOpen = $state(false);
 
   async function refreshSessions(): Promise<void> {
-    sessions = await optionsServices().chats.listChatSummaries();
+    const [loaded, err] = await optionsServices().chats.listChatSummaries();
+    // Card 92 / card 95: no error state on this section yet, so a failed
+    // listing leaves the previous one showing and reports the reason.
+    if (err) {
+      console.warn("[webmcp][history] could not list chats", err);
+      return;
+    }
+    sessions = loaded;
   }
 
   onMount(() => {
@@ -60,8 +67,13 @@
     if (sessions.length === 0) return;
     clearingHistory = true;
     try {
-      await optionsServices().chats.clearAllChats();
-      sessions = [];
+      // Card 92: only empty the list when the clear actually landed — the
+      // rejection this replaces skipped this assignment, and showing an
+      // empty history for chats that are still in storage would be the worst
+      // possible lie for this particular button to tell.
+      const [, err] = await optionsServices().chats.clearAllChats();
+      if (err) console.warn("[webmcp][history] could not clear chat history", err);
+      else sessions = [];
     } finally {
       clearingHistory = false;
       confirmOpen = false;

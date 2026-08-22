@@ -9,7 +9,12 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import HistoryPanel from "./HistoryPanel.svelte";
-import { createFakeSidePanelServices, initFakeSidePanelServices } from "../testing/fake-services";
+import {
+  createFakeSidePanelServices,
+  initFakeSidePanelServices,
+  storageFailure,
+} from "../testing/fake-services";
+import { fail, ok } from "../../domain/result";
 import type { ChatSummary } from "../../domain/chat";
 
 // jsdom has no ResizeObserver. HistoryPanel wraps its list in shadcn-svelte's
@@ -38,10 +43,10 @@ describe("HistoryPanel", () => {
   });
 
   beforeEach(() => {
-    services.chats.listChatSummaries = async () => [];
+    services.chats.listChatSummaries = async () => ok([]);
     services.chat.openChat = async () => false;
     services.chat.discardIfDeleted = async () => undefined;
-    services.chats.deleteChat = async () => undefined;
+    services.chats.deleteChat = async () => ok();
     vi.restoreAllMocks();
   });
 
@@ -51,7 +56,7 @@ describe("HistoryPanel", () => {
   });
 
   it("shows 'Loading…' before the list resolves, then the loaded list", async () => {
-    let resolveList!: (value: ChatSummary[]) => void;
+    let resolveList!: (result: ReturnType<typeof ok<ChatSummary[]>>) => void;
     services.chats.listChatSummaries = () =>
       new Promise((resolve) => {
         resolveList = resolve;
@@ -60,16 +65,17 @@ describe("HistoryPanel", () => {
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
     expect(screen.getByText("Loading…")).toBeInTheDocument();
 
-    resolveList([summary({ preview: "hi there" })]);
+    resolveList(ok([summary({ preview: "hi there" })]));
     expect(await screen.findByText("hi there")).toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
 
   it("renders a row per chat summary", async () => {
-    services.chats.listChatSummaries = async () => [
-      summary({ id: "a", preview: "first chat" }),
-      summary({ id: "b", preview: "second chat" }),
-    ];
+    services.chats.listChatSummaries = async () =>
+      ok([
+        summary({ id: "a", preview: "first chat" }),
+        summary({ id: "b", preview: "second chat" }),
+      ]);
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
 
     expect(await screen.findByText("first chat")).toBeInTheDocument();
@@ -78,7 +84,7 @@ describe("HistoryPanel", () => {
   });
 
   it("opens a chat and calls onOpenChat when openChat succeeds", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hi there" })];
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
     const openChat = vi.fn(async () => true);
     services.chat.openChat = openChat;
     const onOpenChat = vi.fn();
@@ -92,7 +98,7 @@ describe("HistoryPanel", () => {
   });
 
   it("does not call onOpenChat when openChat resolves false", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hi there" })];
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
     services.chat.openChat = async () => false;
     const onOpenChat = vi.fn();
     const user = userEvent.setup();
@@ -105,10 +111,10 @@ describe("HistoryPanel", () => {
   });
 
   it("delete stops propagation: does not open the chat", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hi there" })];
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
     const openChat = vi.fn(async () => true);
     services.chat.openChat = openChat;
-    const deleteChat = vi.fn(async () => undefined);
+    const deleteChat = vi.fn(async () => ok());
     services.chats.deleteChat = deleteChat;
     const discardIfDeleted = vi.fn(async () => undefined);
     services.chat.discardIfDeleted = discardIfDeleted;
@@ -126,8 +132,8 @@ describe("HistoryPanel", () => {
   });
 
   it("does not delete when the confirm dialog is declined", async () => {
-    services.chats.listChatSummaries = async () => [summary({ preview: "hi there" })];
-    const deleteChat = vi.fn(async () => undefined);
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
+    const deleteChat = vi.fn(async () => ok());
     services.chats.deleteChat = deleteChat;
     vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
@@ -138,5 +144,50 @@ describe("HistoryPanel", () => {
     // Give any (incorrect) async delete a tick to happen before asserting it didn't.
     await new Promise((r) => setTimeout(r, 0));
     expect(deleteChat).not.toHaveBeenCalled();
+  });
+
+  // Card 92: `refresh()` (HistoryPanel.svelte) now gets a `Result` back from
+  // `listChatSummaries` rather than a rejecting promise, and on `err` it logs
+  // and returns WITHOUT touching `summaries` — the list that was already on
+  // screen stays exactly as it was, rather than the effect's `status` flip
+  // dropping through to the empty state. `handleDelete` calls `refresh()`
+  // again after its own delete completes, which is the one place within a
+  // single mount this second, later-failing read can happen — the initial
+  // mount's `listChatSummaries` succeeds first so there is something on
+  // screen to preserve, then it is swapped to a failing implementation for
+  // the read `handleDelete` triggers.
+  it("keeps the previous list, and logs, when a later refresh's storage read fails", async () => {
+    services.chats.listChatSummaries = async () =>
+      ok([
+        summary({ id: "a", origin: "https://a.example.com", preview: "first chat" }),
+        summary({ id: "b", origin: "https://b.example.com", preview: "second chat" }),
+      ]);
+    const deleteChat = vi.fn(async () => ok());
+    services.chats.deleteChat = deleteChat;
+    services.chat.discardIfDeleted = vi.fn(async () => undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    expect(await screen.findByText("first chat")).toBeInTheDocument();
+    expect(screen.getByText("second chat")).toBeInTheDocument();
+
+    // From here on, any further listing read fails — exactly what
+    // `handleDelete`'s own `refresh()` call is about to trigger.
+    const err = storageFailure();
+    services.chats.listChatSummaries = async () => fail(err);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Delete chat from https://a.example.com" }),
+    );
+    await waitFor(() => expect(deleteChat).toHaveBeenCalledWith("a"));
+
+    // The list was NOT blanked to the "No chats yet" empty state — both
+    // previously-loaded summaries are still exactly where they were.
+    expect(screen.getByText("first chat")).toBeInTheDocument();
+    expect(screen.getByText("second chat")).toBeInTheDocument();
+    expect(screen.queryByText("No chats yet")).not.toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith("[webmcp][history] could not list chats", err);
   });
 });

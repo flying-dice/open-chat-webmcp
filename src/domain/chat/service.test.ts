@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import { createChatService, type ChatServiceDeps } from "./service";
 import { createChat, type ChatSession } from "./session";
 import { userEntry } from "./message";
+import { fail, ok } from "../result";
+import type { Result } from "../result";
+import { StorageError } from "../storage";
 import type { ChatSaveOptions, ChatStore, ResolvedTabChat } from "./store";
 import type { ApprovalDecision, ModelGateway, PageContext } from "./ports";
 import type { ApprovalPolicyGate } from "../settings";
@@ -60,6 +63,15 @@ function makeTool(opts: {
 }
 
 /**
+ * Errors this fake should hand back instead of answering, keyed by method
+ * name — how the "the store did not answer" tests below (card 92) are set
+ * up without a second, divergent fake just for the unhappy path. A test
+ * flips one of these mid-scenario (`store.failures.getChat = boom`) once it
+ * has set up whatever state it wants the fake to have BEFORE the failure.
+ */
+type FakeChatStoreFailures = Partial<Record<keyof ChatStore, StorageError>>;
+
+/**
  * A fake ChatStore that behaves like real persistence would for the purposes
  * of these tests: `save`/`getChat` round-trip through a deep clone, so a
  * value read back is structurally equal but NEVER the same object reference
@@ -73,10 +85,12 @@ function createFakeStore(): ChatStore & {
   chats: Map<string, ChatSession>;
   pointers: Map<number, { chatId: string; origin: string }>;
   saveCalls: { id: string; opts: ChatSaveOptions | undefined }[];
+  failures: FakeChatStoreFailures;
 } {
   const chats = new Map<string, ChatSession>();
   const pointers = new Map<number, { chatId: string; origin: string }>();
   const saveCalls: { id: string; opts: ChatSaveOptions | undefined }[] = [];
+  const failures: FakeChatStoreFailures = {};
 
   function clone(session: ChatSession): ChatSession {
     return JSON.parse(JSON.stringify(session)) as ChatSession;
@@ -86,34 +100,52 @@ function createFakeStore(): ChatStore & {
     chats,
     pointers,
     saveCalls,
+    failures,
     async getChat(chatId) {
+      if (failures.getChat) return fail(failures.getChat);
       const found = chats.get(chatId);
-      return found ? clone(found) : undefined;
+      return ok(found ? clone(found) : undefined);
     },
-    async getOrCreateChatForTab(tabId, currentOrigin): Promise<ResolvedTabChat> {
+    async getOrCreateChatForTab(
+      tabId,
+      currentOrigin,
+    ): Promise<Result<ResolvedTabChat, StorageError>> {
+      if (failures.getOrCreateChatForTab) return fail(failures.getOrCreateChatForTab);
       const ptr = pointers.get(tabId);
       if (ptr && ptr.origin === currentOrigin && chats.has(ptr.chatId)) {
-        return { chat: clone(chats.get(ptr.chatId)!), resolved: true };
+        const resolved: ResolvedTabChat = { chat: clone(chats.get(ptr.chatId)!), resolved: true };
+        return ok(resolved);
       }
-      return { chat: createChat(currentOrigin), resolved: false };
+      const fresh: ResolvedTabChat = { chat: createChat(currentOrigin), resolved: false };
+      return ok(fresh);
     },
     async setCurrentChatForTab(tabId, chatId, tabOrigin) {
+      if (failures.setCurrentChatForTab) return fail(failures.setCurrentChatForTab);
       pointers.set(tabId, { chatId, origin: tabOrigin });
+      return ok();
     },
     async save(session, opts) {
       saveCalls.push({ id: session.id, opts });
+      if (failures.save) return fail(failures.save);
       chats.set(session.id, clone(session));
+      return ok();
     },
-    async flush() {},
-    async flushAll() {},
+    async flush() {
+      return ok();
+    },
+    async flushAll() {
+      return ok();
+    },
     async deleteChat(chatId) {
       chats.delete(chatId);
+      return ok();
     },
     async clearAllChats() {
       chats.clear();
+      return ok();
     },
     async listChatSummaries() {
-      return [];
+      return ok([]);
     },
   };
 }
@@ -146,6 +178,28 @@ describe("ChatService.syncToTab", () => {
       chatId: service.current()!.id,
       origin: "https://example.com",
     });
+  });
+
+  // Card 92 (decisions/34-errors-as-values.md): `ChatStore.getOrCreateChatForTab`
+  // now returns a `Result`, and this lifecycle method's own signature is
+  // still `Promise<void>` (card 95 is where that changes), so a read failure
+  // has nowhere to go but `reportStorageFailure`.
+  it("does NOT adopt a fabricated empty chat when the store read fails, and reports through reportStorageFailure", async () => {
+    const reportStorageFailure = vi.fn();
+    const { service, store } = makeService({ reportStorageFailure });
+    await service.syncToTab(1, "https://a.example.com");
+    const before = service.current();
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.getOrCreateChatForTab = boom;
+    await service.syncToTab(2, "https://b.example.com");
+
+    // The conversation on screen is untouched — an unreadable store is NOT
+    // the same fact as "this tab has no chat", and swapping in a blank
+    // transcript would show the user history their chat isn't actually gone
+    // from.
+    expect(service.current()).toBe(before);
+    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
   });
 });
 
@@ -255,6 +309,27 @@ describe("ChatService.discardIfDeleted", () => {
     await service.discardIfDeleted("some-other-chat-id");
 
     expect(service.current()).toBe(chat);
+  });
+});
+
+// Card 92 (decisions/34-errors-as-values.md): `openChat`'s own signature
+// keeps returning `Promise<boolean>` (card 95 grows it a typed result), so
+// an unreadable store collapses to `false` — the same affordance a chat that
+// no longer resolves gets — but MUST still be reported, unlike a genuine
+// missing chat, which is not a fault.
+describe("ChatService.openChat — storage failure", () => {
+  it("returns false, leaves the current chat untouched, and reports the failure when the store read fails", async () => {
+    const reportStorageFailure = vi.fn();
+    const { service, store } = makeService({ reportStorageFailure });
+    await service.syncToTab(1, "https://a.example.com");
+    const before = service.current();
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.getChat = boom;
+
+    await expect(service.openChat("some-other-chat-id")).resolves.toBe(false);
+    expect(service.current()).toBe(before);
+    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
   });
 });
 

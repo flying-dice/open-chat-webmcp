@@ -70,7 +70,13 @@ async function resolveBaseUrl(
   defaults: ProviderDefaultsStore | undefined,
 ): Promise<string> {
   if (explicit) return explicit;
-  const stored = await defaults?.getBaseUrl("ollama");
+  if (!defaults) return DEFAULT_OLLAMA_BASE_URL;
+  // The error member is deliberately ignored (card 92): an unreadable store
+  // and an unset key both mean "no configured fallback", and the answer to
+  // both is the documented default. Folding a `StorageError` into this
+  // function's `string` return would mean inventing a `ProviderError` for it
+  // one layer up, which would report a storage fault as a provider fault.
+  const [stored] = await defaults.getBaseUrl("ollama");
   return stored ?? DEFAULT_OLLAMA_BASE_URL;
 }
 
@@ -374,8 +380,12 @@ export async function getCapabilities(
   opts?: OllamaCapabilityOptions,
 ): Promise<ProviderResult<ModelCapabilities>> {
   if (!opts?.forceRefresh) {
+    // A cache read that FAILED and one that missed are handled identically —
+    // re-ask the provider — which is what dropping the error member says.
+    // See ModelCapabilityCache's own doc (src/domain/providers): the cache
+    // never has to be right, only consistent with the fingerprint.
     const cached = await opts?.capabilityCache?.get("ollama", model.digest);
-    if (cached) return { ok: true, value: cached };
+    if (cached?.[0]) return { ok: true, value: cached[0] };
   }
 
   const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
@@ -396,6 +406,10 @@ export async function getCapabilities(
     detail: capabilities,
   };
 
+  // Filing the answer is best-effort: `value` is already computed and is
+  // what this call returns either way. A failed file-away costs one extra
+  // round trip next time and nothing else, so it is not worth failing a
+  // capability lookup over.
   await opts?.capabilityCache?.set("ollama", model.digest, value);
   return { ok: true, value };
 }

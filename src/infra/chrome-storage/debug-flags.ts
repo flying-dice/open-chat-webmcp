@@ -34,6 +34,8 @@
 // one-liner, since that script is what gets pasted into the same console when
 // this bites again; the two are meant to be found together.
 
+import type { Result } from "../../domain/result";
+import type { StorageError } from "../../domain/storage";
 import { subscribeToKey, type StorageAreaGateway } from "./area";
 
 const TRACE_FLAG_KEY = "debug:tab-sync-tracing";
@@ -42,8 +44,8 @@ const TRACE_FLAG_KEY = "debug:tab-sync-tracing";
 export interface DebugFlag {
   /** The flag's CURRENT value — synchronous, so a hot path (`trace()` runs on every tab event) never awaits. Reads the default until the first stored value lands, a few ms after construction. */
   isEnabled(): boolean;
-  /** Write the flag. Every open page's own `DebugFlag` sees it via `chrome.storage.onChanged`, not just the caller's. */
-  set(enabled: boolean): Promise<void>;
+  /** Write the flag. Every open page's own `DebugFlag` sees it via `chrome.storage.onChanged`, not just the caller's. Returns the gateway's own `Result` (card 92) — this is a devtools-console affordance, so the failure lands where the caller can read it rather than being swallowed here. */
+  set(enabled: boolean): Promise<Result<void, StorageError>>;
 }
 
 /**
@@ -59,14 +61,13 @@ export interface DebugFlag {
 export function createTracingFlag(local: StorageAreaGateway, defaultEnabled: boolean): DebugFlag {
   let enabled = defaultEnabled;
 
-  void local
-    .read(TRACE_FLAG_KEY)
-    .then((stored) => {
-      if (typeof stored === "boolean") enabled = stored;
-    })
-    // A storage failure here costs diagnostics, never behaviour — the flag
-    // simply stays at its default.
-    .catch(() => undefined);
+  // A storage failure here costs diagnostics, never behaviour — the flag
+  // simply stays at its default, which is what ignoring the error member
+  // says. Card 92: this used to be a `.catch(() => undefined)` on a
+  // rejection nothing declared; now the ignored failure is a named value.
+  void local.read(TRACE_FLAG_KEY).then(([stored]) => {
+    if (typeof stored === "boolean") enabled = stored;
+  });
 
   subscribeToKey("local", TRACE_FLAG_KEY, (newValue) => {
     enabled = typeof newValue === "boolean" ? newValue : defaultEnabled;

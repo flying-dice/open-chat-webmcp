@@ -10,7 +10,9 @@
 // No platform mocks: `SettingsStore` is faked in-memory against the port
 // interface only.
 
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
+import { fail, ok } from "../result";
+import { StorageError } from "../storage";
 import {
   type ApprovalPolicy,
   type ApprovalPolicyGate,
@@ -223,6 +225,16 @@ describe("untrustedContentHint does not affect the auto-run decision", () => {
 // createApprovalPolicyGate — the thin async dispatcher
 // ---------------------------------------------------------------------------
 
+/**
+ * Errors this fake should hand back instead of answering a read, keyed by
+ * method name — how the "policy read fails closed" tests below are set up
+ * without a second, divergent fake just for the unhappy path.
+ */
+interface FakeSettingsStoreFailures {
+  getApprovalPolicy?: StorageError;
+  getMcpApprovalPolicy?: StorageError;
+}
+
 class FakeSettingsStore implements SettingsStore {
   getApprovalPolicyCalls = 0;
   getMcpApprovalPolicyCalls = 0;
@@ -230,28 +242,33 @@ class FakeSettingsStore implements SettingsStore {
   constructor(
     public policy: ApprovalPolicy = DEFAULT_APPROVAL_POLICY,
     public mcpPolicy: McpApprovalPolicy = DEFAULT_MCP_APPROVAL_POLICY,
+    private readonly failures: FakeSettingsStoreFailures = {},
   ) {}
 
-  async getApprovalPolicy(): Promise<ApprovalPolicy> {
+  async getApprovalPolicy() {
     this.getApprovalPolicyCalls++;
-    return this.policy;
+    if (this.failures.getApprovalPolicy) return fail(this.failures.getApprovalPolicy);
+    return ok(this.policy);
   }
 
-  async setApprovalPolicy(policy: ApprovalPolicy): Promise<void> {
+  async setApprovalPolicy(policy: ApprovalPolicy) {
     this.policy = policy;
+    return ok();
   }
 
   onApprovalPolicyChange(): () => void {
     return () => {};
   }
 
-  async getMcpApprovalPolicy(): Promise<McpApprovalPolicy> {
+  async getMcpApprovalPolicy() {
     this.getMcpApprovalPolicyCalls++;
-    return this.mcpPolicy;
+    if (this.failures.getMcpApprovalPolicy) return fail(this.failures.getMcpApprovalPolicy);
+    return ok(this.mcpPolicy);
   }
 
-  async setMcpApprovalPolicy(policy: McpApprovalPolicy): Promise<void> {
+  async setMcpApprovalPolicy(policy: McpApprovalPolicy) {
     this.mcpPolicy = policy;
+    return ok();
   }
 
   onMcpApprovalPolicyChange(): () => void {
@@ -351,5 +368,78 @@ describe("createApprovalPolicyGate", () => {
   it("returns an ApprovalPolicyGate satisfying its own interface shape", () => {
     const gate: ApprovalPolicyGate = createApprovalPolicyGate(new FakeSettingsStore());
     expect(typeof gate.mayAutoRun).toBe("function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FAILS CLOSED (card 92, decisions/34-errors-as-values.md) — the one place
+// this port's own doc comment insists on a plain `false` rather than a
+// `Result`: when the underlying store cannot be read at all, there is no
+// defensible answer other than "ask the human", and the gate must say so
+// through `reportReadFailure` rather than let the failure travel silently.
+// ---------------------------------------------------------------------------
+
+describe("createApprovalPolicyGate — fails closed on an unreadable policy", () => {
+  it("returns false for a page tool when the page policy read fails, even under 'auto-run-all'", async () => {
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    // The stored value itself would auto-run everything — pinning that it is
+    // the READ failing, not the policy value, that drives the `false` here.
+    const store = new FakeSettingsStore("auto-run-all", "auto-run-all", {
+      getApprovalPolicy: boom,
+    });
+    const reportReadFailure = vi.fn();
+    const gate = createApprovalPolicyGate(store, reportReadFailure);
+
+    await expect(gate.mayAutoRun(pageTool(true))).resolves.toBe(false);
+    expect(reportReadFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+  });
+
+  it("returns false for a server tool when the MCP policy read fails, even under 'auto-run-all'", async () => {
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    const store = new FakeSettingsStore("auto-run-all", "auto-run-all", {
+      getMcpApprovalPolicy: boom,
+    });
+    const reportReadFailure = vi.fn();
+    const gate = createApprovalPolicyGate(store, reportReadFailure);
+
+    await expect(gate.mayAutoRun(serverTool(true))).resolves.toBe(false);
+    expect(reportReadFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+  });
+
+  it("an unresolved (undefined) tool is judged the page way, so a failing PAGE read still fails it closed", async () => {
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    const store = new FakeSettingsStore("auto-run-all", "auto-run-all", {
+      getApprovalPolicy: boom,
+    });
+    const reportReadFailure = vi.fn();
+    const gate = createApprovalPolicyGate(store, reportReadFailure);
+
+    await expect(gate.mayAutoRun(undefined)).resolves.toBe(false);
+    expect(reportReadFailure).toHaveBeenCalledOnce();
+  });
+
+  it("defaults reportReadFailure to console.error when none is supplied", async () => {
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    const store = new FakeSettingsStore("default", "always-confirm", { getApprovalPolicy: boom });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const gate = createApprovalPolicyGate(store);
+      await expect(gate.mayAutoRun(pageTool(true))).resolves.toBe(false);
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("a failing MCP read never falls back to the page rule/policy — the two stay isolated even on failure (decision 20)", async () => {
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    const store = new FakeSettingsStore("auto-run-all", "always-confirm", {
+      getMcpApprovalPolicy: boom,
+    });
+    const reportReadFailure = vi.fn();
+    const gate = createApprovalPolicyGate(store, reportReadFailure);
+
+    await expect(gate.mayAutoRun(serverTool(true))).resolves.toBe(false);
+    expect(store.getApprovalPolicyCalls).toBe(0);
   });
 });

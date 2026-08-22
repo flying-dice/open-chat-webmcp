@@ -48,7 +48,17 @@
   let deletingId = $state<string | undefined>(undefined);
 
   async function refresh(): Promise<void> {
-    summaries = await sidePanelServices().chats.listChatSummaries();
+    const [loaded, err] = await sidePanelServices().chats.listChatSummaries();
+    // Card 92: the listing's failure is now a value, and this view has no
+    // error state to render it in yet — card 95 is where every surface grows
+    // one. Until then the previous list stands and the reason goes to the
+    // console, which is strictly more than the unhandled rejection this
+    // replaces left behind.
+    if (err) {
+      console.warn("[webmcp][history] could not list chats", err);
+      return;
+    }
+    summaries = loaded;
   }
 
   // Re-list every time this view mounts (switching to it from Chat/Tools &
@@ -82,7 +92,15 @@
 
     deletingId = summary.id;
     try {
-      await sidePanelServices().chats.deleteChat(summary.id);
+      // Card 92: a delete that did not land must not be followed by the
+      // fresh-chat swap or the re-list — the rejection this replaces skipped
+      // both, and doing them anyway would show the chat as gone while it is
+      // still in storage and still the tab's current chat.
+      const [, err] = await sidePanelServices().chats.deleteChat(summary.id);
+      if (err) {
+        console.warn("[webmcp][history] could not delete the chat", err);
+        return;
+      }
       // If this was the chat currently open in this tab, point the tab at
       // a fresh one — otherwise the next message sent would silently
       // recreate the chat we just deleted (see that function's doc

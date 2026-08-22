@@ -31,6 +31,8 @@
 // services", not on `ChatStore` specifically. That trade is why the globals
 // scan in scripts/guard-boundaries.mjs matters as much as the import lint.
 
+import type { Result } from "../domain/result";
+import type { StorageError } from "../domain/storage";
 import type { ChatService, ChatStore } from "../domain/chat";
 import type { HostPermissions } from "../domain/permissions";
 import type { ProviderClientFactory, ProviderRegistry } from "../domain/providers";
@@ -69,7 +71,8 @@ export interface ExtensionShellAccess {
  */
 export interface TracingSwitch {
   isEnabled(): boolean;
-  set(enabled: boolean): Promise<void>;
+  /** Card 92: the write's `Result` reaches the devtools console the toggle is typed into, rather than being swallowed here — a "why is tracing still off" that turns out to be a storage failure should say so at the prompt. */
+  set(enabled: boolean): Promise<Result<void, StorageError>>;
 }
 
 export interface SidePanelServices {

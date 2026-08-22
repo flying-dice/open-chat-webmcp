@@ -343,7 +343,23 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
     const parsed = parseRefreshedToken(refreshed.value, auth);
     if (!parsed.ok) return parsed;
 
-    await options.tokenStore.saveAuth(config.id, parsed.value).catch(() => undefined);
+    // Best-effort by design, and now explicitly so (card 92,
+    // decisions/34-errors-as-values.md): the refreshed token is already
+    // usable for THIS call whether or not it lands in storage, and an
+    // unsaved one simply means the next connect refreshes again. The
+    // `.catch(() => undefined)` this replaces was the same intent expressed
+    // as a swallowed rejection — worse in two ways: it also swallowed a
+    // programmer error, and nothing in the signature said a failure was
+    // expected here. The failure is logged rather than discarded, because a
+    // store that will not accept a token is a real fault the user will
+    // otherwise only notice as a sign-in that never sticks.
+    const [, saveErr] = await options.tokenStore.saveAuth(config.id, parsed.value);
+    if (saveErr) {
+      console.warn(
+        `[webmcp][mcp-oauth] refreshed token for "${config.name}" was not persisted`,
+        saveErr,
+      );
+    }
 
     return parsed;
   }

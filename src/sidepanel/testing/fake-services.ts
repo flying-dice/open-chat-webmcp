@@ -51,10 +51,25 @@
 //     beforeAll(() => initFakeSidePanelServices(services));
 //
 //     it("...", async () => {
-//       services.chats.listChatSummaries = async () => [ /* ... */ ];
+//       services.chats.listChatSummaries = async () => ok([ /* ... */ ]);
+//       render(OverflowMenu, { props: { ... } });
+//     });
+//
+//     it("...on a storage failure...", async () => {
+//       services.chats.listChatSummaries = async () => fail(storageFailure());
 //       render(OverflowMenu, { props: { ... } });
 //     });
 //   });
+//
+// CARD 92 (decisions/34-errors-as-values.md): every storage port method below
+// returns `Result<T, StorageError>` (../../domain/result), not a bare `T` a
+// caller could only get by awaiting successfully. A fake's SUCCESS arm is
+// built with `ok(...)` and its FAILURE arm (an override a test supplies) with
+// `fail(storageFailure())` — see that helper below for why. The two
+// `PageToolAccess`/`ChatService`/`ChatProvider`/`McpToolGateway` fakes further
+// down are untouched by this: they speak a DIFFERENT result vocabulary
+// (`McpResult`, `ProviderResult`, or plain values) that card 92 does not
+// govern — see each port's own module for why.
 
 import { vi } from "vitest";
 import { initSidePanelServices } from "../app-services";
@@ -64,6 +79,8 @@ import type {
   ExtensionShellAccess,
   TracingSwitch,
 } from "../app-services";
+import { ok } from "../../domain/result";
+import { StorageError, type StorageErrorKind } from "../../domain/storage";
 import type {
   ChatService,
   ChatServiceSnapshot,
@@ -80,6 +97,27 @@ import type { ApprovalPolicy, McpApprovalPolicy, SettingsStore } from "../../dom
 import type { McpServerConfig, McpServerRegistry, McpToolGateway } from "../../domain/tools";
 import type { HostPermissions } from "../../domain/permissions";
 
+/**
+ * Build a `StorageError` for a fake port method's failure-arm override, e.g.
+ * `services.chats.listChatSummaries = async () => fail(storageFailure());`.
+ *
+ * Exists because a test exercising a port's failure path almost never cares
+ * WHICH of the five `StorageErrorKind`s it is or what the message says — only
+ * that the call failed — so writing `new StorageError("Unavailable", "...")`
+ * out at every override site would be repetition with no signal in it.
+ * Defaults to `"Unavailable"`, the one kind a real adapter actually produces
+ * (see src/domain/storage/error.ts's header), and a message that names itself
+ * as a fixture rather than something that could be mistaken for a real fault
+ * in a failed assertion's output. Both are overridable for the rare test that
+ * asserts on the error itself (e.g. a surface that switches on `.kind`).
+ */
+export function storageFailure(
+  kind: StorageErrorKind = "Unavailable",
+  message = "fake storage failure",
+): StorageError {
+  return new StorageError(kind, message);
+}
+
 // ---------------------------------------------------------------------------
 // Individual port fakes — each a total, in-memory implementation a test can
 // override piecemeal via createFakeSidePanelServices's `overrides` argument.
@@ -87,25 +125,26 @@ import type { HostPermissions } from "../../domain/permissions";
 
 export function createFakeChatStore(overrides: Partial<ChatStore> = {}): ChatStore {
   return {
-    getChat: async () => undefined,
-    getOrCreateChatForTab: async () => ({
-      chat: {
-        id: "fake-chat",
-        origin: "https://example.com",
-        messages: [],
-        toolCalls: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-      resolved: false,
-    }),
-    setCurrentChatForTab: async () => undefined,
-    save: async () => undefined,
-    flush: async () => undefined,
-    flushAll: async () => undefined,
-    deleteChat: async () => undefined,
-    clearAllChats: async () => undefined,
-    listChatSummaries: async () => [],
+    getChat: async () => ok(undefined),
+    getOrCreateChatForTab: async () =>
+      ok({
+        chat: {
+          id: "fake-chat",
+          origin: "https://example.com",
+          messages: [],
+          toolCalls: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        resolved: false,
+      }),
+    setCurrentChatForTab: async () => ok(),
+    save: async () => ok(),
+    flush: async () => ok(),
+    flushAll: async () => ok(),
+    deleteChat: async () => ok(),
+    clearAllChats: async () => ok(),
+    listChatSummaries: async () => ok([]),
     ...overrides,
   };
 }
@@ -155,32 +194,35 @@ export function createFakeProviderRegistry(
   let providers = [...initial];
   let defaultSelection: ProviderSelection | undefined;
   return {
-    listProviders: async () => providers,
-    getProvider: async (id) => providers.find((p) => p.id === id),
+    listProviders: async () => ok(providers),
+    getProvider: async (id) => ok(providers.find((p) => p.id === id)),
     addProvider: async (input) => {
       const config: ProviderConfig = { ...input, id: `provider-${providers.length + 1}` };
       providers = [...providers, config];
-      return config;
+      return ok(config);
     },
     updateProvider: async (id, patch) => {
       const idx = providers.findIndex((p) => p.id === id);
       const existing = providers[idx];
-      if (existing === undefined) return undefined;
+      if (existing === undefined) return ok(undefined);
       const updated: ProviderConfig = { ...existing, ...patch, id: existing.id };
       providers[idx] = updated;
-      return updated;
+      return ok(updated);
     },
     removeProvider: async (id) => {
       providers = providers.filter((p) => p.id !== id);
+      return ok();
     },
     reorderProviders: async (orderedIds) => {
       providers = orderedIds
         .map((id) => providers.find((p) => p.id === id))
         .filter((p): p is ProviderConfig => p !== undefined);
+      return ok();
     },
-    getDefaultSelection: async () => defaultSelection,
+    getDefaultSelection: async () => ok(defaultSelection),
     setDefaultSelection: async (selection) => {
       defaultSelection = selection;
+      return ok();
     },
     ...overrides,
   };
@@ -205,14 +247,16 @@ export function createFakeSettingsStore(overrides: Partial<SettingsStore> = {}):
   let approvalPolicy: ApprovalPolicy = "default";
   let mcpApprovalPolicy: McpApprovalPolicy = "always-confirm";
   return {
-    getApprovalPolicy: async () => approvalPolicy,
+    getApprovalPolicy: async () => ok(approvalPolicy),
     setApprovalPolicy: async (policy) => {
       approvalPolicy = policy;
+      return ok();
     },
     onApprovalPolicyChange: () => () => undefined,
-    getMcpApprovalPolicy: async () => mcpApprovalPolicy,
+    getMcpApprovalPolicy: async () => ok(mcpApprovalPolicy),
     setMcpApprovalPolicy: async (policy) => {
       mcpApprovalPolicy = policy;
+      return ok();
     },
     onMcpApprovalPolicyChange: () => () => undefined,
     ...overrides,
@@ -225,9 +269,9 @@ export function createFakeMcpServerRegistry(
 ): McpServerRegistry {
   let servers = [...initial];
   return {
-    listServers: async () => servers,
-    listEnabledServers: async () => servers.filter((s) => s.enabled),
-    getServer: async (id) => servers.find((s) => s.id === id),
+    listServers: async () => ok(servers),
+    listEnabledServers: async () => ok(servers.filter((s) => s.enabled)),
+    getServer: async (id) => ok(servers.find((s) => s.id === id)),
     addServer: async (input) => {
       const config: McpServerConfig = {
         enabled: true,
@@ -236,23 +280,25 @@ export function createFakeMcpServerRegistry(
         id: `server-${servers.length + 1}`,
       };
       servers = [...servers, config];
-      return config;
+      return ok(config);
     },
     updateServer: async (id, patch) => {
       const idx = servers.findIndex((s) => s.id === id);
       const existing = servers[idx];
-      if (existing === undefined) return undefined;
+      if (existing === undefined) return ok(undefined);
       const updated: McpServerConfig = { ...existing, ...patch, id: existing.id };
       servers[idx] = updated;
-      return updated;
+      return ok(updated);
     },
     removeServer: async (id) => {
       servers = servers.filter((s) => s.id !== id);
+      return ok();
     },
     reorderServers: async (orderedIds) => {
       servers = orderedIds
         .map((id) => servers.find((s) => s.id === id))
         .filter((s): s is McpServerConfig => s !== undefined);
+      return ok();
     },
     ...overrides,
   };
@@ -308,6 +354,7 @@ export function createFakeTracingSwitch(overrides: Partial<TracingSwitch> = {}):
     isEnabled: () => enabled,
     set: async (next) => {
       enabled = next;
+      return ok();
     },
     ...overrides,
   };
@@ -359,8 +406,8 @@ export function createFakeSidePanelServices(
  * REASSIGNING a method on the returned `services` object (or on one of its
  * port fakes) before each `it()` — every field `createFakeSidePanelServices`
  * returns is a plain, non-readonly property, so `services.chats.listChatSummaries
- * = async () => [...]` before a given test is enough; nothing needs a second
- * `init` call.
+ * = async () => ok([...])` before a given test is enough; nothing needs a
+ * second `init` call.
  */
 export function initFakeSidePanelServices(
   services: SidePanelServices = createFakeSidePanelServices(),

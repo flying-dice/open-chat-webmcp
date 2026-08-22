@@ -14,6 +14,12 @@
 //
 // It is not a test of the adapters (they have their own suites next door) —
 // it is a test of the FIXTURE, using the adapters as the oracle.
+//
+// CARD 92: every adapter method below now returns `Result<T, StorageError>`
+// rather than throwing (decisions/34-errors-as-values.md). This file only
+// ever exercises the happy path (the fixture is well-formed by construction),
+// so `unwrap` — not per-call error assertions — is the right amount of
+// tuple-handling for it.
 
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { summarizeChat } from "../../../domain/chat";
@@ -40,6 +46,7 @@ import {
   FIXTURE_TAB,
   FIXTURE_TAB_ID,
 } from "./storage-fixtures.mjs";
+import { unwrap } from "./unwrap";
 
 /** Seeds a fake `chrome.storage` with the fixture EXACTLY as the harness does — a raw `set` into each area, bypassing every adapter — and returns the adapters that have to be able to read it back. */
 function seeded() {
@@ -71,7 +78,7 @@ describe("chat records round-trip through ChatStore", () => {
     const { chats } = seeded();
 
     for (const id of FIXTURE_CHAT_IDS) {
-      const chat = await chats.getChat(id);
+      const chat = await unwrap(chats.getChat(id));
       // `undefined` here is the failure this whole file exists for: it is
       // what `isChatSession` returns a record for when the fixture has
       // drifted, and it is invisible from a screenshot.
@@ -85,7 +92,7 @@ describe("chat records round-trip through ChatStore", () => {
 
   it("the transcript's tool entries carry the four shapes the activity timeline renders", async () => {
     const { chats } = seeded();
-    const chat = await chats.getChat(FIXTURE_CHAT_IDS[0]!);
+    const chat = await unwrap(chats.getChat(FIXTURE_CHAT_IDS[0]!));
     const tools = chat?.messages.filter((m) => m.role === "tool") ?? [];
 
     expect(tools.map((t) => t.toolStatus)).toEqual(["success", "success", "denied", "error"]);
@@ -106,7 +113,7 @@ describe("chat records round-trip through ChatStore", () => {
 
   it("chat 1 is an all-success run, so its activity group is the collapsed contrast to chat 0's", async () => {
     const { chats } = seeded();
-    const chat = await chats.getChat(FIXTURE_CHAT_IDS[1]!);
+    const chat = await unwrap(chats.getChat(FIXTURE_CHAT_IDS[1]!));
     const statuses = (chat?.messages ?? [])
       .filter((m) => m.role === "tool")
       .map((m) => m.toolStatus);
@@ -127,7 +134,7 @@ describe("chat records round-trip through ChatStore", () => {
 
   it("listChatSummaries returns all six, newest first, with previews the overflow menu can be clicked by", async () => {
     const { chats } = seeded();
-    const summaries = await chats.listChatSummaries();
+    const summaries = await unwrap(chats.listChatSummaries());
 
     expect(summaries).toHaveLength(FIXTURE_CHAT_COUNT);
     expect(summaries.map((s) => s.id)).toEqual(FIXTURE_CHAT_IDS);
@@ -138,7 +145,7 @@ describe("chat records round-trip through ChatStore", () => {
 
   it("the tab pointer resolves to the newest chat rather than creating a fresh one", async () => {
     const { chats } = seeded();
-    const resolved = await chats.getOrCreateChatForTab(FIXTURE_TAB_ID, FIXTURE_ORIGIN);
+    const resolved = await unwrap(chats.getOrCreateChatForTab(FIXTURE_TAB_ID, FIXTURE_ORIGIN));
 
     expect(resolved.resolved).toBe(true);
     expect(resolved.chat.id).toBe(FIXTURE_CHAT_IDS[0]);
@@ -169,17 +176,18 @@ describe("provider, settings and MCP records round-trip through their own adapte
   it("the provider list and default selection read back through ProviderRegistry", async () => {
     const { providers } = seeded();
 
-    const list = await providers.listProviders();
+    const list = await unwrap(providers.listProviders());
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject(FIXTURE_PROVIDER);
 
-    const selection = await providers.getDefaultSelection();
+    const selection = await unwrap(providers.getDefaultSelection());
     expect(selection).toEqual({ providerId: FIXTURE_PROVIDER.id, model: FIXTURE_MODEL });
 
     // The composer only unblocks on a selection that RESOLVES; a dangling one
     // would render the picker's deleted-provider path in every screenshot.
-    const resolved = await resolveSelection(providers, selection);
-    expect(resolved.status).toBe("ok");
+    const [resolved, resolveErr] = await resolveSelection(providers, selection);
+    expect(resolveErr).toBeUndefined();
+    expect(resolved?.status).toBe("ok");
   });
 
   it("the fixture carries no credentials, so nothing sensitive is seeded into sync", () => {
@@ -194,13 +202,15 @@ describe("provider, settings and MCP records round-trip through their own adapte
   it("both approval policies read back as the documented defaults", async () => {
     const { settings } = seeded();
 
-    await expect(settings.getApprovalPolicy()).resolves.toBe(DEFAULT_APPROVAL_POLICY);
-    await expect(settings.getMcpApprovalPolicy()).resolves.toBe(DEFAULT_MCP_APPROVAL_POLICY);
+    await expect(unwrap(settings.getApprovalPolicy())).resolves.toBe(DEFAULT_APPROVAL_POLICY);
+    await expect(unwrap(settings.getMcpApprovalPolicy())).resolves.toBe(
+      DEFAULT_MCP_APPROVAL_POLICY,
+    );
   });
 
   it("the MCP server reads back through McpServerRegistry, disabled so no screenshot run dials out", async () => {
     const { mcpServers } = seeded();
-    const servers = await mcpServers.listServers();
+    const servers = await unwrap(mcpServers.listServers());
 
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject(FIXTURE_MCP_SERVER);

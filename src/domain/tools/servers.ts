@@ -15,8 +15,11 @@
 // TYPE fact — `auth` and `headers` are credentials — and enforced by the
 // adapter that routes them (src/infra/chrome-storage/mcp-server-registry.ts).
 //
-// Every port method rejects with `StorageError` (src/domain/storage) and
-// nothing else.
+// Every port method returns `Result<T, StorageError>` (../result,
+// ../storage) — card 92, decisions/34-errors-as-values.md.
+
+import type { Result } from "../result";
+import type { StorageError } from "../storage";
 
 /** How a server's `initialize` handshake should be attempted. `"auto"` (the default) tries the modern Streamable HTTP transport first and falls back to the legacy HTTP+SSE transport per the spec's backwards-compatibility guidance — the two explicit values exist so a user (or a future diagnostics UI) can pin one down when auto-detection guesses wrong. */
 export type McpTransportPreference = "auto" | "streamable-http" | "sse";
@@ -147,13 +150,13 @@ export function validateServerHeaders(
  */
 export interface McpServerRegistry {
   /** Every registered server, in display order, credentials merged in. */
-  listServers(): Promise<McpServerConfig[]>;
+  listServers(): Promise<Result<McpServerConfig[], StorageError>>;
 
   /** Only the enabled servers — the set discovery and the agent loop actually act on. */
-  listEnabledServers(): Promise<McpServerConfig[]>;
+  listEnabledServers(): Promise<Result<McpServerConfig[], StorageError>>;
 
   /** One server by id, credentials merged in. `undefined` if `id` isn't registered. */
-  getServer(id: string): Promise<McpServerConfig | undefined>;
+  getServer(id: string): Promise<Result<McpServerConfig | undefined, StorageError>>;
 
   /** Register a new server; assigns and returns its `id`. Defaults `enabled: true` and `transport: "auto"` when omitted, so a minimal `{name, url}` is enough. */
   addServer(
@@ -161,19 +164,19 @@ export interface McpServerRegistry {
       enabled?: boolean;
       transport?: McpTransportPreference;
     },
-  ): Promise<McpServerConfig>;
+  ): Promise<Result<McpServerConfig, StorageError>>;
 
   /** Patch an existing server. An explicit `undefined` `auth`/`headers` CLEARS that credential. Returns the merged config, or `undefined` if `id` isn't registered. */
   updateServer(
     id: string,
     patch: Partial<Omit<McpServerConfig, "id">>,
-  ): Promise<McpServerConfig | undefined>;
+  ): Promise<Result<McpServerConfig | undefined, StorageError>>;
 
   /** Remove a server and its credentials. */
-  removeServer(id: string): Promise<void>;
+  removeServer(id: string): Promise<Result<void, StorageError>>;
 
   /** Reorder to match `orderedIds`. Any id it omits is DROPPED — reordering is not a way to delete, so pass every current id back. */
-  reorderServers(orderedIds: string[]): Promise<void>;
+  reorderServers(orderedIds: string[]): Promise<Result<void, StorageError>>;
 }
 
 /**
@@ -191,13 +194,15 @@ export interface McpServerRegistry {
  * about a stored server, and a port that can do nothing else makes that
  * true by construction rather than by discipline.
  *
- * Rejects with `StorageError` (src/domain/storage) like every other storage
- * port — the OAuth adapter treats persistence as best-effort and maps a
- * rejection to "this refreshed token was used for this one call and not
- * kept", which is also the correct behaviour for an unsaved draft config
- * whose `serverId` is not registered at all.
+ * Returns `Result<void, StorageError>` (../result, ../storage) like every
+ * other storage port — the OAuth adapter treats persistence as best-effort
+ * and maps a failure to "this refreshed token was used for this one call and
+ * not kept", which is also the correct behaviour for an unsaved draft config
+ * whose `serverId` is not registered at all. Card 92 is what makes that
+ * best-effort posture VISIBLE: it used to be a bare `.catch(() => undefined)`
+ * on a promise whose rejection type nothing declared.
  */
 export interface McpAuthTokenStore {
-  /** Store `auth` as the given server's credentials. A `serverId` that is not registered is a no-op, not an error. */
-  saveAuth(serverId: string, auth: McpOAuthAuth): Promise<void>;
+  /** Store `auth` as the given server's credentials. A `serverId` that is not registered is a no-op, not a failure. */
+  saveAuth(serverId: string, auth: McpOAuthAuth): Promise<Result<void, StorageError>>;
 }

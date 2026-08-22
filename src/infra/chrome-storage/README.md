@@ -31,7 +31,12 @@ Three modules exist to stop the above being five copies of the same code:
 - **`area.ts`** — the only place `chrome.storage` is actually called, and the
   only place a quota `DOMException` or a `chrome.runtime.lastError` becomes
   a `StorageError` (`src/domain/storage`). Nothing in `src/domain/*` ever
-  sees the platform's own error shape.
+  sees the platform's own error shape. Its four `catch`es are the last
+  platform exceptions in this folder: since card 92 they return
+  `fail(StorageError)` rather than throwing, and every method here and above
+  it returns `Result<T, StorageError>` (`src/domain/result.ts`,
+  decisions/34-errors-as-values.md). No `throw` leaves this folder at all —
+  `npm run guard:throws` holds that to an exact count of zero.
 - **`keyed-record-store.ts`** — the ONE "ordered core list in sync, per-id
   credential parts in local" mechanic. The provider and MCP registries were
   398 and 395 lines of the same idea with the credential split implemented

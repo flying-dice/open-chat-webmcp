@@ -1,12 +1,16 @@
 // Tests for the MCP server registry — CRUD, reorder, the enabled/transport
 // defaults, and the sync/local credential split for both `auth` (bearer +
-// oauth) and the header MAP (card 83).
+// oauth) and the header MAP (card 83). Card 92 turned every
+// `McpServerRegistry` method's failure into a returned `Result` rather than
+// a rejection (decisions/34-errors-as-values.md).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { StorageError } from "../../domain/storage";
 import type { McpOAuthAuth } from "../../domain/tools";
 import { createStorageAreaGateway } from "./area";
 import { createChromeStorageMcpServerRegistry } from "./mcp-server-registry";
 import { createFakeChromeStorage } from "./testing/fake-chrome-storage";
+import { unwrap } from "./testing/unwrap";
 
 function setup() {
   const fake = createFakeChromeStorage();
@@ -37,58 +41,62 @@ const oauthAuth: McpOAuthAuth = {
 describe("CRUD and defaults", () => {
   it("addServer defaults enabled:true and transport:'auto' when omitted", async () => {
     const { registry } = setup();
-    const added = await registry.addServer({ name: "S", url: "https://mcp.example" });
+    const added = await unwrap(registry.addServer({ name: "S", url: "https://mcp.example" }));
     expect(added.enabled).toBe(true);
     expect(added.transport).toBe("auto");
   });
 
   it("addServer respects explicit enabled/transport", async () => {
     const { registry } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      enabled: false,
-      transport: "sse",
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        enabled: false,
+        transport: "sse",
+      }),
+    );
     expect(added.enabled).toBe(false);
     expect(added.transport).toBe("sse");
   });
 
   it("listEnabledServers filters out disabled servers", async () => {
     const { registry } = setup();
-    const on = await registry.addServer({ name: "On", url: "https://a.example" });
-    await registry.addServer({ name: "Off", url: "https://b.example", enabled: false });
+    const on = await unwrap(registry.addServer({ name: "On", url: "https://a.example" }));
+    await unwrap(registry.addServer({ name: "Off", url: "https://b.example", enabled: false }));
 
-    const enabled = await registry.listEnabledServers();
+    const enabled = await unwrap(registry.listEnabledServers());
     expect(enabled.map((s) => s.id)).toEqual([on.id]);
   });
 
   it("updateServer patches core fields; removeServer drops the record and its credentials", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: { type: "bearer", token: "tok-secret" },
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: { type: "bearer", token: "tok-secret" },
+      }),
+    );
 
-    const updated = await registry.updateServer(added.id, { name: "Renamed" });
+    const updated = await unwrap(registry.updateServer(added.id, { name: "Renamed" }));
     expect(updated?.name).toBe("Renamed");
 
-    await registry.removeServer(added.id);
-    await expect(registry.getServer(added.id)).resolves.toBeUndefined();
+    await unwrap(registry.removeServer(added.id));
+    await expect(unwrap(registry.getServer(added.id))).resolves.toBeUndefined();
     expect(fake.local.raw()[`mcp:auth:${added.id}`]).toBeUndefined();
   });
 
   it("reorderServers reorders and drops any id it omits", async () => {
     const { registry } = setup();
-    const a = await registry.addServer({ name: "A", url: "https://a" });
+    const a = await unwrap(registry.addServer({ name: "A", url: "https://a" }));
     // B is created but deliberately left out of the reorder call below.
-    await registry.addServer({ name: "B", url: "https://b" });
-    const c = await registry.addServer({ name: "C", url: "https://c" });
+    await unwrap(registry.addServer({ name: "B", url: "https://b" }));
+    const c = await unwrap(registry.addServer({ name: "C", url: "https://c" }));
 
-    await registry.reorderServers([c.id, a.id]);
+    await unwrap(registry.reorderServers([c.id, a.id]));
 
-    const list = await registry.listServers();
+    const list = await unwrap(registry.listServers());
     expect(list.map((s) => s.id)).toEqual([c.id, a.id]);
   });
 });
@@ -96,11 +104,13 @@ describe("CRUD and defaults", () => {
 describe("credential split (decisions/15) — bearer auth", () => {
   it("a bearer token lands only in local, never in the sync mcp:servers:list entry", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: { type: "bearer", token: "tok-super-secret" },
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: { type: "bearer", token: "tok-super-secret" },
+      }),
+    );
 
     expect(JSON.stringify(fake.sync.raw())).not.toContain("tok-super-secret");
     const storedCore = (fake.sync.raw()["mcp:servers:list"] as Array<Record<string, unknown>>)[0]!;
@@ -113,11 +123,13 @@ describe("credential split (decisions/15) — bearer auth", () => {
 
   it("an empty bearer token is stored as nothing (isEmpty), not as an empty-string token", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: { type: "bearer", token: "" },
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: { type: "bearer", token: "" },
+      }),
+    );
     expect(fake.local.raw()[`mcp:auth:${added.id}`]).toBeUndefined();
     expect(added.auth).toBeUndefined();
   });
@@ -126,11 +138,13 @@ describe("credential split (decisions/15) — bearer auth", () => {
 describe("credential split (decisions/15, decisions/27) — oauth auth", () => {
   it("a full oauth token set (access+refresh token, client id) lands only in local", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: oauthAuth,
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: oauthAuth,
+      }),
+    );
 
     const syncText = JSON.stringify(fake.sync.raw());
     expect(syncText).not.toContain("at-secret");
@@ -141,23 +155,27 @@ describe("credential split (decisions/15, decisions/27) — oauth auth", () => {
   it("an oauth auth with no refresh token is NOT treated as empty — isEmpty is bearer-only", async () => {
     const { registry, fake } = setup();
     const { refreshToken: _refreshToken, ...withoutRefresh } = oauthAuth;
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: withoutRefresh,
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: withoutRefresh,
+      }),
+    );
     expect(fake.local.raw()[`mcp:auth:${added.id}`]).toEqual(withoutRefresh);
   });
 
   it("updateServer with auth: undefined explicitly clears a stored oauth token (a refresh-with-no-token can't silently delete sign-in any other way)", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: oauthAuth,
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: oauthAuth,
+      }),
+    );
 
-    const updated = await registry.updateServer(added.id, { auth: undefined });
+    const updated = await unwrap(registry.updateServer(added.id, { auth: undefined }));
 
     expect(updated?.auth).toBeUndefined();
     expect(fake.local.raw()[`mcp:auth:${added.id}`]).toBeUndefined();
@@ -165,15 +183,17 @@ describe("credential split (decisions/15, decisions/27) — oauth auth", () => {
 
   it("updateServer used to refresh a token (the mcp-auth-token-store path) replaces auth without touching other credential parts", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: oauthAuth,
-      headers: { "X-Tenant": "acme" },
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: oauthAuth,
+        headers: { "X-Tenant": "acme" },
+      }),
+    );
 
     const refreshed: McpOAuthAuth = { ...oauthAuth, accessToken: "at-refreshed" };
-    await registry.updateServer(added.id, { auth: refreshed });
+    await unwrap(registry.updateServer(added.id, { auth: refreshed }));
 
     expect(fake.local.raw()[`mcp:auth:${added.id}`]).toEqual(refreshed);
     expect(fake.local.raw()[`mcp:headers:${added.id}`]).toEqual({ "X-Tenant": "acme" });
@@ -183,11 +203,13 @@ describe("credential split (decisions/15, decisions/27) — oauth auth", () => {
 describe("credential split (decisions/15) — header map", () => {
   it("the whole header map lands only in local, never in sync", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      headers: { "X-Api-Key": "header-secret" },
-    });
+    const added = await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        headers: { "X-Api-Key": "header-secret" },
+      }),
+    );
 
     expect(JSON.stringify(fake.sync.raw())).not.toContain("header-secret");
     expect(fake.local.raw()[`mcp:headers:${added.id}`]).toEqual({ "X-Api-Key": "header-secret" });
@@ -195,12 +217,14 @@ describe("credential split (decisions/15) — header map", () => {
 
   it("only mcp:servers:list ever appears in sync, regardless of how many credentials are configured", async () => {
     const { registry, fake } = setup();
-    await registry.addServer({
-      name: "S",
-      url: "https://mcp.example",
-      auth: { type: "bearer", token: "t" },
-      headers: { "X-A": "v" },
-    });
+    await unwrap(
+      registry.addServer({
+        name: "S",
+        url: "https://mcp.example",
+        auth: { type: "bearer", token: "t" },
+        headers: { "X-A": "v" },
+      }),
+    );
     expect(Object.keys(fake.sync.raw())).toEqual(["mcp:servers:list"]);
   });
 });
@@ -220,7 +244,7 @@ describe("defensive decoding of corrupted/foreign-written storage", () => {
         },
       ],
     });
-    const list = await registry.listServers();
+    const list = await unwrap(registry.listServers());
     expect(list.map((s) => s.id)).toEqual(["ok"]);
   });
 
@@ -233,7 +257,19 @@ describe("defensive decoding of corrupted/foreign-written storage", () => {
     });
     fake.local.seed({ "mcp:auth:s1": { type: "oauth", accessToken: "" /* invalid: empty */ } });
 
-    const server = await registry.getServer("s1");
+    const server = await unwrap(registry.getServer("s1"));
     expect(server?.auth).toBeUndefined();
+  });
+});
+
+describe("error propagation", () => {
+  it("a storage failure during listServers returns a StorageError rather than rejecting the promise", async () => {
+    const { registry, fake } = setup();
+    fake.sync.failNext("get", new Error("quota exceeded"));
+
+    const [servers, err] = await registry.listServers();
+
+    expect(servers).toBeUndefined();
+    expect(err).toBeInstanceOf(StorageError);
   });
 });

@@ -91,7 +91,17 @@ function cachedServerTools(): MergedTool[] {
 
 async function refreshNow(): Promise<void> {
   const { mcpServers, mcpTools: gateway, permissions } = sidePanelServices();
-  const servers = await mcpServers.listEnabledServers();
+  const [servers, err] = await mcpServers.listEnabledServers();
+  if (err) {
+    // Card 92: leave the cache exactly as it is rather than clearing it.
+    // Discovery is best-effort by design (decisions/19 §4) — a turn uses
+    // whatever is cached and never waits on this — so a registry read that
+    // failed means "no new information", not "the user has no servers".
+    // Overwriting a good cache with an empty one would silently take every
+    // server tool away from the next turn.
+    console.warn("[webmcp][mcp] server registry unreadable; keeping the cached tool list", err);
+    return;
+  }
 
   const checks = await Promise.all(
     servers.map(async (config) => ({

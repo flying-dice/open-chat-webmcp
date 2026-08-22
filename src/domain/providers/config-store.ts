@@ -21,17 +21,24 @@
 //     being bolted onto a settings interface that promises to remember what
 //     it is told.
 //
-// Both reject with `StorageError` (src/domain/storage) and nothing else.
+// Both return `Result<T, StorageError>` (../result, ../storage) — card 92,
+// decisions/34-errors-as-values.md. The CACHE is the interesting one: a
+// failed `get` and a miss are different values now (`fail(err)` vs
+// `ok(undefined)`) even though the caller's response to both is the same
+// re-ask, which is precisely the point — the caller says so explicitly
+// instead of the distinction being invisible.
 
+import type { Result } from "../result";
+import type { StorageError } from "../storage";
 import type { ModelCapabilities, ProviderType } from "./provider";
 
 /** Per-provider-type configuration that is not tied to any one registered provider — today just the fallback base URL. */
 export interface ProviderDefaultsStore {
   /** The configured fallback base URL for `type`, or `undefined` if none has been set. Callers supply their own default (e.g. `DEFAULT_OLLAMA_BASE_URL`) — the store does not invent one, since it has no idea what a sensible endpoint for a given provider type is. */
-  getBaseUrl(type: ProviderType): Promise<string | undefined>;
+  getBaseUrl(type: ProviderType): Promise<Result<string | undefined, StorageError>>;
 
   /** Persist the fallback base URL for `type`. No trailing slash expected. */
-  setBaseUrl(type: ProviderType, baseUrl: string): Promise<void>;
+  setBaseUrl(type: ProviderType, baseUrl: string): Promise<Result<void, StorageError>>;
 }
 
 /**
@@ -44,6 +51,13 @@ export interface ProviderDefaultsStore {
  * consistent with the fingerprint it was filed under.
  */
 export interface ModelCapabilityCache {
-  get(type: ProviderType, fingerprint: string): Promise<ModelCapabilities | undefined>;
-  set(type: ProviderType, fingerprint: string, value: ModelCapabilities): Promise<void>;
+  get(
+    type: ProviderType,
+    fingerprint: string,
+  ): Promise<Result<ModelCapabilities | undefined, StorageError>>;
+  set(
+    type: ProviderType,
+    fingerprint: string,
+    value: ModelCapabilities,
+  ): Promise<Result<void, StorageError>>;
 }

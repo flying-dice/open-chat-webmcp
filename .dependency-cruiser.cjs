@@ -113,7 +113,19 @@ module.exports = {
       from: { path: "^src/domain/([^/]+)/" },
       to: {
         path: "^src/domain/",
-        pathNot: ["^src/domain/$1/", "^src/domain/[^/]+/index\\.[cm]?[jt]s$"],
+        pathNot: [
+          "^src/domain/$1/",
+          "^src/domain/[^/]+/index\\.[cm]?[jt]s$",
+          // Card 92 / decisions/34: `src/domain/result.ts` is a shared kernel
+          // that IS one file — the decision names that path, and a
+          // `result/index.ts` + `result/result.ts` pair (the shape
+          // `src/domain/storage` has) would be a barrel over a single 90-line
+          // module for no gain. Named literally rather than as
+          // `^src/domain/[^/]+\.ts$` so the exception cannot widen into "any
+          // loose file directly under src/domain": a second shared kernel is
+          // a decision record, exactly as src/domain/storage/README.md says.
+          "^src/domain/result\\.[cm]?[jt]s$",
+        ],
       },
     },
     {

@@ -13,9 +13,17 @@
 // is how long the debounce is, where the bytes go, or how the index is kept
 // consistent — those are the adapter's.
 //
-// Every method rejects with `StorageError` (src/domain/storage) and nothing
-// else.
+// Every method returns `Result<T, StorageError>` (../result, ../storage) —
+// card 92, decisions/34-errors-as-values.md. It USED to reject with a
+// `StorageError`, which meant a caller could only discover the failure mode
+// by reading the adapter; now the signature says it. What that changed for
+// this port in particular: `save`/`flush` are called fire-and-forget from
+// the middle of a token stream, so their failures were the ones most likely
+// to become a silently swallowed rejection — `ChatService` (./service.ts)
+// now has to name a sink for each one.
 
+import type { Result } from "../result";
+import type { StorageError } from "../storage";
 import type { ChatSession, ChatSummary } from "./session";
 
 /** How a {@link ChatStore.save} should be scheduled. */
@@ -49,8 +57,8 @@ export interface ResolvedTabChat {
  * list, and each tab's soft pointer at the chat it currently shows.
  */
 export interface ChatStore {
-  /** Fetch one chat by id — for opening a history entry. `undefined` if it was deleted, never existed, or is stored in a shape the aggregate does not recognise (all three are "not available" to a caller; only the last is worth a log line, which the adapter writes). */
-  getChat(chatId: string): Promise<ChatSession | undefined>;
+  /** Fetch one chat by id — for opening a history entry. `ok(undefined)` if it was deleted, never existed, or is stored in a shape the aggregate does not recognise (all three are "not available" to a caller, and none of them is a `StorageError`; only the last is worth a log line, which the adapter writes). */
+  getChat(chatId: string): Promise<Result<ChatSession | undefined, StorageError>>;
 
   /**
    * Resolve `tabId`'s CURRENT chat: follow the tab's stored pointer if one
@@ -58,26 +66,33 @@ export interface ChatStore {
    * tab id) and still resolves to a real chat. Otherwise return a fresh,
    * UNSAVED chat — this writes nothing.
    */
-  getOrCreateChatForTab(tabId: number, currentOrigin: string): Promise<ResolvedTabChat>;
+  getOrCreateChatForTab(
+    tabId: number,
+    currentOrigin: string,
+  ): Promise<Result<ResolvedTabChat, StorageError>>;
 
   /** Point `tabId` at `chatId`. `tabOrigin` is the TAB's current origin, not the chat's own `origin` (which may legitimately differ — decision 13's cross-origin-open case). A small immediate write; safe on every tab switch. */
-  setCurrentChatForTab(tabId: number, chatId: string, tabOrigin: string): Promise<void>;
+  setCurrentChatForTab(
+    tabId: number,
+    chatId: string,
+    tabOrigin: string,
+  ): Promise<Result<void, StorageError>>;
 
   /** Persist `session`. Debounced unless `opts.immediate` — see {@link ChatSaveOptions} and this module's header. */
-  save(session: ChatSession, opts?: ChatSaveOptions): Promise<void>;
+  save(session: ChatSession, opts?: ChatSaveOptions): Promise<Result<void, StorageError>>;
 
   /** Force any pending debounced write for `chatId` to commit now. Resolves immediately when nothing is pending. */
-  flush(chatId: string): Promise<void>;
+  flush(chatId: string): Promise<Result<void, StorageError>>;
 
   /** {@link ChatStore.flush} for every chat with a pending write — one teardown call site that shouldn't need to know which chats are dirty. */
-  flushAll(): Promise<void>;
+  flushAll(): Promise<Result<void, StorageError>>;
 
   /** Discard one chat entirely: any pending write, the stored chat, its history entry, and any tab pointer that targeted it. Nothing about it remains. */
-  deleteChat(chatId: string): Promise<void>;
+  deleteChat(chatId: string): Promise<Result<void, StorageError>>;
 
   /** Discard every stored chat and every tab's pointer (the options page's "clear all history"). */
-  clearAllChats(): Promise<void>;
+  clearAllChats(): Promise<Result<void, StorageError>>;
 
   /** Every stored chat's lightweight summary, newest first. Never loads a chat's messages. */
-  listChatSummaries(): Promise<ChatSummary[]>;
+  listChatSummaries(): Promise<Result<ChatSummary[], StorageError>>;
 }

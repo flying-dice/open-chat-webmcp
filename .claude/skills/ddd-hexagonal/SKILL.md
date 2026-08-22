@@ -62,6 +62,36 @@ must run in a bare Node test with zero mocks of platform APIs.
   logging, never shown to callers). Infra adapters map their tech's errors
   INTO that vocabulary; the domain never sees a `DOMException`, an HTTP
   status, or `chrome.runtime.lastError`.
+- **A port's failures are VALUES, in its signature**
+  (decisions/34-errors-as-values.md). The delivery shape is the shared
+  kernel `src/domain/result.ts`:
+
+  ```ts
+  type Result<T, E> = readonly [value: T, error: undefined]
+                    | readonly [value: undefined, error: E];
+  ```
+
+  with `ok(value)` / `fail(error)` beside it. A port method that can fail in
+  an expected way returns `Promise<Result<T, SomeVocabulary>>`, and a caller
+  destructures it:
+
+  ```ts
+  const [chat, err] = await store.getChat(id);
+  if (err) return report(err);   // `err` is the vocabulary here…
+  use(chat);                     // …and `chat` is no longer `| undefined`
+  ```
+
+  A port method NEVER throws its vocabulary. **`throw` means the code is
+  wrong** — an exhaustiveness violation, a composition root used twice, a
+  packaging invariant — and every surviving site is listed with its named
+  invariant in `scripts/throw-allowlist.json`, enforced by
+  `npm run guard:throws` on an EXACT count. An adapter therefore catches at
+  its technology boundary and maps into the vocabulary; nothing platform-shaped
+  escapes it, in either direction.
+- **Absence is not failure.** A read that found nothing is `ok(undefined)`,
+  not `fail(NotFound)`; a lookup miss is an ordinary answer. Reserve a
+  `NotFound`-style member for the case where absence genuinely stops the
+  caller, and say so at the method.
 - Ports are async by default here (storage and network genuinely await),
   but keep pure domain logic (reducers, policy decisions, formatting) sync
   and free of ports entirely.
@@ -92,7 +122,7 @@ must run in a bare Node test with zero mocks of platform APIs.
 | --- | --- |
 | `src/domain/*` | plain Vitest unit tests, no platform APIs, no mocks of chrome/fetch |
 | UI (driving) | component tests driving the component over a fake port (Vitest + Testing Library); no real background worker in the loop |
-| `src/infra/*` (driven) | exercise the real technology cheaply (in-memory `chrome.storage` fake, stubbed `fetch`), assert the error mapping into the domain vocabulary |
+| `src/infra/*` (driven) | exercise the real technology cheaply (in-memory `chrome.storage` fake, stubbed `fetch`), assert the returned error VALUE — `const [, err] = await port.foo(); expect(err?.kind).toBe(…)`, never `rejects.toThrow` |
 | composition roots | stay thin enough that the smoke test is `npm run verify` (the Chrome-for-Testing harness) |
 
 ## Adding things — the recipes
@@ -116,6 +146,9 @@ must run in a bare Node test with zero mocks of platform APIs.
 | adapter imports another adapter | both talk to the domain port instead |
 | concrete infra class constructed outside a composition root | inject the port interface |
 | domain function returns/throws a raw fetch/chrome error | domain error vocabulary; adapter maps |
+| a port THROWS its own error vocabulary | return `Result<T, E>` — a known failure belongs in the signature (decisions/34) |
+| a caller wraps a port call in `try/catch` | the failure is a tuple member; check it |
+| `throw` for something a user can cause (quota, offline, bad input) | that is expected — make it a value; `throw` is for bugs only |
 | business rule living in a Svelte component or store | push it through the port into the domain |
 | "util"/"common"/"helpers" module | it's hiding a layer — name the layer or inline it |
 | one UI surface importing another's modules | shared code lives in domain or infra, or stays duplicated until it earns a home |

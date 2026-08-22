@@ -20,6 +20,7 @@
 // Both areas are unencrypted at rest (decisions/07, decisions/10) — saying
 // so next to the API-key field is the options UI's job, not this module's.
 
+import { fail, ok } from "../../domain/result";
 import type {
   ProviderConfigCore,
   ProviderHeader,
@@ -136,29 +137,29 @@ export function createChromeStorageProviderRegistry(
     updateProvider: (id, patch) => records.update(id, patch),
 
     async removeProvider(id) {
-      await records.remove(id);
+      const [, removeErr] = await records.remove(id);
+      if (removeErr) return fail(removeErr);
       // Provider-specific, and deliberately not a hook on the generic store:
       // an MCP server has no equivalent "currently selected" pointer to
       // invalidate (there is no per-chat selected server), so this is one
       // registry's rule, not a shared one. A since-removed provider still
       // referenced by a CHAT is a different case, detected by the domain's
       // `resolveSelection` rather than repaired here.
-      const selection = await registry.getDefaultSelection();
-      if (selection?.providerId === id) {
-        await sync.remove(SYNC_KEY_DEFAULT_SELECTION);
-      }
+      const [selection, readErr] = await registry.getDefaultSelection();
+      if (readErr) return fail(readErr);
+      if (selection?.providerId !== id) return ok();
+      return sync.remove(SYNC_KEY_DEFAULT_SELECTION);
     },
 
     reorderProviders: (orderedIds) => records.reorder(orderedIds),
 
     async getDefaultSelection() {
-      const value = await sync.read(SYNC_KEY_DEFAULT_SELECTION);
-      return isProviderSelection(value) ? value : undefined;
+      const [value, err] = await sync.read(SYNC_KEY_DEFAULT_SELECTION);
+      if (err) return fail(err);
+      return ok(isProviderSelection(value) ? value : undefined);
     },
 
-    async setDefaultSelection(selection) {
-      await sync.write({ [SYNC_KEY_DEFAULT_SELECTION]: selection });
-    },
+    setDefaultSelection: (selection) => sync.write({ [SYNC_KEY_DEFAULT_SELECTION]: selection }),
   };
 
   return registry;

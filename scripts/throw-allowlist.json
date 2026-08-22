@@ -14,18 +14,13 @@
     "`reason` must name the invariant. 'defensive' is not an invariant.",
     "",
     "Seeded by card 91 with the full inventory as it stood: 15 sites in 9 files.",
+    "Card 92 removed the four src/infra/chrome-storage/area.ts entries — the only",
+    "throws in the tree that carried an EXPECTED failure — leaving 11 in 8 files.",
     "Test code (*.test.ts, testing/) is out of scope — see the guard's header.",
     "Entries tagged `migrates:` are known errors-as-values debt owned by a card."
   ],
 
   "files": {
-    "src/infra/chrome-storage/area.ts": [
-      {
-        "match": "throw wrap(area,",
-        "count": 4,
-        "reason": "migrates: card 92. Decision 32 chose throwing StorageError here because every caller already rejected; decision 34 supersedes that. Until card 92 turns StorageAreaGateway's four methods into Result<T, StorageError>, these are the repo's only throws that carry an EXPECTED failure (chrome.storage quota/unavailable) rather than a bug."
-      }
-    ],
     "src/infra/mcp/budget.ts": [
       {
         "match": "return Promise.reject(new DOMException(",
@@ -89,7 +84,7 @@
       {
         "match": "throw err;",
         "count": 2,
-        "reason": "migrates: card 95. Rethrows after rolling the optimistic toggle back, so the failure still surfaces rather than leaving the UI silently out of step with storage. Becomes a Result check once the settings port stops throwing (card 92) and this component renders the error instead of rethrowing it."
+        "reason": "migrates: card 95. Rethrows after rolling the optimistic toggle back, so the failure still surfaces rather than leaving the UI silently out of step with storage. Card 92 changed only what it rethrows: the settings port now returns Result<void, StorageError>, so `err` here is a CHECKED value rather than a caught exception, and the throw is a placeholder for the error notice card 95 renders in its place. The rollback is the behaviour that must not regress."
       }
     ]
   }

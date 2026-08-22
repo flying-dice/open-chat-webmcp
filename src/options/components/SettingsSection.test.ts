@@ -16,7 +16,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import SettingsSection from "./SettingsSection.svelte";
-import { createFakeOptionsServices, initFakeOptionsServices } from "../testing/fake-services";
+import {
+  createFakeOptionsServices,
+  initFakeOptionsServices,
+  storageFailure,
+} from "../testing/fake-services";
+import { ok, fail } from "../../domain/result";
+import type { Result } from "../../domain/result";
+import type { StorageError } from "../../domain/storage";
 import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
@@ -69,12 +76,14 @@ describe("SettingsSection", () => {
   beforeEach(() => {
     // Reset to the fake store's own defaults between tests — each test that
     // needs a different starting policy or write behaviour overrides the
-    // relevant method below, BEFORE calling render().
-    services.settings.getApprovalPolicy = async () => "default";
-    services.settings.setApprovalPolicy = async () => undefined;
+    // relevant method below, BEFORE calling render(). Card 92: every read/
+    // write below now resolves a `Result`, so a "succeeds" default is
+    // `ok(...)` rather than a bare value/`undefined`.
+    services.settings.getApprovalPolicy = async () => ok("default");
+    services.settings.setApprovalPolicy = async () => ok();
     services.settings.onApprovalPolicyChange = () => () => undefined;
-    services.settings.getMcpApprovalPolicy = async () => "always-confirm";
-    services.settings.setMcpApprovalPolicy = async () => undefined;
+    services.settings.getMcpApprovalPolicy = async () => ok("always-confirm");
+    services.settings.setMcpApprovalPolicy = async () => ok();
     services.settings.onMcpApprovalPolicyChange = () => () => undefined;
   });
 
@@ -99,8 +108,8 @@ describe("SettingsSection", () => {
   // ---------------------------------------------------------------------
 
   it("shows a loading state per card before its policy resolves, independently", async () => {
-    let resolvePagePolicy!: (value: ApprovalPolicy) => void;
-    let resolveMcpPolicy!: (value: McpApprovalPolicy) => void;
+    let resolvePagePolicy!: (value: Result<ApprovalPolicy, StorageError>) => void;
+    let resolveMcpPolicy!: (value: Result<McpApprovalPolicy, StorageError>) => void;
     services.settings.getApprovalPolicy = () =>
       new Promise((resolve) => {
         resolvePagePolicy = resolve;
@@ -115,14 +124,14 @@ describe("SettingsSection", () => {
     // Both cards start loading — neither policy has resolved yet.
     expect(screen.getAllByText("Loading…")).toHaveLength(2);
 
-    resolvePagePolicy("default");
+    resolvePagePolicy(ok("default"));
     await waitFor(() => expect(pageRadio("default")).toBeInTheDocument());
     // The MCP card's own promise is still unresolved — its loading state
     // must not have been affected by resolving the page policy's.
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(document.getElementById("mcp-approval-policy-always-confirm")).not.toBeInTheDocument();
 
-    resolveMcpPolicy("always-confirm");
+    resolveMcpPolicy(ok("always-confirm"));
     await waitFor(() => expect(mcpRadio("always-confirm")).toBeInTheDocument());
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
@@ -132,8 +141,8 @@ describe("SettingsSection", () => {
   // ---------------------------------------------------------------------
 
   it("reflects both policies from the store once loaded, without cross-contamination", async () => {
-    services.settings.getApprovalPolicy = async () => "always-confirm";
-    services.settings.getMcpApprovalPolicy = async () => "trust-read-only";
+    services.settings.getApprovalPolicy = async () => ok("always-confirm");
+    services.settings.getMcpApprovalPolicy = async () => ok("trust-read-only");
 
     render(SettingsSection);
 
@@ -155,8 +164,8 @@ describe("SettingsSection", () => {
   // ---------------------------------------------------------------------
 
   it("persists a page-policy change via setApprovalPolicy and never calls the MCP setter", async () => {
-    services.settings.setApprovalPolicy = vi.fn(async () => undefined);
-    services.settings.setMcpApprovalPolicy = vi.fn(async () => undefined);
+    services.settings.setApprovalPolicy = vi.fn(async () => ok());
+    services.settings.setMcpApprovalPolicy = vi.fn(async () => ok());
 
     const user = userEvent.setup();
     render(SettingsSection);
@@ -175,8 +184,8 @@ describe("SettingsSection", () => {
   });
 
   it("persists an MCP-policy change via setMcpApprovalPolicy and never calls the page setter", async () => {
-    services.settings.setApprovalPolicy = vi.fn(async () => undefined);
-    services.settings.setMcpApprovalPolicy = vi.fn(async () => undefined);
+    services.settings.setApprovalPolicy = vi.fn(async () => ok());
+    services.settings.setMcpApprovalPolicy = vi.fn(async () => ok());
 
     const user = userEvent.setup();
     render(SettingsSection);
@@ -202,19 +211,27 @@ describe("SettingsSection", () => {
   // Revert on write failure
   // ---------------------------------------------------------------------
   //
-  // handlePolicyChange applies the new value optimistically, then reverts
-  // `policy`/`mcpPolicy` back to the previous value on a rejected write and
-  // RE-THROWS. The component's `onValueChange={(next) =>
-  // handlePolicyChange(...)}` callback never awaits or catches that
-  // returned promise, so the rejection surfaces as a genuine unhandled
-  // promise rejection rather than as something `userEvent.click`'s own
-  // promise propagates — see this file's top-level
-  // `onExpectedWriteFailureRejection` listener that absorbs exactly this.
+  // Card 92: `setApprovalPolicy`/`setMcpApprovalPolicy` no longer REJECT —
+  // they resolve a `Result`, and the fake below returns `fail(storageFailure(...))`
+  // to drive that path, same as the real adapter would on a genuine storage
+  // fault. handlePolicyChange applies the new value optimistically, then
+  // (SettingsSection.svelte, card 95's TODO) reverts `policy`/`mcpPolicy`
+  // back to the previous value on a checked `err` and RE-THROWS that error
+  // — the trigger changed from a caught exception to a checked value, but
+  // the rollback-then-rethrow behaviour itself is unchanged and still what
+  // these tests pin down. The component's `onValueChange={(next) =>
+  // handlePolicyChange(...)}` callback never awaits or catches the promise
+  // handlePolicyChange returns, so that rethrow surfaces as a genuine
+  // unhandled promise rejection rather than as something `userEvent.click`'s
+  // own promise propagates — see this file's top-level
+  // `onExpectedWriteFailureRejection` listener that absorbs exactly this
+  // (matched by message, which `storageFailure` below sets to "write failed"
+  // for that reason).
 
   it("reverts the page policy to the previous selection when the write fails", async () => {
-    services.settings.setApprovalPolicy = vi.fn(async () => {
-      throw new Error("write failed");
-    });
+    services.settings.setApprovalPolicy = vi.fn(async () =>
+      fail(storageFailure("Unavailable", "write failed")),
+    );
 
     const user = userEvent.setup();
     render(SettingsSection);
@@ -222,15 +239,15 @@ describe("SettingsSection", () => {
 
     await user.click(pageRadio("auto-run-all"));
 
-    // Reverts back to "default" once the rejected write settles.
+    // Reverts back to "default" once the failed write settles.
     await waitFor(() => expect(pageRadio("default")).toHaveAttribute("aria-checked", "true"));
     expect(pageRadio("auto-run-all")).toHaveAttribute("aria-checked", "false");
   });
 
   it("reverts the MCP policy to the previous selection when the write fails", async () => {
-    services.settings.setMcpApprovalPolicy = vi.fn(async () => {
-      throw new Error("write failed");
-    });
+    services.settings.setMcpApprovalPolicy = vi.fn(async () =>
+      fail(storageFailure("Unavailable", "write failed")),
+    );
 
     const user = userEvent.setup();
     render(SettingsSection);
@@ -238,7 +255,7 @@ describe("SettingsSection", () => {
 
     await user.click(mcpRadio("trust-read-only"));
 
-    // Reverts back to "always-confirm" once the rejected write settles.
+    // Reverts back to "always-confirm" once the failed write settles.
     await waitFor(() => expect(mcpRadio("always-confirm")).toHaveAttribute("aria-checked", "true"));
     expect(mcpRadio("trust-read-only")).toHaveAttribute("aria-checked", "false");
   });

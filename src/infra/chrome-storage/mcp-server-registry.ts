@@ -18,6 +18,7 @@
 // trade-off than decision 15 strictly requires, and the simplest way to
 // guarantee no VALUE ever reaches sync.
 
+import { fail, ok } from "../../domain/result";
 import type {
   McpServerAuth,
   McpServerConfigCore,
@@ -138,8 +139,9 @@ export function createChromeStorageMcpServerRegistry(
     listServers: () => records.list(),
 
     async listEnabledServers() {
-      const servers = await records.list();
-      return servers.filter((s) => s.enabled);
+      const [servers, err] = await records.list();
+      if (err) return fail(err);
+      return ok(servers.filter((s) => s.enabled));
     },
 
     getServer: (id) => records.get(id),

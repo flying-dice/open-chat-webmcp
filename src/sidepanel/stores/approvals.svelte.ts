@@ -102,8 +102,19 @@ export const approvals = {
  */
 export function initApprovalPolicySync(): () => void {
   const settings = sidePanelServices().settings;
-  void settings.getApprovalPolicy().then((p) => (pagePolicy = p));
-  void settings.getMcpApprovalPolicy().then((p) => (mcpPolicy = p));
+  // The error member is dropped on purpose (card 92): both fields already
+  // hold the documented default (see their declarations), so an unreadable
+  // policy leaves the panel on the conservative setting — which is the same
+  // thing the adapter does for a stored value it cannot decode, and the same
+  // thing `ApprovalPolicyGate` falls back to when it asks for itself. This
+  // copy is only what the approval CARD renders; the gate that decides
+  // whether to ask at all reads the store independently.
+  void settings.getApprovalPolicy().then(([p]) => {
+    if (p) pagePolicy = p;
+  });
+  void settings.getMcpApprovalPolicy().then(([p]) => {
+    if (p) mcpPolicy = p;
+  });
   const unsubPage = settings.onApprovalPolicyChange((p) => (pagePolicy = p));
   const unsubMcp = settings.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
   return () => {

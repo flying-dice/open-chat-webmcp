@@ -23,9 +23,11 @@
 // also change the other. The near-duplication below is the point; do not
 // factor it into a generic `getPolicy(kind)`.
 //
-// Every port method rejects with `StorageError` (src/domain/storage) and
-// nothing else.
+// Every port method returns `Result<T, StorageError>` (../result,
+// ../storage) — card 92, decisions/34-errors-as-values.md.
 
+import type { Result } from "../result";
+import type { StorageError } from "../storage";
 import type { ToolAnnotations, ToolOrigin } from "../tools";
 
 export type ApprovalPolicy = "default" | "always-confirm" | "auto-run-all";
@@ -65,13 +67,13 @@ export function isMcpApprovalPolicy(v: unknown): v is McpApprovalPolicy {
  * value the getter would.
  */
 export interface SettingsStore {
-  getApprovalPolicy(): Promise<ApprovalPolicy>;
-  setApprovalPolicy(policy: ApprovalPolicy): Promise<void>;
-  /** Returns an unsubscribe function. */
+  getApprovalPolicy(): Promise<Result<ApprovalPolicy, StorageError>>;
+  setApprovalPolicy(policy: ApprovalPolicy): Promise<Result<void, StorageError>>;
+  /** Returns an unsubscribe function. NOT a `Result`: a subscription either exists or it does not, and `chrome.storage.onChanged.addListener` has no failure mode to report. */
   onApprovalPolicyChange(callback: (policy: ApprovalPolicy) => void): () => void;
 
-  getMcpApprovalPolicy(): Promise<McpApprovalPolicy>;
-  setMcpApprovalPolicy(policy: McpApprovalPolicy): Promise<void>;
+  getMcpApprovalPolicy(): Promise<Result<McpApprovalPolicy, StorageError>>;
+  setMcpApprovalPolicy(policy: McpApprovalPolicy): Promise<Result<void, StorageError>>;
   /** Returns an unsubscribe function. Entirely separate from {@link SettingsStore.onApprovalPolicyChange} (decision 20) — a page-policy change can never fire this callback or vice versa. */
   onMcpApprovalPolicyChange(callback: (policy: McpApprovalPolicy) => void): () => void;
 }
@@ -141,14 +143,60 @@ export interface ApprovalPolicyGate {
   mayAutoRun(tool: ToolApprovalSubject | undefined): Promise<boolean>;
 }
 
-export function createApprovalPolicyGate(store: SettingsStore): ApprovalPolicyGate {
+/**
+ * Where a gate reports a policy it could not READ (card 92). Separate from
+ * the gate's answer on purpose: the answer to "may this run unattended" when
+ * the policy is unknown is not a judgement call — see below — so it is not
+ * something a caller should be asked to make, but it IS something worth
+ * a log line, because a store that cannot be read is a real fault.
+ *
+ * Defaults to `console.error`, exactly as `ChatServiceDeps.reportStorageFailure`
+ * does (src/domain/chat/service.ts) and for the same reason: `console` is
+ * not a platform API and exists in a bare Node test, so the default is there
+ * to make sure a failure can never be silent by omission — not because the
+ * domain has an opinion about sinks.
+ */
+export type PolicyReadFailureReporter = (message: string, cause: StorageError) => void;
+
+/**
+ * {@link ApprovalPolicyGate} over a {@link SettingsStore}.
+ *
+ * FAILS CLOSED. `mayAutoRun` returns a plain boolean rather than a `Result`
+ * because there is exactly one defensible answer when the policy cannot be
+ * read: `false` — ask the human. Handing the caller a `Result` here would
+ * invite a call site to decide otherwise, and decisions/05's fail-safe is
+ * that a broken approval path must never end in a tool call running unseen.
+ * It is the same posture as `denyByDefaultApprovalRequester`
+ * (src/domain/chat/ports.ts), one rung earlier.
+ *
+ * Note this is STRICTER than what an unreadable stored VALUE gets: the
+ * adapter decodes a corrupt policy back to the documented default (which for
+ * page tools still auto-runs a `readOnlyHint` call). The difference is
+ * deliberate — a value that decodes to nothing is a known state of a working
+ * store, whereas a `StorageError` means the store itself did not answer, and
+ * nothing about the user's intent is known at all.
+ */
+export function createApprovalPolicyGate(
+  store: SettingsStore,
+  reportReadFailure: PolicyReadFailureReporter = (message, cause) => console.error(message, cause),
+): ApprovalPolicyGate {
   return {
     async mayAutoRun(tool) {
       const readOnly = tool?.annotations.readOnlyHint === true;
       if (tool?.origin.kind === "server") {
-        return serverToolAutoRuns(await store.getMcpApprovalPolicy(), readOnly);
+        const [policy, err] = await store.getMcpApprovalPolicy();
+        if (err) {
+          reportReadFailure("[webmcp][settings] MCP approval policy unreadable; asking", err);
+          return false;
+        }
+        return serverToolAutoRuns(policy, readOnly);
       }
-      return pageToolAutoRuns(await store.getApprovalPolicy(), readOnly);
+      const [policy, err] = await store.getApprovalPolicy();
+      if (err) {
+        reportReadFailure("[webmcp][settings] approval policy unreadable; asking", err);
+        return false;
+      }
+      return pageToolAutoRuns(policy, readOnly);
     },
   };
 }

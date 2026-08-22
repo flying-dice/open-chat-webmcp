@@ -1,12 +1,16 @@
 // Tests for the settings store — defaults, get/set, and the two
 // independent onChange subscriptions (decision 20: "a page-policy change can
-// never accidentally also change the other") (card 83).
+// never accidentally also change the other") (card 83). Card 92 turned every
+// `SettingsStore` getter/setter's failure into a returned `Result` rather
+// than a rejection (decisions/34-errors-as-values.md).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_APPROVAL_POLICY, DEFAULT_MCP_APPROVAL_POLICY } from "../../domain/settings";
+import { StorageError } from "../../domain/storage";
 import { createStorageAreaGateway } from "./area";
 import { createChromeStorageSettingsStore } from "./settings-store";
 import { createFakeChromeStorage } from "./testing/fake-chrome-storage";
+import { unwrap } from "./testing/unwrap";
 
 function setup() {
   const fake = createFakeChromeStorage();
@@ -23,19 +27,19 @@ afterEach(() => {
 describe("approval policy", () => {
   it("defaults to DEFAULT_APPROVAL_POLICY when unset", async () => {
     const { store } = setup();
-    await expect(store.getApprovalPolicy()).resolves.toBe(DEFAULT_APPROVAL_POLICY);
+    await expect(unwrap(store.getApprovalPolicy())).resolves.toBe(DEFAULT_APPROVAL_POLICY);
   });
 
   it("set/get round-trip", async () => {
     const { store } = setup();
-    await store.setApprovalPolicy("auto-run-all");
-    await expect(store.getApprovalPolicy()).resolves.toBe("auto-run-all");
+    await unwrap(store.setApprovalPolicy("auto-run-all"));
+    await expect(unwrap(store.getApprovalPolicy())).resolves.toBe("auto-run-all");
   });
 
   it("falls back to the default when the stored value is invalid", async () => {
     const { store, fake } = setup();
     fake.sync.seed({ "settings:approvalPolicy": "not-a-real-policy" });
-    await expect(store.getApprovalPolicy()).resolves.toBe(DEFAULT_APPROVAL_POLICY);
+    await expect(unwrap(store.getApprovalPolicy())).resolves.toBe(DEFAULT_APPROVAL_POLICY);
   });
 
   it("onApprovalPolicyChange fires with the new value on a write", async () => {
@@ -43,7 +47,7 @@ describe("approval policy", () => {
     const seen: string[] = [];
     const unsubscribe = store.onApprovalPolicyChange((p) => seen.push(p));
 
-    await store.setApprovalPolicy("auto-run-all");
+    await unwrap(store.setApprovalPolicy("auto-run-all"));
 
     expect(seen).toEqual(["auto-run-all"]);
     unsubscribe();
@@ -54,7 +58,7 @@ describe("approval policy", () => {
     const seen: unknown[] = [];
     store.onApprovalPolicyChange((p) => seen.push(p));
 
-    await createStorageAreaGateway("sync").write({ "settings:approvalPolicy": null });
+    await unwrap(createStorageAreaGateway("sync").write({ "settings:approvalPolicy": null }));
 
     expect(seen).toEqual([DEFAULT_APPROVAL_POLICY]);
     void fake; // keep the fake in scope for readability of the write above
@@ -64,13 +68,13 @@ describe("approval policy", () => {
 describe("mcp approval policy", () => {
   it("defaults to DEFAULT_MCP_APPROVAL_POLICY when unset", async () => {
     const { store } = setup();
-    await expect(store.getMcpApprovalPolicy()).resolves.toBe(DEFAULT_MCP_APPROVAL_POLICY);
+    await expect(unwrap(store.getMcpApprovalPolicy())).resolves.toBe(DEFAULT_MCP_APPROVAL_POLICY);
   });
 
   it("set/get round-trip", async () => {
     const { store } = setup();
-    await store.setMcpApprovalPolicy("auto-run-all");
-    await expect(store.getMcpApprovalPolicy()).resolves.toBe("auto-run-all");
+    await unwrap(store.setMcpApprovalPolicy("auto-run-all"));
+    await expect(unwrap(store.getMcpApprovalPolicy())).resolves.toBe("auto-run-all");
   });
 });
 
@@ -80,7 +84,7 @@ describe("the two policies never cross-fire (decision 20)", () => {
     const mcpSeen: unknown[] = [];
     store.onMcpApprovalPolicyChange((p) => mcpSeen.push(p));
 
-    await store.setApprovalPolicy("auto-run-all");
+    await unwrap(store.setApprovalPolicy("auto-run-all"));
 
     expect(mcpSeen).toEqual([]);
   });
@@ -90,8 +94,20 @@ describe("the two policies never cross-fire (decision 20)", () => {
     const seen: unknown[] = [];
     store.onApprovalPolicyChange((p) => seen.push(p));
 
-    await store.setMcpApprovalPolicy("auto-run-all");
+    await unwrap(store.setMcpApprovalPolicy("auto-run-all"));
 
     expect(seen).toEqual([]);
+  });
+});
+
+describe("error propagation", () => {
+  it("a storage failure during getApprovalPolicy returns a StorageError rather than rejecting the promise", async () => {
+    const { store, fake } = setup();
+    fake.sync.failNext("get", new Error("quota exceeded"));
+
+    const [policy, err] = await store.getApprovalPolicy();
+
+    expect(policy).toBeUndefined();
+    expect(err).toBeInstanceOf(StorageError);
   });
 });

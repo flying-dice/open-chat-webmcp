@@ -4,6 +4,20 @@ date: 2026-08-22
 ---
 # Decision 32 — Storage ports: one error vocabulary, one keyed-record mechanic
 
+> **PARTIALLY SUPERSEDED by decisions/34-errors-as-values.md (card 92) —
+> DELIVERY ONLY.** The "It **throws** rather than returning a result union"
+> paragraph below no longer holds: every storage port returns
+> `Result<T, StorageError>` (`src/domain/result.ts`), and
+> `src/infra/chrome-storage/area.ts` maps a platform failure into a
+> `fail(...)` instead of a `throw`. Everything else here stands unchanged and
+> is still the current design — the `StorageError` vocabulary and its five
+> kinds, `src/domain/storage` as a shared kernel that is not a bounded
+> context, the two-registries-one-mechanic split, the sync/local credential
+> split enforced by shape, and the `ProviderDefaultsStore` /
+> `ModelCapabilityCache` split by kind. Read the throwing paragraph as the
+> reasoning that was true at the time; decision 34 explains why it stopped
+> being.
+
 ## Context
 
 Card 74 pulled four `chrome.storage` repositories out of `src/lib` and behind
@@ -43,6 +57,9 @@ It **throws** rather than returning a result union: every one of these ports
 already rejected on a storage failure before card 74, and no caller anywhere
 handles that rejection. Turning them into values would have changed every call
 site's control flow inside a refactor billed as behaviour-preserving.
+*(Superseded by decision 34, card 92: exactly that change, made deliberately
+and on its own card. The vocabulary is untouched; only its delivery moved from
+`throw` to the error member of a `Result<T, StorageError>`.)*
 
 **Two ports, one mechanic.** `ProviderRegistry` (`src/domain/providers`) and
 `McpServerRegistry` (`src/domain/tools`) stay two distinct domain ports. Their
