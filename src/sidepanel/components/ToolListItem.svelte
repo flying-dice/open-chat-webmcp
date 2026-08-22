@@ -33,7 +33,7 @@
    * collapsed-by-default behaviour, now driven by Collapsible's own `open`
    * state instead of a hand-rolled boolean + `{#if}`.
    */
-  import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
+  import type { SerializedTool, ToolAnnotations } from "../../infra/chrome-runtime";
   import type { McpToolAnnotations, ToolOrigin } from "../../domain/tools";
   import { originLabel } from "../lib/toolOrigin";
   import ToolSchema from "./ToolSchema.svelte";

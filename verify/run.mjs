@@ -22,6 +22,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RELAY_EXECUTE_TIMEOUT_MS } from "../src/infra/webmcp/timeouts.mjs";
 import { buildExtension } from "./lib/build.mjs";
 import { startDemoServer, stopDemoServer, DEMO_INDEX_URL } from "./lib/demoServer.mjs";
 import { launchExtension, sidepanelUrl } from "./lib/browser.mjs";
@@ -47,12 +48,6 @@ const EXPECTED_FIXED_TOOLS = [
   "always-throws",
   "hangs-forever",
 ];
-
-// src/content/relay.ts's own executeTool timeout (EXECUTE_TIMEOUT_MS) — the
-// innermost rung of the (now two-layer) timeout ladder decisions/16
-// describes. Kept in sync manually with that constant; if you change one,
-// change the other.
-const RELAY_EXECUTE_TIMEOUT_MS = 20_000;
 
 /**
  * Unwraps the MCP-shaped `CallToolResult` a demo fixture's `execute()`

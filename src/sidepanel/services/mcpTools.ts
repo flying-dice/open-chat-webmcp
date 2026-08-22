@@ -44,7 +44,7 @@ import {
   type McpToolCallResult,
   type McpToolContent,
 } from "../../domain/tools";
-import type { SerializedTool } from "../../lib/protocol";
+import type { SerializedTool } from "../../infra/chrome-runtime";
 import { setServerTools } from "../stores/panel.svelte";
 
 // ---------------------------------------------------------------------------

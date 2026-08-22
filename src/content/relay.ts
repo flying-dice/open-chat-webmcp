@@ -11,7 +11,7 @@
 // own implementation directly.
 //
 // Everything that crosses to the service worker is a typed message from
-// src/lib/protocol.ts.
+// src/infra/chrome-runtime/protocol.ts.
 //
 // Behaviours here are MEASURED, not guessed at from the published spec IDL
 // (which disagrees with Chrome in several places) — see decisions/16:
@@ -46,23 +46,19 @@ import {
   type RuntimeToolsUpdatedMessage,
   type SerializedTool,
   type ToolAnnotations,
-} from "../lib/protocol";
+} from "../infra/chrome-runtime";
+import { RELAY_EXECUTE_TIMEOUT_MS } from "../infra/webmcp";
 import type { ModelContextToolInfo } from "@mcp-b/webmcp-types";
 
-// Round-trip budget for a worker-initiated tool call. The relay now owns
-// execution directly against `document.modelContext.executeTool()` — the
-// timeout ladder lost its innermost rung (decisions/16 deletes the
-// MAIN-world bridge's own EXECUTE_TIMEOUT_MS) and is two layers, not three:
-//
-//   src/content/relay.ts   EXECUTE_TIMEOUT_MS = 20_000  (this constant, innermost)
-//   src/background/sw.ts   CALL_TIMEOUT_MS    = 30_000  (outermost)
-//
-// The outer layer stays comfortably above this one so this relay's own, more
-// specific timeout error is what actually reaches the caller under real
-// scheduling jitter, rather than being masked by the worker's generic "did
-// not respond in time". If you change this value, keep it comfortably below
-// sw.ts's CALL_TIMEOUT_MS.
-const EXECUTE_TIMEOUT_MS = 20_000;
+// Round-trip budget for a worker-initiated tool call — the innermost rung of
+// the shared timeout ladder (src/infra/webmcp/timeouts.mjs, card 79). The
+// relay now owns execution directly against
+// `document.modelContext.executeTool()` — the ladder lost its old
+// MAIN-world-bridge rung (decisions/16) and is three layers today: this
+// constant, src/background/sw.ts's SW_CALL_TIMEOUT_MS, and
+// src/sidepanel/services/agentLoop.ts's AGENT_LOOP_TOOL_CALL_TIMEOUT_MS. See
+// timeouts.mjs's doc comment for the full ordering invariant and why each
+// layer must exceed the one it wraps.
 
 // Debounce window for `document.modelContext.ontoolchange` — confirmed
 // (decisions/16) to fire in the ISOLATED world on both `registerTool()` and
@@ -126,7 +122,7 @@ function callWithTimeout<T>(factory: () => Promise<T>, timeoutMs: number): Promi
 // no per-origin origin-trial token means `document.modelContext` is
 // `undefined`. That must produce a DISTINCT, actionable state from "the
 // browser supports WebMCP and this particular page just has zero tools" —
-// see `RuntimeToolsUpdatedMessage.available` in src/lib/protocol.ts. Read
+// see `RuntimeToolsUpdatedMessage.available` in src/infra/chrome-runtime/protocol.ts. Read
 // once at module load: an origin-trial token is evaluated at parse time and
 // the feature flag doesn't change mid-page-lifetime, so there's nothing to
 // re-check later.
@@ -339,7 +335,7 @@ async function handleCallTool(
   const args = isRecord(req.args) ? req.args : {};
 
   try {
-    const resultJson = await callWithTimeout(() => callExecuteTool(mc, tool, args), EXECUTE_TIMEOUT_MS);
+    const resultJson = await callWithTimeout(() => callExecuteTool(mc, tool, args), RELAY_EXECUTE_TIMEOUT_MS);
 
     // executeTool resolves to a nullable JSON string (decisions/16) — parse
     // it, and pass `null` straight through rather than trying to JSON.parse

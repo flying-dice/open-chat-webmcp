@@ -150,7 +150,7 @@ import {
   type ToolCallMode,
 } from "../../domain/chat";
 import { chatStore } from "../../infra/chrome-storage";
-import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
+import type { SerializedTool, ToolAnnotations } from "../../infra/chrome-runtime";
 import type { McpToolAnnotations, MergedTool, ToolOrigin } from "../../domain/tools";
 
 export type MessageRole = "user" | "assistant" | "tool";
@@ -1191,7 +1191,7 @@ export function setServerTools(next: MergedTool[]): void {
 }
 
 // Re-exported so consumers can type tool lists / the call log without
-// reaching into src/lib/protocol.ts or the chat store directly for
-// these two types.
+// reaching into src/infra/chrome-runtime/protocol.ts or the chat store
+// directly for these two types.
 export type { SerializedTool };
 export type { ToolCallLogEntry };

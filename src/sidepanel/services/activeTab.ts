@@ -7,14 +7,14 @@
 // Tool counts (and, for card 11's inspector, the full descriptors — name,
 // description, annotations, inputSchema) come from the background
 // service worker's registry (src/background/sw.ts) via the shared
-// request/response pair in src/lib/protocol.ts (`runtime:get-tools` /
+// request/response pair in src/infra/chrome-runtime/protocol.ts (`runtime:get-tools` /
 // `runtime:get-tools-response`), never by talking to a tab's content script
 // directly. `setPageInfo`/`setTools` on initial fetch and `setToolCount`/
 // `setTools` on the worker's live `runtime:tools-updated` broadcast keep
 // both in step with the same source.
 
-import type { RuntimeGetToolsResponse, SerializedTool } from "../../lib/protocol";
-import { isRuntimeMessage } from "../../lib/protocol";
+import type { RuntimeGetToolsResponse, SerializedTool } from "../../infra/chrome-runtime";
+import { isRuntimeMessage } from "../../infra/chrome-runtime";
 import {
   applyPanelNavigation,
   isTracingEnabled,
@@ -97,7 +97,7 @@ const GET_TOOLS_TIMEOUT_MS = 1500;
 /**
  * Same lookup as {@link getToolsForTab}, but also reports the worker's
  * `available`/`restricted` signals (see RuntimeGetToolsResponse.restricted's
- * doc comment in src/lib/protocol.ts, card 31) — `refreshActiveTab` below
+ * doc comment in src/infra/chrome-runtime/protocol.ts, card 31) — `refreshActiveTab` below
  * needs all three to fill in `PageInfo.webmcpAvailable`/`restricted`
  * distinctly from an ordinary zero-tool page.
  */

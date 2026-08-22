@@ -87,7 +87,8 @@ import {
   type ProviderError,
   type ToolCall,
 } from "../../domain/providers";
-import type { RuntimeCallToolRequest, RuntimeCallToolResponse } from "../../lib/protocol";
+import type { RuntimeCallToolRequest, RuntimeCallToolResponse } from "../../infra/chrome-runtime";
+import { AGENT_LOOP_TOOL_CALL_TIMEOUT_MS } from "../../infra/webmcp";
 import type { ChatSession, ToolCallMode } from "../../domain/chat";
 import { settingsStore } from "../../infra/chrome-storage";
 import { getToolsForTab } from "./activeTab";
@@ -174,23 +175,25 @@ export const denyByDefaultApprovalRequester: ApprovalRequester = async () => "de
 /** One iteration = one `provider.chat()` turn. Caps a runaway call/observe chain rather than streaming forever. */
 export const MAX_ITERATIONS = 8;
 
-// Round-trip budget for a side-panel-initiated tool call, the OUTERMOST layer of
-// a deliberate 3-layer timeout ladder (call chain: side panel -> worker -> relay).
-// The ladder lost its innermost, MAIN-world-bridge rung in
-// decisions/16-native-webmcp-client.md: the relay now executes tools
-// directly against `document.modelContext` instead of round-tripping to a
-// separate page-world script.
+// Round-trip budget for a side-panel-initiated tool call — the OUTERMOST rung
+// of the shared timeout ladder (src/infra/webmcp/timeouts.mjs, card 79:
+// boards/project-backlog/79-protocol-and-timeout-ladder-cleanup.md; call
+// chain: side panel -> worker -> relay). The ladder lost its innermost,
+// MAIN-world-bridge rung in decisions/16-native-webmcp-client.md: the relay
+// now executes tools directly against `document.modelContext` instead of
+// round-tripping to a separate page-world script.
 //
-//   src/content/relay.ts   EXECUTE_TIMEOUT_MS   = 20_000  (innermost)
-//   src/background/sw.ts   CALL_TIMEOUT_MS      = 30_000
-//   src/sidepanel/services/agentLoop.ts TOOL_CALL_TIMEOUT_MS = 35_000 (this constant, outermost)
+//   src/content/relay.ts                RELAY_EXECUTE_TIMEOUT_MS        = 20_000  (innermost)
+//   src/background/sw.ts                SW_CALL_TIMEOUT_MS              = 30_000
+//   src/sidepanel/services/agentLoop.ts AGENT_LOOP_TOOL_CALL_TIMEOUT_MS = 35_000  (this rung, outermost)
 //
 // Each layer must exceed the one it wraps with a comfortable margin so the
 // innermost, most specific error (the relay's) wins the race under real
 // scheduling jitter instead of being masked by an outer layer's generic
-// timeout. Do not shrink this below the worker's budget —
-// and if you touch any one of the three, re-check the other two.
-const TOOL_CALL_TIMEOUT_MS = 35_000;
+// timeout. Do not shrink this below the worker's budget — and if you touch
+// any one of the three, re-check the other two (they now live together in
+// timeouts.mjs, so there is exactly one place to look).
+const TOOL_CALL_TIMEOUT_MS = AGENT_LOOP_TOOL_CALL_TIMEOUT_MS;
 
 /** Defensive cap on how much of a tool result's serialized text is fed back to the model/stored — a huge or hostile page payload shouldn't blow up the context window or storage. */
 const MAX_TOOL_RESULT_CHARS = 8_000;

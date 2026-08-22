@@ -26,7 +26,8 @@ import {
   type RuntimeRefreshToolsRequest,
   type RuntimeToolsUpdatedMessage,
   type SerializedTool,
-} from "../lib/protocol";
+} from "../infra/chrome-runtime";
+import { SW_CALL_TIMEOUT_MS, SW_PULL_TIMEOUT_MS } from "../infra/webmcp";
 
 console.log("[webmcp][sw] background service worker starting");
 
@@ -185,7 +186,7 @@ function describeUnreachable(tabId: number, result: RelayReachResult): string {
 }
 
 // Local pull request, worker -> relay only. Not part of the shared
-// RuntimeRequest/RuntimeResponse pairs in src/lib/protocol.ts (those model
+// RuntimeRequest/RuntimeResponse pairs in src/infra/chrome-runtime/protocol.ts (those model
 // panel <-> worker traffic) — this is an internal detail of how the worker
 // rebuilds its cache and is not exported. The relay is expected to answer it
 // the same way it announces tool changes on its own: with a
@@ -213,31 +214,34 @@ function isCallToolResponse(v: unknown): v is RuntimeCallToolResponse {
   );
 }
 
-const PULL_TIMEOUT_MS = 3000;
-
-// Round-trip budget for a worker-initiated tool call, the OUTERMOST layer of
-// a deliberate 2-layer timeout ladder (call chain: worker -> relay). The
-// ladder lost its innermost rung in decisions/16-native-webmcp-client.md: the
-// relay now executes tools directly against `document.modelContext`
-// (`executeTool`) instead of round-tripping to a separate MAIN-world bridge,
-// so there is no third, page-side timeout to nest inside any more.
+// The worker's two rungs of the shared timeout ladder
+// (src/infra/webmcp/timeouts.mjs, card 79 —
+// boards/project-backlog/79-protocol-and-timeout-ladder-cleanup.md). Call
+// chain for a real UI-driven tool call: side panel -> worker -> relay ->
+// document.modelContext. The ladder lost its old MAIN-world-bridge rung in
+// decisions/16-native-webmcp-client.md: the relay now executes tools
+// directly against `document.modelContext` (`executeTool`) instead of
+// round-tripping to a separate page-world script, so there is no fourth,
+// page-side timeout to nest inside.
 //
-//   src/content/relay.ts   EXECUTE_TIMEOUT_MS = 20_000  (innermost)
-//   src/background/sw.ts   CALL_TIMEOUT_MS    = 30_000  (this constant, outermost)
+//   src/content/relay.ts                RELAY_EXECUTE_TIMEOUT_MS        = 20_000  (innermost)
+//   src/background/sw.ts                SW_CALL_TIMEOUT_MS              = 30_000  (this rung)
+//   src/sidepanel/services/agentLoop.ts AGENT_LOOP_TOOL_CALL_TIMEOUT_MS = 35_000  (outermost)
 //
-// This layer must exceed the relay's with a comfortable margin so the
-// relay's own, more specific timeout error wins the race under real
-// scheduling jitter instead of being masked by this layer's generic "did not
-// respond in time". Do not shrink this below the relay's budget — and if you
-// touch either one, re-check the other.
+// Each layer must exceed the one it wraps with a comfortable margin so the
+// innermost, most specific timeout error wins the race under real scheduling
+// jitter instead of being masked by an outer layer's generic "did not
+// respond in time". Previously (fixed by card 79) the side panel's own
+// request-level timeout sat OUTSIDE this whole ladder and was *shorter* than
+// this worker rung — the panel would give up and show its own generic
+// timeout before the worker/relay could ever report the real outcome. The
+// panel's timeout is now the ladder's outermost, largest rung instead, so
+// this note describes the fixed ordering, not an open defect
+// (see AGENT_LOOP_TOOL_CALL_TIMEOUT_MS's doc comment in timeouts.mjs).
 //
-// Note: the side panel's own request-level timeout
-// (TOOL_CALL_TIMEOUT_MS in src/sidepanel/services/agentLoop.ts, 20_000 as of
-// this writing) sits OUTSIDE this whole ladder for real UI-driven calls, and
-// is currently *shorter* than this chain's total budget — that's a separate
-// concern for whoever owns src/sidepanel/**, not fixed here
-// (boards/project-backlog/30-panel-timeout-outside-ladder.md).
-const CALL_TIMEOUT_MS = 30_000;
+// SW_PULL_TIMEOUT_MS below is a SEPARATE budget — the worker's own
+// registry-rebuild GET to the relay (`runtime:refresh-tools`) after a cache
+// miss, not part of this CALL ordering invariant.
 
 /**
  * Rebuild-on-restart: ask the relay in `tabId` for its current tools right
@@ -254,7 +258,7 @@ async function pullToolsFromRelay(
   tabId: number,
 ): Promise<{ ok: true; entry: RegistryEntry } | { ok: false; restricted: boolean }> {
   const req: RuntimeRefreshToolsRequest = { type: "runtime:refresh-tools" };
-  const result = await sendToRelay(tabId, req, PULL_TIMEOUT_MS);
+  const result = await sendToRelay(tabId, req, SW_PULL_TIMEOUT_MS);
   if (!result.ok) {
     console.warn(
       `[webmcp][sw] could not rebuild registry for tab ${tabId}: ${describeUnreachable(tabId, result)}`,
@@ -351,7 +355,7 @@ async function handleGetTools(
 async function handleCallTool(
   req: RuntimeCallToolRequest,
 ): Promise<RuntimeCallToolResponse> {
-  const result = await sendToRelay(req.tabId, req, CALL_TIMEOUT_MS);
+  const result = await sendToRelay(req.tabId, req, SW_CALL_TIMEOUT_MS);
 
   if (!result.ok) {
     return {

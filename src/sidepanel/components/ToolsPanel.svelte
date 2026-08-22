@@ -29,7 +29,7 @@
    * states (the three above, plus the "no MCP server tools" case below)
    * render through shadcn's Empty component now, same copy as before.
    */
-  import type { SerializedTool } from "../../lib/protocol";
+  import type { SerializedTool } from "../../infra/chrome-runtime";
   import type { MergedTool } from "../../domain/tools";
   import ToolListItem from "./ToolListItem.svelte";
   import Icon from "./Icon.svelte";

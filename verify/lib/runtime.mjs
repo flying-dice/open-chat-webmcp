@@ -38,7 +38,7 @@ export async function sendRuntimeMessage(extPage, msg) {
 }
 
 /** Full runtime:get-tools-response — `{ tabId, available, tools }`
- * (src/lib/protocol.ts). Use this when a check cares about `available`
+ * (src/infra/chrome-runtime/protocol.ts). Use this when a check cares about `available`
  * (e.g. the WebMCP-unavailable case); {@link getTools} below is a
  * tools-only convenience wrapper for checks that don't. */
 export async function getToolsResponse(extPage, tabId) {
