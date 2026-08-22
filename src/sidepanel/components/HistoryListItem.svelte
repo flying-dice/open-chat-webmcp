@@ -15,12 +15,16 @@
    * Re-skinned onto shadcn's Item primitive (decisions/28) — Item itself
    * renders the row and carries `role="listitem"` for the ItemGroup list in
    * HistoryPanel; the open button and delete button are its two children.
+   * The delete button also carries a shadcn Tooltip (card 89), restoring
+   * the hover affordance the Item migration (card 70) dropped; it's skipped
+   * while the button is disabled (opening/deleting), same as IconButton.
    */
   import type { ChatSummary } from "../../domain/chat";
   import { titleFromSummary } from "../../domain/chat";
   import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "$lib/components/ui/item";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
+  import * as Tooltip from "$lib/components/ui/tooltip";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { BubbleChatIcon, Delete02Icon } from "@hugeicons/core-free-icons";
 
@@ -88,15 +92,46 @@
   </button>
 
   <ItemActions>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      class="text-muted-foreground hover:text-destructive"
-      aria-label={deleteLabel}
-      disabled={opening || deleting}
-      onclick={handleDeleteClick}
-    >
-      <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-    </Button>
+    {#if opening || deleting}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class="text-muted-foreground hover:text-destructive"
+        aria-label={deleteLabel}
+        disabled
+        onclick={handleDeleteClick}
+      >
+        <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+      </Button>
+    {:else}
+      <!-- Restores the hover/focus tooltip the delete button lost in the
+           Item migration (card 70's journal). shadcn's Tooltip.Trigger is
+           wired directly onto the Button itself via bits-ui's `child`
+           snippet, the same pattern IconButton.svelte uses — see
+           IconButton.svelte's doc comment for why a focusable trigger needs
+           the wiring on itself rather than through a wrapping span. The
+           accessible name stays exactly `deleteLabel`, unchanged. -->
+      <Tooltip.Provider>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon-sm"
+                class="text-muted-foreground hover:text-destructive"
+                aria-label={deleteLabel}
+                onclick={handleDeleteClick}
+              >
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content side="top">
+            {deleteLabel}
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </Tooltip.Provider>
+    {/if}
   </ItemActions>
 </Item>

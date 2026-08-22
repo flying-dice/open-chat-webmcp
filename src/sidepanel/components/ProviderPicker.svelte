@@ -61,6 +61,7 @@
   import * as Command from "$lib/components/ui/command";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Separator } from "$lib/components/ui/separator";
   import { cn } from "$lib/utils";
   import {
     isSelectable,
@@ -402,7 +403,14 @@
             />
           {/if}
 
-          <Command.List class="flex max-h-full flex-col gap-3 overflow-y-auto">
+          <!-- `py-1` matches the `p-1` shadcn's Command.Group already puts
+               around each row (command-group.svelte), so the scroll
+               boundary carries the same inset the rows themselves use —
+               without it, the list was clipping mid-row exactly at the top/
+               bottom edge with no cushion (card 89's visual QA note).
+               `scroll-py-1` (from Command.List's own base class) only
+               affects scroll-into-view margins, not this. -->
+          <Command.List class="flex max-h-full flex-col gap-3 overflow-y-auto py-1">
             {#each visibleGroups as group (group.provider.id)}
               <Command.Group value={group.provider.id} heading={group.provider.name} class="flex flex-col gap-1 p-0">
                 {#if group.filteredSelectable.length > 0}
@@ -507,7 +515,12 @@
           </Command.List>
         </Command.Root>
 
-        <div class="flex justify-between gap-2 border-t border-border pt-2">
+        <!-- A real Separator above the footer row, not a border-t utility —
+             gives the "Refresh"/"Manage providers…" row a clean break from
+             the scrollable list above it (card 89's visual QA note). -->
+        <Separator />
+
+        <div class="flex justify-between gap-2 pt-2">
           <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={refresh}>Refresh</Button>
           <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={openOptionsPage}>
             Manage providers…

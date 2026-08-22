@@ -9,6 +9,10 @@
 // itself — without it, DOM from one `it()` leaks into the next and
 // `getByRole` starts finding duplicates.
 import "@testing-library/svelte/vitest";
+// jsdom has no ResizeObserver. The restored delete-button Tooltip (card 89)
+// wraps in a bits-ui floating-layer primitive that constructs one the
+// moment its content mounts — see resize-observer.ts's doc comment.
+import "../../ui/testing/resize-observer";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
