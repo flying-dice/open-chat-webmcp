@@ -48,6 +48,7 @@ describe("toModelMessage", () => {
 
   it("fences a tool entry's content when its snapshot annotation set untrustedContentHint", () => {
     const entry = toolEntry(
+      "t1",
       call,
       { mode: "auto", annotations: { untrustedContentHint: true } },
       0,
@@ -66,25 +67,25 @@ describe("toModelMessage", () => {
   });
 
   it("does not fence a tool entry whose tool was not annotated untrusted", () => {
-    const entry = toolEntry(call, { mode: "auto", annotations: { untrustedContentHint: false } }, 0);
+    const entry = toolEntry("t1", call, { mode: "auto", annotations: { untrustedContentHint: false } }, 0);
     entry.content = "trusted result";
     expect(toModelMessage(entry).content).toBe("trusted result");
   });
 
   it("does not fence a tool entry with no annotations snapshot at all (hallucinated tool)", () => {
-    const entry = toolEntry(call, { mode: "auto" }, 0);
+    const entry = toolEntry("t1", call, { mode: "auto" }, 0);
     entry.content = "some result";
     expect(toModelMessage(entry).content).toBe("some result");
   });
 
   it("does not fence an untrusted tool entry whose content is still empty (pending)", () => {
-    const entry = toolEntry(call, { mode: "auto", annotations: { untrustedContentHint: true } }, 0);
+    const entry = toolEntry("t1", call, { mode: "auto", annotations: { untrustedContentHint: true } }, 0);
     expect(entry.content).toBe("");
     expect(toModelMessage(entry).content).toBe("");
   });
 
   it("carries toolCallId and toolName through on a tool entry", () => {
-    const entry = toolEntry(call, { mode: "approved" }, 0);
+    const entry = toolEntry("t1", call, { mode: "approved" }, 0);
     entry.content = "result";
     const msg = toModelMessage(entry);
     expect(msg.toolCallId).toBe(call.id);
@@ -135,7 +136,7 @@ describe("toModelConversation", () => {
   });
 
   it("fences an untrusted tool result in the conversation sent to the model without mutating the source entries", () => {
-    const toolMsg = toolEntry(call, { mode: "auto", annotations: { untrustedContentHint: true } }, 0);
+    const toolMsg = toolEntry("t1", call, { mode: "auto", annotations: { untrustedContentHint: true } }, 0);
     toolMsg.content = "attacker-controlled text";
     const entries: TranscriptEntry[] = [userEntry("u1", "check the page", 0), toolMsg];
 

@@ -122,8 +122,13 @@ function makeTranscript(defaultTarget: ChatSession): {
       if (entry && toolCalls && toolCalls.length > 0) entry.toolCalls = toolCalls;
     },
     addToolCall(call, snapshot, target = defaultTarget) {
-      target.messages.push(toolEntry(call, snapshot, Date.now()));
-      return call.id;
+      // A fresh per-instance id — NOT call.id — mirroring production
+      // (./service.ts's addToolCall): two calls in the same round can share
+      // a call.id (card 87), and each still needs its own addressable
+      // transcript entry.
+      const id = `tool-${counter++}`;
+      target.messages.push(toolEntry(id, call, snapshot, Date.now()));
+      return id;
     },
     updateToolCallResult(id, outcome, target = defaultTarget) {
       const entry = target.messages.find((m) => m.id === id);
@@ -977,19 +982,21 @@ describe("turn phase transitions (turn-phase.ts)", () => {
 // ---------------------------------------------------------------------------
 
 describe("chaos: duplicate tool-call ids from the model", () => {
-  // KNOWN BUG (journalled on card 85): a hallucinating/buggy model can emit
-  // two `tool_calls` entries sharing one `id` in the same round. `toolEntry`
-  // (./message.ts) keys a transcript entry by `call.id`, and both
-  // `ChatService.findEntry` and this file's own `makeTranscript` fake resolve
-  // a later `updateToolCallResult(id, ...)` with `Array.prototype.find`,
-  // which always returns the FIRST entry with that id. The second call's
-  // result therefore clobbers the FIRST call's already-recorded outcome, and
-  // the second call's own transcript entry is left stuck at `"pending"`
-  // forever. Fixing this (e.g. resolving by array position rather than by
-  // id, or rejecting a second call sharing an id already used this turn) is
-  // for the improvement sprint — this test asserts the CORRECT behaviour and
-  // is expected to fail against the current implementation.
-  it.fails("resolves each duplicate-id call against its OWN transcript entry, not the first one", async () => {
+  // FIXED on card 87 (was a known bug journalled on card 85): a
+  // hallucinating/buggy model can emit two `tool_calls` entries sharing one
+  // `id` in the same round. `toolEntry` (./message.ts) used to key a
+  // transcript entry by `call.id` itself, so `ChatService.findEntry` (and
+  // this file's own `makeTranscript` fake) resolved a later
+  // `updateToolCallResult(id, ...)` with `Array.prototype.find`, which
+  // always returns the FIRST entry with that id — clobbering the first
+  // call's already-recorded outcome and leaving the second call's entry
+  // stuck at `"pending"` forever. Fixed by minting a fresh, per-INSTANCE
+  // entry id at call time (`ChatService.addToolCall`/the fake's
+  // `addToolCall`, both via `toolEntry`'s new `id` parameter) instead of
+  // reusing `call.id` — `toolCallId` still carries the model's own
+  // (possibly duplicated) `call.id` separately, for matching a result back
+  // to the model's request.
+  it("resolves each duplicate-id call against its OWN transcript entry, not the first one", async () => {
     const session = createChat("https://example.com");
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
@@ -1086,6 +1093,21 @@ describe("chaos: partial failure across a round's tool calls", () => {
 });
 
 describe("chaos: stream reports tool calls then dies before 'done'", () => {
+  // DECIDED on card 87 (was flagged, not guessed at, on card 85): a round
+  // whose stream reports `tool-calls` and then dies with a terminal error
+  // before `done` NEVER runs those calls. Chosen over "run them anyway"
+  // because a round that never reached `done` gives no guarantee the
+  // `tool-calls` seen so far are the model's COMPLETE, final list for that
+  // round (a provider could still have been about to revise or add to it);
+  // running tools — some of which may not be read-only — off an
+  // unconfirmed, possibly-partial list is a real-world-side-effect risk a
+  // silently-dropped list is not. The smallest honest alternative to
+  // "guess and run" is "discard and let the human decide": the terminal
+  // error already surfaces via `addAssistantNote`, and the note's `"retry"`
+  // action (asserted below) gives the user an explicit way to get a FRESH,
+  // fully-committed round — including the same tool calls, if the model
+  // still wants them — rather than this module silently re-running
+  // possibly-stale, possibly-incomplete ones itself.
   it("drops the uncommitted tool calls and surfaces the terminal error, rather than running or hanging", async () => {
     const session = createChat("https://example.com");
     const { transcript, notes } = makeTranscript(session);
@@ -1122,15 +1144,37 @@ describe("chaos: stream reports tool calls then dies before 'done'", () => {
     expect(gateway.requests).toHaveLength(1); // no second round was ever started
   });
 
-  // Whether the model's already-committed tool calls SHOULD still run before
-  // the failure is reported (so their results aren't silently thrown away)
-  // is not decided — flagged rather than guessed at, per the chaos-monkey
-  // skill.
-  it.todo(
-    "decide: should tool calls carried on a 'tool-calls' event still run when the SAME round's stream " +
-      "then dies with a terminal error before 'done' — or is discarding them (current behaviour, tested " +
-      "above) intended?",
-  );
+  it("offers a Retry action on the discarded-tool-calls note, so the user has an explicit way to get a fresh, fully-committed round", async () => {
+    const session = createChat("https://example.com");
+    const { transcript, notes } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const spy = vi.fn(async () => ({ ok: true as const, result: "should never run" }));
+    const tool = makeTool({ name: "a", readOnlyHint: true, call: spy });
+
+    const gateway = scriptedGateway([
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "a", arguments: {} }] },
+        { type: "error", error: { kind: "http", status: 500, statusText: "Internal Server Error", body: "" } },
+      ],
+    ]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: new AbortController().signal,
+      ...baseOpts({
+        tools: { toolsForTurn: async () => [tool] },
+        policy: { mayAutoRun: async () => true },
+        attachTools: true,
+      }),
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.actions).toEqual([{ kind: "retry" }]);
+  });
 });
 
 describe("chaos: stream dies immediately after a successful tool round, before any new text", () => {

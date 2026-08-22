@@ -340,13 +340,23 @@ describe("ChatService transcript mutators", () => {
     const id = service.addToolCall(call, { mode: "auto" });
     service.updateToolCallResult(id, { status: "success", content: "result text" });
 
+    // Card 87: `id` is a fresh, per-instance entry id — NOT `call.id` — so
+    // that two calls sharing one `call.id` in the same round each get their
+    // own addressable entry. The model's own call id still round-trips
+    // separately via `toolCallId`.
+    expect(id).not.toBe(call.id);
+
     const chat = service.current()!;
     expect(chat.messages.find((m) => m.id === id)).toMatchObject({
+      toolCallId: "call-1",
       toolStatus: "success",
       content: "result text",
     });
+    // The tool-call log entry is keyed by the SAME minted `id`, not
+    // `call.id`, so `ToolCallRow.svelte`'s `entry.id === message.id` lookup
+    // between the transcript and the call log still lines up.
     expect(chat.toolCalls).toEqual([
-      expect.objectContaining({ id: "call-1", name: "read", mode: "auto", result: "result text" }),
+      expect.objectContaining({ id, name: "read", mode: "auto", result: "result text" }),
     ]);
   });
 
@@ -558,20 +568,20 @@ describe("ChatService.requestStop", () => {
 // ---------------------------------------------------------------------------
 
 describe("chaos: a second turn starting for a chat that already has one in flight", () => {
-  // KNOWN BUG (journalled on card 85): `runTurn`'s `finally` block
-  // unconditionally deletes `liveSessions`/`stopHandlers` for the chat id it
-  // captured (./service.ts), with no way to tell "the registration I set up"
-  // from "whatever is registered now". Two turns racing for the SAME chat
-  // (e.g. a doubled-up "send" click, or a retry fired before the first
-  // request settled) is never guarded against anywhere in this port, so the
-  // FIRST turn finishing clears the registration out from under the SECOND
-  // one, which is still genuinely streaming — `isTurnActive` then reports
-  // `false` and `requestStop` becomes a silent no-op for a turn that is very
-  // much still running. Fixing this (e.g. a per-registration token, or
-  // refusing a second `runTurn` for a chat that already has one active) is
-  // for the improvement sprint — this test asserts the CORRECT behaviour and
-  // is expected to fail against the current implementation.
-  it.fails("keeps reporting the chat as turn-active while the second turn is still streaming", async () => {
+  // FIXED on card 87 (was a known bug journalled on card 85): `runTurn`'s
+  // `finally` block used to unconditionally delete `liveSessions`/
+  // `stopHandlers` for the chat id it captured (./service.ts), with no way
+  // to tell "the registration I set up" from "whatever is registered now".
+  // Two turns racing for the SAME chat (e.g. a doubled-up "send" click, or a
+  // retry fired before the first request settled) is never guarded against
+  // anywhere in this port, so the FIRST turn finishing cleared the
+  // registration out from under the SECOND one, which was still genuinely
+  // streaming. Fixed with a per-chat active-turn refcount
+  // (`activeTurnCounts`): registration is only torn down by the turn that
+  // brings the count back to zero, so a still-running sibling keeps
+  // `isTurnActive` (and `requestStop`, which now always targets the LATEST
+  // turn's controller) working correctly.
+  it("keeps reporting the chat as turn-active while the second turn is still streaming", async () => {
     const { service } = makeService();
     await service.syncToTab(1, "https://a.example.com");
     const chat = service.current()!;

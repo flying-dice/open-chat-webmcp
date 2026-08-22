@@ -207,6 +207,18 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
    * is mutating rather than a stale, half-written read from storage.
    */
   const liveSessions = new Map<string, ChatSession>();
+  /**
+   * How many `runTurn` calls are currently in flight for a chat id (card 87
+   * fix). Two turns racing for the SAME chat (a doubled-up "send" click, or
+   * a retry fired before the first request settled) is never guarded
+   * against elsewhere in this port, so `runTurn`'s `finally` must not
+   * unconditionally clear `liveSessions`/`stopHandlers` for its chat id —
+   * that would clear the SECOND turn's still-live registration out from
+   * under it the moment the FIRST one finishes. Registration is instead
+   * turn-scoped via this refcount: only the turn that brings the count back
+   * to zero actually tears the registration down.
+   */
+  const activeTurnCounts = new Map<string, number>();
 
   /** One stop handler per chat with a turn in flight — a single global here is exactly what let a second turn (or a tab switch mid-turn) silently clobber another chat's Stop. */
   const stopHandlers = new Map<string, () => void>();
@@ -383,19 +395,27 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
     addToolCall(call: ToolCall, snapshot: ToolCallSnapshot, target = session) {
       if (!target) return call.id;
-      target.messages.push(toolEntry(call, snapshot, Date.now()));
+      // A fresh, per-instance id — NOT `call.id` — so two calls sharing one
+      // `call.id` in the same round (card 87: a hallucinating/buggy model
+      // emitting a duplicate) still get their own addressable transcript
+      // entry and call-log entry, rather than the second silently resolving
+      // against the first's. `toolEntry` and `logToolCall` are given the
+      // SAME minted id so `ToolCallRow.svelte`'s `entry.id === message.id`
+      // lookup between the two views keeps working.
+      const id = makeMessageId();
+      target.messages.push(toolEntry(id, call, snapshot, Date.now()));
       // The transcript's display copy and the inspector's call log (card 11)
       // are two views of the SAME call, kept in step by this mutator and
       // `updateToolCallResult` — never populated independently.
       logToolCall(target, {
-        id: call.id,
+        id,
         name: call.name,
         arguments: call.arguments,
         mode: snapshot.mode,
         origin: snapshot.origin,
       });
       save(target, { immediate: true });
-      return call.id;
+      return id;
     },
 
     updateToolCallResult(
@@ -448,7 +468,12 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       if (!target) return;
 
       liveSessions.set(target.id, target);
+      activeTurnCounts.set(target.id, (activeTurnCounts.get(target.id) ?? 0) + 1);
       const controller = new AbortController();
+      // A second concurrent turn for the same chat simply overwrites this
+      // with its own controller — `requestStop` always aborts the LATEST
+      // turn, the smallest honest behaviour when nothing upstream of this
+      // port prevents two turns racing for one chat in the first place.
       stopHandlers.set(target.id, () => controller.abort());
 
       try {
@@ -468,16 +493,27 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           signal: controller.signal,
         });
       } finally {
-        // decisions/26, card 60: the ONLY place a `TurnPhase` is cleared to
-        // `null`. Every exit path a turn can take unwinds through here — a
-        // clean finish, a terminal provider error, an abort, the iteration
-        // cap, an unexpected throw — so clearing it here and ONLY here is what
-        // guarantees the indicator can never blink off mid-turn. Do not add a
-        // per-return clear anywhere else.
-        presenter.phaseChanged(target.id, null);
-        presenter.streamingChanged(target.id, null);
-        stopHandlers.delete(target.id);
-        liveSessions.delete(target.id);
+        // Turn-scoped teardown (card 87): only the turn that brings this
+        // chat's active count back to zero clears the shared registration —
+        // a sibling turn still in flight keeps `isTurnActive`/`requestStop`
+        // (and, per decisions/26 below, the phase/streaming indicators)
+        // working for however long IT still runs.
+        const remaining = (activeTurnCounts.get(target.id) ?? 1) - 1;
+        if (remaining > 0) {
+          activeTurnCounts.set(target.id, remaining);
+        } else {
+          activeTurnCounts.delete(target.id);
+          // decisions/26, card 60: the ONLY place a `TurnPhase` is cleared to
+          // `null`. Every exit path a turn can take unwinds through here — a
+          // clean finish, a terminal provider error, an abort, the iteration
+          // cap, an unexpected throw — so clearing it here and ONLY here is what
+          // guarantees the indicator can never blink off mid-turn. Do not add a
+          // per-return clear anywhere else.
+          presenter.phaseChanged(target.id, null);
+          presenter.streamingChanged(target.id, null);
+          stopHandlers.delete(target.id);
+          liveSessions.delete(target.id);
+        }
       }
     },
 

@@ -74,7 +74,13 @@ export type NoteAction = { kind: "retry" } | { kind: "open-options"; label: stri
  * unless noted.
  */
 export interface TranscriptEntry {
-  /** Stable within a chat. For a `role:"tool"` entry this is the originating {@link ToolCall.id}, so the entry and its `toolCallId` line up. */
+  /**
+   * Stable within a chat, and unique across EVERY entry in the chat's
+   * transcript. For a `role:"tool"` entry this is a fresh id minted at call
+   * time (see {@link toolEntry}) — deliberately NOT the same value as
+   * `toolCallId`, since two calls in one round can share a `call.id` (card
+   * 87) and each still needs its own addressable entry.
+   */
   id: string;
   role: TranscriptRole;
   content: string;
@@ -144,10 +150,25 @@ export interface ToolCallSnapshot {
   mcpAnnotations?: McpToolAnnotations;
 }
 
-/** A tool call, freshly added: `id` is the call's own id so a later result can find it. A `"denied"` call is born terminal — it never runs. */
-export function toolEntry(call: ToolCall, snapshot: ToolCallSnapshot, now: number): TranscriptEntry {
+/**
+ * A tool call, freshly added. `id` is a fresh, per-INSTANCE entry id the
+ * caller mints (e.g. `ChatService`'s own message-id generator) — NOT
+ * `call.id` — so a later `updateToolCallResult(id, ...)` addresses this
+ * exact entry even when the model emits two calls sharing one `call.id` in
+ * the same round (a hallucinating/buggy model doing so is real: card 87).
+ * `toolCallId` still carries the model's own `call.id` separately, unchanged
+ * and possibly duplicated, for matching a result back to the model's
+ * request in {@link toModelMessage}. A `"denied"` call is born terminal — it
+ * never runs.
+ */
+export function toolEntry(
+  id: string,
+  call: ToolCall,
+  snapshot: ToolCallSnapshot,
+  now: number,
+): TranscriptEntry {
   return {
-    id: call.id,
+    id,
     role: "tool",
     content: "",
     createdAt: now,

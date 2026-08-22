@@ -135,22 +135,41 @@ export function namespacedToolName(slug: string, toolName: string): string {
 }
 
 /**
+ * Builds one `-N` candidate for {@link disambiguateName}, reserving room for
+ * the suffix UP FRONT by trimming `name` itself rather than appending the
+ * suffix and then truncating the result. Appending first and truncating
+ * after (the original approach) throws away exactly the suffix digits once
+ * `name` is already at {@link MAX_TOOL_NAME_LENGTH} — e.g. a 64-char `name`
+ * plus `"-2"` truncated back to 64 chars reproduces `name` verbatim, so the
+ * "disambiguated" result collides with the very name it was meant to avoid.
+ * Trimming the base first means the suffix always survives and the result
+ * is always distinct from `name` and from any other suffix.
+ */
+function suffixedCandidate(name: string, suffix: number): string {
+  const suffixText = `-${suffix}`;
+  const maxBaseLen = Math.max(1, MAX_TOOL_NAME_LENGTH - suffixText.length);
+  const base = name.length > maxBaseLen ? name.slice(0, maxBaseLen) : name;
+  return `${base}${suffixText}`;
+}
+
+/**
  * Resolves `name` against `used` by appending `-2`, `-3`, ... until it's
  * free, mutating nothing (the caller adds the result to `used` itself).
  * Used both for the rare page-tool-squats-a-server-name case (decision 19
  * §1: "the page tool wins and the server tool is suffixed") and defensively
  * for the rarer server-tool-vs-server-tool case a shrunk/truncated name
- * could in principle produce.
+ * could in principle produce — including two names that both already sit at
+ * the {@link MAX_TOOL_NAME_LENGTH} ceiling (see {@link suffixedCandidate}).
  */
 function disambiguateName(name: string, used: ReadonlySet<string>): string {
   if (!used.has(name)) return name;
   let suffix = 2;
-  let candidate = `${name}-${suffix}`;
+  let candidate = suffixedCandidate(name, suffix);
   while (used.has(candidate)) {
     suffix += 1;
-    candidate = `${name}-${suffix}`;
+    candidate = suffixedCandidate(name, suffix);
   }
-  return candidate.length > MAX_TOOL_NAME_LENGTH ? candidate.slice(0, MAX_TOOL_NAME_LENGTH) : candidate;
+  return candidate;
 }
 
 // ---------------------------------------------------------------------------

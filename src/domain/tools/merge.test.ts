@@ -296,17 +296,15 @@ describe("buildServerMergedTools", () => {
     expect(merged[1]?.name.startsWith("s__dup-")).toBe(true);
   });
 
-  // BUG (found while testing, not fixed — reported on card 82): when a
+  // Fixed on card 87 (was a known bug reported on card 82): when a
   // namespaced name is already truncated all the way to MAX_TOOL_NAME_LENGTH
-  // (namespacedToolName's own last-resort branch, above), disambiguateName's
-  // `${name}-${suffix}` retry is itself longer than the limit, and its own
-  // `candidate.slice(0, MAX_TOOL_NAME_LENGTH)` throws away exactly the
-  // appended suffix digits, reproducing the ORIGINAL colliding name — so two
-  // server tools whose full names both truncate to the same 64-char string
-  // silently collide instead of being disambiguated, and the second tool
-  // becomes unreachable (only the first survives lookup by name in
-  // src/domain/chat/turn.ts's `tools.find`).
-  it("known bug: disambiguation silently fails when the colliding name is already at the 64-char ceiling", () => {
+  // (namespacedToolName's own last-resort branch, above), naively appending
+  // `-${suffix}` and THEN truncating back to the limit threw away exactly
+  // the appended suffix digits, reproducing the original colliding name.
+  // `disambiguateName` (via `suffixedCandidate`) now reserves room for the
+  // suffix by trimming the BASE name first, so the two tools end up with
+  // distinct, still-within-budget names.
+  it("disambiguates two server tools whose namespaced names both truncate to the 64-char ceiling", () => {
     const { execute } = recordingServerExecutor();
     const longName = "t".repeat(70); // forces namespacedToolName's last-resort truncation to exactly 64 chars
     const merged = buildServerMergedTools(
@@ -320,8 +318,9 @@ describe("buildServerMergedTools", () => {
     );
     expect(merged).toHaveLength(2);
     expect(merged[0]?.name.length).toBe(64);
-    // Documents the bug: this SHOULD be a disambiguated, distinct name.
-    expect(merged[1]?.name).toBe(merged[0]?.name);
+    expect(merged[1]?.name.length).toBeLessThanOrEqual(64);
+    expect(merged[1]?.name).not.toBe(merged[0]?.name);
+    expect(merged[1]?.name.endsWith("-2")).toBe(true);
   });
 
   it("binds each tool's call to (config, its ORIGINAL tool name, args, opts) — never the namespaced name", async () => {
