@@ -8,10 +8,10 @@ explicitly marked read-only.
 
 It talks to either a local [Ollama](https://ollama.com) server or any
 OpenAI-compatible Chat Completions endpoint (OpenAI itself, Azure OpenAI,
-OpenRouter, LM Studio, etc.) — you register one or more providers in the
-options page and pick a provider + model per chat. See
+OpenRouter, LM Studio, etc.) — you add one or more providers on the options
+page and pick a provider and model per chat. See
 `decisions/12-branding-openchat-webmcp.md` for why the project is named this
-way: "OpenChat" is the product, not tied to one backend; "(WebMCP)" names the
+way: "OpenChat" is the product, not tied to one provider; "(WebMCP)" names the
 mechanism. The repository directory and git remote are intentionally left as
 `ollama-webmcp-chrome` — renaming those is a separate, riskier operation left
 to the user's discretion.
@@ -36,12 +36,11 @@ themes: 11 PNGs — to gitignored `verify/output/screenshots/`. See
   [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md).
 - Streams a chat conversation against your chosen provider, feeding it the
   page's tools and executing whatever it calls, subject to an approval policy.
-- Also calls tools from remote MCP servers you register on the options page —
+- Also calls tools from remote MCP servers you add on the options page —
   merged into the same tool list, namespaced so a server tool can never be
-  mistaken for a page tool. A server tool call is judged by its OWN, stricter
-  approval policy, independent of the page tools' one: a remote service's
-  self-reported "read-only" claim isn't something you can see the effect of
-  the way you can a page
+  mistaken for a page tool. A server tool call is judged by its own, stricter
+  approval policy, independent of the page tools' one: you can't watch a
+  remote server the way you can watch the page in front of you
   (`decisions/20-approval-policy-is-per-tool-source.md`).
 - Keeps a global, browsable chat history. A chat is its own thing with its own
   id, not a property of a tab; a tab points at whichever chat it is currently
@@ -54,7 +53,7 @@ themes: 11 PNGs — to gitignored `verify/output/screenshots/`. See
   [UI and styling](docs/01-architecture.md#ui-and-styling) section of the
   architecture doc.
 
-It does **not** phone home. There is no telemetry, no bundled backend, and no
+It does **not** phone home. There is no telemetry, no bundled server, and no
 account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
 
 ## Requirements
@@ -69,7 +68,7 @@ account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
   - the `chrome://flags/#enable-webmcp-testing` toggle, then relaunch Chrome
     (`npm run launch` opens this page for you on first run);
   - launching Chrome with `--enable-features=WebMCP`;
-  - or simply visiting a site that carries a WebMCP origin-trial token —
+  - or opening a site that carries a WebMCP origin-trial token —
     these work with no flag at all. This is why Google's own demos at
     [googlechromelabs.github.io/webmcp-tools](https://googlechromelabs.github.io/webmcp-tools)
     work on a stock Chrome while a local demo page does not — see
@@ -79,9 +78,10 @@ account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
   the side panel reports WebMCP as unavailable rather than showing any page
   tools — see
   [docs/04-troubleshooting.md](docs/04-troubleshooting.md#a-tab-shows-no-tools--no-relay-in-this-tab).
-- A chat backend: either a locally running [Ollama](https://ollama.com), or an
-  API key for an OpenAI-compatible provider. Neither is required to build or
-  load the extension — only to actually chat.
+- At least one provider: either a locally running
+  [Ollama](https://ollama.com), or an API key for an OpenAI-compatible
+  service. Neither is required to build or load the extension — only to
+  actually chat.
 
 ## Build and load it
 
@@ -184,9 +184,9 @@ full inventory. Full detail:
 
 ## Provider setup
 
-Providers are registered in the extension's **options page** (right-click the
-toolbar icon → *Options*, or open it from the side panel's picker when no
-provider is registered). Each provider is `{ type, name, base URL, API key? }`.
+Providers are added on the extension's **options page** (right-click the
+toolbar icon → *Options*, or open it from the side panel's picker when you
+have no provider yet). Each provider is `{ type, name, base URL, API key? }`.
 The API key field only appears for provider types that use one. Adding a
 provider that needs a host you haven't granted yet triggers a Chrome
 permission prompt from the "Test connection" button — this has to happen from
@@ -203,7 +203,7 @@ requests it.
 2. **Read [the CORS section below](#the-ollama-cors-trap-read-this-first)
    before you do anything else** — this is the single most common reason
    "it doesn't connect" reports happen on this project.
-3. In the options page, add a provider of type Ollama. The default base URL
+3. On the options page, add a provider of type Ollama. The default base URL
    is `http://localhost:11434`, which is already covered by the extension's
    baked-in `host_permissions` — no permission prompt needed for plain
    localhost/127.0.0.1.
@@ -213,8 +213,8 @@ requests it.
 
 ### OpenAI-compatible
 
-1. In the options page, add a provider of type OpenAI (or OpenAI-compatible),
-   giving it a base URL (`https://api.openai.com` for OpenAI itself, or your
+1. On the options page, add a provider of type OpenAI-compatible, giving it a
+   base URL (`https://api.openai.com` for OpenAI itself, or your
    Azure/OpenRouter/self-hosted endpoint) and an API key.
 2. Any non-localhost host needs a runtime-granted host permission — clicking
    **Test connection** (or saving the provider) triggers Chrome's permission

@@ -4,7 +4,7 @@
     "description": "The extension name, as shown in the Chrome toolbar tooltip, chrome://extensions and the Web Store listing. Referenced from manifest.config.ts as __MSG_extName__."
   },
   "extDescription": {
-    "message": "Chat with a local Ollama server or an OpenAI-compatible provider that drives the page via WebMCP tools",
+    "message": "Chat in a side panel with a local Ollama or any OpenAI-compatible model, and let it act on the page through WebMCP tools.",
     "description": "The extension description, as shown in chrome://extensions and the Web Store listing. Referenced from manifest.config.ts as __MSG_extDescription__. Kept in step with package.json's \"description\", which is what it was hardcoded from before card 100."
   }
 }

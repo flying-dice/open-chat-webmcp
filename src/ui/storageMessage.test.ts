@@ -18,7 +18,7 @@ function err(kind: StorageErrorKind): StorageError {
 describe("storageFailureMessage", () => {
   it("leads with what did not happen, then why", () => {
     expect(storageFailureMessage("Couldn't save your model choice", err("Unavailable"))).toMatch(
-      /^Couldn't save your model choice — the browser's extension storage didn't accept it/,
+      /^Couldn't save your model choice: the browser's storage didn't accept it/,
     );
   });
 
