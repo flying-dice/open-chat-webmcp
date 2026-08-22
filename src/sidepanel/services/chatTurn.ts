@@ -28,6 +28,7 @@
 import {
   denyByDefaultApprovalRequester,
   type ApprovalRequester,
+  type PageContextSnapshot,
   type ToolExecutor,
 } from "../../domain/chat";
 import type { ChatProvider } from "../../domain/providers";
@@ -62,6 +63,21 @@ export interface SendTurnOptions {
    * gate.
    */
   attachTools: boolean;
+  /**
+   * decisions/40's sharing gate for the page this turn runs against (card
+   * 119, src/sidepanel/stores/pageSharing.svelte.ts). `false` means the user
+   * has dismissed sharing: no tools and no page context, whatever else is set
+   * here. Passed on to the domain rather than folded into `attachTools`
+   * because the two answer different questions and the domain enforces the
+   * consent one itself.
+   */
+  sharingAllowed: boolean;
+  /**
+   * What the user shared from the page for this turn, pulled at send
+   * (selection first, then the page extract). Card 119 records it as a
+   * transcript marker; card 120 is what puts it, fenced, into the prompt.
+   */
+  pageContext?: readonly PageContextSnapshot[] | undefined;
   /** Defaults to `denyByDefaultApprovalRequester` — the decisions/05 fail-safe: if the real approval UI were somehow never wired in, every call needing approval fails closed. */
   requestApproval?: ApprovalRequester;
 }
@@ -79,5 +95,7 @@ export function sendTurn(userText: string, opts: SendTurnOptions): Promise<void>
     approvals: opts.requestApproval ?? denyByDefaultApprovalRequester,
     page: { tabId: opts.tabId, title: opts.pageTitle, origin: opts.pageOrigin },
     attachTools: opts.attachTools,
+    sharingAllowed: opts.sharingAllowed,
+    pageContext: opts.pageContext,
   });
 }

@@ -33,7 +33,7 @@
 
 import type { Result } from "../domain/result";
 import type { StorageError } from "../domain/storage";
-import type { ChatService, ChatStore } from "../domain/chat";
+import type { ChatService, ChatStore, PageContextSource } from "../domain/chat";
 import type { HostPermissions } from "../domain/permissions";
 import type { ProviderClientFactory, ProviderRegistry } from "../domain/providers";
 import type { SettingsStore } from "../domain/settings";
@@ -87,6 +87,16 @@ export interface SidePanelServices {
   mcpTools: McpToolGateway;
   permissions: HostPermissions;
   pageTools: PageToolAccess;
+  /**
+   * Goes and gets what the user chose to share from the active tab — the
+   * selection or a capped text extract (card 118's port,
+   * decisions/40-page-context-access.md). PULL-ONLY by construction: there is
+   * no subscribe on it, so "no background reads" is a property of the
+   * interface rather than of this surface's discipline. The one caller is
+   * src/sidepanel/stores/pageSharing.svelte.ts, and it only ever pulls behind
+   * the sharing gate.
+   */
+  pageContext: PageContextSource;
   shell: ExtensionShellAccess;
   tracing: TracingSwitch;
 }

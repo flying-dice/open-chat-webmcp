@@ -89,6 +89,8 @@ import type {
   ChatService,
   ChatServiceSnapshot,
   ChatStore,
+  PageContextMode,
+  PageContextSource,
   RunTurnRequest,
 } from "../../domain/chat";
 import type {
@@ -345,6 +347,34 @@ export function createFakePageToolAccess(overrides: Partial<PageToolAccess> = {}
   };
 }
 
+/**
+ * A `PageContextSource` fake (card 118's port, card 119's gate). Answers a
+ * SUCCESSFUL EMPTY snapshot by default, which is the honest baseline: an empty
+ * selection is the ordinary state of a page nobody has highlighted anything
+ * on, and decisions/40 requires that to be a success rather than an error, so
+ * a test that has not opted into a selection must not see a chip.
+ *
+ * A test drives the interesting cases by reassigning `pull` — returning a
+ * snapshot with text for the chip lifecycle, or `fail(new PageContextError(…))`
+ * for the restricted/unreachable split.
+ */
+export function createFakePageContextSource(
+  overrides: Partial<PageContextSource> = {},
+): PageContextSource {
+  return {
+    pull: async (_tabId: number, mode: PageContextMode) =>
+      ok({
+        mode,
+        text: "",
+        url: "https://example.com/",
+        title: "Example",
+        truncated: false,
+        bytes: 0,
+      }),
+    ...overrides,
+  };
+}
+
 export function createFakeExtensionShell(
   overrides: Partial<ExtensionShellAccess> = {},
 ): ExtensionShellAccess {
@@ -383,6 +413,7 @@ export function createFakeSidePanelServices(
     mcpTools: createFakeMcpToolGateway(),
     permissions: createFakeHostPermissions(),
     pageTools: createFakePageToolAccess(),
+    pageContext: createFakePageContextSource(),
     shell: createFakeExtensionShell(),
     tracing: createFakeTracingSwitch(),
     ...overrides,

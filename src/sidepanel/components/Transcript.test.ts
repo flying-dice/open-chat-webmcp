@@ -143,6 +143,36 @@ describe("Transcript", () => {
 
       expect(screen.getByText(m.transcript_emptyMessage())).toBeInTheDocument();
     });
+
+    // Card 119 (decisions/40): the persisted record that a turn carried page
+    // context. Stored as a KIND (decisions/38) and worded here, so history
+    // re-reads in whatever locale the panel is in now.
+    it("renders a user turn's page-context markers under the message", () => {
+      render(Transcript, {
+        props: baseProps({
+          messages: [
+            {
+              ...userMsg("u1", "summarise this"),
+              sharedContext: [
+                { kind: "page-selection", truncated: false },
+                { kind: "page-content", truncated: true },
+              ],
+            },
+          ],
+        }),
+      });
+
+      expect(screen.getByText(m.sharedContext_selectionLabel())).toBeInTheDocument();
+      expect(
+        screen.getByText(`${m.sharedContext_pageContentLabel()} · ${m.sharedContext_shortened()}`),
+      ).toBeInTheDocument();
+    });
+
+    it("renders no marker list at all for an ordinary turn that shared nothing", () => {
+      render(Transcript, { props: baseProps({ messages: [userMsg("u1", "just chatting")] }) });
+
+      expect(screen.queryByRole("list", { name: m.sharedContext_groupLabel() })).toBeNull();
+    });
   });
 
   describe("chaos: assistant content is rendered sanitized end to end", () => {

@@ -518,5 +518,22 @@
   "provider_invalidResponse": "プロバイダーの応答を、この拡張機能では読み取れませんでした：{message}",
   "capability_unverifiedFallback": "このモデルのツール対応は確認できていません。",
   "capability_noToolsFallback": "このモデルはツール呼び出しに対応していません。",
-  "chatTitle_untitled": "新しいチャット"
+  "chatTitle_untitled": "新しいチャット",
+  "contextChip_notSharing": "このページは共有していません",
+  "contextChip_notSharingDetail": "もう一度共有するまで、このページのツールと内容は表示されません。",
+  "contextChip_stopSharingLabel": "このページの共有を停止",
+  "contextChip_shareAgainLabel": "このページを共有",
+  "contextChip_shareContentLabel": "ページの内容を共有",
+  "contextChip_shareContentHint": "次のメッセージと一緒にこのページのテキストを送ります。長いページは短縮されます。",
+  "selectionChip_label": "選択したテキスト",
+  "selectionChip_removeLabel": "選択したテキストを送らない",
+  "selectionChip_ariaLabel": "選択したテキスト: {excerpt}",
+  "sharedContext_selectionLabel": "選択したテキストを共有しました",
+  "sharedContext_pageContentLabel": "ページの内容を共有しました",
+  "sharedContext_shortened": "一部のみ",
+  "sharedContext_groupLabel": "このメッセージで共有した内容",
+  "toolsPanel_notSharingTitle": "このページは共有していません",
+  "toolsPanel_notSharingDescription": "共有をオフにしている間、このページのツールは表示されません。入力欄の上のバーからもう一度オンにできます。",
+  "pageContext_contentRestrictedNotice": "Chrome はこのページの読み取りを拡張機能に許可していないため、テキストを共有できません。",
+  "pageContext_contentUnavailableNotice": "このページを読み取れなかったため、ページのテキストなしでメッセージを送信しました。"
 }

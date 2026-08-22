@@ -601,5 +601,22 @@
   "provider_invalidResponse": "The provider returned something this extension couldn't read: {message}",
   "capability_unverifiedFallback": "Tool support not verified for this model.",
   "capability_noToolsFallback": "This model doesn't support tool calling.",
-  "chatTitle_untitled": "New chat"
+  "chatTitle_untitled": "New chat",
+  "contextChip_notSharing": "Not sharing this page",
+  "contextChip_notSharingDetail": "This page's tools and text stay hidden until you share it again.",
+  "contextChip_stopSharingLabel": "Stop sharing this page",
+  "contextChip_shareAgainLabel": "Share this page",
+  "contextChip_shareContentLabel": "Share page content",
+  "contextChip_shareContentHint": "Send this page's text with your next message. Long pages are shortened.",
+  "selectionChip_label": "Selected text",
+  "selectionChip_removeLabel": "Don't send the selected text",
+  "selectionChip_ariaLabel": "Selected text: {excerpt}",
+  "sharedContext_selectionLabel": "Selected text shared",
+  "sharedContext_pageContentLabel": "Page content shared",
+  "sharedContext_shortened": "shortened to fit",
+  "sharedContext_groupLabel": "Shared with this message",
+  "toolsPanel_notSharingTitle": "Not sharing this page",
+  "toolsPanel_notSharingDescription": "This page's tools stay hidden while sharing is off. Turn it back on from the bar above the message box.",
+  "pageContext_contentRestrictedNotice": "Chrome blocks extensions from reading this page, so its text can't be shared.",
+  "pageContext_contentUnavailableNotice": "Couldn't read this page just now, so your message was sent without the page text."
 }

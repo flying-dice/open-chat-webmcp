@@ -43,6 +43,7 @@ import { createApprovalPolicyGate } from "../domain/settings";
 import {
   createChromeHostPermissions,
   createExtensionShell,
+  createPageContextSource,
   createPageToolExecutor,
   createTabToolsLookup,
   startTabSync,
@@ -131,6 +132,10 @@ initSidePanelServices({
   mcpTools: mcpToolGateway,
   permissions,
   pageTools: { toolsForTab, executorForTab: createPageToolExecutor },
+  // Card 118's page-context pull, wired here for card 119's sharing gate.
+  // Stateless and tab-agnostic (the tab is an argument), so one instance
+  // serves the whole life of the panel however often the active tab changes.
+  pageContext: createPageContextSource(),
   shell: createExtensionShell(),
   tracing: storage.tracingFlag,
 });

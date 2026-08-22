@@ -518,5 +518,22 @@
   "provider_invalidResponse": "提供方返回了此扩展无法读取的内容：{message}",
   "capability_unverifiedFallback": "此模型对工具的支持尚未验证。",
   "capability_noToolsFallback": "此模型不支持工具调用。",
-  "chatTitle_untitled": "新对话"
+  "chatTitle_untitled": "新对话",
+  "contextChip_notSharing": "未共享此页面",
+  "contextChip_notSharingDetail": "在你再次共享之前，此页面的工具和内容都不会显示。",
+  "contextChip_stopSharingLabel": "停止共享此页面",
+  "contextChip_shareAgainLabel": "共享此页面",
+  "contextChip_shareContentLabel": "共享页面内容",
+  "contextChip_shareContentHint": "随下一条消息发送此页面的文本。较长的页面会被截断。",
+  "selectionChip_label": "所选文本",
+  "selectionChip_removeLabel": "不发送所选文本",
+  "selectionChip_ariaLabel": "所选文本：{excerpt}",
+  "sharedContext_selectionLabel": "已共享所选文本",
+  "sharedContext_pageContentLabel": "已共享页面内容",
+  "sharedContext_shortened": "已截断",
+  "sharedContext_groupLabel": "随这条消息共享的内容",
+  "toolsPanel_notSharingTitle": "未共享此页面",
+  "toolsPanel_notSharingDescription": "共享关闭时，此页面的工具不会显示。可在消息框上方的栏中重新开启。",
+  "pageContext_contentRestrictedNotice": "Chrome 禁止扩展读取此页面，因此无法共享其文本。",
+  "pageContext_contentUnavailableNotice": "刚才无法读取此页面，因此消息已在不含页面文本的情况下发送。"
 }

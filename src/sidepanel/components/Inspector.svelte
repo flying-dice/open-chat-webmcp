@@ -33,13 +33,22 @@
     webmcpAvailable: boolean;
     /** See PageInfo.restricted's doc comment (card 31) — the third, more fundamental "no content script possible at all" empty state. */
     restricted: boolean;
+    /** decisions/40's sharing gate (card 119) — passed straight through to ToolsPanel, and taken out of the tab's own count below. */
+    sharing: boolean;
   }
 
-  let { tools, serverTools, toolCalls, webmcpAvailable, restricted }: Props = $props();
+  let { tools, serverTools, toolCalls, webmcpAvailable, restricted, sharing }: Props = $props();
 
   let section = $state<"tools" | "log">("tools");
 
-  const totalTools = $derived(tools.length + serverTools.length);
+  /**
+   * decisions/40: with the gate down the page's tools are not just hidden from
+   * the list, they are absent from every COUNT — a "Tools (6)" tab on a page
+   * the panel has promised to be blind to would leak exactly the fact the
+   * dismissal was about. Server tools are unaffected: they are the panel's,
+   * not the page's.
+   */
+  const totalTools = $derived((sharing ? tools.length : 0) + serverTools.length);
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -72,7 +81,7 @@
          default for exactly that reason. -->
     <ScrollArea class="min-h-0 flex-1" dir={uiTextDirection()}>
       <Tabs.Content value="tools" class="px-3 pb-3">
-        <ToolsPanel {tools} {serverTools} {webmcpAvailable} {restricted} />
+        <ToolsPanel {tools} {serverTools} {webmcpAvailable} {restricted} {sharing} />
       </Tabs.Content>
       <Tabs.Content value="log" class="px-3 pb-3">
         <CallLogPanel {toolCalls} />

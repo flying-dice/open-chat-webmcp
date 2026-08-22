@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { createChatService, type ChatServiceDeps } from "./service";
+import { createChatService, type ChatServiceDeps, type RunTurnRequest } from "./service";
+import type { PageContextSnapshot } from "./page-context";
 import { createChat, type ChatSession } from "./session";
 import { userEntry } from "./message";
 import { fail, ok } from "../result";
@@ -611,6 +612,7 @@ describe("ChatService.runTurn — auto-run tool call end to end", () => {
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: true,
+      sharingAllowed: true,
     });
 
     const chat = service.current()!;
@@ -657,6 +659,7 @@ describe("ChatService.runTurn — mid-turn tab switch", () => {
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
 
     await reachedGate.promise;
@@ -704,6 +707,7 @@ describe("ChatService.runTurn — re-attaching to a live turn", () => {
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
 
     await reachedGate.promise;
@@ -755,6 +759,7 @@ describe("ChatService.requestStop", () => {
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
 
     await reachedGate.promise;
@@ -832,6 +837,7 @@ describe("chaos: a second turn starting for a chat that already has one in fligh
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
     await reachedGate1.promise;
     expect(service.isTurnActive(chat.id)).toBe(true);
@@ -847,6 +853,7 @@ describe("chaos: a second turn starting for a chat that already has one in fligh
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
     await reachedGate2.promise;
 
@@ -889,6 +896,7 @@ describe("chaos: acting on a chat mid-turn from elsewhere", () => {
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
     await reachedGate.promise;
 
@@ -928,6 +936,7 @@ describe("chaos: acting on a chat mid-turn from elsewhere", () => {
       approvals: vi.fn(async () => "denied" as ApprovalDecision),
       page,
       attachTools: false,
+      sharingAllowed: true,
     });
     await reachedGate.promise;
 
@@ -993,5 +1002,91 @@ describe("ChatService.snapshot", () => {
     expect(snap.toolCallCount).toBe(0);
     expect(snap.liveSessionIds).toEqual([]);
     expect(JSON.stringify(snap)).not.toContain("secret conversation content");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Page-context markers on the user's turn
+// (card 119, decisions/40-page-context-access.md; decisions/38's kind+params)
+// ---------------------------------------------------------------------------
+
+describe("ChatService.runTurn — what the transcript records about shared page context", () => {
+  /** One turn against a gateway that says nothing, so only the user entry matters. */
+  async function runWith(request: Partial<RunTurnRequest>) {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    await service.runTurn("what does this say?", {
+      model: scriptedGateway([[doneEvent()]]),
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+      sharingAllowed: true,
+      ...request,
+    });
+    return service.current()!.messages.find((m) => m.role === "user")!;
+  }
+
+  function snapshot(
+    mode: PageContextSnapshot["mode"],
+    text: string,
+    truncated = false,
+  ): PageContextSnapshot {
+    return {
+      mode,
+      text,
+      url: "https://example.com/",
+      title: "Example",
+      truncated,
+      bytes: text.length,
+    };
+  }
+
+  it("records nothing at all for an ordinary turn — the stored shape is unchanged", async () => {
+    const entry = await runWith({});
+    expect(entry.sharedContext).toBeUndefined();
+  });
+
+  it("records a kind per snapshot, in the order they were attached", async () => {
+    const entry = await runWith({
+      pageContext: [
+        snapshot("selection", "the bit I highlighted"),
+        snapshot("extract", "the page"),
+      ],
+    });
+
+    expect(entry.sharedContext).toEqual([
+      { kind: "page-selection", truncated: false },
+      { kind: "page-content", truncated: false },
+    ]);
+  });
+
+  it("records the truncation, which is the one fact the user cannot otherwise recover", async () => {
+    const entry = await runWith({ pageContext: [snapshot("extract", "the start of it", true)] });
+
+    expect(entry.sharedContext).toEqual([{ kind: "page-content", truncated: true }]);
+  });
+
+  it("stores no prose and no page text — a kind and a flag, nothing else (decisions/38)", async () => {
+    const entry = await runWith({
+      pageContext: [snapshot("selection", "SOME VERY PRIVATE SELECTED TEXT")],
+    });
+
+    expect(JSON.stringify(entry)).not.toContain("SOME VERY PRIVATE SELECTED TEXT");
+  });
+
+  it("records nothing for an empty snapshot — nothing was shared, so nothing is claimed", async () => {
+    const entry = await runWith({ pageContext: [snapshot("selection", "")] });
+    expect(entry.sharedContext).toBeUndefined();
+  });
+
+  it("records nothing when the sharing gate is down, whatever the request carries", async () => {
+    const entry = await runWith({
+      sharingAllowed: false,
+      pageContext: [snapshot("selection", "should never have got here")],
+    });
+
+    expect(entry.sharedContext).toBeUndefined();
   });
 });

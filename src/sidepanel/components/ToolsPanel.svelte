@@ -42,9 +42,19 @@
     serverTools: MergedTool[];
     webmcpAvailable: boolean;
     restricted: boolean;
+    /**
+     * decisions/40's sharing gate (card 119). `false` hides this page's tools
+     * outright and says why — a FOURTH empty state, and deliberately not
+     * "no tools published": the page may well publish plenty, and telling the
+     * user it publishes none would be the panel lying to cover its own
+     * setting. Like `restricted` it scopes to the page section only; MCP
+     * server tools are reached over HTTP from the panel and have nothing to
+     * do with what any page may see.
+     */
+    sharing: boolean;
   }
 
-  let { tools, serverTools, webmcpAvailable, restricted }: Props = $props();
+  let { tools, serverTools, webmcpAvailable, restricted, sharing }: Props = $props();
 </script>
 
 <div class="flex min-w-0 flex-col gap-4">
@@ -67,6 +77,24 @@
           >
           <Empty.Description>
             {@html m.toolsPanel_restrictedDescription()}
+          </Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
+    {:else if !sharing}
+      <!-- Checked after `restricted` and before everything else: Chrome's
+           refusal outranks the user's choice (there is nothing to withhold on
+           a chrome:// page), but the user's choice outranks any statement
+           about what this page publishes. -->
+      <Empty.Root class="p-6 text-start md:p-6">
+        <Empty.Header class="max-w-none items-start text-start">
+          <Empty.Media variant="icon" class="size-9">
+            <Icon name="public" class="size-5" />
+          </Empty.Media>
+          <Empty.Title class="text-base font-medium tracking-tight"
+            >{m.toolsPanel_notSharingTitle()}</Empty.Title
+          >
+          <Empty.Description>
+            {m.toolsPanel_notSharingDescription()}
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>

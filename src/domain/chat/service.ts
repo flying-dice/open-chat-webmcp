@@ -46,6 +46,7 @@ import {
   userEntry,
   assistantEntry,
   type NoteAction,
+  type SharedContextMarker,
   type ToolCallSnapshot,
   type ToolCallStatus,
   type TranscriptEntry,
@@ -58,6 +59,7 @@ import {
   type ChatSession,
 } from "./session";
 import { newId } from "./id";
+import type { PageContextSnapshot } from "./page-context";
 import type { ChatStore } from "./store";
 import { normalizeChatTitle } from "./title";
 import type {
@@ -81,6 +83,32 @@ export interface RunTurnRequest {
   page: PageContext;
   /** Only ever `true` for a `"tool-capable"` model (decisions/11) — the service trusts the caller's gate and does not re-derive it. */
   attachTools: boolean;
+  /**
+   * decisions/40's SHARING GATE, as the turn sees it: `false` once the user
+   * has dismissed sharing for the page this turn runs against, which makes
+   * the assistant fully blind to it — no tools, no context, regardless of
+   * what any other option on this request says.
+   *
+   * Passed even though the side panel already refuses to assemble a turn's
+   * tools or context while it is `false` (card 119's
+   * src/sidepanel/stores/pageSharing.svelte.ts). A consent gate enforced only
+   * in the UI is a promise about one caller's discipline; enforced here it is
+   * a property of running a turn at all. Card 120 extends that to the
+   * page-context half when it lands the fencing.
+   */
+  sharingAllowed: boolean;
+  /**
+   * What the user explicitly shared from the page for THIS turn (card 118's
+   * `PageContextSnapshot`), in the order it should reach the model — the side
+   * panel puts a selection before a whole-page extract, since the selection
+   * is the more specific answer to "what am I asking about".
+   *
+   * Card 119 uses this for one thing only: recording the transcript marker on
+   * the user's message. Putting the fenced text into the prompt is card 120's
+   * (decisions/40's untrusted-content rule, decisions/17's mechanism), which
+   * is why this reaches ./turn.ts as data it does not yet read.
+   */
+  pageContext?: readonly PageContextSnapshot[] | undefined;
 }
 
 /** A chat's persisted provider/model choice, plus whether the user actually made it (card 35). */
@@ -174,8 +202,8 @@ export interface ChatService extends TurnTranscript {
     explicit: boolean,
   ): Promise<Result<boolean, StorageError>>;
 
-  /** Append a user message to the current chat and return its id. `""` if no chat is loaded yet. */
-  addUserMessage(content: string): string;
+  /** Append a user message to the current chat and return its id. `""` if no chat is loaded yet. `sharedContext` records what page context the message carried (card 119, decisions/40) and is omitted for the ordinary turn that carried none. */
+  addUserMessage(content: string, sharedContext?: readonly SharedContextMarker[]): string;
 
   /** Run one full agent turn for `userText` — see {@link runTurn}. Never throws. */
   runTurn(userText: string, request: RunTurnRequest): Promise<void>;
@@ -223,6 +251,28 @@ export interface ChatServiceDeps {
   reportStorageFailure?: (message: string, cause: StorageError) => void;
   /** Optional diagnostic trace for the swap path (card 59 item 1) — the panel gates this on its runtime tracing flag. */
   trace?: (event: string, detail: Record<string, unknown>) => void;
+}
+
+/**
+ * The transcript markers a turn's request earns (card 119, decisions/40) —
+ * one per snapshot the surface actually attached, in the same order.
+ *
+ * THE GATE IS APPLIED HERE TOO, not just where the snapshots were pulled: a
+ * turn assembled with `sharingAllowed: false` records nothing, so a marker
+ * can never claim the model was shown a page the user had made it blind to.
+ * An empty snapshot earns no marker either — decisions/40's "empty is a
+ * successful answer" means "there was nothing to share", and a marker saying
+ * text was shared when none was would be the transcript lying about the
+ * privacy-relevant fact it exists to record.
+ */
+function sharedContextMarkers(request: RunTurnRequest): SharedContextMarker[] {
+  if (!request.sharingAllowed) return [];
+  return (request.pageContext ?? [])
+    .filter((snapshot) => snapshot.text !== "")
+    .map((snapshot) => ({
+      kind: snapshot.mode === "selection" ? "page-selection" : "page-content",
+      truncated: snapshot.truncated,
+    }));
 }
 
 const headlessPresenter: ChatPresenter = {
@@ -479,10 +529,10 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     //     store's debounce.
     // -----------------------------------------------------------------------
 
-    addUserMessage(content) {
+    addUserMessage(content, sharedContext) {
       if (!session) return "";
       const id = newId();
-      session.messages.push(userEntry(id, content, Date.now()));
+      session.messages.push(userEntry(id, content, Date.now(), sharedContext));
       save(session, { immediate: true });
       return id;
     },
@@ -572,7 +622,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     // -----------------------------------------------------------------------
 
     async runTurn(userText, request) {
-      service.addUserMessage(userText);
+      service.addUserMessage(userText, sharedContextMarkers(request));
 
       // THE ONE-SHOT CAPTURE (decisions/25 §3, card 58). Read here, right
       // after the user's message landed on whichever chat was current at that
@@ -606,6 +656,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           presenter,
           page: request.page,
           attachTools: request.attachTools,
+          sharingAllowed: request.sharingAllowed,
+          pageContext: request.pageContext,
           originLabel: deps.originLabel,
           toolCallTimeoutMs: deps.toolCallTimeoutMs,
           signal: controller.signal,

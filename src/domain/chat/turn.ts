@@ -51,6 +51,7 @@ import {
 } from "../tools";
 import type { ApprovalPolicyGate } from "../settings";
 import type { ChatSession } from "./session";
+import type { PageContextSnapshot } from "./page-context";
 import { truncateWithEllipsis } from "./text";
 import {
   toModelConversation,
@@ -130,6 +131,29 @@ export interface RunTurnOptions {
    */
   attachTools: boolean;
   /**
+   * decisions/40's SHARING GATE for the page this turn runs against. `false`
+   * once the user has dismissed sharing for it: the assistant must be fully
+   * blind to that page — no tools offered, no page context in the prompt —
+   * however the rest of these options are set.
+   *
+   * Deliberately a SEPARATE flag from `attachTools` rather than something the
+   * caller is trusted to have folded into it: the two answer different
+   * questions ("can this model use tools at all" vs "may we look at this page
+   * at all"), and a consent decision that survives only as long as one
+   * caller's `&&` is not a guarantee. The tool half is enforced below; card
+   * 120 adds the context half with the fencing.
+   */
+  sharingAllowed: boolean;
+  /**
+   * What the user explicitly shared from the page for this turn (card 118's
+   * `PageContextSnapshot`), selection first. CARD 120 IS WHAT READS THIS:
+   * fencing it as untrusted content (decisions/17) and placing it in the
+   * prompt is that card's, and card 119 threads it here so the seam exists
+   * before the behaviour does. Card 119 uses the same values for the
+   * transcript marker, which ./service.ts records.
+   */
+  pageContext?: readonly PageContextSnapshot[] | undefined;
+  /**
    * Wording for a tool's origin (decisions/19 §6), injected because it is
    * PRESENTATION: card 73 moved `originLabel` out of the domain deliberately,
    * and the system prompt must use the same words the approval card and the
@@ -174,7 +198,12 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
   presenter.phaseChanged(target.id, { kind: "waiting" });
 
   // The merged list is built ONCE, here, per turn (decisions/19 §5).
-  const tools = opts.attachTools ? await opts.tools.toolsForTurn(opts.page) : [];
+  // decisions/40: `sharingAllowed` is the consent gate and `attachTools` the
+  // capability one — a turn needs BOTH. With sharing dismissed the lookup is
+  // never even made, so the page is not asked what it publishes on a turn the
+  // user made the assistant blind to.
+  const tools =
+    opts.attachTools && opts.sharingAllowed ? await opts.tools.toolsForTurn(opts.page) : [];
 
   await runLoop(opts, tools);
 }

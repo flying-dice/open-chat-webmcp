@@ -40,6 +40,7 @@
   import ActivityGroup from "./ActivityGroup.svelte";
   import ActivityIndicator from "./ActivityIndicator.svelte";
   import ApprovalCard from "./ApprovalCard.svelte";
+  import ContextMarkers from "./ContextMarkers.svelte";
   import Icon from "./Icon.svelte";
   import IconButton from "./IconButton.svelte";
   import MessageActions from "./MessageActions.svelte";
@@ -193,7 +194,7 @@
          intact, it just can no longer crash on a collision. -->
     {#each groups as group, groupIndex (groupIndex)}
       {#if group.kind === "user"}
-        <div class="flex min-w-0 justify-end">
+        <div class="flex min-w-0 flex-col items-end gap-1">
           <!-- The user's turn is the only boxed one. It is short, it is the
                thing being answered, and a right-aligned pill is the
                cheapest way to say "you said this" without a label or an
@@ -203,6 +204,12 @@
           >
             {group.message.content}
           </div>
+          <!-- Card 119: what this turn carried from the page, under the
+               message it went with. Absent — not an empty list — on the
+               ordinary turn that shared nothing. -->
+          {#if group.message.sharedContext && group.message.sharedContext.length > 0}
+            <ContextMarkers markers={group.message.sharedContext} />
+          {/if}
         </div>
       {:else if group.kind === "prose"}
         {@const message = group.message}

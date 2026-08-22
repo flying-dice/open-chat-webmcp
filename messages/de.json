@@ -532,5 +532,22 @@
   "provider_invalidResponse": "Der Anbieter hat etwas zurückgegeben, das diese Erweiterung nicht lesen konnte: {message}",
   "capability_unverifiedFallback": "Tool-Unterstützung für dieses Modell nicht geprüft.",
   "capability_noToolsFallback": "Dieses Modell unterstützt keine Tool-Aufrufe.",
-  "chatTitle_untitled": "Neuer Chat"
+  "chatTitle_untitled": "Neuer Chat",
+  "contextChip_notSharing": "Diese Seite wird nicht geteilt",
+  "contextChip_notSharingDetail": "Die Tools und Inhalte dieser Seite bleiben verborgen, bis Sie sie wieder teilen.",
+  "contextChip_stopSharingLabel": "Diese Seite nicht mehr teilen",
+  "contextChip_shareAgainLabel": "Diese Seite teilen",
+  "contextChip_shareContentLabel": "Seiteninhalt teilen",
+  "contextChip_shareContentHint": "Sendet den Text dieser Seite mit Ihrer nächsten Nachricht. Lange Seiten werden gekürzt.",
+  "selectionChip_label": "Markierter Text",
+  "selectionChip_removeLabel": "Markierten Text nicht senden",
+  "selectionChip_ariaLabel": "Markierter Text: {excerpt}",
+  "sharedContext_selectionLabel": "Markierter Text geteilt",
+  "sharedContext_pageContentLabel": "Seiteninhalt geteilt",
+  "sharedContext_shortened": "gekürzt",
+  "sharedContext_groupLabel": "Mit dieser Nachricht geteilt",
+  "toolsPanel_notSharingTitle": "Diese Seite wird nicht geteilt",
+  "toolsPanel_notSharingDescription": "Die Tools dieser Seite bleiben verborgen, solange das Teilen aus ist. Schalten Sie es in der Leiste über dem Eingabefeld wieder ein.",
+  "pageContext_contentRestrictedNotice": "Chrome lässt Erweiterungen diese Seite nicht lesen, deshalb kann ihr Text nicht geteilt werden.",
+  "pageContext_contentUnavailableNotice": "Diese Seite ließ sich gerade nicht lesen, deshalb wurde Ihre Nachricht ohne den Seitentext gesendet."
 }

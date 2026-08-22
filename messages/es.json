@@ -546,5 +546,22 @@
   "provider_invalidResponse": "El proveedor devolvió algo que esta extensión no pudo leer: {message}",
   "capability_unverifiedFallback": "No se ha verificado si este modelo admite herramientas.",
   "capability_noToolsFallback": "Este modelo no admite llamadas de herramientas.",
-  "chatTitle_untitled": "Chat nuevo"
+  "chatTitle_untitled": "Chat nuevo",
+  "contextChip_notSharing": "No se está compartiendo esta página",
+  "contextChip_notSharingDetail": "Las herramientas y el contenido de esta página quedan ocultos hasta que vuelvas a compartirla.",
+  "contextChip_stopSharingLabel": "Dejar de compartir esta página",
+  "contextChip_shareAgainLabel": "Compartir esta página",
+  "contextChip_shareContentLabel": "Compartir contenido de la página",
+  "contextChip_shareContentHint": "Envía el texto de esta página con tu próximo mensaje. Las páginas largas se acortan.",
+  "selectionChip_label": "Texto seleccionado",
+  "selectionChip_removeLabel": "No enviar el texto seleccionado",
+  "selectionChip_ariaLabel": "Texto seleccionado: {excerpt}",
+  "sharedContext_selectionLabel": "Texto seleccionado compartido",
+  "sharedContext_pageContentLabel": "Contenido de la página compartido",
+  "sharedContext_shortened": "acortado",
+  "sharedContext_groupLabel": "Compartido con este mensaje",
+  "toolsPanel_notSharingTitle": "No se está compartiendo esta página",
+  "toolsPanel_notSharingDescription": "Las herramientas de esta página quedan ocultas mientras no la compartas. Vuelve a activarlo en la barra sobre el cuadro de mensaje.",
+  "pageContext_contentRestrictedNotice": "Chrome impide que las extensiones lean esta página, así que su texto no se puede compartir.",
+  "pageContext_contentUnavailableNotice": "No se pudo leer esta página ahora mismo, así que tu mensaje se envió sin el texto de la página."
 }

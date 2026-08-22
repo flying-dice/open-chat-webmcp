@@ -588,5 +588,22 @@
   "provider_invalidResponse": "أعاد المزوّد شيئًا لم تستطع الإضافة قراءته: {message}",
   "capability_unverifiedFallback": "لم يُتحقق من دعم هذا النموذج للأدوات.",
   "capability_noToolsFallback": "لا يدعم هذا النموذج استدعاء الأدوات.",
-  "chatTitle_untitled": "محادثة جديدة"
+  "chatTitle_untitled": "محادثة جديدة",
+  "contextChip_notSharing": "لا تتم مشاركة هذه الصفحة",
+  "contextChip_notSharingDetail": "تبقى أدوات هذه الصفحة ومحتواها مخفية حتى تشاركها مرة أخرى.",
+  "contextChip_stopSharingLabel": "إيقاف مشاركة هذه الصفحة",
+  "contextChip_shareAgainLabel": "مشاركة هذه الصفحة",
+  "contextChip_shareContentLabel": "مشاركة محتوى الصفحة",
+  "contextChip_shareContentHint": "يُرسل نص هذه الصفحة مع رسالتك التالية. وتُختصر الصفحات الطويلة.",
+  "selectionChip_label": "النص المحدد",
+  "selectionChip_removeLabel": "عدم إرسال النص المحدد",
+  "selectionChip_ariaLabel": "النص المحدد: {excerpt}",
+  "sharedContext_selectionLabel": "تمت مشاركة النص المحدد",
+  "sharedContext_pageContentLabel": "تمت مشاركة محتوى الصفحة",
+  "sharedContext_shortened": "مختصر",
+  "sharedContext_groupLabel": "ما شاركته مع هذه الرسالة",
+  "toolsPanel_notSharingTitle": "لا تتم مشاركة هذه الصفحة",
+  "toolsPanel_notSharingDescription": "تبقى أدوات هذه الصفحة مخفية ما دامت المشاركة متوقفة. أعِد تفعيلها من الشريط أعلى مربع الرسالة.",
+  "pageContext_contentRestrictedNotice": "يمنع Chrome الإضافات من قراءة هذه الصفحة، لذا لا يمكن مشاركة نصها.",
+  "pageContext_contentUnavailableNotice": "تعذّرت قراءة هذه الصفحة الآن، لذا أُرسلت رسالتك بدون نص الصفحة."
 }

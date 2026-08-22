@@ -169,6 +169,11 @@ function baseOpts(overrides: Record<string, unknown> = {}) {
     policy: { mayAutoRun: async () => false },
     page,
     attachTools: false,
+    // Card 119 (decisions/40): the sharing gate defaults OPEN here, which is
+    // both the product default and what keeps every pre-existing case in this
+    // file testing what it was written to test. The gate's own cases below
+    // override it.
+    sharingAllowed: true,
     originLabel,
     toolCallTimeoutMs: 1000,
     ...overrides,
@@ -1289,5 +1294,58 @@ describe("chaos: stream dies immediately after a successful tool round, before a
     // dropped or fused with the note — endAssistantMessage already closed it.
     const assistantEntries = session.messages.filter((m) => m.role === "assistant");
     expect(assistantEntries.some((m) => m.content === "")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The sharing gate at the turn seam
+// (card 119, decisions/40-page-context-access.md)
+// ---------------------------------------------------------------------------
+
+describe("runTurn — the sharing gate", () => {
+  /** Runs one turn against a gateway that only ever says "done", and reports whether the tool list was even asked for. */
+  async function runWithGate(options: { attachTools: boolean; sharingAllowed: boolean }) {
+    const session = createChat("https://example.com");
+    const { transcript } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const toolsForTurn = vi.fn(async () => [makeTool({ name: "get_title", readOnlyHint: true })]);
+    const gateway = scriptedGateway([[{ type: "content", delta: "hi" }, doneEvent()]]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: new AbortController().signal,
+      ...baseOpts({ tools: { toolsForTurn }, ...options }),
+    });
+
+    return { toolsForTurn, gateway };
+  }
+
+  it("offers the page's tools when the model can use them and the user is sharing", async () => {
+    const { toolsForTurn, gateway } = await runWithGate({
+      attachTools: true,
+      sharingAllowed: true,
+    });
+
+    expect(toolsForTurn).toHaveBeenCalledTimes(1);
+    expect(gateway.requests[0]?.tools).toHaveLength(1);
+  });
+
+  it("does not even ASK the page what it publishes once sharing is dismissed", async () => {
+    const { toolsForTurn, gateway } = await runWithGate({
+      attachTools: true,
+      sharingAllowed: false,
+    });
+
+    expect(toolsForTurn).not.toHaveBeenCalled();
+    expect(gateway.requests[0]?.tools ?? []).toHaveLength(0);
+  });
+
+  it("still needs a tool-capable model — the gate grants consent, not capability", async () => {
+    const { toolsForTurn } = await runWithGate({ attachTools: false, sharingAllowed: true });
+
+    expect(toolsForTurn).not.toHaveBeenCalled();
   });
 });

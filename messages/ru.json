@@ -560,5 +560,22 @@
   "provider_invalidResponse": "Провайдер вернул то, что расширение не смогло прочитать: {message}",
   "capability_unverifiedFallback": "Поддержка инструментов у этой модели не проверена.",
   "capability_noToolsFallback": "Эта модель не поддерживает вызов инструментов.",
-  "chatTitle_untitled": "Новый чат"
+  "chatTitle_untitled": "Новый чат",
+  "contextChip_notSharing": "Доступ к странице закрыт",
+  "contextChip_notSharingDetail": "Инструменты и текст этой страницы скрыты, пока вы не откроете к ней доступ снова.",
+  "contextChip_stopSharingLabel": "Закрыть доступ к странице",
+  "contextChip_shareAgainLabel": "Открыть доступ к странице",
+  "contextChip_shareContentLabel": "Передавать текст страницы",
+  "contextChip_shareContentHint": "Текст этой страницы уйдёт вместе со следующим сообщением. Длинные страницы сокращаются.",
+  "selectionChip_label": "Выделенный текст",
+  "selectionChip_removeLabel": "Не отправлять выделенный текст",
+  "selectionChip_ariaLabel": "Выделенный текст: {excerpt}",
+  "sharedContext_selectionLabel": "Выделенный текст передан",
+  "sharedContext_pageContentLabel": "Текст страницы передан",
+  "sharedContext_shortened": "сокращён",
+  "sharedContext_groupLabel": "Передано с этим сообщением",
+  "toolsPanel_notSharingTitle": "Доступ к странице закрыт",
+  "toolsPanel_notSharingDescription": "Пока доступ закрыт, инструменты этой страницы скрыты. Откройте его снова на панели над полем ввода.",
+  "pageContext_contentRestrictedNotice": "Chrome не разрешает расширениям читать эту страницу, поэтому её текст передать нельзя.",
+  "pageContext_contentUnavailableNotice": "Страницу не удалось прочитать, поэтому сообщение ушло без её текста."
 }

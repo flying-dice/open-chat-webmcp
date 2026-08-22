@@ -2,20 +2,36 @@
   /**
    * The page-context strip directly above the composer (decisions/18,
    * re-skinned by decisions/28): which tab this chat is attached to,
-   * whether we're connected, and how many WebMCP tools that page publishes.
+   * whether we're connected, how many WebMCP tools that page publishes —
+   * and, since card 119, whether the assistant may see that page at all.
    *
-   * All three used to occupy two rows of the header. They belong here
-   * instead, because all three describe what will happen when you press
-   * Send — and the reference panel puts exactly this information in exactly
-   * this place ("Sharing 'New Tab'").
+   * All of it belongs here because all of it describes what will happen when
+   * you press Send, and the reference panel puts exactly this information in
+   * exactly this place ("Sharing 'New Tab'").
    *
-   * Deliberately NOT copied from the reference: its dismiss "X". That
-   * button detaches the shared tab. We have no detach concept — tools are
-   * attached per turn by App.svelte based on the model's capability — so an
-   * X here would look like it stopped sharing the page while page tools
-   * carried on being offered to the model. Instead the whole strip is a
-   * button that opens the tool inspector, which is what someone poking at
-   * "6 tools" actually wants.
+   * ── THE DISMISS "X" IS BACK, AND IT MEANS SOMETHING NOW ─────────────────
+   *
+   * This component used to carry a comment explaining why the reference's
+   * dismiss button was deliberately NOT copied: we had no detach concept, so
+   * an X would have looked like it stopped sharing the page while page tools
+   * carried on being offered to the model. decisions/40 (as revised) removes
+   * that objection by making the state real — the X now dismisses a SHARING
+   * GATE (src/sidepanel/stores/pageSharing.svelte.ts) that the tools panel,
+   * the tool count here, the turn's tool attachment and every page-context
+   * pull all obey. The chip is the whole of that control:
+   *
+   *   SHARING (default)  "Sharing <page> · N tools", the strip opens the tool
+   *                      inspector, a "Share page content" toggle sits beside
+   *                      it with a visible on/off state, and the ✕ dismisses.
+   *   NOT SHARING        "Not sharing this page", nothing about tools, and an
+   *                      equally prominent "Share this page" button —
+   *                      decisions/40 asks for re-enabling to be as visible as
+   *                      dismissing was, so this is a labelled button rather
+   *                      than a second icon the user has to guess at.
+   *   RESTRICTED         exactly as before (decisions/40: "restricted pages
+   *                      behave as today"). No gate is offered, because there
+   *                      is nothing there to share or to withhold — Chrome has
+   *                      already made that decision.
    *
    * This component is only ever mounted directly above Composer.svelte in
    * App.svelte's composer dock, so its bottom corners are hard-coded square
@@ -35,9 +51,37 @@
     connectionStatus: ConnectionStatus;
     /** Opens the tools & call log view. */
     onOpenTools?: () => void;
+    /** decisions/40's sharing gate for the page on screen — `false` once the user has dismissed it. */
+    sharing: boolean;
+    /** Whether the page's own text goes with the next message. Only meaningful while `sharing`. */
+    shareContent: boolean;
+    /** The ✕ and the "Share this page" button. */
+    onSetSharing: (on: boolean) => void;
+    /** The "Share page content" toggle. */
+    onSetShareContent: (on: boolean) => void;
   }
 
-  const { pageInfo, connectionStatus, onOpenTools }: Props = $props();
+  const {
+    pageInfo,
+    connectionStatus,
+    onOpenTools,
+    sharing,
+    shareContent,
+    onSetSharing,
+    onSetShareContent,
+  }: Props = $props();
+
+  /**
+   * Chrome's own refusal, checked before the user's: a restricted page keeps
+   * exactly today's chip, with no gate controls at all. Offering a "stop
+   * sharing" button for a page nothing can be read from would be a control
+   * that does nothing, and offering "share page content" would be an outright
+   * false promise.
+   */
+  const restricted = $derived(pageInfo?.restricted === true);
+
+  /** True only where the gate is a real choice: a resolved, non-restricted page. */
+  const gateable = $derived(pageInfo !== undefined && !restricted);
 
   // The origin is a URL — always LTR — interpolated straight into a
   // translated sentence with no DOM element boundary around just that
@@ -46,13 +90,18 @@
   // own title is natural-language text in whatever direction it is).
   const label = $derived.by((): string => {
     if (!pageInfo) return m.contextChip_noActiveTab();
-    if (pageInfo.restricted)
-      return m.contextChip_cantReadOrigin({ origin: isolateLtr(pageInfo.origin) });
+    if (restricted) return m.contextChip_cantReadOrigin({ origin: isolateLtr(pageInfo.origin) });
+    if (!sharing) return m.contextChip_notSharing();
     return m.contextChip_sharing({ title: pageInfo.title || isolateLtr(pageInfo.origin) });
   });
 
+  /**
+   * Hidden while the gate is down — decisions/40 requires the count itself to
+   * go, not just the tool list: "6 tools" next to "not sharing" would be the
+   * panel telling the user about a page it has just promised to be blind to.
+   */
   const toolCountLabel = $derived.by((): string | undefined => {
-    if (!pageInfo || pageInfo.restricted) return undefined;
+    if (!pageInfo || restricted || !sharing) return undefined;
     return m.contextChip_toolCount({ count: pageInfo.toolCount });
   });
 
@@ -60,9 +109,8 @@
   const detail = $derived.by((): string => {
     const parts = [label, connectionStatusLabel(connectionStatus)];
     if (toolCountLabel) parts.push(toolCountLabel);
-    if (pageInfo?.restricted) {
-      parts.push(m.contextChip_restrictedDetail());
-    }
+    if (restricted) parts.push(m.contextChip_restrictedDetail());
+    if (gateable && !sharing) parts.push(m.contextChip_notSharingDetail());
     return parts.join(" · ");
   });
 
@@ -82,11 +130,19 @@
     disconnected: "bg-muted-foreground",
     error: "bg-destructive",
   };
+
+  /**
+   * A button only when there is somewhere to go AND something to say about
+   * tools. With the gate down the strip stops being a doorway to the tool
+   * inspector: the tools it would show are exactly the ones the user has just
+   * hidden.
+   */
+  const opensTools = $derived(onOpenTools !== undefined && sharing);
 </script>
 
 {#snippet body()}
   <span class="relative inline-flex size-4 flex-none items-center justify-center">
-    {#if pageInfo?.favIconUrl && !iconFailed}
+    {#if pageInfo?.favIconUrl && !iconFailed && sharing}
       <img
         src={pageInfo.favIconUrl}
         alt=""
@@ -114,28 +170,76 @@
   {/if}
 {/snippet}
 
-<!-- A button only when there is somewhere to go. Rendering a disabled or
-     inert button when `onOpenTools` is absent would put a control in the
-     tab order that does nothing. -->
-{#if onOpenTools}
-  <button
-    type="button"
-    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-start text-sm text-muted-foreground hover:bg-muted"
-    onclick={onOpenTools}
-    title={detail}
-    aria-label={m.contextChip_openToolsAriaLabel({ detail })}
-  >
-    {@render body()}
-    <!-- Static forward-hint chevron (opens the tool inspector) — genuinely
-         directional, no competing rotate transform, so it flips outright
-         under RTL (card 104's icon audit). -->
-    <span class="flex-none"><Icon name="chevron_right" class="size-4 rtl:-scale-x-100" /></span>
-  </button>
-{:else}
-  <div
-    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-start text-sm text-muted-foreground"
-    title={detail}
-  >
-    {@render body()}
-  </div>
-{/if}
+<div
+  class="flex w-full min-w-0 items-center gap-1 rounded-t-2xl rounded-b-none bg-secondary py-1 pe-1 ps-1 text-sm text-muted-foreground"
+  data-sharing={gateable ? sharing : undefined}
+>
+  <!-- A button only when there is somewhere to go. Rendering a disabled or
+       inert button when there is no destination would put a control in the
+       tab order that does nothing. -->
+  {#if opensTools && onOpenTools}
+    <button
+      type="button"
+      class="flex min-w-0 flex-1 items-center gap-2 rounded-full px-2 py-1 text-start hover:bg-muted"
+      onclick={onOpenTools}
+      title={detail}
+      aria-label={m.contextChip_openToolsAriaLabel({ detail })}
+    >
+      {@render body()}
+      <!-- Static forward-hint chevron (opens the tool inspector) — genuinely
+           directional, no competing rotate transform, so it flips outright
+           under RTL (card 104's icon audit). -->
+      <span class="flex-none"><Icon name="chevron_right" class="size-4 rtl:-scale-x-100" /></span>
+    </button>
+  {:else}
+    <div class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-start" title={detail}>
+      {@render body()}
+    </div>
+  {/if}
+
+  {#if gateable && sharing}
+    <!-- "Share page content": a TOGGLE, so it is a button with `aria-pressed`
+         rather than a link that fires an action. Its on-state is visible three
+         ways at once — the pressed background, the accent glyph and (where
+         there is room) its own label — because a control whose only feedback
+         is a colour is not a state a user can rely on before pressing Send. -->
+    <button
+      type="button"
+      aria-pressed={shareContent}
+      aria-label={m.contextChip_shareContentLabel()}
+      title={m.contextChip_shareContentHint()}
+      class={cn(
+        "flex flex-none items-center gap-1 rounded-full px-2 py-1 text-xs",
+        shareContent
+          ? "bg-background text-foreground ring-1 ring-border"
+          : "text-muted-foreground hover:bg-muted",
+      )}
+      onclick={() => onSetShareContent(!shareContent)}
+    >
+      <Icon name="subject" class="size-4" />
+      <span class="max-[360px]:hidden">{m.contextChip_shareContentLabel()}</span>
+    </button>
+
+    <button
+      type="button"
+      aria-label={m.contextChip_stopSharingLabel()}
+      title={m.contextChip_stopSharingLabel()}
+      class="flex-none rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+      onclick={() => onSetSharing(false)}
+    >
+      <Icon name="close" class="size-4" />
+    </button>
+  {:else if gateable}
+    <!-- The re-enable affordance, deliberately a LABELLED button and not a
+         mirrored icon: decisions/40 asks for it to be as visible as the
+         dismiss was, and an unlabelled glyph in a strip that now reads "Not
+         sharing this page" would be the least discoverable thing on screen. -->
+    <button
+      type="button"
+      class="flex-none rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground ring-1 ring-border hover:bg-muted"
+      onclick={() => onSetSharing(true)}
+    >
+      {m.contextChip_shareAgainLabel()}
+    </button>
+  {/if}
+</div>

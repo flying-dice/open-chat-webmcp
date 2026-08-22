@@ -65,6 +65,45 @@ export type ToolCallMode = "auto" | "approved" | "denied";
 export type NoteAction = { kind: "retry" } | { kind: "open-options"; label: string };
 
 /**
+ * WHICH kind of page context a user turn carried (card 119,
+ * decisions/40-page-context-access.md).
+ *
+ * One value per {@link PageContextMode}, deliberately named for what the
+ * USER did rather than for how it was pulled: `page-selection` is "I sent the
+ * text I had highlighted", `page-content` is "I sent this page's text".
+ */
+export type SharedContextKind = "page-selection" | "page-content";
+
+/**
+ * The user-visible RECORD that a turn carried page context — decisions/40's
+ * "persisted transcript marker", stored on the user's own entry.
+ *
+ * A KIND PLUS PARAMS, NEVER PROSE, per
+ * decisions/38-transcript-stores-codes-not-prose.md: this is data about what
+ * happened, and the words for it are chosen at render time by the surface's
+ * locale (src/sidepanel/presentation/sharedContext.ts). A chat recorded in
+ * English and reopened in Japanese must read as Japanese, which a stored
+ * sentence could never do.
+ *
+ * Deliberately does NOT store the shared text itself. The text of a selection
+ * is already in the turn the model answered, and a second copy on the
+ * transcript would mean a page's content silently outliving the conversation
+ * it was shared with — the opposite of decisions/40's posture. `truncated` is
+ * kept because it is the one fact about the shared text the user cannot
+ * otherwise recover: whether the model saw all of it.
+ */
+export interface SharedContextMarker {
+  readonly kind: SharedContextKind;
+  /**
+   * True when the shared text stopped at the extraction cap rather than at
+   * the end of the content (see `PageContextSnapshot.truncated`). Rendered as
+   * a "shortened to fit" note, so a user is never left believing the model
+   * read a whole page it only read the top of.
+   */
+  readonly truncated: boolean;
+}
+
+/**
  * One entry in a stored conversation — the shape `ChatSession.messages`
  * actually holds and `chrome.storage.local` actually round-trips.
  *
@@ -124,6 +163,13 @@ export interface TranscriptEntry {
   toolMcpAnnotations?: McpToolAnnotations | undefined;
   /** Set on a plain assistant note (never on a live stream) that offers one or more action chips — see {@link NoteAction}. */
   actions?: NoteAction[];
+  /**
+   * Set on a `role:"user"` entry that carried page context (card 119,
+   * decisions/40): what the user shared with this message, as kinds rather
+   * than words. Absent — never an empty array — when the turn shared nothing,
+   * which is the ordinary case.
+   */
+  sharedContext?: SharedContextMarker[] | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,9 +178,20 @@ export interface TranscriptEntry {
 // every push site.
 // ---------------------------------------------------------------------------
 
-/** A user turn. */
-export function userEntry(id: string, content: string, now: number): TranscriptEntry {
-  return { id, role: "user", content, createdAt: now };
+/**
+ * A user turn. `sharedContext` records what page context the turn carried
+ * (card 119) — omitted entirely rather than stored as `[]` when it carried
+ * none, so an ordinary turn's stored shape is byte-for-byte what it was.
+ */
+export function userEntry(
+  id: string,
+  content: string,
+  now: number,
+  sharedContext?: readonly SharedContextMarker[],
+): TranscriptEntry {
+  const entry: TranscriptEntry = { id, role: "user", content, createdAt: now };
+  if (sharedContext && sharedContext.length > 0) entry.sharedContext = [...sharedContext];
+  return entry;
 }
 
 /** An assistant turn, empty — content is appended delta by delta as it streams. */

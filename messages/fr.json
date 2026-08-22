@@ -546,5 +546,22 @@
   "provider_invalidResponse": "Le fournisseur a renvoyé un contenu que cette extension n’a pas su lire : {message}",
   "capability_unverifiedFallback": "La prise en charge des outils n’est pas vérifiée pour ce modèle.",
   "capability_noToolsFallback": "Ce modèle ne prend pas en charge l’appel d’outils.",
-  "chatTitle_untitled": "Nouvelle conversation"
+  "chatTitle_untitled": "Nouvelle conversation",
+  "contextChip_notSharing": "Cette page n’est pas partagée",
+  "contextChip_notSharingDetail": "Les outils et le contenu de cette page restent masqués jusqu’à ce que vous la partagiez de nouveau.",
+  "contextChip_stopSharingLabel": "Ne plus partager cette page",
+  "contextChip_shareAgainLabel": "Partager cette page",
+  "contextChip_shareContentLabel": "Partager le contenu de la page",
+  "contextChip_shareContentHint": "Envoie le texte de cette page avec votre prochain message. Les pages longues sont raccourcies.",
+  "selectionChip_label": "Texte sélectionné",
+  "selectionChip_removeLabel": "Ne pas envoyer le texte sélectionné",
+  "selectionChip_ariaLabel": "Texte sélectionné : {excerpt}",
+  "sharedContext_selectionLabel": "Texte sélectionné partagé",
+  "sharedContext_pageContentLabel": "Contenu de la page partagé",
+  "sharedContext_shortened": "raccourci",
+  "sharedContext_groupLabel": "Partagé avec ce message",
+  "toolsPanel_notSharingTitle": "Cette page n’est pas partagée",
+  "toolsPanel_notSharingDescription": "Les outils de cette page restent masqués tant que le partage est désactivé. Réactivez-le dans la barre au-dessus de la zone de message.",
+  "pageContext_contentRestrictedNotice": "Chrome empêche les extensions de lire cette page : son texte ne peut donc pas être partagé.",
+  "pageContext_contentUnavailableNotice": "Cette page n’a pas pu être lue à l’instant : votre message a été envoyé sans le texte de la page."
 }

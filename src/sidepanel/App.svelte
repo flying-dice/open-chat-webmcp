@@ -33,6 +33,7 @@
   import Composer from "./components/Composer.svelte";
   import ModelPicker from "./components/ModelPicker.svelte";
   import ContextChip from "./components/ContextChip.svelte";
+  import SelectionChip from "./components/SelectionChip.svelte";
   import NoticeCard from "./components/NoticeCard.svelte";
   import OverflowMenu from "./components/OverflowMenu.svelte";
   import IconButton from "./components/IconButton.svelte";
@@ -46,6 +47,15 @@
   import { chat, sidePanelServices } from "./app-services";
   import { selection } from "./stores/selection.svelte";
   import { panel, requestStop } from "./stores/panel.svelte";
+  import {
+    collectTurnContext,
+    dismissSelection,
+    initPageSharingSync,
+    pageSharing,
+    refreshSelection,
+    setShareContent,
+    setSharing,
+  } from "./stores/pageSharing.svelte";
   import { dismissNotice, panelNotices, reportNotice } from "./stores/notices.svelte";
   import { storageFailureMessage } from "../ui/storageMessage";
   import {
@@ -133,10 +143,39 @@
   const toolsNotice = $derived.by((): string | undefined => {
     const info = panel.pageInfo;
     if (!info || info.restricted) return undefined;
+    // Card 119 (decisions/40): with the gate down this note would state
+    // something about the page the panel has just promised not to look at —
+    // and "no tools published" would be a claim we cannot make while we are
+    // deliberately not asking. The chip already says why the panel is quiet.
+    if (!pageSharing.sharing) return undefined;
     if (info.toolCount === 0) {
       return m.app_toolsNotice();
     }
     return undefined;
+  });
+
+  /**
+   * The IDENTITY of the page the panel is pointed at — card 119's second
+   * trigger for a selection pull, alongside the panel taking focus.
+   *
+   * Derived to a string on purpose. `panel.pageInfo` is reassigned wholesale
+   * on a bare title or favicon change too (see panel.svelte.ts's
+   * `pageMetaChanged`), and an effect reading the object itself would turn
+   * every one of those into a page read the user never asked for — precisely
+   * what decisions/40 forbids. Recomputing this to the SAME string leaves the
+   * effect below asleep.
+   */
+  const pageIdentity = $derived(
+    panel.pageInfo ? `${panel.pageInfo.tabId} ${panel.pageInfo.origin}` : "",
+  );
+
+  // A tab switch, a navigation, or the very first page resolving after the
+  // panel opened: in each the chip is now about a different page and has to
+  // be re-read. `refreshSelection` is a no-op for a restricted page or a
+  // dismissed gate, so this cannot pull behind the gate.
+  $effect(() => {
+    void pageIdentity;
+    void refreshSelection();
   });
 
   onMount(() => {
@@ -146,10 +185,16 @@
     // lifetime, so a turn's per-turn merge (src/sidepanel/services/chatTurn.ts)
     // almost always finds something already cached rather than starting cold.
     const teardownMcpToolsSync = initMcpToolsSync();
+    // Card 119 (decisions/40): pulls the active tab's selection when this
+    // panel takes focus — the moment the user comes back from highlighting
+    // something — and never at any other time of its own accord. Behind the
+    // sharing gate, so a dismissed page is never asked.
+    const teardownPageSharingSync = initPageSharingSync();
 
     return () => {
       teardownPolicySync();
       teardownMcpToolsSync();
+      teardownPageSharingSync();
     };
   });
 
@@ -234,16 +279,30 @@
     // from src/sidepanel/app-services.ts, built once by the composition root,
     // instead of being imported from an interim wiring module.
     const provider = sidePanelServices().createProviderClient(resolution.config);
+    const pageTitle = panel.pageInfo?.title ?? "";
+    const pageOrigin = panel.pageInfo?.origin ?? "";
 
-    void sendTurn(text, {
-      provider,
-      model: resolution.model,
-      tabId,
-      pageTitle: panel.pageInfo?.title ?? "",
-      pageOrigin: panel.pageInfo?.origin ?? "",
-      attachTools: selection.activeCapability?.status === "tool-capable",
-      requestApproval,
-    });
+    // Card 119 (decisions/40): the send is the second of the two gestures a
+    // page-context pull is allowed to happen on, and the authoritative one —
+    // the user may have changed their selection while typing. `collectTurnContext`
+    // is the whole of the gate's UI-side enforcement: it pulls nothing and
+    // returns nothing while sharing is dismissed, so a dismissal made between
+    // the chip appearing and Send being pressed is honoured by the turn that
+    // send starts. The gate is read AFTER the pull for the same reason.
+    void (async () => {
+      const pageContext = await collectTurnContext();
+      await sendTurn(text, {
+        provider,
+        model: resolution.model,
+        tabId,
+        pageTitle,
+        pageOrigin,
+        attachTools: pageSharing.sharing && selection.activeCapability?.status === "tool-capable",
+        sharingAllowed: pageSharing.sharing,
+        pageContext,
+        requestApproval,
+      });
+    })();
   }
 
   /**
@@ -349,10 +408,22 @@
     </Transcript>
 
     <div class="flex flex-none flex-col gap-0 px-3 pt-2 pb-3">
+      <!-- Card 119: the selection attachment sits ABOVE the sharing strip,
+           because it is subordinate to it — the gate governs whether it can
+           exist at all — and because the strip and the composer are drawn as
+           one welded unit (square corners between them) that nothing may be
+           inserted into. -->
+      {#if pageSharing.selection}
+        <SelectionChip text={pageSharing.selection.text} onDismiss={dismissSelection} />
+      {/if}
       <ContextChip
         pageInfo={panel.pageInfo}
         connectionStatus={panel.connectionStatus}
         onOpenTools={() => (view = "inspector")}
+        sharing={pageSharing.sharing}
+        shareContent={pageSharing.shareContent}
+        onSetSharing={setSharing}
+        onSetShareContent={setShareContent}
       />
       <Composer
         bind:this={composerRef}
@@ -385,6 +456,7 @@
         toolCalls={panel.toolCalls}
         webmcpAvailable={panel.pageInfo?.webmcpAvailable ?? true}
         restricted={panel.pageInfo?.restricted ?? false}
+        sharing={pageSharing.sharing}
       />
     {:else}
       <HistoryPanel onOpenChat={() => (view = "chat")} />
