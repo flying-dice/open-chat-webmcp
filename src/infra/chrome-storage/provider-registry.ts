@@ -54,9 +54,20 @@ function decodeProviderCore(v: unknown): ProviderConfigCore | undefined {
     typeof v.name === "string" &&
     typeof v.baseUrl === "string" &&
     typeof v.type === "string" &&
+    // CAST: `PROVIDER_TYPES` is typed `readonly ProviderType[]`, so
+    // `.includes` only accepts a `ProviderType` and rejects the plain
+    // `string` we have here — the very question being asked. Widening the
+    // receiver (not the argument) keeps the check honest: an unknown type
+    // still answers `false`.
     (PROVIDER_TYPES as readonly string[]).includes(v.type) &&
     (v.presetId === undefined || typeof v.presetId === "string")
   ) {
+    // CAST: the `if` above IS the decode — every field of
+    // `ProviderConfigCore` has just been checked on a value that came out of
+    // `chrome.storage` as `unknown`. TypeScript does not turn an inline
+    // conjunction into a whole-object narrowing, so the assertion states what
+    // the condition proved; `unknown` is stepped through because
+    // `Record<string, unknown>` and the config type do not overlap directly.
     return v as unknown as ProviderConfigCore;
   }
   return undefined;

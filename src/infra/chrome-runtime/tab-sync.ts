@@ -131,6 +131,14 @@ async function getToolsAndAvailabilityForTab(
     // response — no separate handling needed beyond the trace call. The
     // losing `sendMessage` promise is left to settle on its own; discarding
     // the race here does not cancel it.
+    //
+    // CAST on the race's result: `chrome.runtime.sendMessage` resolves `any`
+    // in @types/chrome (the API is genuinely untyped — what comes back is
+    // whatever the listener returned), which would make the whole race `any`
+    // and leak it through this function. Naming the three outcomes is what
+    // stops that: the worker's answer, the timer's sentinel, or `undefined`
+    // when no listener replied. Nothing below trusts it — every field is
+    // read through `?.` with a default.
     const response = (await Promise.race([
       chrome.runtime.sendMessage({ type: "runtime:get-tools", tabId }),
       new Promise<typeof TOOLS_LOOKUP_TIMED_OUT>((resolve) =>

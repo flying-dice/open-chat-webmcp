@@ -36,6 +36,14 @@ export function createPageToolExecutor(tabId: number): PageToolExecutor {
     const request: RuntimeCallToolRequest = { type: "runtime:call-tool", tabId, name, args };
 
     try {
+      // CAST: `chrome.runtime.sendMessage` is declared to resolve `any` in
+      // @types/chrome — the API is genuinely untyped, since what comes back
+      // is whatever the listener returned. Naming the shape here is what
+      // stops that `any` spreading through this adapter; `| undefined` is
+      // part of it because a worker with no listener for this request
+      // resolves `undefined`, and the line below is what handles that. The
+      // value is still read defensively (`response.ok`, `?? "…"`) — this
+      // asserts the contract, it does not trust the sender.
       const response = (await chrome.runtime.sendMessage(request)) as
         | RuntimeCallToolResponse
         | undefined;

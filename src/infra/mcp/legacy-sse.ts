@@ -29,6 +29,14 @@ interface Deferred<T> {
 }
 
 function createDeferred<T>(): Deferred<T> {
+  // The two `!` here are DEFINITE-ASSIGNMENT assertions, not non-null
+  // assertions on a value (card 96's sweep: production carries zero of the
+  // latter). The invariant is the one the Promise constructor guarantees —
+  // the executor runs SYNCHRONOUSLY, before `new Promise` returns — so both
+  // are assigned by the time anything can read them, and the compiler has no
+  // way to see that. The alternative shapes (`| undefined` plus `?.` at every
+  // call site, or ES2024's `Promise.withResolvers`, which is past this
+  // bundle's es2023 target) cost more than they prove.
   let resolveFn!: (v: T) => void;
   let rejectFn!: (e: unknown) => void;
   let settled = false;
@@ -39,7 +47,7 @@ function createDeferred<T>(): Deferred<T> {
     };
     rejectFn = (e) => {
       settled = true;
-      reject(e as Error);
+      reject(e);
     };
   });
   return {
@@ -221,6 +229,7 @@ export async function connectLegacySse(
 
   const pump = new LegacySsePump(response.body, config.url);
 
+  // TODO: clean-code - 0.35 - DRY: `raceWithBudget`'s `Result<T, "timeout" | "other">` (card 94's Result-ification of budget.ts) is turned into an `McpError` by the same `err === "timeout" ? {kind:"timeout", …} : {kind:…, …}` ternary at three sites in this file — here, the initialize wait below, and the per-request wait in `session.request`. A `budgetErrorToMcpError(err, timeoutMessage, otherError)` helper would collapse the three; noted by card 96's audit.
   const [postEndpoint, postEndpointErr] = await raceWithBudget(pump.endpoint(), budget);
   if (postEndpointErr) {
     pump.close();

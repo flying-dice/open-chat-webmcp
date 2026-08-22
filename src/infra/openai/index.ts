@@ -72,7 +72,7 @@ export { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, ollama/client.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently seven times across src/ (chrome-storage/area.ts, chrome-runtime/protocol.ts, mcp/json-rpc.ts, ollama/client.ts, content/relay.ts, sidepanel/presentation/untrustedJson.ts). Card 96 took it from ten: sw.ts's two message guards now reuse chrome-runtime/protocol.ts's own isRuntimeMessage, and the three tool-inspector components share sidepanel/presentation/untrustedJson.ts. The five that remain are held apart by adapters-do-not-import-adapters (each adapter stack would have to reach into another's folder) — collapsing them needs a home in src/domain, which is a decision record, not a drive-by.
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }

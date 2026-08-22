@@ -39,6 +39,27 @@
 // written, its credential parts not) stops there rather than being papered
 // over by a `Promise.all` whose rejection nobody was awaiting.
 
+// CARD 96 (the strict-safety final audit): this file holds eleven of the
+// ~40 `as` assertions left in production code — by far the densest cluster —
+// and they are all the same fact. The store is GENERIC over `TParts` (a
+// caller's record of credential fields) while its machinery is necessarily
+// key-by-key and untyped: `Object.keys`, a merge into an accumulator, a
+// spread of the two halves back together. TypeScript models none of those as
+// operations on a mapped type, so an object that is built correctly key by
+// key still arrives as `Record<string, unknown>`.
+//
+// The alternative was weighed and rejected: making the parts machinery
+// type-safe end to end needs `TParts` to be a shape the checker can walk
+// generically, which pushes the same erasure OUT into both registries' specs
+// — more sites, in the two files that are meant to be declarative, and not
+// one runtime guarantee gained.
+//
+// So the erasure is CONTAINED instead, and that containment is the thing
+// worth auditing: every assertion is inside this file, the public surface
+// (`KeyedRecordStore` above) is fully typed, and both registries plus their
+// tests are assertion-free apart from their own decode guards. Each site
+// below names the invariant it stands in for.
+
 import type { StorageError } from "../../domain/storage";
 import { allOk, fail, ok, type Result } from "../../domain/result";
 import type { StorageAreaGateway } from "./area";
@@ -117,9 +138,17 @@ export interface KeyedRecordStore<TCore extends { id: string }, TParts> {
 export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
   spec: KeyedRecordStoreSpec<TCore, TParts>,
 ): KeyedRecordStore<TCore, TParts> {
+  // CAST: `Object.keys` is typed `string[]` because a JS object may carry
+  // keys its type does not declare. `spec.parts` is this store's OWN
+  // declaration of the part set, so its keys are exactly `keyof TParts`.
   const partNames = Object.keys(spec.parts) as (keyof TParts & string)[];
 
   function partFor(name: keyof TParts & string): CredentialPart<unknown> {
+    // CAST: `spec.parts[name]` is `CredentialPart<TParts[typeof name]>` — a
+    // different type per key, which nothing downstream can be written
+    // against. Widening the VALUE to `unknown` is sound (the interface only
+    // consumes it through `decode`/`isEmpty`, both of which take `unknown`);
+    // the assertion is needed because `CredentialPart<T>` is invariant in `T`.
     return spec.parts[name] as CredentialPart<unknown>;
   }
 
@@ -145,6 +174,11 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
     for (const [name, value] of entries) {
       if (value !== undefined) merged[name] = value;
     }
+    // CAST: `merged` was filled only from `partNames`, i.e. exactly the keys
+    // of `TParts`, each with the value its own `decode` returned; keys whose
+    // decode gave `undefined` were skipped, which is what makes it PARTIAL.
+    // The accumulator has to be `Record<string, unknown>` to be written to
+    // key by key at all.
     return ok(merged as Partial<TParts>);
   }
 
@@ -175,6 +209,10 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
   async function withParts(core: TCore): Promise<Result<KeyedRecord<TCore, TParts>, StorageError>> {
     const [parts, err] = await readParts(core.id);
     if (err) return fail(err);
+    // CAST: `KeyedRecord<TCore, TParts>` IS `TCore & Partial<TParts>`, which
+    // is what this spread produces — but TypeScript will not reduce a spread
+    // of two generic objects to their intersection (the result of spreading
+    // unresolved type parameters is deliberately widened).
     return ok({ ...core, ...parts } as KeyedRecord<TCore, TParts>);
   }
 
@@ -202,6 +240,12 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
     const core: Record<string, unknown> = {};
     const parts: { name: keyof TParts & string; value: unknown }[] = [];
     for (const [key, value] of Object.entries(patch)) {
+      // CAST (both): `partNames` is `(keyof TParts & string)[]`, so
+      // `.includes` will not accept the arbitrary `key` we are asking about —
+      // widening the RECEIVER keeps the question honest, and a key that is
+      // not a part name still answers `false` and falls to the `core` branch.
+      // The second states what the first proved: inside this arm `key` is one
+      // of `partNames`, which `.includes` does not narrow it to.
       if ((partNames as string[]).includes(key)) {
         parts.push({ name: key as keyof TParts & string, value });
       } else {
@@ -230,7 +274,14 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
 
     async add(input) {
       const id = spec.generateId();
+      // CAST: `splitPatch` walks entries by name, so it takes the erased
+      // form; `input` is an object type, and every object type's entries are
+      // readable as `Record<string, unknown>`.
       const { core, parts } = splitPatch(input as Record<string, unknown>);
+      // CAST: `core` is `input` minus the part names — i.e. `Omit<TCore,
+      // "id">` — and `id` is the missing field, so this is a complete `TCore`.
+      // The compiler lost the connection at `splitPatch`'s erased signature,
+      // which is the containment this file's header describes.
       const record = { ...core, id } as TCore;
 
       const [existing, listErr] = await listCore();
@@ -249,7 +300,13 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
       const index = list.findIndex((c) => c.id === id);
       if (index === -1) return ok(undefined);
 
+      // CAST: as in `add` — `splitPatch` works on erased entries.
       const { core, parts } = splitPatch(patch as Record<string, unknown>);
+      // CAST: `list[index]` is a whole `TCore` (the `findIndex` above is what
+      // proves the index is in range; `noUncheckedIndexedAccess` still types
+      // it `TCore | undefined`, and spreading `undefined` is a no-op that the
+      // guard rules out) and `core` is a subset of its own fields, so the
+      // spread is a `TCore`. Same generic-spread widening as `withParts`.
       const updated = { ...list[index], ...core } as TCore;
       const next = [...list];
       next[index] = updated;

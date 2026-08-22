@@ -18,6 +18,13 @@
    * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
    * with Tailwind utilities; recursion and field handling unchanged.
    */
+  import {
+    isRecord,
+    readArray,
+    readRecord,
+    readString,
+    readStringArray,
+  } from "../presentation/untrustedJson";
   import Self from "./SchemaProperty.svelte";
 
   interface Props {
@@ -28,44 +35,22 @@
 
   let { name, node, required = false }: Props = $props();
 
-  // TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/; unlike the infra adapters, SchemaProperty/ToolSchema/ToolArgValue have no adapters-do-not-import-adapters constraint and could share one isRecord from src/ui/utils.ts alongside cn().
-  function isRecord(v: unknown): v is Record<string, unknown> {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
-  }
-
   const rec = $derived(isRecord(node) ? node : undefined);
-  const type = $derived(typeof rec?.type === "string" ? (rec.type as string) : undefined);
-  const description = $derived(
-    typeof rec?.description === "string" ? (rec.description as string) : undefined,
-  );
-  const format = $derived(typeof rec?.format === "string" ? (rec.format as string) : undefined);
-  const enumValues = $derived(Array.isArray(rec?.enum) ? (rec.enum as unknown[]) : undefined);
-  const properties = $derived(
-    isRecord(rec?.properties) ? (rec.properties as Record<string, unknown>) : undefined,
-  );
-  const requiredList = $derived(
-    Array.isArray(rec?.required)
-      ? (rec.required as unknown[]).filter((r): r is string => typeof r === "string")
-      : [],
-  );
+  const type = $derived(readString(rec, "type"));
+  const description = $derived(readString(rec, "description"));
+  const format = $derived(readString(rec, "format"));
+  const enumValues = $derived(readArray(rec, "enum"));
+  const properties = $derived(readRecord(rec, "properties"));
+  const requiredList = $derived(readStringArray(rec, "required"));
   const items = $derived(rec?.items);
   const itemsRecord = $derived(isRecord(items) ? items : undefined);
-  const itemProperties = $derived(
-    isRecord(itemsRecord?.properties)
-      ? (itemsRecord.properties as Record<string, unknown>)
-      : undefined,
-  );
-  const itemRequiredList = $derived(
-    Array.isArray(itemsRecord?.required)
-      ? (itemsRecord.required as unknown[]).filter((r): r is string => typeof r === "string")
-      : [],
-  );
+  const itemProperties = $derived(readRecord(itemsRecord, "properties"));
+  const itemRequiredList = $derived(readStringArray(itemsRecord, "required"));
 
   const typeLabel = $derived.by(() => {
     if (!type) return "any";
     if (type === "array") {
-      const itemType =
-        typeof itemsRecord?.type === "string" ? (itemsRecord.type as string) : undefined;
+      const itemType = readString(itemsRecord, "type");
       return itemType ? `array<${itemType}>` : "array";
     }
     return type;

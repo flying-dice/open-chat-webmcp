@@ -33,7 +33,7 @@
 // Both arrive at construction. Nothing here imports another adapter, and
 // nothing here reads storage.
 
-import { ok, type Result } from "../../domain/result";
+import { fail, ok, type Result } from "../../domain/result";
 import type {
   McpCallOptions,
   McpConnectionInfo,
@@ -77,7 +77,7 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS, opts?.signal);
     try {
       const [session, err] = await connect(config, ctx, budget);
-      if (err) return [undefined, err];
+      if (err) return fail(err);
       session.close();
       return ok(session.connection);
     } finally {
@@ -92,7 +92,7 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_LIST_TOOLS_TIMEOUT_MS, opts?.signal);
     try {
       const [session, err] = await connect(config, ctx, budget);
-      if (err) return [undefined, err];
+      if (err) return fail(err);
       try {
         return await listToolsViaSession(session);
       } finally {
@@ -112,7 +112,7 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_CALL_TOOL_TIMEOUT_MS, opts?.signal);
     try {
       const [session, err] = await connect(config, ctx, budget);
-      if (err) return [undefined, err];
+      if (err) return fail(err);
       try {
         return await callToolViaSession(session, toolName, args);
       } finally {

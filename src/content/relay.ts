@@ -73,7 +73,7 @@ import type { ModelContextToolInfo } from "@mcp-b/webmcp-types";
 // worker.
 const TOOLCHANGE_DEBOUNCE_MS = 100;
 
-// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, ollama/client.ts, openai/index.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently seven times across src/ (chrome-storage/area.ts, chrome-runtime/protocol.ts, mcp/json-rpc.ts, ollama/client.ts, openai/index.ts, sidepanel/presentation/untrustedJson.ts). Card 96 took it from ten: sw.ts's two message guards now reuse chrome-runtime/protocol.ts's own isRuntimeMessage, and the three tool-inspector components share sidepanel/presentation/untrustedJson.ts. The five that remain are held apart by adapters-do-not-import-adapters (each adapter stack would have to reach into another's folder) — collapsing them needs a home in src/domain, which is a decision record, not a drive-by.
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -189,6 +189,12 @@ function safeJson<T>(v: unknown): T | undefined {
   try {
     const s = JSON.stringify(v);
     if (s === undefined) return undefined;
+    // CAST: `JSON.parse` is typed `any` and this function's `T` is the
+    // CALLER's claim about the shape, not something checkable here — the
+    // round trip only proves the value is JSON-representable. Every call site
+    // passes a `T` it has already validated or is about to (the protocol
+    // guards in ./protocol and sw.ts), so the assertion carries the caller's
+    // claim across the serialisation rather than inventing one.
     return JSON.parse(s) as T;
   } catch (err) {
     console.warn("[webmcp][relay] dropping non-JSON-serialisable value", v, err);
@@ -252,6 +258,12 @@ function buildToolsUpdatedMessage(): RuntimeToolsUpdatedMessage {
 async function refreshTools(): Promise<void> {
   if (!MODEL_CONTEXT_AVAILABLE || !modelContext) return;
 
+  // CAST: the ambient `document.modelContext` typings (src/ui/webmcp.d.ts)
+  // declare `getTools()` loosely because it is a native WebIDL surface we do
+  // not own and Chrome ships it unversioned. `NativeToolInfo` is this
+  // module's own record of the shape decisions/16 pinned against real Chrome
+  // for Testing; nothing downstream trusts it blind — `serializeTool` reads
+  // every field defensively and `safeJson`s the schema.
   const raw = (await modelContext.getTools()) as NativeToolInfo[];
   // Scope to tools registered by THIS frame's own document — see the module
   // doc comment (`t.window === window`, matching the official inspector).

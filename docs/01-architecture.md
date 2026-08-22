@@ -274,9 +274,95 @@ for a type, not for a constant. If you need a TYPE from an adapter, the type
 belongs in `src/domain`; if you need an INSTANCE, the root builds it and
 hands it to you.
 
+## Errors as values
+
+[decisions/34](../decisions/34-errors-as-values.md) settles the question a
+signature could not previously answer: **which failures may I expect from
+this call?** A known failure is a value in the return type. `throw` means the
+code is wrong.
+
+```ts
+type Result<T, E> = readonly [value: T, error: undefined]
+                  | readonly [value: undefined, error: E];
+```
+
+`src/domain/result.ts` owns it, with `ok()` / `fail()` beside it. It is a
+tuple rather than a `{ok: true, …}` record because the tuple destructures
+into two plainly-named locals and narrows **both** of them at once:
+
+```ts
+const [chat, err] = await store.getChat(id);
+if (err) return report(err);   // err is StorageError here…
+use(chat);                     // …and chat is ChatSession, not `| undefined`
+```
+
+That second narrowing is load-bearing and it is not free — it works because
+element 1 is a discriminant (`undefined` is a unit type). Keep the success
+arm's `error` literally `undefined`; widening it to `E | undefined` silently
+takes the narrowing away at every call site.
+
+### The vocabularies
+
+Four, one per stack, each an exhaustive union with a `kind` discriminant:
+
+| Vocabulary | Declared in | Reported by |
+| --- | --- | --- |
+| `StorageError` | `src/domain/storage` | every storage port |
+| `ProviderError` | `src/domain/providers` | `ChatProvider`'s one-shot calls |
+| `McpError` | `src/domain/tools` | `McpToolGateway`, `McpOAuthClient` |
+| `MergedToolCallOutcome` | `src/domain/tools` | tool execution (`{ok:false, error}`, not a `Result` — a failed tool call is transcript content) |
+
+### Adding a failure mode
+
+1. **Extend the vocabulary**, in the domain, next to the others. It is a
+   `kind` plus whatever the surface needs to word it — never the platform's
+   own message, which is not ours to show.
+2. **Return `fail()` from the adapter**, at the boundary, in the `catch` that
+   already sits on the `fetch` / `chrome.storage` call / `JSON.parse`. The
+   original error goes in `cause`; it never escapes.
+3. **Map it to copy in the UI.** `StorageError` has exactly one place that
+   becomes prose — `src/ui/storageMessage.ts` — and it decides where a "Try
+   again" is honest (not for `Corrupt`: the same read decodes to the same
+   nothing). Its exhaustiveness test fails if a new kind arrives without
+   wording, which is the point.
+4. **Every caller now has to handle it or propagate it**, and the compiler
+   says so. That is the whole return on the migration.
+
+### Not everything returns a `Result`
+
+A `Result` a caller cannot act on is ceremony, and it makes the ones that
+matter harder to spot. `ChatService` (`src/domain/chat/service.ts`) states the
+rule in its interface doc and takes three postures:
+
+- **Returned** — the five methods a person drives (`openChat`,
+  `startNewChat`, `discardIfDeleted`, `renameCurrent`, `setSelection`). Each
+  is the direct consequence of a click, so the caller has an affordance for
+  the failure: leave History open, keep the form up, show a notice.
+- **Absorbed and reported** — `syncToTab` and `applyNavigation`. Their only
+  driver is a `chrome.tabs` event: nobody asked, nothing awaits the answer,
+  there is no surface to tell. The reason goes to `reportStorageFailure`.
+- **Not async at all** — the transcript mutators persist fire-and-forget so a
+  token stream never waits on a write.
+
+### Where `throw` is still allowed
+
+Only for a violated invariant — "this cannot happen unless the code is
+wrong", the case where crashing and being reported is correct because the
+state is unreasonable. There are **seven** such sites in `src/`, each on
+`scripts/throw-allowlist.json` with the invariant named: four
+`app-services.ts` "initialised exactly once / read after the root ran"
+guards, two `main.ts` mount-point guards, and one port-contract assertion.
+`guard:throws` fails on any site not on that list.
+
+An adapter never lets a platform exception escape. `try`/`catch` survives in
+exactly three places: driven adapters sitting directly on a wire call, the
+two non-Svelte composition roots, and documented never-throws wrappers.
+Anywhere else, a `catch` is a failure mode that should have been in the
+signature.
+
 ## The guards
 
-`npm run guard` is two scripts, and neither alone is the guard.
+`npm run guard` is five scripts, and no one of them alone is the guard.
 
 **`npm run guard:boundaries`** = `depcruise` + `scripts/guard-boundaries.mjs`.
 
@@ -333,6 +419,55 @@ fails the build; **≤ 0.5** is reported and allowed, as documented, visible,
 accepted debt. A marker whose score cannot be parsed also fails. The vendored
 shadcn kit under `src/ui/components/ui/` is excluded from both guards — it is
 generated source, not our architecture.
+
+**`npm run guard:biome`** = `biome ci --error-on-warnings .`
+([decisions/35](../decisions/35-biome-and-maximal-strictness.md)). Lint *and*
+formatting: a formatting diff fails the gate, so run `npm run format` before
+you push. Biome reaches the `<script>` block of a `.svelte` file and nothing
+else — the template markup and `<style>` block stay a review-discipline
+concern, and `biome.jsonc`'s header says so in detail rather than implying
+more coverage than exists. `src/ui/components/ui/` and `src/ui/utils.ts` are
+lint-excluded as generator output; both are still formatted.
+
+**`npm run guard:return-types`** (`scripts/guard-return-types.mjs`) — every
+exported function under `src/` declares its return type, so a port or a
+barrel never leans on inference. Biome's own `useExplicitType` is nursery and
+much broader than decision 35 asks for (it wants an annotation on every inline
+callback), so this script implements exactly the rule instead.
+
+**`npm run guard:throws`** (`scripts/guard-throws.mjs`) inventories every
+`throw` and `Promise.reject` under `src/` and fails on any site not on
+`scripts/throw-allowlist.json` with a reason naming its invariant. This is the
+enforcement half of [decisions/34](../decisions/34-errors-as-values.md): a
+newly discovered *expected* failure is a `Result` in the signature, never a
+new allowlist entry. The list went 15 → 11 → 10 → 7 across cards 91-95 and
+its `$doc` carries that history.
+
+**Maximal strictness** backs all five from the compiler side.
+`tsconfig.app.json` adds `noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes`, `noImplicitOverride` and
+`noFallthroughCasesInSwitch` on top of the inherited `strict`.
+`noPropertyAccessFromIndexSignature` is the one flag decision 35 lists that is
+**not** adopted, with the measurement in that file's own comment: 357 errors,
+~96% of them `x.foo` on a `Record<string, unknown>` from an `isRecord()` guard
+over untrusted JSON, where `x.foo` and `x["foo"]` are equally unchecked and
+the flag only rewrites notation.
+
+`exactOptionalPropertyTypes` is the one of those flags you will meet while
+writing code, so its idiom is written down once here rather than re-explained
+at each of its ~26 sites. A field declared `body?: string` may be **absent**
+or a `string` — it may not be present-and-`undefined`. So a value that might
+not exist is spread in conditionally rather than assigned:
+
+```ts
+return { kind: "http-error", status, ...(body !== undefined && { body }) };
+```
+
+`body: body` would fail to compile, and `body: body ?? ""` would invent data.
+The obvious helper (`...optional("body", body)`) does compile, but it turns a
+compiler-checked property name into a string literal that a typo silently
+drops, which is a bad trade in this direction — so the idiom stays inline, and
+this paragraph is its explanation.
 
 ## Testing
 

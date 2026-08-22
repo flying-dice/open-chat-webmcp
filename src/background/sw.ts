@@ -190,24 +190,29 @@ function describeUnreachable(tabId: number, result: RelayReachResult): string {
 // that carries the tab's origin alongside its tools, which the registry
 // requires. See report for a flag on this assumption.
 
-// TODO: clean-code - 0.3 - DRY: the inline `typeof v === "object" && v !== null && !Array.isArray` shape check here and in isCallToolResponse below is the same isRecord predicate reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, ollama/client.ts, openai/index.ts, relay.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
+// Card 96: both guards used to open with their own inlined
+// `typeof v === "object" && v !== null` shape check and then read each field
+// through `(v as Record<string, unknown>)` — six uncommented casts, and a
+// tenth copy of the `isRecord` predicate. `isRuntimeMessage` (the protocol
+// module's own guard, which these messages are shapes OF) does the shape
+// check, and `RuntimeMessage` is discriminated on `type`, so the literal
+// comparison narrows the rest for free. The per-field `typeof` checks below
+// look redundant to the compiler and are not: the sender is a content script
+// on an untrusted page, so the *runtime* check on every field it fills in is
+// the point of these guards.
 function isToolsUpdatedMessage(v: unknown): v is RuntimeToolsUpdatedMessage {
   return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as Record<string, unknown>).type === "runtime:tools-updated" &&
-    typeof (v as Record<string, unknown>).origin === "string" &&
-    typeof (v as Record<string, unknown>).available === "boolean" &&
-    Array.isArray((v as Record<string, unknown>).tools)
+    isRuntimeMessage(v) &&
+    v.type === "runtime:tools-updated" &&
+    typeof v.origin === "string" &&
+    typeof v.available === "boolean" &&
+    Array.isArray(v.tools)
   );
 }
 
 function isCallToolResponse(v: unknown): v is RuntimeCallToolResponse {
   return (
-    typeof v === "object" &&
-    v !== null &&
-    (v as Record<string, unknown>).type === "runtime:call-tool-response" &&
-    typeof (v as Record<string, unknown>).ok === "boolean"
+    isRuntimeMessage(v) && v.type === "runtime:call-tool-response" && typeof v.ok === "boolean"
   );
 }
 

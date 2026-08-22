@@ -261,10 +261,16 @@ async function ollamaFetchJson<T>(
     });
   }
 
+  // CAST: `response.json()` resolves `any`, and `T` is the CALLER's claim
+  // about the payload shape — nothing here can check it, and deliberately so:
+  // this helper's job is the HTTP/JSON envelope (status, body, parse
+  // failure), not the schema. Every caller re-reads the result through this
+  // module's defensive `isRecord`-based decoders, which is where a wrong
+  // shape actually gets caught.
   return ok(json as T);
 }
 
-// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, json-rpc.ts, openai/index.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
+// TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently seven times across src/ (chrome-storage/area.ts, chrome-runtime/protocol.ts, mcp/json-rpc.ts, openai/index.ts, content/relay.ts, sidepanel/presentation/untrustedJson.ts). Card 96 took it from ten: sw.ts's two message guards now reuse chrome-runtime/protocol.ts's own isRuntimeMessage, and the three tool-inspector components share sidepanel/presentation/untrustedJson.ts. The five that remain are held apart by adapters-do-not-import-adapters (each adapter stack would have to reach into another's folder) — collapsing them needs a home in src/domain, which is a decision record, not a drive-by.
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }

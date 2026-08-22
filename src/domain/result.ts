@@ -69,6 +69,14 @@ export type Result<T, E> = Ok<T> | Err<E>;
  * rejects using one where the other is meant.
  */
 export function ok<T = void>(value?: T): Ok<T> {
+  // CAST: the parameter is optional so `ok()` compiles at the `T = void`
+  // default, which makes its declared type `T | undefined` while the return
+  // type is `Ok<T>`. The two agree in exactly the two ways this function is
+  // callable — `ok()` where `T` is `void` (and `undefined` IS the `void`
+  // value), or `ok(v)` where `v` is a `T` — but the compiler cannot tie the
+  // optionality to the default. Making `value` required instead would force
+  // every `Result<void, E>` success in the tree to spell `ok(undefined)`,
+  // which is the OTHER meaning documented above.
   return [value as T, undefined];
 }
 

@@ -8,7 +8,7 @@
 // this adapter be constructed with its own injected token store instead of
 // importing one.
 
-import { ok, type Result } from "../../domain/result";
+import { fail, ok, type Result } from "../../domain/result";
 import type { McpError, McpServerConfig, McpTokenResolver } from "../../domain/tools";
 import { CLIENT_CONTROLLED_HEADERS } from "../../domain/tools";
 
@@ -66,7 +66,7 @@ export async function resolveAuthHeader(
     return ok(authHeader(config));
   }
   const [valid, err] = await auth.getValidAuth(config);
-  if (err) return [undefined, err];
+  if (err) return fail(err);
   return ok({ Authorization: `Bearer ${valid.accessToken}` });
 }
 

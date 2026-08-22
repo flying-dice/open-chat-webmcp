@@ -41,11 +41,6 @@ const RETRYABLE: Record<StorageErrorKind, boolean> = {
   Unexpected: true,
 };
 
-/** The reason clause on its own — for a caller assembling its own sentence (a form field's inline error, say, where "Couldn't…" would repeat the label). */
-export function describeStorageError(err: StorageError): string {
-  return REASON[err.kind];
-}
-
 /**
  * A complete sentence for a notice, an alert or a form error.
  *

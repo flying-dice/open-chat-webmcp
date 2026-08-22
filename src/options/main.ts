@@ -75,8 +75,13 @@ startDarkModeSync();
 const target = document.getElementById("app");
 if (target === null) throw new Error("options/index.html is missing its #app mount point.");
 
-const app = mount(App, {
+// Mounted, not exported. The Svelte scaffold's `export default app` was dead
+// weight: nothing imports a composition root — both surfaces load it as an
+// HTML entry script (`<script type="module" src="./main.ts">`) — and
+// `mount()`'s return type is Svelte's legacy component-instance shape,
+// `{ $on?…; $set?… } & Record<string, any>`. Card 96's exported-boundary
+// audit found it to be the ONLY `any` reaching a module's public surface in
+// src/, and the honest fix for an unused export is to not have it.
+mount(App, {
   target,
 });
-
-export default app;

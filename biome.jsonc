@@ -149,9 +149,17 @@
       // Tests and fakes. `foo!` on a fixture lookup the test itself just built
       // is clearer than a narrowing dance around a value the test controls, and
       // a `function*` stub with no `yield` is how you fake an async iterable
-      // that yields nothing. Neither says anything about production safety, and
-      // 42 of the 46 `!` sites in the tree are here — production has 4, and
-      // those are held to the rule.
+      // that yields nothing. Neither says anything about production safety.
+      // Card 91 wrote "42 of the 46 `!` sites are here — production has 4";
+      // cards 92-95 removed all four as a side effect of the migration, and
+      // card 96's sweep confirmed it the only way worth trusting, by forcing
+      // the rule on past this override:
+      //
+      //   biome lint --only=style/noNonNullAssertion --max-diagnostics=300 .
+      //
+      // 107 sites, every one in a `*.test.ts`, a `testing/` fake or `demo/`.
+      // PRODUCTION CARRIES ZERO, and this override is what keeps the number
+      // meaningful — turn it off and the signal drowns.
       "includes": ["**/*.test.ts", "**/testing/**", "verify/**", "demo/**"],
       "linter": {
         "rules": {

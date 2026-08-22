@@ -11,6 +11,7 @@
    * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
    * with Tailwind utilities; no behavioural change.
    */
+  import { readRecord, readStringArray } from "../presentation/untrustedJson";
   import SchemaProperty from "./SchemaProperty.svelte";
 
   interface Props {
@@ -19,19 +20,8 @@
 
   let { schema }: Props = $props();
 
-  // TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/; unlike the infra adapters, SchemaProperty/ToolSchema/ToolArgValue have no adapters-do-not-import-adapters constraint and could share one isRecord from src/ui/utils.ts alongside cn().
-  function isRecord(v: unknown): v is Record<string, unknown> {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
-  }
-
-  const properties = $derived(
-    isRecord(schema?.properties) ? (schema.properties as Record<string, unknown>) : undefined,
-  );
-  const required = $derived(
-    Array.isArray(schema?.required)
-      ? (schema.required as unknown[]).filter((r): r is string => typeof r === "string")
-      : [],
-  );
+  const properties = $derived(readRecord(schema, "properties"));
+  const required = $derived(readStringArray(schema, "required"));
   const entries = $derived(properties ? Object.entries(properties) : []);
 </script>
 

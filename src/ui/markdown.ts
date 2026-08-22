@@ -284,6 +284,10 @@ export function renderMarkdown(source: string): string {
 
   let rawHtml: string;
   try {
+    // CAST: `marked.parse` is declared `string | Promise<string>` across its
+    // overloads and TypeScript does not pick the synchronous one from the
+    // `{ async: false }` object literal. That option IS the guarantee — the
+    // whole renderer is synchronous by design (it runs per streamed token).
     rawHtml = markedInstance.parse(balanced, { async: false }) as string;
   } catch {
     // marked is designed to be a total function over its input and should

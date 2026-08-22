@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { StorageError, type StorageErrorKind } from "../domain/storage";
-import { describeStorageError, storageFailureMessage } from "./storageMessage";
+import { storageFailureMessage } from "./storageMessage";
 
 const KINDS: StorageErrorKind[] = ["Unavailable", "NotFound", "Conflict", "Corrupt", "Unexpected"];
 
@@ -40,10 +40,16 @@ describe("storageFailureMessage", () => {
   });
 
   it("says something specific for every kind the domain models", () => {
-    const reasons = KINDS.map((kind) => describeStorageError(err(kind)));
+    // Card 96 dropped `describeStorageError` (the reason clause on its own),
+    // which this test used to call: it had no caller outside this file, and a
+    // second exported way to word the same union is how two surfaces start
+    // saying different things. The property it protected is unchanged and is
+    // asserted through the one remaining export — the fixed `what` cancels
+    // out, so any two kinds sharing a sentence still fails here.
+    const messages = KINDS.map((kind) => storageFailureMessage("Couldn't do the thing", err(kind)));
     // Non-empty, and no two kinds share a sentence — a duplicate would mean
     // one of them is being described as something it is not.
-    for (const reason of reasons) expect(reason.length).toBeGreaterThan(0);
-    expect(new Set(reasons).size).toBe(KINDS.length);
+    for (const message of messages) expect(message.length).toBeGreaterThan(0);
+    expect(new Set(messages).size).toBe(KINDS.length);
   });
 });

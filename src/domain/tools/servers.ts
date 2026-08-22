@@ -118,6 +118,10 @@ export function validateServerHeaders(
   const issues: McpHeaderValidationIssue[] = [];
   for (const name of Object.keys(headers)) {
     const lower = name.toLowerCase();
+    // CAST: `CLIENT_CONTROLLED_HEADERS` is `as const`, so `.includes` only
+    // accepts one of its two literals and rejects the arbitrary header name
+    // we are asking about. Widening the receiver (not the argument) keeps the
+    // check honest — an unreserved name still answers `false`.
     if ((CLIENT_CONTROLLED_HEADERS as readonly string[]).includes(lower)) {
       issues.push({
         header: name,

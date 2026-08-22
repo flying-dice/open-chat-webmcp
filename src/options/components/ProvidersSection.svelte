@@ -269,6 +269,7 @@
    * because the form is still open with the user's input in it and an error
    * three sections up the page is not where they are looking.
    */
+  // TODO: clean-code - 0.35 - DRY: the whole card-95 write-failure protocol is duplicated between this section and McpServersSection.svelte — a `failure` state field, this `reportWriteFailure(what, cause)` helper, and `handleAddSubmit`/`handleEditSubmit` typed `Promise<Result<void, StorageError>>` so the paired form (ProviderForm.svelte) can render the message under its own fields. Same shape as the four DRY markers this file pair already carries; new with the errors-as-values migration (card 96's audit), and the same decisions/20 caution applies — an extraction must not let an edit to one section silently change the other.
   function reportWriteFailure(what: string, cause: StorageError): void {
     failure = storageFailureMessage(what, cause);
   }

@@ -64,6 +64,53 @@ The `browser` resolve condition is forced for this project: jsdom being the
 environment only supplies globals; without that condition
 `vite-plugin-svelte` picks the SSR compile target and `mount` is unavailable.
 
+### Asserting a failure
+
+Since [decisions/34](../decisions/34-errors-as-values.md) a known failure is a
+returned value, so a failure test is an ordinary assertion — no
+`rejects.toThrow`, and none of the unhandled-rejection flakes that came with
+it. Destructure the tuple and check the error member:
+
+```ts
+const [chat, err] = await store.getChat("missing");
+expect(err).toEqual({ kind: "not-found" });
+expect(chat).toBeUndefined();
+```
+
+Assert the whole error object where you can (`toEqual`), not just its `kind`:
+the extra fields are what a surface words the message from, and a test that
+only checks the discriminant will not notice one going missing.
+
+`throw` now means a bug, so `expect(...).toThrow()` is reserved for the seven
+allowlisted invariant assertions — a test asserting a throw anywhere else is
+testing behaviour that should have been a `Result`.
+
+**Negative type probes.** The narrowing `Result` buys is a *compile-time*
+property, and a test that only runs cannot protect it. Four files carry
+`@ts-expect-error` probes that assert the compiler still REFUSES the unsafe
+read — `src/domain/result.test.ts` for the kernel, and one per vocabulary in
+`src/domain/tools/types.test.ts` (`McpError`),
+`src/domain/providers/provider.test.ts` (`ProviderError`) and
+`src/infra/ollama/client.test.ts`:
+
+```ts
+const [value, err] = await loadName();
+// @ts-expect-error `value` is `string | undefined` until the error member is checked.
+const name: string = value;
+```
+
+These run under `npm run check`, not `npm test`: `tsconfig.app.json` includes
+`*.test.ts`, so an unused `@ts-expect-error` is itself a typecheck error. That
+inversion is the point — if someone widens the success arm's `error` member to
+`E | undefined` and quietly kills the narrowing, the *probe* stops erroring and
+the build fails on the now-unnecessary suppression. `provider.test.ts` says so
+in its own header.
+
+The same probes cover the vocabularies' closedness: `{kind:"quota"}` is
+rejected as a `ProviderError` because a client that hits a failure mode the
+union does not cover must widen the union, never smuggle a bespoke error
+through.
+
 ### Reading the output
 
 `npm test` reports `expected fail` and `todo` counts alongside passes. Both
@@ -175,10 +222,10 @@ the adapters' decoders are deliberately defensive. Drift now breaks
 All five, green, in this order:
 
 ```
-npm run check     # svelte-check + tsc, no build output
+npm run check     # svelte-check + tsc, no build output (tests included)
 npm test          # Vitest: domain + infra + component
 npm run build     # the real MV3 bundle into dist/
-npm run guard     # boundaries (depcruise + globals scans) + clean-code
+npm run guard     # biome · boundaries · clean-code · return-types · throws
 npm run verify    # Chrome for Testing, end to end
 ```
 

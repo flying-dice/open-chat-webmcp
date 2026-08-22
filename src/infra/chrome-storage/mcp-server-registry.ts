@@ -52,8 +52,19 @@ function decodeServerCore(v: unknown): McpServerConfigCore | undefined {
     typeof v.url === "string" &&
     typeof v.enabled === "boolean" &&
     typeof v.transport === "string" &&
+    // CAST: `TRANSPORT_PREFERENCES` is a readonly tuple of the LITERAL
+    // transport names, so `.includes` only accepts one of those literals and
+    // rejects the plain `string` we have here — the very question being
+    // asked. Widening the receiver (not the argument) is what keeps the
+    // check honest: an unknown transport still answers `false`.
     (TRANSPORT_PREFERENCES as readonly string[]).includes(v.transport)
   ) {
+    // CAST: the `if` above IS the decode — every field of
+    // `McpServerConfigCore` has just been checked on a value that came out of
+    // `chrome.storage` as `unknown`. TypeScript does not turn an inline
+    // conjunction into a whole-object narrowing, so the assertion states what
+    // the condition proved; `unknown` is stepped through because
+    // `Record<string, unknown>` and the config type do not overlap directly.
     return v as unknown as McpServerConfigCore;
   }
   return undefined;

@@ -62,9 +62,17 @@ export function createChromeStorageModelCapabilityCache(
       // line where "this entry is stale" is not.
       return ok(
         isRecord(value) &&
-          TOOL_CAPABILITY_STATUSES.includes(value.status as string) &&
+          typeof value.status === "string" &&
+          TOOL_CAPABILITY_STATUSES.includes(value.status) &&
           (value.detail === undefined || Array.isArray(value.detail))
-          ? (value as unknown as ModelCapabilities)
+          ? // CAST: the conjunction above is the decode — it has just checked
+            // every field `ModelCapabilities` declares, on a value that came
+            // out of `chrome.storage` as `unknown`. TypeScript does not carry
+            // an inline conjunction's narrowing onto a whole-object type, so
+            // the assertion states the fact the line above proved. `unknown`
+            // is stepped through because `Record<string, unknown>` and
+            // `ModelCapabilities` do not overlap enough for a direct one.
+            (value as unknown as ModelCapabilities)
           : undefined,
       );
     },

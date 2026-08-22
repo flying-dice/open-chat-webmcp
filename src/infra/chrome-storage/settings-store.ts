@@ -27,6 +27,7 @@ import { subscribeToKey, type StorageAreaGateway } from "./area";
 const SYNC_KEY_APPROVAL_POLICY = "settings:approvalPolicy";
 const SYNC_KEY_MCP_APPROVAL_POLICY = "settings:mcpApprovalPolicy";
 
+// TODO: clean-code - 0.35 - DRY: the migration turned every `chrome.storage` read into the same three-line composite — `const [value, err] = await area.read(KEY); if (err) return fail(err); return ok(<decode>(value) ? value : DEFAULT)` — copy-pasted at five sites across three files (here twice, provider-registry.ts's getDefaultSelection, provider-config-store.ts's getBaseUrl and the capability cache's get). Before card 92 each was a one-line `isX(value) ? value : DEFAULT`. A `readDecoded<T>(area, key, decode, fallback): Promise<Result<T, StorageError>>` in ./area.ts would collapse all five; noted by card 96's audit.
 export function createChromeStorageSettingsStore(sync: StorageAreaGateway): SettingsStore {
   return {
     async getApprovalPolicy() {

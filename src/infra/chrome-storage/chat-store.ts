@@ -182,6 +182,11 @@ function isTabPointer(v: unknown): v is TabPointer {
  * snapshot first.
  */
 function toPlain<T>(value: T): T {
+  // CAST: `JSON.parse` is typed `any`. The assertion is the doc comment's
+  // "lossless for real data" claim stated to the compiler — the round trip
+  // preserves the shape for JSON-safe values, which every `ChatSession`
+  // field is, and the only thing it strips is the `$state` proxy identity
+  // that is the whole point of calling this.
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
