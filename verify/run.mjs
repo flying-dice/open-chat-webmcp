@@ -31,9 +31,57 @@ import { attachServiceWorkerCdp, stopWorker } from "./lib/serviceWorker.mjs";
 import { createReport } from "./lib/report.mjs";
 import { assert, assertSetEqual, pollUntil } from "./lib/assert.mjs";
 import { screenshotSurfaces } from "./checks/screenshots.mjs";
+import { checkPageContext } from "./checks/pageContext.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCREENSHOT_DIR = path.join(ROOT, "verify", "output", "screenshots");
+
+// ---------------------------------------------------------------------------
+// Running ONE check: `npm run verify -- --check <name>` (card 110)
+//
+// Every `report.run` below carries a short name, listed here so `--check`
+// can be validated against something and `--list` can print it. A name that
+// isn't in this list is a typo, and a typo must fail loudly rather than
+// quietly verify nothing.
+//
+// What `--check` does NOT skip: the build, the demo server, the browser
+// launch, and the navigation/setup between checks. Those are shared state the
+// later checks depend on (the demo tab, its tab id, the control page), so a
+// single check still costs a browser — it just stops after the one assertion
+// you asked about instead of running all eleven. It is for iterating on a
+// check, not for a faster gate; the gate is the whole suite.
+// ---------------------------------------------------------------------------
+const CHECK_NAMES = [
+  "tool-discovery",
+  "registry-clears-on-nav",
+  "dynamic-tools",
+  "tool-call-read",
+  "tool-call-mutate",
+  "tool-call-error",
+  "tool-call-timeout",
+  "page-context",
+  "worker-restart",
+  "screenshots",
+  "webmcp-unavailable",
+];
+
+function parseSelection(argv) {
+  const requested = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--list") return { list: true };
+    if (argv[i] === "--check") requested.push(...(argv[++i] ?? "").split(","));
+    else if (argv[i].startsWith("--check=")) requested.push(...argv[i].slice(8).split(","));
+    else return { error: `unrecognised argument: ${argv[i]}` };
+  }
+  if (requested.length === 0) return { selected: null };
+  const unknown = requested.filter((name) => !CHECK_NAMES.includes(name));
+  if (unknown.length > 0) return { error: `unknown check(s): ${unknown.join(", ")}` };
+  return { selected: new Set(requested) };
+}
+
+const USAGE =
+  "Usage: npm run verify [-- --check <name>[,<name>] | --list]\n\nChecks:\n" +
+  CHECK_NAMES.map((n) => `  ${n}`).join("\n");
 
 // The 7 fixed fixtures demo/src/tools.ts registers on load. "dynamic-echo"
 // is deliberately excluded — it's registered/unregistered at runtime via the
@@ -71,7 +119,23 @@ function parseMcpContent(result) {
 }
 
 async function main() {
-  const report = createReport();
+  const selection = parseSelection(process.argv.slice(2));
+  if (selection.list) {
+    console.log(USAGE);
+    return;
+  }
+  if (selection.error) {
+    console.error(`verify: ${selection.error}\n\n${USAGE}`);
+    process.exitCode = 1;
+    return;
+  }
+  const report = createReport({ selected: selection.selected });
+  if (selection.selected) {
+    console.log(
+      `Running only: ${[...selection.selected].join(", ")} — the build, demo server, browser and ` +
+        "the setup between checks still run; the other checks report SKIP.",
+    );
+  }
   let demoHandle = null;
   let ext = null;
   let unavailableExt = null;
@@ -104,10 +168,21 @@ async function main() {
 
     const demoPage = await context.newPage();
 
+    // SETUP, not a check. The discovery check below is what normally opens
+    // the demo tab and captures its id, and every later check needs both —
+    // but `--check <name>` (card 110) can filter that check out. Doing it
+    // here as well costs one navigation and makes any single check runnable
+    // on its own; the check still does it for itself, because "a tab id can
+    // be found for this page" is part of what it asserts.
+    await demoPage.goto(DEMO_INDEX_URL);
+    await demoPage.waitForFunction(() => document.getElementById("status")?.dataset.kind === "ok", {
+      timeout: 10000,
+    });
+    let tabId = await findTabId(controlPage, DEMO_INDEX_URL);
+
     // ---------------------------------------------------------------------
     // Tool discovery via getTools(), against the real document.modelContext
     // ---------------------------------------------------------------------
-    let tabId = null;
     await report.run(
       "Tool discovery works against demo/index.html via native getTools()",
       async () => {
@@ -142,6 +217,7 @@ async function main() {
         );
         return { tabId, tools: res.tools.map((t) => t.name) };
       },
+      "tool-discovery",
     );
 
     // ---------------------------------------------------------------------
@@ -150,23 +226,27 @@ async function main() {
     // per-tab registry entry on any URL change regardless of what API
     // produced the tools).
     // ---------------------------------------------------------------------
-    await report.run("Registry clears on navigation", async () => {
-      assert(tabId !== null, "no tabId from the previous check");
-      await demoPage.goto("about:blank");
-      const res = await pollUntil(
-        () => getToolsResponse(controlPage, tabId),
-        (r) => r.tools.length === 0,
-        {
-          timeoutMs: 5000,
-          label: "worker registry to clear after navigating away from demo/index.html",
-        },
-      );
-      assert(
-        res.tools.length === 0,
-        `expected an empty tool list after navigation, got: ${res.tools.map((t) => t.name).join(", ")}`,
-      );
-      return { toolsAfterNav: res.tools.length };
-    });
+    await report.run(
+      "Registry clears on navigation",
+      async () => {
+        assert(tabId !== null, "no tabId from the previous check");
+        await demoPage.goto("about:blank");
+        const res = await pollUntil(
+          () => getToolsResponse(controlPage, tabId),
+          (r) => r.tools.length === 0,
+          {
+            timeoutMs: 5000,
+            label: "worker registry to clear after navigating away from demo/index.html",
+          },
+        );
+        assert(
+          res.tools.length === 0,
+          `expected an empty tool list after navigation, got: ${res.tools.map((t) => t.name).join(", ")}`,
+        );
+        return { toolsAfterNav: res.tools.length };
+      },
+      "registry-clears-on-nav",
+    );
 
     // Navigate back so the remaining demo-page checks have a live tab again.
     await demoPage.goto(DEMO_INDEX_URL);
@@ -193,33 +273,40 @@ async function main() {
     // #unregister-dynamic buttons and a real AbortController —
     // demo/src/main.ts).
     // ---------------------------------------------------------------------
-    await report.run("Dynamic register/unregister propagates through ontoolchange", async () => {
-      await demoPage.locator("#register-dynamic").click();
-      const afterRegister = await pollUntil(
-        () => getTools(controlPage, tabId),
-        (t) => t.some((x) => x.name === "dynamic-echo"),
-        { timeoutMs: 3000, label: '"dynamic-echo" to appear in the registry after registerTool()' },
-      );
-      assert(
-        afterRegister.some((t) => t.name === "dynamic-echo"),
-        "dynamic-echo tool did not appear after clicking #register-dynamic",
-      );
+    await report.run(
+      "Dynamic register/unregister propagates through ontoolchange",
+      async () => {
+        await demoPage.locator("#register-dynamic").click();
+        const afterRegister = await pollUntil(
+          () => getTools(controlPage, tabId),
+          (t) => t.some((x) => x.name === "dynamic-echo"),
+          {
+            timeoutMs: 3000,
+            label: '"dynamic-echo" to appear in the registry after registerTool()',
+          },
+        );
+        assert(
+          afterRegister.some((t) => t.name === "dynamic-echo"),
+          "dynamic-echo tool did not appear after clicking #register-dynamic",
+        );
 
-      await demoPage.locator("#unregister-dynamic").click();
-      const afterUnregister = await pollUntil(
-        () => getTools(controlPage, tabId),
-        (t) => !t.some((x) => x.name === "dynamic-echo"),
-        {
-          timeoutMs: 3000,
-          label: '"dynamic-echo" to disappear from the registry after AbortController.abort()',
-        },
-      );
-      assert(
-        !afterUnregister.some((t) => t.name === "dynamic-echo"),
-        "dynamic-echo tool was still present after clicking #unregister-dynamic",
-      );
-      return { registered: true, unregistered: true };
-    });
+        await demoPage.locator("#unregister-dynamic").click();
+        const afterUnregister = await pollUntil(
+          () => getTools(controlPage, tabId),
+          (t) => !t.some((x) => x.name === "dynamic-echo"),
+          {
+            timeoutMs: 3000,
+            label: '"dynamic-echo" to disappear from the registry after AbortController.abort()',
+          },
+        );
+        assert(
+          !afterUnregister.some((t) => t.name === "dynamic-echo"),
+          "dynamic-echo tool was still present after clicking #unregister-dynamic",
+        );
+        return { registered: true, unregistered: true };
+      },
+      "dynamic-tools",
+    );
 
     // ---------------------------------------------------------------------
     // Tool call end to end: success, error, and timeout paths, all through
@@ -237,6 +324,7 @@ async function main() {
         );
         return data;
       },
+      "tool-call-read",
     );
 
     await report.run(
@@ -268,6 +356,7 @@ async function main() {
         );
         return { addData, taskData };
       },
+      "tool-call-mutate",
     );
 
     await report.run(
@@ -288,6 +377,7 @@ async function main() {
         );
         return { error: res.error };
       },
+      "tool-call-error",
     );
 
     await report.run(
@@ -309,6 +399,21 @@ async function main() {
         );
         return { error: res.error, elapsedMs };
       },
+      "tool-call-timeout",
+    );
+
+    // ---------------------------------------------------------------------
+    // Page context (card 118). The check itself lives in
+    // ./checks/pageContext.mjs — it needs a REAL selection made with a real
+    // Range and a real chrome:// tab, which is a page's worth of setup — and
+    // is registered here so it shares this run's control page, demo tab and
+    // tab id rather than launching a second browser. It stays runnable on its
+    // own as `node verify/checks/pageContext.mjs`.
+    // ---------------------------------------------------------------------
+    await report.run(
+      "Page context: a real selection and a real page extract round-trip panel -> worker -> relay, and a restricted tab says so",
+      () => checkPageContext({ controlPage, demoPage, tabId }),
+      "page-context",
     );
 
     // ---------------------------------------------------------------------
@@ -365,6 +470,7 @@ async function main() {
           await cdp.close();
         }
       },
+      "worker-restart",
     );
 
     // The control page is a REAL side panel, mounted on whatever tab is
@@ -389,6 +495,7 @@ async function main() {
         const { count, files } = await screenshotSurfaces(context, extensionId, SCREENSHOT_DIR);
         return { count, files };
       },
+      "screenshots",
     );
 
     // ---------------------------------------------------------------------
@@ -439,6 +546,7 @@ async function main() {
         );
         return { available: res.available, toolCount: res.tools.length };
       },
+      "webmcp-unavailable",
     );
 
     const ok = report.print();

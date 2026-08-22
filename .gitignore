@@ -18,6 +18,14 @@ dist-ssr
 dist-verify
 verify/output
 
+# npm run dev:chrome (boards/project-backlog/110-local-dev-workflow.md):
+# CRXJS dev-mode output and the dev session's own persistent Chrome profile.
+# Both deliberately separate from dist/, dist-verify/ and .chrome-profile/ so a
+# dev loop and a verification run can be going at once without touching each
+# other's files.
+dist-dev*
+.chrome-dev-profile*
+
 # npm run launch (boards/project-backlog/32-launch-chrome-with-extension-script.md):
 # dedicated, persistent Chrome profile so the unpacked extension can be
 # loaded outside your default profile without losing logins/settings

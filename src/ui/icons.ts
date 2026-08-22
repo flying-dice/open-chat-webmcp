@@ -60,8 +60,6 @@ export type StandardIconName =
   | "chevron_right"
   | "close"
   | "content_copy"
-  // TODO: clean-code - 0.5 - DEAD: the "delete" member of this union is unused — nothing renders <Icon name="delete" /> or passes a "delete" icon name dynamically. HistoryListItem.svelte's delete affordance bypasses the shared Icon component and renders HugeiconsIcon with Delete02Icon directly.
-  | "delete"
   | "diamond"
   | "edit_square"
   | "expand_more"

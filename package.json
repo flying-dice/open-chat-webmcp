@@ -22,8 +22,12 @@
     "compile:i18n": "node scripts/compile-i18n.mjs",
     "postinstall": "node scripts/compile-i18n.mjs",
     "demo": "vite --config demo/vite.config.ts",
+    "dev:chrome": "node scripts/dev-chrome.mjs",
+    "dev:seed": "node scripts/dev-chrome.mjs --seed",
     "launch": "node scripts/launch-chrome.mjs",
     "verify": "node verify/run.mjs",
+    "verify:smoke": "node verify/checks/optionsSmoke.mjs",
+    "verify:smoke:live": "node verify/checks/liveSmoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

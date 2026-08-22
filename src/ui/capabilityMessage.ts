@@ -10,7 +10,7 @@
 // src/ui/providerMessage.ts already establish for their own domain types.
 //
 // Both surfaces that show a capability's blocked/unverified reason — the
-// side panel's ProviderPicker.svelte and the options page's
+// side panel's ModelPicker.svelte and the options page's
 // ProvidersSection.svelte (via ProviderRow.svelte's
 // `defaultModelBlockedReason` and the stale-default banner) — should call
 // `capabilityReason` here instead of `reasonForCapability` directly, so a

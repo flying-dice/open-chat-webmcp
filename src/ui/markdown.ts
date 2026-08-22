@@ -156,7 +156,7 @@ function escapeHtml(text: string): string {
 // marked configuration
 // ---------------------------------------------------------------------------
 
-// TODO: clean-code - 0.3 - COUPLING: hardcodes the class names (md-code, md-code-header, md-code-lang, md-copy-btn) and data-copy-button/data-code-block attributes that Markdown.svelte's click handler and scoped CSS both depend on — an untyped string contract with no compiler behind it.
+// TODO: clean-code - 0.3 - COUPLING: hardcodes the class names (md-code, md-code-header, md-code-lang, md-copy-btn) and data-copy-button/data-code-block attributes that Markdown.svelte's click handler and scoped CSS both depend on — an untyped string contract with no compiler behind it. STAYS: the alternative is a shared constants module that both sides import, which turns four literals into four imported literals and still cannot make the CSS agree — a scoped `<style>` block cannot interpolate a TypeScript constant into a selector, so the stylesheet half of the contract stays a string either way. What actually holds this together is the pair of tests that render real markdown and click the copy button (src/ui/markdown.test.ts and the transcript component tests): a renamed class fails them.
 function renderCodeBlock({ text, lang }: { text: string; lang?: string }): string {
   const langToken = (lang ?? "").trim().split(/\s+/)[0] ?? "";
   const displayCode = prettyPrintIfJson(langToken, text);

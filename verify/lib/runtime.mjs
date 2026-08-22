@@ -54,6 +54,19 @@ export async function getTools(extPage, tabId) {
   return res.tools;
 }
 
+/** Full runtime:get-page-context-response — `{ tabId, ok, restricted, context?, error? }`
+ * (src/infra/chrome-runtime/protocol.ts, card 118). `mode` is
+ * `"selection"` or `"extract"`. Failures come back AS a response (ok:false),
+ * not as a rejection — that is the protocol, and a check asserting on the
+ * restricted case needs to see it. */
+export async function getPageContext(extPage, tabId, mode) {
+  const res = await sendRuntimeMessage(extPage, { type: "runtime:get-page-context", tabId, mode });
+  if (res?.type !== "runtime:get-page-context-response") {
+    throw new Error(`unexpected response to runtime:get-page-context: ${JSON.stringify(res)}`);
+  }
+  return res;
+}
+
 export async function callTool(extPage, tabId, name, args = {}) {
   const res = await sendRuntimeMessage(extPage, { type: "runtime:call-tool", tabId, name, args });
   if (res?.type !== "runtime:call-tool-response") {

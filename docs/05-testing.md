@@ -158,6 +158,18 @@ than a re-read of build output:
 
 Plus one **best-effort** check: the screenshot matrix.
 
+While iterating on one of them, `npm run verify -- --check <name>` runs that
+check alone and `-- --list` prints the names; the report says which checks
+were skipped and why, and a skipped check counts as neither passed nor
+failed. The build, the demo server, the browser launch and the setup between
+checks still run, because the later checks depend on that shared state — so
+it is a shorter report, not a faster gate. Two further passes are
+**deliberately not** part of this gate, since neither is something a required
+gate may assume: `npm run verify:smoke` (the options-page form smoke) and
+`npm run verify:smoke:live` (a real end-to-end turn, which needs a local
+Ollama with a tool-capable model and exits 0 when Ollama isn't reachable).
+Both are described in [docs/07-development.md](07-development.md#tiers).
+
 Chrome for Testing specifically, because Playwright's bundled Chromium has no
 WebMCP compiled in at all and branded Google Chrome refuses `--load-extension`
 outright. It is downloaded on first run via `@puppeteer/browsers` and cached
@@ -231,7 +243,9 @@ npm run verify    # Chrome for Testing, end to end
 
 This is what the `pre-commit` skill runs and what a card records as evidence
 in its `## Gates` section. `npm run test:coverage` adds a v8 coverage report
-scoped to `src/domain` and `src/infra`.
+scoped to `src/domain` and `src/infra`. Running one file, one test or one
+verify check while you work on it — and the `npm run dev:chrome` loop those
+gates sit behind — is [docs/07-development.md](07-development.md).
 
 Growing the unhappy-path coverage is the `chaos-monkey` skill's job:
 `describe("chaos: …")` groups, one per fault category (storage quota

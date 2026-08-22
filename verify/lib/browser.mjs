@@ -20,18 +20,32 @@ import { VERIFY_OUT_PATH } from "./build.mjs";
 import { resolveChromeForTesting } from "./chromeForTesting.mjs";
 
 /**
- * @param {{ enableWebMcp?: boolean }} [options] `enableWebMcp` (default
- *   `true`) adds `--enable-features=WebMCP`. Set `false` to launch WITHOUT
- *   it — used by the "WebMCP unavailable" assertion in verify/run.mjs, which
- *   needs a real browser where `document.modelContext` is genuinely absent.
+ * @param {object} [options]
+ * @param {boolean} [options.enableWebMcp] Default `true`; adds
+ *   `--enable-features=WebMCP`. Set `false` to launch WITHOUT it — used by the
+ *   "WebMCP unavailable" assertion in verify/run.mjs, which needs a real
+ *   browser where `document.modelContext` is genuinely absent.
+ * @param {string} [options.extensionPath] The unpacked extension to load.
+ *   Defaults to the harness's own `dist-verify/`; `npm run dev:chrome`
+ *   (scripts/dev-chrome.mjs, card 110) points it at its `dist-dev/` instead so
+ *   the dev loop and the harness can never fight over one build directory.
+ * @param {string} [options.userDataDir] A profile directory to reuse. Default
+ *   is a fresh `mkdtemp` that {@link close} deletes — right for a
+ *   deterministic verification run, wrong for a dev session, where seeded
+ *   storage and hand-set options are meant to survive a restart. When this is
+ *   passed, the directory is left alone on close.
  */
-export async function launchExtension({ enableWebMcp = true } = {}) {
+export async function launchExtension({
+  enableWebMcp = true,
+  extensionPath = VERIFY_OUT_PATH,
+  userDataDir: persistentProfile,
+} = {}) {
   const { executablePath, buildId } = await resolveChromeForTesting();
-  const userDataDir = mkdtempSync(path.join(tmpdir(), "webmcp-verify-"));
+  const userDataDir = persistentProfile ?? mkdtempSync(path.join(tmpdir(), "webmcp-verify-"));
 
   const args = [
-    `--disable-extensions-except=${VERIFY_OUT_PATH}`,
-    `--load-extension=${VERIFY_OUT_PATH}`,
+    `--disable-extensions-except=${extensionPath}`,
+    `--load-extension=${extensionPath}`,
     "--no-first-run",
   ];
   if (enableWebMcp) {
@@ -67,7 +81,7 @@ export async function launchExtension({ enableWebMcp = true } = {}) {
     buildId,
     async close() {
       await context.close().catch(() => {});
-      rmSync(userDataDir, { recursive: true, force: true });
+      if (!persistentProfile) rmSync(userDataDir, { recursive: true, force: true });
     },
   };
 }

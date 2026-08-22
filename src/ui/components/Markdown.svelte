@@ -16,7 +16,7 @@
    *
    * Lives in src/ui/components (not src/sidepanel/components, where it
    * originated with card 14) because it's used by both the side panel
-   * (streaming transcript, ProviderPicker's copyable fixes/commands) and
+   * (streaming transcript, ModelPicker's copyable fixes/commands) and
    * the options page (card 33's copyable OLLAMA_ORIGINS fix in
    * ProviderForm.svelte/ProviderRow.svelte) — a presentational component
    * with no dependency on either app's own state, so it belongs in the
@@ -57,7 +57,7 @@
 
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // TODO: clean-code - 0.3 - COUPLING: this click handler and the scoped style block below depend on class names (md-code, md-code-header, md-code-lang, md-copy-btn) and data-copy-button/data-code-block attributes hardcoded in src/ui/markdown.ts's renderCodeBlock — an untyped string contract with no compiler behind it.
+  // TODO: clean-code - 0.3 - COUPLING: this click handler and the scoped style block below depend on class names (md-code, md-code-header, md-code-lang, md-copy-btn) and data-copy-button/data-code-block attributes hardcoded in src/ui/markdown.ts's renderCodeBlock — an untyped string contract with no compiler behind it. STAYS: the alternative is a shared constants module that both sides import, which turns four literals into four imported literals and still cannot make the CSS agree — a scoped `style` block cannot interpolate a TypeScript constant into a selector, so the stylesheet half of the contract stays a string either way. What actually holds this together is the pair of tests that render real markdown and click the copy button (src/ui/markdown.test.ts and the transcript component tests): a renamed class fails them.
   function handleClick(event: MouseEvent): void {
     const target = event.target;
     if (!(target instanceof Element)) return;

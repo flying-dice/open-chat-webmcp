@@ -124,13 +124,15 @@ service worker aren't hot-reloadable.
 | Script | What it does |
 | --- | --- |
 | `npm run build` | the real MV3 bundle into `dist/` — the folder you load unpacked |
-| `npm run dev` | Vite with HMR for the two Svelte surfaces |
+| `npm run dev:chrome` | the edit→see loop: Chrome for Testing with the extension already loaded, the demo server, and HMR into the running panel. `npm run dev:seed` seeds it from the shared fixtures — see [docs/07-development.md](docs/07-development.md) |
+| `npm run dev` | Vite with HMR for the two Svelte surfaces, without the browser |
 | `npm run check` | `svelte-check` + `tsc`, no build output. Also typechecks the tests, which is where the `@ts-expect-error` narrowing probes live |
 | `npm test` | Vitest — the domain/infra/component pyramid, ~6s. `npm run test:watch`, `npm run test:coverage` |
 | `npm run lint` | Biome lint, `--error-on-warnings`, no writes. `npm run lint:fix` applies the safe fixes |
 | `npm run format` | Biome formatter, in place. `npm run format:check` reports without writing |
 | `npm run guard` | all six architecture guards, below |
-| `npm run verify` | the end-to-end harness: real Chrome for Testing, the built extension, a real WebMCP page. Needs a display |
+| `npm run verify` | the end-to-end harness: real Chrome for Testing, the built extension, a real WebMCP page. Needs a display. `npm run verify -- --check <name>` runs one check, `-- --list` names them |
+| `npm run verify:smoke` | the options-page form smoke; `npm run verify:smoke:live` drives a real turn against a local Ollama. Neither is a required gate |
 | `npm run demo` | serves the WebMCP fixture page on `:5175` |
 | `npm run launch` | rebuilds and opens `dist/` in your real installed Chrome |
 
@@ -451,6 +453,10 @@ layer that runs against a real browser; everything below it is `npm test`.
 - [docs/06-i18n.md](docs/06-i18n.md) — the ten languages, how to add a string
   and how to add a locale, the plural-category rules per language, and the
   RTL notes.
+- [docs/07-development.md](docs/07-development.md) — start here to work on
+  it: the `npm run dev:chrome` edit→see loop and what each kind of edit does,
+  seeding, running one test or one verify check, Chrome for Testing vs your
+  real Chrome, and troubleshooting.
 
 ## Project status
 

@@ -62,6 +62,19 @@ export default defineConfig({
     svelte(),
     crx({
       manifest,
+      // Card 110. CRXJS's dev-mode live reload calls `chrome.runtime.reload()`
+      // whenever the service worker, a content script or the manifest changes.
+      // That is right for an extension loaded by hand through
+      // chrome://extensions, and WRONG for one Chrome loaded from
+      // `--load-extension` (which is how `npm run dev:chrome` and the verify
+      // harness both load it): measured on Chrome for Testing 152, the
+      // extension does not come back from that reload — every extension URL
+      // fails with ERR_BLOCKED_BY_CLIENT afterwards. scripts/dev-chrome.mjs
+      // therefore sets CRX_LIVE_RELOAD=false and relaunches the browser itself
+      // on exactly those edits. Nothing else sets the variable, so a plain
+      // `npm run dev` keeps CRXJS's own behaviour, and `vite build` never runs
+      // this code path at all.
+      liveReload: process.env.CRX_LIVE_RELOAD !== "false",
       // No `contentScripts.standaloneFiles` carve-out any more: that existed
       // only for the MAIN-world bridge (src/inject/bridge.ts), which needed
       // to be a standalone IIFE with no CRXJS loader/HMR shim in front of it.

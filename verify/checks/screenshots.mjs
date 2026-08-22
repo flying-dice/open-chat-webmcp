@@ -25,16 +25,11 @@
 // the real adapters by a Vitest test so drift breaks `npm test` instead of
 // quietly emptying a screenshot.
 //
-// Two pieces of stubbing are what make the shots worth looking at at all:
-//
-//   1. `chrome.tabs` is stubbed. Opened as a plain tab, the panel asks
-//      `chrome.tabs.query({active: true, currentWindow: true})` and gets
-//      back ITS OWN tab, whose URL is `chrome-extension://…` — which
-//      src/infra/chrome-runtime/tab-sync.ts correctly classifies as a
-//      restricted page. Without the stub, every screenshot shows the
-//      restricted state and nothing else.
-//   2. `runtime:get-tools` is stubbed so the panel sees the fixture's page
-//      tools rather than the empty list a real extension-origin tab has.
+// The write itself, and the two pieces of stubbing that make the shots worth
+// looking at at all (`chrome.tabs` and `runtime:get-tools`), moved to
+// ../lib/seed.mjs in card 110 — `npm run dev:chrome -- --seed` opens onto the
+// same seeded world these shots capture, and one mechanism is the only way
+// that stays true. Read that file for why each step is what it is.
 //
 // The fixture's provider is deliberately unreachable, so the model sheet
 // captures the picker's unreachable-provider path — the state most worth
@@ -42,14 +37,11 @@
 import path from "node:path";
 import { mkdirSync } from "node:fs";
 import { optionsUrl, sidepanelUrl } from "../lib/browser.mjs";
+import { installPanelFixtureStubs, seedExtensionStorage } from "../lib/seed.mjs";
 import {
-  buildStorageFixture,
   FIXTURE_CHAT_PROMPTS,
-  FIXTURE_LOCAL_KEY_PREFIXES,
   FIXTURE_MCP_SERVER,
-  FIXTURE_PAGE_TOOLS,
   FIXTURE_PROVIDER,
-  FIXTURE_TAB,
 } from "../../src/infra/chrome-storage/testing/storage-fixtures.mjs";
 
 async function shoot(page, outDir, name, options = {}) {
@@ -96,35 +88,6 @@ async function requireLocator(locator, what) {
     );
   }
   return locator.first();
-}
-
-/**
- * Writes the fixture into the extension's own `chrome.storage` from an
- * extension-origin page.
- *
- * Seeding has to complete BEFORE the app mounts and reads storage, and
- * `chrome.storage` writes are async — doing it inside an init script races
- * the stores' initial load and loses. So: navigate once to get an
- * extension-origin context, write, then reload into a seeded world.
- */
-async function seedStorage(page, extensionId) {
-  await page.goto(sidepanelUrl(extensionId));
-  await page.evaluate(
-    async ({ local, sync, ownedPrefixes }) => {
-      // Clear the keyspace the fixture owns FIRST. By the time this runs,
-      // verify/run.mjs's control page has had the panel mounted against its
-      // own `chrome-extension://` tab for several checks, and that panel
-      // legitimately persisted an empty chat for it — which then showed up
-      // in the options page's chat-history shot as a stray row.
-      const existing = await chrome.storage.local.get(null);
-      const stale = Object.keys(existing).filter((k) => ownedPrefixes.some((p) => k.startsWith(p)));
-      if (stale.length > 0) await chrome.storage.local.remove(stale);
-
-      await chrome.storage.local.set(local);
-      await chrome.storage.sync.set(sync);
-    },
-    { ...buildStorageFixture(), ownedPrefixes: FIXTURE_LOCAL_KEY_PREFIXES },
-  );
 }
 
 async function captureSidepanel(page, extensionId, outDir) {
@@ -292,22 +255,11 @@ export async function screenshotSurfaces(context, extensionId, outDir) {
 
   // Must be installed BEFORE the first navigation: the panel queries
   // chrome.tabs during mount.
-  await page.addInitScript(
-    ({ tab, tools }) => {
-      chrome.tabs.query = async () => [tab];
-      chrome.tabs.get = async () => tab;
-      const realSend = chrome.runtime.sendMessage.bind(chrome.runtime);
-      chrome.runtime.sendMessage = async (msg) => {
-        if (msg && msg.type === "runtime:get-tools") return { tools, available: true };
-        return realSend(msg);
-      };
-    },
-    { tab: FIXTURE_TAB, tools: FIXTURE_PAGE_TOOLS },
-  );
+  await installPanelFixtureStubs(page);
 
   const files = [];
   try {
-    await seedStorage(page, extensionId);
+    await seedExtensionStorage(page, extensionId);
     files.push(...(await captureSidepanel(page, extensionId, outDir)));
   } finally {
     await page.close();
