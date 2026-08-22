@@ -1,18 +1,32 @@
 <script lang="ts">
   /**
-   * A circular icon button: a 24px glyph centred in a 40px hit target, with
-   * a Material state layer on hover/press.
+   * A round icon button: shadcn's Button (`variant="ghost"`, `size="icon"`/
+   * `"icon-sm"`) wrapping an Icon, with shadcn's Tooltip attached directly
+   * to the button itself (decisions/28) rather than through the generic
+   * Tooltip.svelte wrapper — that wrapper attaches the trigger's hover/
+   * focus wiring to a `display:contents` span AROUND its children, and
+   * `focus`/`blur` don't bubble, so a real focusable trigger like this one
+   * needs the wiring on its own element to still show the tooltip on
+   * keyboard focus (see Tooltip.svelte's doc comment).
    *
    * The label is required and becomes both the accessible name and (unless
    * suppressed) the tooltip, so there is no way to ship an unlabelled icon
-   * button from here.
+   * button from here — unchanged from the pre-migration version.
    *
-   * This resets background/border/border-radius/padding from the tonal
-   * `button` rule in chat-theme.css. Svelte's scoping already outranks that
-   * element selector, so no !important is involved.
+   * `tone`/`variant` map onto Button's own variants rather than ad-hoc
+   * colour overrides: `filled` + `primary` is Button's solid `default`
+   * (the composer's send button), `filled` + `danger` is `destructive`
+   * (the composer's stop button), `filled` + `default` is the tonal
+   * `secondary` (Transcript's "Jump to latest"), and `plain` is always
+   * `ghost` with the tone tinting the glyph only in its resting state —
+   * `ghost`'s own hover state already swaps to the neutral foreground
+   * colour, matching the old CSS's hover rule beating the tone rule on
+   * specificity.
    */
   import Icon from "./Icon.svelte";
-  import Tooltip from "./Tooltip.svelte";
+  import { Button } from "$lib/components/ui/button";
+  import * as Tooltip from "$lib/components/ui/tooltip";
+  import { cn } from "$lib/utils";
   import type { IconName } from "../../lib/icons";
 
   interface Props {
@@ -50,93 +64,70 @@
     size = "default",
     title,
   }: Props = $props();
+
+  const buttonVariant = $derived(
+    variant === "filled"
+      ? tone === "primary"
+        ? "default"
+        : tone === "danger"
+          ? "destructive"
+          : "secondary"
+      : "ghost",
+  );
+
+  const toneClass = $derived(
+    variant === "plain" && tone === "primary"
+      ? "text-primary"
+      : variant === "plain" && tone === "danger"
+        ? "text-destructive"
+        : "",
+  );
+
+  const buttonSize = $derived(size === "compact" ? "icon-sm" : "icon");
+  const glyphSize = $derived(size === "compact" ? 18 : undefined);
+  const titleAttr = $derived(title ?? (tooltip ? undefined : label));
 </script>
 
-{#snippet control()}
-  <button
-    type="button"
-    class="icon-button"
-    data-tone={tone}
-    data-variant={variant}
-    data-size={size}
-    aria-label={label}
-    title={title ?? (tooltip ? undefined : label)}
-    {disabled}
-    {onclick}
-  >
-    <Icon name={icon} size={size === "compact" ? 18 : undefined} />
-  </button>
+{#snippet glyph()}
+  <Icon name={icon} size={glyphSize} />
 {/snippet}
 
 {#if tooltip && !disabled}
-  <Tooltip {label} placement={tooltipPlacement}>
-    {@render control()}
-  </Tooltip>
+  <Tooltip.Provider>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            type="button"
+            variant={buttonVariant}
+            size={buttonSize}
+            class={cn("rounded-full", toneClass)}
+            aria-label={label}
+            title={titleAttr}
+            {disabled}
+            {onclick}
+          >
+            {@render glyph()}
+          </Button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content side={tooltipPlacement}>
+        {label}
+      </Tooltip.Content>
+    </Tooltip.Root>
+  </Tooltip.Provider>
 {:else}
-  {@render control()}
+  <Button
+    type="button"
+    variant={buttonVariant}
+    size={buttonSize}
+    class={cn("rounded-full", toneClass)}
+    aria-label={label}
+    title={titleAttr}
+    {disabled}
+    {onclick}
+  >
+    {@render glyph()}
+  </Button>
 {/if}
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css. */
-  .icon-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    width: var(--icon-button-size);
-    height: var(--icon-button-size);
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--color-on-surface-variant);
-    cursor: pointer;
-    transition:
-      background-color var(--transition-fast),
-      color var(--transition-fast);
-  }
-
-  .icon-button:hover:not(:disabled) {
-    background: var(--state-hover);
-    color: var(--color-on-surface);
-  }
-
-  .icon-button:active:not(:disabled) {
-    background: var(--state-pressed);
-  }
-
-  .icon-button:disabled {
-    cursor: default;
-    opacity: 0.38; /* M3 disabled content opacity */
-  }
-
-  .icon-button[data-size="compact"] {
-    width: var(--icon-button-size-compact);
-    height: var(--icon-button-size-compact);
-  }
-
-  .icon-button[data-tone="primary"] {
-    color: var(--color-primary);
-  }
-
-  .icon-button[data-tone="danger"] {
-    color: var(--color-danger);
-  }
-
-  /* The filled variant is the composer's send button: a squarer, tonal
-     container rather than a bare glyph, so it reads as the primary action. */
-  .icon-button[data-variant="filled"] {
-    border-radius: var(--radius-card);
-    background: var(--color-surface-container-high);
-    color: var(--color-on-surface);
-  }
-
-  .icon-button[data-variant="filled"][data-tone="primary"] {
-    color: var(--color-primary);
-  }
-
-  .icon-button[data-variant="filled"]:hover:not(:disabled) {
-    background: var(--color-surface-container-highest);
-  }
-</style>

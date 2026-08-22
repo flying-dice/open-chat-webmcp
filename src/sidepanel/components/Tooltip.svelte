@@ -1,19 +1,27 @@
 <script lang="ts">
   /**
-   * A Material 3 plain tooltip: inverse-surface chip, shown on hover and on
-   * :focus-visible so keyboard users get it too.
+   * A generic hover/focus tooltip, now backed by shadcn-svelte's Tooltip
+   * (bits-ui) instead of a hand-rolled CSS bubble (decisions/28). Kept as
+   * its own component with the same `label`/`placement`/`children` API as
+   * before Tooltip.Trigger's props are attached to a wrapping
+   * `display:contents` span around `children` rather than to `children`
+   * itself, so this stays a drop-in wrap-anything tooltip for callers like
+   * MessageActions.svelte's "Copied" badge (out of this card's scope, and
+   * not itself focusable, so the span-level wiring covers it exactly).
    *
-   * Pure CSS — no timers, no positioning library, no portal. The bubble is
-   * absolutely positioned against the wrapper and hidden with
-   * `visibility`/`opacity` so it never affects layout or hit-testing. The
-   * appearance delay is a transition-delay, which means moving the pointer
-   * across a row of icon buttons doesn't strobe tooltips: each one has to
-   * survive the delay on its own.
+   * A genuinely focusable trigger (e.g. IconButton.svelte's button) wires
+   * shadcn's Tooltip.Trigger directly onto itself instead — a wrapping
+   * span never becomes `document.activeElement`, so `onfocus`/`onblur`
+   * delegated through one would never fire, and the tooltip would silently
+   * stop appearing for keyboard users. IconButton.svelte therefore doesn't
+   * use this component.
    *
-   * `pointer-events: none` on the bubble matters — a tooltip that can be
-   * hovered would flicker as it appears under the cursor.
+   * Each instance carries its own Tooltip.Provider — simpler than wiring
+   * one at the app root, and cheap: bits-ui's Provider only sets a shared
+   * `delayDuration` for grouping, which nothing here relies on.
    */
   import type { Snippet } from "svelte";
+  import * as TooltipPrimitive from "$lib/components/ui/tooltip";
 
   interface Props {
     /** The tooltip text. */
@@ -26,60 +34,17 @@
   const { label, placement = "top", children }: Props = $props();
 </script>
 
-<span class="tooltip-wrap" data-placement={placement}>
-  {@render children()}
-  <!-- aria-hidden: the trigger carries its own aria-label, so exposing this
-       too would make screen readers announce the name twice. -->
-  <span class="tooltip" aria-hidden="true">{label}</span>
-</span>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css. */
-  .tooltip-wrap {
-    position: relative;
-    display: inline-flex;
-  }
-
-  .tooltip {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 20;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    background: var(--color-inverse-surface);
-    color: var(--color-inverse-on-surface);
-    font-size: var(--font-size-caption);
-    line-height: 1.3;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    visibility: hidden;
-    transition:
-      opacity var(--transition-fast),
-      visibility var(--transition-fast);
-  }
-
-  .tooltip-wrap[data-placement="top"] .tooltip {
-    bottom: calc(100% + var(--space-1));
-  }
-
-  .tooltip-wrap[data-placement="bottom"] .tooltip {
-    top: calc(100% + var(--space-1));
-  }
-
-  .tooltip-wrap:hover .tooltip,
-  .tooltip-wrap:focus-within .tooltip {
-    opacity: 1;
-    visibility: visible;
-    /* Delay only on the way in: dismissal should feel immediate. */
-    transition-delay: 500ms;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .tooltip {
-      transition: none;
-    }
-  }
-</style>
+<TooltipPrimitive.Provider>
+  <TooltipPrimitive.Root>
+    <TooltipPrimitive.Trigger>
+      {#snippet child({ props })}
+        <span {...props} class="contents">
+          {@render children()}
+        </span>
+      {/snippet}
+    </TooltipPrimitive.Trigger>
+    <TooltipPrimitive.Content side={placement}>
+      {label}
+    </TooltipPrimitive.Content>
+  </TooltipPrimitive.Root>
+</TooltipPrimitive.Provider>

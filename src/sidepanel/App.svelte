@@ -289,7 +289,7 @@
   }
 </script>
 
-<div class="app">
+<div class="flex h-screen min-w-[320px] flex-col">
   <Header
     title={headerTitle}
     newChatDisabled={!panel.pageInfo || panel.isTurnActive}
@@ -341,7 +341,9 @@
       {/snippet}
     </Transcript>
 
-    <div class="composer-dock">
+    <div
+      class="flex flex-none flex-col [&>.context-chip+.composer]:mt-0 [&>.context-chip+.composer]:rounded-t-none"
+    >
       <ContextChip
         pageInfo={panel.pageInfo}
         connectionStatus={panel.connectionStatus}
@@ -362,7 +364,7 @@
     <!-- Non-chat views take the whole panel below the header, and are left
          the way the reference's submenus are: by a Back row, not by a tab
          strip that would have to sit there permanently. -->
-    <div class="subview-bar">
+    <div class="flex flex-none items-center px-2 pb-1">
       <IconButton
         icon="arrow_back"
         label="Back to chat"
@@ -384,34 +386,3 @@
     {/if}
   {/if}
 </div>
-
-<style>
-  .app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    min-width: 320px;
-  }
-
-  /* The context chip and the composer are one unit: the chip's bottom edge
-     sits flush on the composer's top edge, so a negative margin closes the
-     gap the composer's own margin would otherwise leave. */
-  .composer-dock {
-    display: flex;
-    flex-direction: column;
-    flex: none;
-  }
-
-  .composer-dock > :global(.context-chip) + :global(.composer) {
-    margin-top: 0;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-  }
-
-  .subview-bar {
-    display: flex;
-    align-items: center;
-    padding: 0 var(--space-2) var(--space-1);
-    flex: none;
-  }
-</style>

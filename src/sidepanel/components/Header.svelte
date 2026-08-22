@@ -91,13 +91,13 @@
   }
 </script>
 
-<header>
-  <h1 class="chat-title">
+<header class="flex flex-none items-center gap-2 py-2 pr-2 pl-4">
+  <h1 class="m-0 min-w-0 flex-1 text-sm font-normal text-muted-foreground">
     {#if editing}
       <input
         bind:this={inputEl}
         bind:value={draft}
-        class="chat-title-input"
+        class="block w-full min-w-0 rounded-md border border-input bg-background px-1 py-px font-sans text-sm text-foreground"
         type="text"
         aria-label="Chat name"
         maxlength="120"
@@ -107,7 +107,7 @@
     {:else if onRename}
       <button
         type="button"
-        class="chat-title-button"
+        class="block w-full min-w-0 truncate rounded-md border border-transparent px-1 py-px text-left hover:bg-accent hover:text-accent-foreground"
         onclick={startEditing}
         title={title}
         aria-label={`${title} (click to rename)`}
@@ -115,11 +115,11 @@
         {title}
       </button>
     {:else}
-      <span class="chat-title-text" {title}>{title}</span>
+      <span class="block truncate px-1 py-px" {title}>{title}</span>
     {/if}
   </h1>
 
-  <div class="actions">
+  <div class="flex flex-none items-center">
     {#if onNewChat}
       <IconButton
         icon="edit_square"
@@ -135,97 +135,3 @@
     {/if}
   </div>
 </header>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    /* Vertical padding is small because the compact 32px icon buttons
-       already set the row height; this only stops the title touching the
-       panel edge. */
-    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
-    /* No border and no container colour: the header is part of the same
-       surface as the transcript, not a bar sitting on top of it. */
-    background: var(--color-surface);
-    flex: none;
-  }
-
-  .chat-title {
-    flex: 1 1 auto;
-    min-width: 0;
-    margin: 0;
-    /* Regular weight, secondary colour: the title labels the panel, it
-       isn't the loudest thing in it. The messages are. Set here (not on the
-       child text/button/input) so all three variants share one definition
-       and none of them can drift the header's row height. */
-    font-size: var(--font-size-heading);
-    font-weight: 400;
-    line-height: var(--line-height-heading);
-    color: var(--color-on-surface-variant);
-  }
-
-  .chat-title-text {
-    display: block;
-    padding: 1px var(--space-1);
-    border: 1px solid transparent;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* The static (non-editable) look, reset from the global `button` rule in
-     src/lib/theme.css (pill, bordered, its own background) so an editable
-     title looks exactly like the plain heading until interacted with — no
-     extra chrome hints editability beyond the pointer cursor and hover
-     tint, matching how other inline-editable text in Material Expressive UI
-     behaves. Border stays `none`/`transparent` at every state (never added
-     on hover/focus) so it can never change the header's height — the
-     platform focus ring (outline, see theme.css) is the only focus
-     indicator, and it draws outside the box without taking layout space. */
-  .chat-title-button,
-  .chat-title-input {
-    display: block;
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-    padding: 1px var(--space-1);
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    font: inherit;
-    color: inherit;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .chat-title-button {
-    cursor: pointer;
-  }
-
-  .chat-title-button:hover {
-    background: var(--state-hover);
-  }
-
-  .chat-title-input {
-    /* A visible (but non-reflowing) box while editing, so the control reads
-       as "currently a text field" beyond just the caret. */
-    border-color: var(--color-outline);
-    background: var(--color-surface);
-    cursor: text;
-  }
-
-  .actions {
-    display: flex;
-    align-items: center;
-    /* No gap: the compact 32px targets around 18px glyphs already carry
-       their own optical spacing, and closing it up keeps the cluster from
-       pushing the title into an ellipsis at 320px. */
-    flex: none;
-  }
-</style>
