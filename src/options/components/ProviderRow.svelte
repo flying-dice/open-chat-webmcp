@@ -14,8 +14,8 @@
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../domain/providers";
   import { getPreset, type ProviderModel } from "../../domain/providers";
-  import type { TestOutcome } from "../lib/testConnection";
-  import { providerTestResultClass, providerTestResultMessage } from "../lib/testResultDisplay";
+  import type { TestOutcome } from "../forms/testConnection";
+  import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
   import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Select from "$lib/components/ui/select";

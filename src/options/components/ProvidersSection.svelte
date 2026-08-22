@@ -36,7 +36,7 @@
     type ProviderModel,
     type ProviderPreset,
   } from "../../domain/providers";
-  import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
+  import { testProviderConnection, type TestOutcome } from "../forms/testConnection";
   import PresetPicker from "./PresetPicker.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderRow from "./ProviderRow.svelte";

@@ -41,14 +41,14 @@
     toHeaderRows,
     type HeaderRow,
     type ReservedHeaderCheck,
-  } from "../lib/headerRows";
+  } from "../forms/headerRows";
   import {
     PERMISSION_DENIED_MESSAGE,
     requestHostPermission,
     trackHostPermission,
-  } from "../lib/hostPermission.svelte";
-  import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
-  import { providerTestResultClass, providerTestResultMessage } from "../lib/testResultDisplay";
+  } from "../forms/hostPermission.svelte";
+  import { testProviderConnection, type TestOutcome } from "../forms/testConnection";
+  import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
   import HeadersEditor from "./HeadersEditor.svelte";
   import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
@@ -128,7 +128,7 @@
   let apiKey = $state(untrack(() => initial?.apiKey ?? ""));
   let showApiKey = $state(false);
 
-  /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../lib/headerRows.ts for why a row carries a synthetic id. */
+  /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../forms/headerRows.ts for why a row carries a synthetic id. */
   let headers = $state<HeaderRow[]>(
     untrack(() => toHeaderRows((initial?.headers ?? []).map((h) => [h.key, h.value] as const))),
   );

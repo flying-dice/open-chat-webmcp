@@ -96,8 +96,7 @@ export interface ChatSession {
   /**
    * An explicit, user-set name (decisions/24-explicit-chat-titles.md).
    * Absent means "derived" — ./title.ts takes over exactly as it always has.
-   * TODO: clean-code - 0.3 - NAMING: this says "Set via ChatService.renameActiveChat" but the actual method in service.ts is renameCurrent — stale name left over from a rename; misleads a reader trying to find the setter.
-   * Set via `ChatService.renameActiveChat` (./service.ts); an
+   * Set via `ChatService.renameCurrent` (./service.ts); an
    * empty/whitespace-only rename UNSETS this field rather than storing `""`,
    * so clearing the name reverts to the derived title.
    */

@@ -18,7 +18,7 @@
 // Card 73 moved this module into the `providers` bounded context and left
 // its one presentational export behind: `capabilityBadge` (a glyph + a
 // label) is wording, not policy, and now lives in
-// src/sidepanel/lib/capabilityBadge.ts. What stays here answers questions —
+// src/sidepanel/presentation/capabilityBadge.ts. What stays here answers questions —
 // "what is this model's capability", "is it selectable", "why not" — in the
 // domain's own `ToolCapabilityStatus` vocabulary. `reasonForCapability` is
 // the deliberate exception: its strings are the provider's own

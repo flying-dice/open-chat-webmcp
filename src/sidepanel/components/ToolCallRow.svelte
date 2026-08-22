@@ -41,9 +41,9 @@
    * carve-out.
    */
   import type { TranscriptEntry } from "../../domain/chat";
-  import { originLabel } from "../lib/toolOrigin";
+  import { originLabel } from "../presentation/toolOrigin";
   import { panel } from "../stores/panel.svelte";
-  import { formatDuration } from "../lib/duration";
+  import { formatDuration } from "../presentation/duration";
   import { cn } from "$lib/utils";
   import Icon from "./Icon.svelte";
   import ToolArgs from "./ToolArgs.svelte";
@@ -105,8 +105,7 @@
     }
   });
 
-  // TODO: clean-code - 0.4 - NAMING: this doc comment's "src/lib/session.ts's ToolCallLogEntry" and "(panel.svelte.ts)" attributions are stale — the type and functions now live in src/domain/chat/service.ts and session.ts, not the deleted src/lib/session.ts or panel.svelte.ts.
-  /** The matching call-log entry (src/lib/session.ts's `ToolCallLogEntry`), looked up by id — `addToolCall`/`logToolCall` (panel.svelte.ts) both key it as `call.id`, the same value used for this message's own `id`. */
+  /** The matching call-log entry (src/domain/chat/session.ts's `ToolCallLogEntry`), looked up by id — `addToolCall` (src/sidepanel/stores/panel.svelte.ts) and `logToolCall` (src/domain/chat/session.ts) both key it as `call.id`, the same value used for this message's own `id`. */
   const logEntry = $derived(panel.toolCalls.find((entry) => entry.id === message.id));
 
   const durationLabel = $derived.by((): string | undefined => {

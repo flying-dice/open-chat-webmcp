@@ -38,7 +38,7 @@
 // Card 73 moved this module out of src/lib/mcp into the `tools` bounded
 // context and cut its two outward edges on the way (decisions/29):
 //   - `originLabel` (a user-facing STRING) is presentation and now lives in
-//     src/sidepanel/lib/toolOrigin.ts; this module returns the `ToolOrigin`
+//     src/sidepanel/presentation/toolOrigin.ts; this module returns the `ToolOrigin`
 //     code and the UI does the wording.
 //   - `McpServerConfig` came from src/lib/mcp/registry.ts, a `chrome.storage`
 //     repository — an inward edge from domain to infrastructure. Everything

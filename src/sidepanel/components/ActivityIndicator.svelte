@@ -23,10 +23,10 @@
    */
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
-  import { originLabel } from "../lib/toolOrigin";
+  import { originLabel } from "../presentation/toolOrigin";
   import type { TurnPhase } from "../../domain/chat";
   import type { IconName } from "../../ui/icons";
-  import { formatDuration } from "../lib/duration";
+  import { formatDuration } from "../presentation/duration";
 
   /**
    * Narrowed to the two phases this component ever renders — Transcript.svelte's

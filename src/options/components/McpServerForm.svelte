@@ -42,13 +42,14 @@
     toHeaderRows,
     type HeaderRow,
     type ReservedHeaderCheck,
-  } from "../lib/headerRows";
+  } from "../forms/headerRows";
   import {
     PERMISSION_DENIED_MESSAGE,
     requestHostPermission,
     trackHostPermission,
-  } from "../lib/hostPermission.svelte";
-  import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
+  } from "../forms/hostPermission.svelte";
+  import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
+  import { bannerClass } from "../forms/testResultDisplay";
   import HeadersEditor from "./HeadersEditor.svelte";
   import McpTestResult from "./McpTestResult.svelte";
   import * as Alert from "$lib/components/ui/alert";
@@ -151,18 +152,12 @@
   /**
    * The OAuth status line's banner styling — card 71 kept it visually
    * identical to a "Test connection" result banner (the same three
-   * ok/error/neutral treatments src/options/lib/testResultDisplay.ts
-   * hands out), because that is exactly what it is: the last known verdict
-   * on whether this server's credentials work.
+   * ok/error/neutral treatments src/options/forms/testResultDisplay.ts's
+   * `bannerClass` hands out), because that is exactly what it is: the last
+   * known verdict on whether this server's credentials work.
    */
-  // TODO: clean-code - 0.5 - DRY: oauthStatusClass reimplements testResultDisplay.ts's bannerClass's exact three Tailwind class strings as a second local copy instead of calling the already-exported, already-shared bannerClass("ok"|"error"|"neutral").
-  const OAUTH_STATUS_BASE = "rounded-lg border px-3 py-2 text-sm";
   const oauthStatusClass = $derived(
-    oauthNeedsReconnect
-      ? `${OAUTH_STATUS_BASE} border-destructive/40 bg-destructive/5 text-destructive`
-      : oauthAuth
-        ? `${OAUTH_STATUS_BASE} border-primary/40 bg-primary/5 text-foreground`
-        : `${OAUTH_STATUS_BASE} text-muted-foreground`,
+    bannerClass(oauthNeedsReconnect ? "error" : oauthAuth ? "ok" : "neutral"),
   );
 
   function oauthStatusText(): string {
@@ -176,7 +171,7 @@
     return "Connected — no expiry known.";
   }
 
-  /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../lib/headerRows.ts for why a row carries a synthetic id. */
+  /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../forms/headerRows.ts for why a row carries a synthetic id. */
   let headers = $state<HeaderRow[]>(
     untrack(() => toHeaderRows(Object.entries(initial?.headers ?? {}))),
   );

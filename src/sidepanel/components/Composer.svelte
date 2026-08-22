@@ -61,6 +61,7 @@
   import { Textarea } from "$lib/components/ui/textarea";
   import { Button } from "$lib/components/ui/button";
   import { selection, openPicker, openOptionsPage } from "../stores/selection.svelte";
+  import { isSelectionUsable } from "../../domain/providers";
 
   interface Props {
     busy: boolean;
@@ -94,19 +95,22 @@
   // selection when it started, and yanking the composer away to show a
   // banner while a reply is streaming or a tool is running would be
   // confusing, not helpful.
-  // TODO: clean-code - 0.4 - COUPLING: "is the current selection usable" is independently re-derived here as well as in App.svelte's handleSend guard and ProviderPicker.svelte's bucketOf/handlePickModel — one rule, three call sites, no shared function.
   const blocked = $derived.by((): Blocked | undefined => {
     if (busy) return undefined;
     if (selection.providersStatus === "loading") return { kind: "providers-loading" };
     if (selection.providersStatus === "error") return { kind: "providers-error" };
     if (selection.providers.length === 0) return { kind: "no-providers" };
-    if (selection.resolution.status === "none") return { kind: "unselected", dangling: false };
-    if (selection.resolution.status === "dangling") return { kind: "unselected", dangling: true };
-    if (selection.needsConfirmation && selection.resolution.status === "ok") {
-      return {
-        kind: "needs-confirmation",
-        label: `${selection.resolution.config.name} · ${selection.resolution.model}`,
-      };
+    const resolution = selection.resolution;
+    if (resolution.status === "none") return { kind: "unselected", dangling: false };
+    if (resolution.status === "dangling") return { kind: "unselected", dangling: true };
+    // `resolution` is already narrowed to `{ status: "ok" }` by the two
+    // eliminations above, so `config`/`model` are read out here rather than
+    // off `resolution` after the `isSelectionUsable` check below — TS's
+    // negative narrowing of that call's own type predicate would otherwise
+    // conflict with the narrowing already established above.
+    const { config, model } = resolution;
+    if (!isSelectionUsable(resolution, selection.needsConfirmation)) {
+      return { kind: "needs-confirmation", label: `${config.name} · ${model}` };
     }
     return undefined;
   });

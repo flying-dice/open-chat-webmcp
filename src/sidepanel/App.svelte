@@ -39,6 +39,7 @@
   import Inspector from "./components/Inspector.svelte";
   import HistoryPanel from "./components/HistoryPanel.svelte";
   import { titleFromMessages } from "../domain/chat";
+  import { isSelectionUsable } from "../domain/providers";
   import { initMcpToolsSync } from "./services/mcpTools";
   import { sendTurn } from "./services/chatTurn";
   import { iconForProvider } from "../ui/providerIcon";
@@ -191,7 +192,6 @@
     composerRef?.focusInput();
   }
 
-  // TODO: clean-code - 0.4 - COUPLING: "is the current selection usable" is independently re-derived here (the resolution/tabId/needsConfirmation guard) as well as in Composer.svelte's blocked and ProviderPicker.svelte's bucketOf/handlePickModel — one rule, three call sites, no shared function.
   // TODO: clean-code - 0.25 - SRP: handleSend mixes UI validation branching (no-provider/no-selection guards) with fallback assistant-note authoring and turn-dispatch assembly, rather than delegating the fallback messaging entirely to a service.
   function handleSend(text: string): void {
     lastSentText = text;
@@ -200,10 +200,10 @@
     const tabId = panel.pageInfo?.tabId;
 
     // Card 35: the composer is disabled in all of these cases already
-    // (Composer.svelte's `blocked` derivation mirrors this exact check plus
-    // `selection.needsConfirmation`), so this is defence-in-depth against a
+    // (Composer.svelte's `blocked` derivation mirrors this exact check via
+    // the shared `isSelectionUsable`), so this is defence-in-depth against a
     // send reaching here some other way — not the primary UI.
-    if (resolution.status !== "ok" || tabId === undefined || selection.needsConfirmation) {
+    if (!isSelectionUsable(resolution, selection.needsConfirmation) || tabId === undefined) {
       chat().addUserMessage(text);
       const noProviders = selection.providers.length === 0;
       chat().addAssistantNote(

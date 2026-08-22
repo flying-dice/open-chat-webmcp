@@ -8,7 +8,7 @@
   // which carried the same markup, the same row CRUD and the same
   // `showHeaderValues` toggle twice over; the row model and the validation
   // skeleton around each form's own reserved-name rule now live in
-  // ../lib/headerRows.ts. Only two things ever actually differed between the
+  // ../forms/headerRows.ts. Only two things ever actually differed between the
   // two copies and both are props: the introductory sentence (a provider's
   // headers and a server's are sent to different things, and the copy says
   // so) and the id given to the first name input, so each form's own
@@ -20,7 +20,7 @@
   // below its editor.
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
-  import { headerRowError, type HeaderRow, type ReservedHeaderCheck } from "../lib/headerRows";
+  import { headerRowError, type HeaderRow, type ReservedHeaderCheck } from "../forms/headerRows";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import { Button } from "$lib/components/ui/button";
@@ -31,7 +31,7 @@
   interface Props {
     /** The rows being edited — bound, since adding and removing a row replaces the array the owning form later reads back to build its config. */
     rows: HeaderRow[];
-    /** The owning form's reserved-name rule (its bounded context's, evaluated against its own auth state) — see ../lib/headerRows.ts. */
+    /** The owning form's reserved-name rule (its bounded context's, evaluated against its own auth state) — see ../forms/headerRows.ts. */
     isReserved: ReservedHeaderCheck;
     /** Id for the first row's name input, so the form's `<Field.Label for=...>` targets it. Must be unique on the page. */
     firstInputId: string;

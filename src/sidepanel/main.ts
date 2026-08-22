@@ -55,7 +55,7 @@ import { createOpenAiProvider } from "../infra/openai";
 import { AGENT_LOOP_TOOL_CALL_TIMEOUT_MS } from "../infra/webmcp";
 
 import { initSidePanelServices } from "./app-services";
-import { originLabel } from "./lib/toolOrigin";
+import { originLabel } from "./presentation/toolOrigin";
 import { presenter, tabSyncView } from "./stores/panel.svelte";
 
 // ---------------------------------------------------------------------------

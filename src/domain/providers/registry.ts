@@ -132,3 +132,20 @@ export async function resolveSelection(
         model: selection.model,
       };
 }
+
+/**
+ * Whether a resolved selection is safe to act on right now: a live provider
+ * actually resolved (`status === "ok"`, ruling out `"none"`/`"dangling"`)
+ * AND not sitting in decisions/35's needs-confirmation state (the model
+ * list moved out from under a stale selection and the user hasn't
+ * re-confirmed it). Three sidepanel call sites re-derived this
+ * independently — App.svelte's send guard, Composer.svelte's `blocked`
+ * state, and ProviderPicker.svelte's trigger label — before this became the
+ * one place the rule lives (card 90).
+ */
+export function isSelectionUsable(
+  resolution: SelectionResolution,
+  needsConfirmation: boolean,
+): resolution is { status: "ok"; config: ProviderConfig; model: string } {
+  return resolution.status === "ok" && !needsConfirmation;
+}

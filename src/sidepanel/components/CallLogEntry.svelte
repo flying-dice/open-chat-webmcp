@@ -16,11 +16,10 @@
    * danger-coloured treatment a failed one does, never a quieter one.
    * Auto-run successes start collapsed since nobody had to review them.
    *
-   * TODO: clean-code - 0.4 - NAMING: "recorded ... by src/lib/session.ts's logToolCall" is stale — that file was deleted in the restructure; logToolCall now lives in src/domain/chat/session.ts.
    * Card 38 (decisions/19 §6): `entry.origin`, recorded alongside args and
-   * result by src/lib/session.ts's `logToolCall`, is shown next to the call
-   * name — the call log is the accountability surface, so it must say where
-   * every logged call ran, not just what it did.
+   * result by src/domain/chat/session.ts's `logToolCall`, is shown next to
+   * the call name — the call log is the accountability surface, so it must
+   * say where every logged call ran, not just what it did.
    *
    * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
    * shadcn's Collapsible + Badge + Button. The denied badge keeps its
@@ -30,8 +29,8 @@
    */
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../../domain/chat";
-  import { originLabel } from "../lib/toolOrigin";
-  import { formatDuration } from "../lib/duration";
+  import { originLabel } from "../presentation/toolOrigin";
+  import { formatDuration } from "../presentation/duration";
   import ToolArgs from "./ToolArgs.svelte";
   import ToolArgValue from "./ToolArgValue.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";

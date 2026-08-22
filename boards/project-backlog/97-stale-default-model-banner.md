@@ -1,8 +1,12 @@
 ---
-column: todo
+column: doing
+agent: claude
+live: true
+progress: 5
+status: Queued behind card 90 — same files in flight
 labels: [bug, frontend]
 priority: high
-updatedAt: 2026-08-23T10:20:00.000Z
+updatedAt: 2026-08-23T10:40:00.000Z
 ---
 # Options: stale default-model error banner
 

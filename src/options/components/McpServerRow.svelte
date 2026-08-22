@@ -8,7 +8,7 @@
   // Badge/Button treatment ProviderRow.svelte got, kept deliberately
   // identical so the two registries still read as the same kind of list.
   import type { McpServerConfig } from "../../domain/tools";
-  import type { McpTestOutcome } from "../lib/mcpTestConnection";
+  import type { McpTestOutcome } from "../forms/mcpTestConnection";
   import McpTestResult from "./McpTestResult.svelte";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";

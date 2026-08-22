@@ -106,7 +106,7 @@ export type ModelsState =
    * raw `ProviderError` alongside `message` (its prose form) so the picker
    * can branch on `.kind` for a kind-specific fix — a copyable CORS command,
    * an "open options" shortcut for an auth failure — the same vocabulary
-   * card 22's options-page UI already keys off (src/options/lib/testResultDisplay.ts),
+   * card 22's options-page UI already keys off (src/options/forms/testResultDisplay.ts),
    * never a second one invented here (card 14). decisions/22's consequences:
    * this is what the picker now has to surface on the PROVIDER'S GROUP
    * HEADING, since the two-level picker's provider `<select>` — the only

@@ -35,7 +35,7 @@
    */
   import type { SerializedTool, ToolAnnotations } from "../../domain/tools";
   import type { McpToolAnnotations, ToolOrigin } from "../../domain/tools";
-  import { originLabel } from "../lib/toolOrigin";
+  import { originLabel } from "../presentation/toolOrigin";
   import AnnotationBadges from "./AnnotationBadges.svelte";
   import ToolSchema from "./ToolSchema.svelte";
   import * as Card from "$lib/components/ui/card";

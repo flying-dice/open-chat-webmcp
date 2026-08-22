@@ -12,8 +12,7 @@
    * design (marked -> DOMPurify, strict allowlist, no raw HTML
    * passthrough).
    *
-   * TODO: clean-code - 0.45 - NAMING: this doc comment states "Lives in src/lib/components" as present-tense fact. src/lib no longer exists (renamed to src/ui) — the file is actually at src/ui/components/Markdown.svelte. Misleads a reader about the current location.
-   * Lives in src/lib/components (not src/sidepanel/components, where it
+   * Lives in src/ui/components (not src/sidepanel/components, where it
    * originated with card 14) because it's used by both the side panel
    * (streaming transcript, ProviderPicker's copyable fixes/commands) and
    * the options page (card 33's copyable OLLAMA_ORIGINS fix in

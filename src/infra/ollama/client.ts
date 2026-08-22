@@ -621,6 +621,17 @@ function parseNdjsonLine(line: string): unknown | undefined {
  * line boundaries, and the final line commonly arrives without a trailing
  * newline, so incomplete text is buffered across reads and the buffer is
  * flushed once more after the stream closes.
+ *
+ * If the connection closes cleanly (no thrown read error) but a `done:true`
+ * line never arrived, that is a real, silent failure mode — a dead proxy or
+ * a crashed server can end the response mid-sentence with no HTTP-level
+ * signal at all — so this synthesizes a terminal `invalid-response` error
+ * rather than ending the generator quietly as though the reply were
+ * complete (decided card 90: unlike src/infra/openai's client, which always
+ * finalizes on stream end and has a `[DONE]` sentinel line to distinguish a
+ * clean close from a truncated one, Ollama's NDJSON stream has no such
+ * sentinel independent of `done:true` itself, so "closed without done:true"
+ * is the only signal available and is treated as truncation, not success).
  */
 export async function* chat(
   params: OllamaChatParams,
@@ -690,6 +701,7 @@ export async function* chat(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let sawDone = false;
 
   try {
     while (true) {
@@ -704,6 +716,7 @@ export async function* chat(
         buffer = buffer.slice(newlineIndex + 1);
         const parsed = parseNdjsonLine(line);
         if (parsed !== undefined) {
+          if (isRecord(parsed) && parsed.done === true) sawDone = true;
           yield* chatEventsFromLine(parsed, nextToolCallId);
         }
       }
@@ -714,7 +727,19 @@ export async function* chat(
     buffer += decoder.decode();
     const parsed = parseNdjsonLine(buffer);
     if (parsed !== undefined) {
+      if (isRecord(parsed) && parsed.done === true) sawDone = true;
       yield* chatEventsFromLine(parsed, nextToolCallId);
+    }
+
+    if (!sawDone) {
+      yield {
+        type: "error",
+        error: {
+          kind: "invalid-response",
+          message:
+            "The connection closed before Ollama sent a completion signal — the reply above may be truncated.",
+        },
+      };
     }
   } catch (err) {
     yield { type: "error", error: toOllamaError(err) };

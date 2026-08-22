@@ -65,11 +65,12 @@
   import { cn } from "$lib/utils";
   import {
     isSelectable,
+    isSelectionUsable,
     reasonForCapability,
     type ModelCapabilities,
     type ProviderModel,
   } from "../../domain/providers";
-  import { capabilityBadge } from "../lib/capabilityBadge";
+  import { capabilityBadge } from "../presentation/capabilityBadge";
   import type { ProviderConfig } from "../../domain/providers";
 
   /**
@@ -163,7 +164,7 @@
    */
   const triggerText = $derived.by((): string => {
     const r = selection.resolution;
-    if (r.status === "ok" && !selection.needsConfirmation) return r.model;
+    if (isSelectionUsable(r, selection.needsConfirmation)) return r.model;
     return triggerInfo.label;
   });
 
@@ -293,7 +294,6 @@
   /** Keeps the concrete `ollama pull` suggestion alive for the "some models installed, none tool-capable" case, without violating the "no heading for a provider with no selectable models" rule above — this hint lives on the No-tool-support SECTION instead of on a per-provider heading. */
   const noToolsHasOllama = $derived(noToolsRows.some((r) => r.isOllama));
 
-  // TODO: clean-code - 0.4 - COUPLING: "is the current selection usable" is independently re-derived here (bucketOf/handlePickModel) as well as in Composer.svelte's blocked and App.svelte's handleSend guard — one rule, three call sites, no shared function.
   function handlePickModel(row: Row): void {
     if (!isSelectable(row.capability)) return;
     void selectModel(row.providerId, row.model.id).then(() => closePicker());

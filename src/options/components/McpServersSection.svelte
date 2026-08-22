@@ -19,7 +19,7 @@
   import { onMount } from "svelte";
   import type { McpServerConfig } from "../../domain/tools";
   import { optionsServices } from "../app-services";
-  import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
+  import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
   import McpServerForm from "./McpServerForm.svelte";
   import McpServerRow from "./McpServerRow.svelte";
   import * as Alert from "$lib/components/ui/alert";

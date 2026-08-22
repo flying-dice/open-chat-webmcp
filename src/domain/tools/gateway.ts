@@ -10,7 +10,7 @@
 //                       discover-across-every-server. Implemented by
 //                       src/infra/mcp; consumed by
 //                       src/sidepanel/services/mcpTools.ts and
-//                       src/options/lib/mcpTestConnection.ts.
+//                       src/options/forms/mcpTestConnection.ts.
 //   `McpOAuthClient`  — the OAuth 2.1 + PKCE port (decisions/27). Discovery,
 //                       dynamic registration, the interactive sign-in flow,
 //                       and `getValidAuth`'s refresh. Implemented by

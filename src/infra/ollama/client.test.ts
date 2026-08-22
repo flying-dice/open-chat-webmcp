@@ -434,16 +434,18 @@ describe("chat() — NDJSON stream parsing", () => {
 // ---------------------------------------------------------------------------
 
 describe("chaos: stream faults", () => {
-  it("a connection that closes after content but WITHOUT ever sending a done:true line ends the generator silently, no error/done event", async () => {
+  it("a connection that closes after content but WITHOUT ever sending a done:true line surfaces a terminal invalid-response error, after the content already streamed", async () => {
     // A real-world truncation: the model server crashes, or a proxy in
     // front of it drops the connection, after streaming some tokens but
-    // before writing the final `{"done":true,...}` line. Unlike
-    // src/infra/openai/index.ts (which always finalizes on stream end,
-    // `sawDone` or not — see its `finalize()`), this NDJSON parser only ever
-    // emits a "done" event when it actually sees `done:true` on a complete
-    // line, so a truncated connection surfaces NEITHER a "done" NOR an
-    // "error" event — the turn ends up looking like an ordinary, complete
-    // response with no signal that it was cut short.
+    // before writing the final `{"done":true,...}` line. Decided card 90:
+    // unlike src/infra/openai/index.ts (which always finalizes on stream
+    // end and has a `[DONE]` sentinel independent of its own "done" event to
+    // tell a clean close from a truncated one), this NDJSON parser has no
+    // such independent signal — "the connection closed and we never saw
+    // done:true" IS the only evidence of truncation there is — so it is
+    // treated as one: the partial content already streamed stays (never
+    // discarded), but the generator's last event is a terminal error rather
+    // than ending silently as though the reply were complete.
     const body = JSON.stringify({ message: { role: "assistant", content: "The answer is" }, done: false }) + "\n";
     vi.stubGlobal(
       "fetch",
@@ -451,17 +453,17 @@ describe("chaos: stream faults", () => {
     );
 
     const events = await collect(chat(baseParams()));
-    expect(events).toEqual([{ type: "content", delta: "The answer is" }]);
+    expect(events).toEqual([
+      { type: "content", delta: "The answer is" },
+      {
+        type: "error",
+        error: {
+          kind: "invalid-response",
+          message: "The connection closed before Ollama sent a completion signal — the reply above may be truncated.",
+        },
+      },
+    ]);
   });
-
-  // Whether a truncated connection like the one above SHOULD synthesize a
-  // terminal error (so the transcript can show "response may be
-  // incomplete") is not decided — flagged rather than guessed at.
-  it.todo(
-    "decide: should a stream that closes without a done:true line surface a terminal error (truncated " +
-      "response), the way src/infra/openai's client always finalizes on stream end regardless of whether " +
-      "it saw [DONE] — or is ending silently (current behaviour, tested above) intended?",
-  );
 
   it("garbage JSON on the final, newline-less line (flush path) still yields a single invalid-response error, not a thrown exception", async () => {
     // Distinct from the existing "garbage line mid-stream" case: this one
