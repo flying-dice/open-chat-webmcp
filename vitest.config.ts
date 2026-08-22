@@ -64,7 +64,13 @@ export default defineConfig({
         test: {
           name: "domain",
           environment: "node",
-          include: ["src/domain/**/*.test.ts", "src/infra/**/*.test.ts"],
+          include: [
+            "src/domain/**/*.test.ts",
+            "src/infra/**/*.test.ts",
+            // The background worker's tests use the same fake-chrome seam as
+            // tab-sync.test.ts and run on node like the rest of this project.
+            "src/background/**/*.test.ts",
+          ],
         },
       },
       {
