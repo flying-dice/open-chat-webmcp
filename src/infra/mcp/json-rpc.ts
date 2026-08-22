@@ -89,7 +89,8 @@ export function classifyRpcError(err: JsonRpcErrorObject): McpError {
       data && Array.isArray(data.supported)
         ? data.supported.filter((s): s is string => typeof s === "string")
         : undefined;
-    const requested = data && typeof data.requested === "string" ? data.requested : PROTOCOL_VERSION;
+    const requested =
+      data && typeof data.requested === "string" ? data.requested : PROTOCOL_VERSION;
     return { kind: "protocol-mismatch", requested, supported, message: err.message };
   }
   return { kind: "rpc-error", code: err.code, message: err.message, data: err.data };

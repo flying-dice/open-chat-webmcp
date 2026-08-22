@@ -102,9 +102,7 @@ export function describeMcpError(error: McpError): string {
 }
 
 /** Result of an MCP operation: never throws, always branch on `ok`. */
-export type McpResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: McpError };
+export type McpResult<T> = { ok: true; value: T } | { ok: false; error: McpError };
 
 // ---------------------------------------------------------------------------
 // Tools (MCP "server/tools" — tools/list, tools/call)

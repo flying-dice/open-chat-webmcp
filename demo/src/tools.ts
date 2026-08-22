@@ -63,7 +63,8 @@ export function createDemoTools(state: DemoPageState): Fixture[] {
 
   const readPageState: Fixture = {
     name: "read-page-state",
-    description: "Read the demo page's currently visible state (title, URL, note count, task count).",
+    description:
+      "Read the demo page's currently visible state (title, URL, note count, task count).",
     annotations: { readOnlyHint: true },
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     execute: () =>
@@ -89,7 +90,8 @@ export function createDemoTools(state: DemoPageState): Fixture[] {
 
   const addNote: Fixture = {
     name: "add-note",
-    description: "Append a visible note to the page's note list. Mutates the DOM so a human can see the model act.",
+    description:
+      "Append a visible note to the page's note list. Mutates the DOM so a human can see the model act.",
     // No annotations at all -> treated as mutating per
     // decisions/17-spec-annotations-and-untrusted-content.md: absence of a
     // hint means "requires approval", never "safe".
@@ -100,7 +102,8 @@ export function createDemoTools(state: DemoPageState): Fixture[] {
       additionalProperties: false,
     },
     execute: (args) => {
-      const text = typeof args.text === "string" && args.text.length > 0 ? args.text : "(empty note)";
+      const text =
+        typeof args.text === "string" && args.text.length > 0 ? args.text : "(empty note)";
       clearPlaceholder(notesEl);
       const li = document.createElement("li");
       li.textContent = text;
@@ -111,7 +114,8 @@ export function createDemoTools(state: DemoPageState): Fixture[] {
 
   const clearNotes: Fixture = {
     name: "clear-notes",
-    description: "Delete every note from the page. Irreversible, but carries no annotations beyond the default.",
+    description:
+      "Delete every note from the page. Irreversible, but carries no annotations beyond the default.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     execute: () => {
       const removed = notesEl.querySelectorAll("li:not(.empty)").length;
@@ -191,7 +195,15 @@ export function createDemoTools(state: DemoPageState): Fixture[] {
     execute: () => new Promise<never>(() => {}),
   };
 
-  return [readPageState, readNotesContent, addNote, clearNotes, createTask, alwaysThrows, hangsForever];
+  return [
+    readPageState,
+    readNotesContent,
+    addNote,
+    clearNotes,
+    createTask,
+    alwaysThrows,
+    hangsForever,
+  ];
 }
 
 /** The extra tool used to demonstrate live register/unregister at runtime,
@@ -201,7 +213,8 @@ export function createDemoTools(state: DemoPageState): Fixture[] {
 export function createDynamicTool(counterEl: HTMLElement): Fixture {
   return {
     name: "dynamic-echo",
-    description: "Registered/unregistered at runtime via the page's controls, to test live tool-list updates.",
+    description:
+      "Registered/unregistered at runtime via the page's controls, to test live tool-list updates.",
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
@@ -210,7 +223,10 @@ export function createDynamicTool(counterEl: HTMLElement): Fixture {
     },
     execute: (args) => {
       counterEl.textContent = String(Number(counterEl.textContent ?? "0") + 1);
-      return ok({ echo: typeof args.message === "string" ? args.message : null, calls: counterEl.textContent });
+      return ok({
+        echo: typeof args.message === "string" ? args.message : null,
+        calls: counterEl.textContent,
+      });
     },
   };
 }

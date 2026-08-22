@@ -1,17 +1,17 @@
 <script lang="ts">
-	import { Select as SelectPrimitive } from "bits-ui";
-	import { HugeiconsIcon } from "@hugeicons/svelte"
-	import { Tick02Icon } from '@hugeicons/core-free-icons';
-	import { cn, type WithoutChild } from "$lib/utils.js";
+  import { Select as SelectPrimitive } from "bits-ui";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Tick02Icon } from "@hugeicons/core-free-icons";
+  import { cn, type WithoutChild } from "$lib/utils.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		value,
-		label,
-		children: childrenProp,
-		...restProps
-	}: WithoutChild<SelectPrimitive.ItemProps> = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    value,
+    label,
+    children: childrenProp,
+    ...restProps
+  }: WithoutChild<SelectPrimitive.ItemProps> = $props();
 </script>
 
 <SelectPrimitive.Item

@@ -140,14 +140,9 @@ export type RuntimeRequest =
   | RuntimeGetToolsRequest
   | RuntimeCallToolRequest
   | RuntimeRefreshToolsRequest;
-export type RuntimeResponse =
-  | RuntimeGetToolsResponse
-  | RuntimeCallToolResponse;
+export type RuntimeResponse = RuntimeGetToolsResponse | RuntimeCallToolResponse;
 
-export type RuntimeMessage =
-  | RuntimeNotification
-  | RuntimeRequest
-  | RuntimeResponse;
+export type RuntimeMessage = RuntimeNotification | RuntimeRequest | RuntimeResponse;
 
 // ---------------------------------------------------------------------------
 // Every message shape in the system, discriminated on `type`.

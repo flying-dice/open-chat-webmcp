@@ -15,10 +15,7 @@ function carrier(id: string): TranscriptEntry {
   return { id, role: "assistant", content: "", createdAt: 0 };
 }
 
-function tool(
-  id: string,
-  overrides: Partial<TranscriptEntry> = {},
-): TranscriptEntry {
+function tool(id: string, overrides: Partial<TranscriptEntry> = {}): TranscriptEntry {
   return {
     id,
     role: "tool",
@@ -110,7 +107,7 @@ describe("groupTranscript", () => {
     // groups (folded apart by an intervening prose message) each open on a
     // step carrying the same id — which card 64's own investigation flagged
     // as a symptom of a message-id being duplicated upstream, in the
-        // tab-sync/session-restore path — groupTranscript happily hands back two
+    // tab-sync/session-restore path — groupTranscript happily hands back two
     // different groups sharing one key. This test documents that the
     // function does NOT itself guard against colliding ids; it is not
     // groupTranscript's job to deduplicate ids that should never repeat.

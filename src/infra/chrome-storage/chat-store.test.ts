@@ -241,10 +241,7 @@ describe("index write serialization under concurrent writers", () => {
     const a = createChat("https://a.example");
     const b = createChat("https://b.example");
 
-    await Promise.all([
-      store.save(a, { immediate: true }),
-      store.save(b, { immediate: true }),
-    ]);
+    await Promise.all([store.save(a, { immediate: true }), store.save(b, { immediate: true })]);
 
     const summaries = await store.listChatSummaries();
     expect(summaries.map((s) => s.id).sort()).toEqual([a.id, b.id].sort());
@@ -309,7 +306,14 @@ describe("defensive reads of corrupt storage", () => {
     const { store, fake } = setup();
     fake.local.seed({
       "chat:index": [
-        { id: "ok", origin: "https://x", createdAt: 1, updatedAt: 2, messageCount: 0, toolCallCount: 0 },
+        {
+          id: "ok",
+          origin: "https://x",
+          createdAt: 1,
+          updatedAt: 2,
+          messageCount: 0,
+          toolCallCount: 0,
+        },
         { id: "bad", origin: "https://x" }, // missing required numeric fields
       ],
     });

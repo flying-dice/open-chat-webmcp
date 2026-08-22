@@ -28,12 +28,18 @@ describe("classifyFetchError", () => {
 
 describe("fetchJson", () => {
   it("returns the parsed JSON body on success", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ a: 1 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ a: 1 })),
+    );
     await expect(fetchJson("https://x.example")).resolves.toEqual({ ok: true, value: { a: 1 } });
   });
 
   it("maps a non-2xx response to not-mcp-endpoint", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404, statusText: "Not Found" })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 404, statusText: "Not Found" })),
+    );
     const result = await fetchJson("https://x.example");
     expect(result).toEqual({
       ok: false,
@@ -42,7 +48,10 @@ describe("fetchJson", () => {
   });
 
   it("maps a malformed JSON body to invalid-response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("not json", { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not json", { status: 200 })),
+    );
     const result = await fetchJson("https://x.example");
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -66,10 +75,15 @@ describe("fetchJson", () => {
 
 describe("postToken", () => {
   it("POSTs form-encoded and returns the parsed JSON on 2xx", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ access_token: "at-1" }));
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      jsonResponse({ access_token: "at-1" }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await postToken("https://as.example/token", new URLSearchParams({ grant_type: "refresh_token" }));
+    const result = await postToken(
+      "https://as.example/token",
+      new URLSearchParams({ grant_type: "refresh_token" }),
+    );
 
     expect(result).toEqual({ ok: true, value: { access_token: "at-1" } });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -85,9 +99,12 @@ describe("postToken", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ error: "invalid_grant", error_description: "Refresh token expired" }), {
-            status: 400,
-          }),
+          new Response(
+            JSON.stringify({ error: "invalid_grant", error_description: "Refresh token expired" }),
+            {
+              status: 400,
+            },
+          ),
       ),
     );
     const result = await postToken("https://as.example/token", new URLSearchParams());
@@ -122,7 +139,10 @@ describe("postToken", () => {
   });
 
   it("a 2xx with a non-JSON body maps to invalid-response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("not json", { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not json", { status: 200 })),
+    );
     const result = await postToken("https://as.example/token", new URLSearchParams());
     expect(result).toEqual({
       ok: false,

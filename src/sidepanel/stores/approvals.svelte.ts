@@ -45,7 +45,10 @@ import type { ToolCall } from "../../domain/providers";
 import type { MergedTool } from "../../domain/tools";
 
 /** Which skip-list a pending request's "don't ask again" checkbox would write to, if checked — see the module doc comment for why these are two distinct keyspaces that must never mix. `undefined` when no key could be formed (no page origin known — shouldn't happen in practice, a tool call implies an active tab). */
-export type SkipTarget = { kind: "page"; key: string } | { kind: "server"; key: string } | undefined;
+export type SkipTarget =
+  | { kind: "page"; key: string }
+  | { kind: "server"; key: string }
+  | undefined;
 
 export interface PendingApproval {
   id: string;
@@ -160,7 +163,10 @@ function serverSkipKeyFor(serverId: string, toolName: string): string {
  * the SERVER (`${serverId}::${toolName}`), never to whatever page happens
  * to be open.
  */
-function requestServerApproval(request: ApprovalRequest, tool: MergedTool): Promise<ApprovalDecision> {
+function requestServerApproval(
+  request: ApprovalRequest,
+  tool: MergedTool,
+): Promise<ApprovalDecision> {
   // Defensive: `requestApproval` below only calls this once it has already
   // confirmed `tool.origin.kind === "server"`, so this should be
   // unreachable — but if it somehow weren't, there is no server id to key
@@ -178,7 +184,10 @@ function requestServerApproval(request: ApprovalRequest, tool: MergedTool): Prom
   return new Promise<ApprovalDecision>((resolve) => {
     const id = makeId();
     resolvers.set(id, resolve);
-    pendingList = [...pendingList, { id, call: request.call, tool: request.tool, skip: { kind: "server", key } }];
+    pendingList = [
+      ...pendingList,
+      { id, call: request.call, tool: request.tool, skip: { kind: "server", key } },
+    ];
   });
 }
 

@@ -69,7 +69,10 @@
   const hasMore = $derived(summaries.length > RECENT_LIMIT);
 
   function handleOpenChange(open: boolean): void {
-    if (open) void sidePanelServices().chats.listChatSummaries().then((s) => (summaries = s));
+    if (open)
+      void sidePanelServices()
+        .chats.listChatSummaries()
+        .then((s) => (summaries = s));
   }
 
   async function handleOpenChat(id: string): Promise<void> {

@@ -118,7 +118,8 @@ function firstInvalidChatSessionField(v: unknown): string {
   if (!v.messages.every(isChatMessageLike)) return "messages (an entry failed isChatMessageLike)";
   if (v.selection !== undefined && !isProviderSelectionLike(v.selection)) return "selection";
   if (!Array.isArray(v.toolCalls)) return "toolCalls (not an array)";
-  if (!v.toolCalls.every(isToolCallLogEntry)) return "toolCalls (an entry failed isToolCallLogEntry)";
+  if (!v.toolCalls.every(isToolCallLogEntry))
+    return "toolCalls (an entry failed isToolCallLogEntry)";
   if (typeof v.createdAt !== "number") return "createdAt";
   if (typeof v.updatedAt !== "number") return "updatedAt";
   if (v.title !== undefined && typeof v.title !== "string") return "title";

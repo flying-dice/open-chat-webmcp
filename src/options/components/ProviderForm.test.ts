@@ -119,7 +119,9 @@ describe("ProviderForm", () => {
     await user.type(urlInput, "not-a-url");
     await user.click(screen.getByRole("button", { name: /Add provider/ }));
 
-    expect(await screen.findByText("Enter a valid http:// or https:// base URL.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Enter a valid http:// or https:// base URL."),
+    ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -162,7 +164,12 @@ describe("ProviderForm", () => {
   it("masks the API key by default and toggles via Show/Hide", async () => {
     const user = userEvent.setup();
     render(ProviderForm, {
-      props: { mode: "edit", initial: baseConfig({ apiKey: "sk-secret" }), onSubmit: vi.fn(), onCancel: vi.fn() },
+      props: {
+        mode: "edit",
+        initial: baseConfig({ apiKey: "sk-secret" }),
+        onSubmit: vi.fn(),
+        onCancel: vi.fn(),
+      },
     });
 
     const keyInput = screen.getByLabelText(/API key/) as HTMLInputElement;
@@ -206,9 +213,7 @@ describe("ProviderForm", () => {
     await user.type(screen.getByPlaceholderText("Header name, e.g. x-api-key"), "Content-Type");
     await user.type(screen.getByPlaceholderText("Value"), "application/json");
 
-    expect(
-      await screen.findByText(/Content-Type is set automatically/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Content-Type is set automatically/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Add provider/ }));
     expect(onSubmit).not.toHaveBeenCalled();

@@ -3,10 +3,7 @@
 // never accidentally also change the other") (card 83).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  DEFAULT_APPROVAL_POLICY,
-  DEFAULT_MCP_APPROVAL_POLICY,
-} from "../../domain/settings";
+import { DEFAULT_APPROVAL_POLICY, DEFAULT_MCP_APPROVAL_POLICY } from "../../domain/settings";
 import { createStorageAreaGateway } from "./area";
 import { createChromeStorageSettingsStore } from "./settings-store";
 import { createFakeChromeStorage } from "./testing/fake-chrome-storage";

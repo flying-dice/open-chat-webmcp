@@ -162,11 +162,7 @@ function mcpTool(overrides: Partial<McpTool> & { name: string }): McpTool {
   return { ...overrides };
 }
 
-function okDiscovery(
-  serverId: string,
-  serverName: string,
-  tools: McpTool[],
-): McpServerDiscovery {
+function okDiscovery(serverId: string, serverName: string, tools: McpTool[]): McpServerDiscovery {
   return {
     status: "ok",
     serverId,
@@ -191,7 +187,10 @@ interface ServerCall {
   args: Record<string, unknown>;
 }
 
-function recordingServerExecutor(): { execute: ServerToolExecutor<ToolServerIdentity>; calls: ServerCall[] } {
+function recordingServerExecutor(): {
+  execute: ServerToolExecutor<ToolServerIdentity>;
+  calls: ServerCall[];
+} {
   const calls: ServerCall[] = [];
   const execute: ServerToolExecutor<ToolServerIdentity> = async (config, toolName, args) => {
     calls.push({ config, toolName, args });
@@ -208,7 +207,12 @@ describe("buildServerMergedTools", () => {
   it("namespaces each ok server's tools under its slug", () => {
     const { execute } = recordingServerExecutor();
     const merged = buildServerMergedTools(
-      [{ config: { id: "s1", name: "My Server" }, discovery: okDiscovery("s1", "My Server", [mcpTool({ name: "search" })]) }],
+      [
+        {
+          config: { id: "s1", name: "My Server" },
+          discovery: okDiscovery("s1", "My Server", [mcpTool({ name: "search" })]),
+        },
+      ],
       execute,
     );
     expect(merged.map((t) => t.name)).toEqual(["my-server__search"]);
@@ -229,7 +233,10 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         { config: { id: "err", name: "Foo" }, discovery: errorDiscovery("err", "Foo") },
-        { config: { id: "ok", name: "Foo" }, discovery: okDiscovery("ok", "Foo", [mcpTool({ name: "ping" })]) },
+        {
+          config: { id: "ok", name: "Foo" },
+          discovery: okDiscovery("ok", "Foo", [mcpTool({ name: "ping" })]),
+        },
       ],
       execute,
     );
@@ -263,7 +270,14 @@ describe("buildServerMergedTools", () => {
   ])("normalises readOnlyHint %j to %j", (input, expected) => {
     const { execute } = recordingServerExecutor();
     const merged = buildServerMergedTools(
-      [{ config: { id: "s1", name: "S" }, discovery: okDiscovery("s1", "S", [mcpTool({ name: "t", annotations: { readOnlyHint: input } })]) }],
+      [
+        {
+          config: { id: "s1", name: "S" },
+          discovery: okDiscovery("s1", "S", [
+            mcpTool({ name: "t", annotations: { readOnlyHint: input } }),
+          ]),
+        },
+      ],
       execute,
     );
     expect(merged[0]?.annotations.readOnlyHint).toBe(expected);
@@ -271,9 +285,19 @@ describe("buildServerMergedTools", () => {
 
   it("keeps the ORIGINAL mcpAnnotations (title/destructiveHint/etc) for display, untouched by normalisation", () => {
     const { execute } = recordingServerExecutor();
-    const original = { title: "Search", readOnlyHint: true, destructiveHint: true, idempotentHint: false };
+    const original = {
+      title: "Search",
+      readOnlyHint: true,
+      destructiveHint: true,
+      idempotentHint: false,
+    };
     const merged = buildServerMergedTools(
-      [{ config: { id: "s1", name: "S" }, discovery: okDiscovery("s1", "S", [mcpTool({ name: "t", annotations: original })]) }],
+      [
+        {
+          config: { id: "s1", name: "S" },
+          discovery: okDiscovery("s1", "S", [mcpTool({ name: "t", annotations: original })]),
+        },
+      ],
       execute,
     );
     expect(merged[0]?.mcpAnnotations).toEqual(original);
@@ -311,7 +335,10 @@ describe("buildServerMergedTools", () => {
       [
         {
           config: { id: "s1", name: "S" },
-          discovery: okDiscovery("s1", "S", [mcpTool({ name: longName }), mcpTool({ name: longName })]),
+          discovery: okDiscovery("s1", "S", [
+            mcpTool({ name: longName }),
+            mcpTool({ name: longName }),
+          ]),
         },
       ],
       execute,
@@ -413,11 +440,16 @@ describe("combineWithPageTools", () => {
     [true, true],
     [false, false],
     [undefined, false],
-  ])("normalises a page tool's untrustedContentHint %j to %j (unlike a server tool, NOT forced true)", (input, expected) => {
-    const page = [serializedPageTool({ name: "t", annotations: { untrustedContentHint: input } })];
-    const merged = combineWithPageTools([], page, recordingPageExecutor().execute);
-    expect(merged[0]?.annotations.untrustedContentHint).toBe(expected);
-  });
+  ])(
+    "normalises a page tool's untrustedContentHint %j to %j (unlike a server tool, NOT forced true)",
+    (input, expected) => {
+      const page = [
+        serializedPageTool({ name: "t", annotations: { untrustedContentHint: input } }),
+      ];
+      const merged = combineWithPageTools([], page, recordingPageExecutor().execute);
+      expect(merged[0]?.annotations.untrustedContentHint).toBe(expected);
+    },
+  );
 
   it("binds a page tool's call to (its ORIGINAL name, args, opts)", async () => {
     const { execute, calls } = recordingPageExecutor();

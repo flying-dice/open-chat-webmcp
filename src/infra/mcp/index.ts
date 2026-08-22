@@ -14,7 +14,12 @@
 
 export { createMcpToolGateway, type McpToolGatewayOptions } from "./gateway";
 export { createMcpOAuthClient, type McpOAuthClientOptions } from "./oauth";
-export { DEFAULT_CLIENT_INFO, PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS, type McpClientInfo } from "./protocol";
+export {
+  DEFAULT_CLIENT_INFO,
+  PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  type McpClientInfo,
+} from "./protocol";
 export {
   DEFAULT_CALL_TOOL_TIMEOUT_MS,
   DEFAULT_CONNECT_TIMEOUT_MS,

@@ -21,7 +21,14 @@
    */
   import type { ChatSummary } from "../../domain/chat";
   import { titleFromSummary } from "../../domain/chat";
-  import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "$lib/components/ui/item";
+  import {
+    Item,
+    ItemActions,
+    ItemContent,
+    ItemDescription,
+    ItemMedia,
+    ItemTitle,
+  } from "$lib/components/ui/item";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import * as Tooltip from "$lib/components/ui/tooltip";

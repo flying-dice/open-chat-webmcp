@@ -51,9 +51,18 @@ header nav a {
   border-radius: 999px;
   border: 1px solid var(--border);
 }
-#status[data-kind="pending"] { color: var(--warn); border-color: var(--warn); }
-#status[data-kind="ok"] { color: var(--ok); border-color: var(--ok); }
-#status[data-kind="error"] { color: var(--error); border-color: var(--error); }
+#status[data-kind="pending"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+#status[data-kind="ok"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+#status[data-kind="error"] {
+  color: var(--error);
+  border-color: var(--error);
+}
 
 main {
   display: grid;
@@ -63,7 +72,9 @@ main {
 }
 
 @media (max-width: 900px) {
-  main { grid-template-columns: 1fr; }
+  main {
+    grid-template-columns: 1fr;
+  }
 }
 
 section.panel {
@@ -94,7 +105,8 @@ ul {
   padding: 0;
 }
 
-#notes-list li, #tasks-list li {
+#notes-list li,
+#tasks-list li {
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -162,9 +174,18 @@ button.secondary {
   border-radius: 999px;
   border: 1px solid var(--border);
 }
-.badge-readonly { color: var(--ok); border-color: var(--ok); }
-.badge-mutating { color: var(--warn); border-color: var(--warn); }
-.badge-untrusted { color: var(--untrusted); border-color: var(--untrusted); }
+.badge-readonly {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.badge-mutating {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.badge-untrusted {
+  color: var(--untrusted);
+  border-color: var(--untrusted);
+}
 
 #log {
   max-height: 480px;
@@ -186,7 +207,8 @@ button.secondary {
   color: var(--muted);
   font-weight: 400;
 }
-.log-args, .log-outcome {
+.log-args,
+.log-outcome {
   margin-top: 0.15rem;
   word-break: break-word;
 }
@@ -194,9 +216,18 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85em;
 }
-.outcome-ok { color: var(--ok); font-weight: 600; }
-.outcome-error { color: var(--error); font-weight: 600; }
-.outcome-pending { color: var(--warn); font-weight: 600; }
+.outcome-ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+.outcome-error {
+  color: var(--error);
+  font-weight: 600;
+}
+.outcome-pending {
+  color: var(--warn);
+  font-weight: 600;
+}
 
 .counter-box {
   display: flex;

@@ -57,7 +57,13 @@ import {
 } from "./session";
 import type { ChatStore } from "./store";
 import { normalizeChatTitle } from "./title";
-import type { ApprovalRequester, ChatPresenter, ModelGateway, PageContext, ToolExecutor } from "./ports";
+import type {
+  ApprovalRequester,
+  ChatPresenter,
+  ModelGateway,
+  PageContext,
+  ToolExecutor,
+} from "./ports";
 import { runTurn, type TurnTranscript } from "./turn";
 
 /** What a surface passes to {@link ChatService.runTurn} — the three ports that genuinely vary from one turn to the next, plus where the turn is happening. */

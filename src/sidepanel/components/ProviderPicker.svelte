@@ -140,19 +140,24 @@
 
   // ---- Trigger chip label/variant -----------------------------------
 
-  const triggerInfo = $derived.by((): { label: string; variant: "normal" | "muted" | "warning" } => {
-    if (selection.providersStatus === "loading") return { label: "Loading providers…", variant: "muted" };
-    if (selection.providers.length === 0) return { label: "No provider — set up in options", variant: "warning" };
-    const r = selection.resolution;
-    if (r.status === "dangling") return { label: "Provider removed — choose one", variant: "warning" };
-    if (r.status === "none") return { label: "Choose a model", variant: "muted" };
-    // Card 35: still needs a one-click confirmation before it can send —
-    // flag that on the trigger chip too, not just in the composer.
-    if (selection.needsConfirmation) {
-      return { label: `Confirm ${r.config.name} · ${r.model}`, variant: "warning" };
-    }
-    return { label: `${r.config.name} · ${r.model}`, variant: "normal" };
-  });
+  const triggerInfo = $derived.by(
+    (): { label: string; variant: "normal" | "muted" | "warning" } => {
+      if (selection.providersStatus === "loading")
+        return { label: "Loading providers…", variant: "muted" };
+      if (selection.providers.length === 0)
+        return { label: "No provider — set up in options", variant: "warning" };
+      const r = selection.resolution;
+      if (r.status === "dangling")
+        return { label: "Provider removed — choose one", variant: "warning" };
+      if (r.status === "none") return { label: "Choose a model", variant: "muted" };
+      // Card 35: still needs a one-click confirmation before it can send —
+      // flag that on the trigger chip too, not just in the composer.
+      if (selection.needsConfirmation) {
+        return { label: `Confirm ${r.config.name} · ${r.model}`, variant: "warning" };
+      }
+      return { label: `${r.config.name} · ${r.model}`, variant: "normal" };
+    },
+  );
 
   /**
    * What the chip actually prints. Decisions/22: the chip shows the MODEL
@@ -202,7 +207,9 @@
    * safe" rule applies here too.
    */
   // TODO: clean-code - 0.35 - SRP: mixes popover open/close + keyboard/filter UI with row-bucketing/grouping business logic (toRow, bucketOf, groups, visibleGroups, unverifiedRows, noToolsRows) in one file.
-  function bucketOf(capability: ModelCapabilities | undefined): "selectable" | "unverified" | "no-tools" {
+  function bucketOf(
+    capability: ModelCapabilities | undefined,
+  ): "selectable" | "unverified" | "no-tools" {
     if (isSelectable(capability)) return "selectable";
     if (capability?.status === "no-tools") return "no-tools";
     return "unverified";
@@ -271,7 +278,9 @@
     groups
       .map((g) => ({
         ...g,
-        filteredSelectable: g.selectableRows.filter((r) => matchesQuery(g.provider.name, r.model.id)),
+        filteredSelectable: g.selectableRows.filter((r) =>
+          matchesQuery(g.provider.name, r.model.id),
+        ),
       }))
       .filter((g) => {
         if (g.filteredSelectable.length > 0) return true;

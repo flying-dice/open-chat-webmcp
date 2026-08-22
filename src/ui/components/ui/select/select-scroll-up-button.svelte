@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { Select as SelectPrimitive } from "bits-ui";
-	import { HugeiconsIcon } from "@hugeicons/svelte"
-	import { ArrowUp01Icon } from '@hugeicons/core-free-icons';
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+  import { Select as SelectPrimitive } from "bits-ui";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowUp01Icon } from "@hugeicons/core-free-icons";
+  import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: WithoutChildrenOrChild<SelectPrimitive.ScrollUpButtonProps> = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    ...restProps
+  }: WithoutChildrenOrChild<SelectPrimitive.ScrollUpButtonProps> = $props();
 </script>
 
 <SelectPrimitive.ScrollUpButton

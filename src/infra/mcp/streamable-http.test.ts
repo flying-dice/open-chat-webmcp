@@ -29,11 +29,14 @@ function serverConfig(overrides: Partial<McpServerConfig> = {}): McpServerConfig
 }
 
 function initOk(extra?: Record<string, unknown>): Response {
-  return jsonResponse({
-    jsonrpc: "2.0",
-    id: 1,
-    result: { protocolVersion: "2025-06-18", serverInfo: { name: "srv" } },
-  }, extra ? { headers: { "Content-Type": "application/json", ...extra } } : undefined);
+  return jsonResponse(
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      result: { protocolVersion: "2025-06-18", serverInfo: { name: "srv" } },
+    },
+    extra ? { headers: { "Content-Type": "application/json", ...extra } } : undefined,
+  );
 }
 
 describe("tryStreamableHttp", () => {
@@ -64,7 +67,10 @@ describe("tryStreamableHttp", () => {
       if (body.method === "initialize") {
         return new Response(
           JSON.stringify({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "2025-06-18" } }),
-          { status: 200, headers: { "Content-Type": "application/json", "Mcp-Session-Id": "sess-abc" } },
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", "Mcp-Session-Id": "sess-abc" },
+          },
         );
       }
       return jsonResponse({ jsonrpc: "2.0", id: body.id, result: {} });
@@ -104,7 +110,12 @@ describe("tryStreamableHttp", () => {
     it("401 fails as kind 'auth', carrying the status and a safe message", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(JSON.stringify({ error: { code: -32000, message: "Token expired" } }), { status: 401 })),
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: { code: -32000, message: "Token expired" } }), {
+              status: 401,
+            }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
@@ -116,7 +127,10 @@ describe("tryStreamableHttp", () => {
     });
 
     it("403 also fails as kind 'auth'", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("forbidden", { status: 403 })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("forbidden", { status: 403 })),
+      );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
@@ -126,25 +140,49 @@ describe("tryStreamableHttp", () => {
     });
 
     it("transport 'auto': 404 signals try-legacy rather than failing", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("not found", { status: 404 })),
+      );
       const budget = createBudget(1000, undefined);
-      const attempt = await tryStreamableHttp(serverConfig({ transport: "auto" }), {}, clientInfo, budget);
+      const attempt = await tryStreamableHttp(
+        serverConfig({ transport: "auto" }),
+        {},
+        clientInfo,
+        budget,
+      );
       budget.cleanup();
       expect(attempt).toEqual({ outcome: "try-legacy" });
     });
 
     it("transport 'streamable-http' (pinned): the SAME 404 fails outright instead", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("not found", { status: 404 })),
+      );
       const budget = createBudget(1000, undefined);
-      const attempt = await tryStreamableHttp(serverConfig({ transport: "streamable-http" }), {}, clientInfo, budget);
+      const attempt = await tryStreamableHttp(
+        serverConfig({ transport: "streamable-http" }),
+        {},
+        clientInfo,
+        budget,
+      );
       budget.cleanup();
       expect(attempt.outcome).toBe("failed");
     });
 
     it("an ordinary 500 fails with a classified HTTP error, not try-legacy", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("server error", { status: 500 })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("server error", { status: 500 })),
+      );
       const budget = createBudget(1000, undefined);
-      const attempt = await tryStreamableHttp(serverConfig({ transport: "auto" }), {}, clientInfo, budget);
+      const attempt = await tryStreamableHttp(
+        serverConfig({ transport: "auto" }),
+        {},
+        clientInfo,
+        budget,
+      );
       budget.cleanup();
       expect(attempt.outcome).toBe("failed");
       if (attempt.outcome !== "failed") return;
@@ -154,21 +192,36 @@ describe("tryStreamableHttp", () => {
     it("a 2xx with an unrecognized content type fails as not-mcp-endpoint", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response("<html>hi</html>", { status: 200, headers: { "Content-Type": "text/html" } })),
+        vi.fn(
+          async () =>
+            new Response("<html>hi</html>", {
+              status: 200,
+              headers: { "Content-Type": "text/html" },
+            }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
       expect(attempt).toEqual({
         outcome: "failed",
-        error: { kind: "not-mcp-endpoint", message: 'Unexpected content type "text/html" from the MCP endpoint.' },
+        error: {
+          kind: "not-mcp-endpoint",
+          message: 'Unexpected content type "text/html" from the MCP endpoint.',
+        },
       });
     });
 
     it("a JSON content type with a body that isn't valid JSON fails as not-mcp-endpoint", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response("{not json", { status: 200, headers: { "Content-Type": "application/json" } })),
+        vi.fn(
+          async () =>
+            new Response("{not json", {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
@@ -179,7 +232,10 @@ describe("tryStreamableHttp", () => {
     });
 
     it("valid JSON that isn't a JSON-RPC envelope fails as not-mcp-endpoint", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ hello: "world" })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => jsonResponse({ hello: "world" })),
+      );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
@@ -191,12 +247,18 @@ describe("tryStreamableHttp", () => {
     it("an SSE content type with no body fails as not-mcp-endpoint", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(null, { status: 200, headers: { "Content-Type": "text/event-stream" } })),
+        vi.fn(
+          async () =>
+            new Response(null, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(attempt).toEqual({ outcome: "failed", error: { kind: "not-mcp-endpoint", message: "SSE response had no body." } });
+      expect(attempt).toEqual({
+        outcome: "failed",
+        error: { kind: "not-mcp-endpoint", message: "SSE response had no body." },
+      });
     });
 
     it("an SSE response whose initialize result fails validation surfaces that failure, not a generic one", async () => {
@@ -204,14 +266,19 @@ describe("tryStreamableHttp", () => {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(
-            enc.encode(`data: ${JSON.stringify({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "not-a-real-version" } })}\n\n`),
+            enc.encode(
+              `data: ${JSON.stringify({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "not-a-real-version" } })}\n\n`,
+            ),
           );
           controller.close();
         },
       });
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })),
+        vi.fn(
+          async () =>
+            new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
@@ -260,7 +327,10 @@ describe("tryStreamableHttp", () => {
       const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
         const body = JSON.parse(init.body as string);
         if (body.method === "initialize") return initOk();
-        return new Response("plain text", { status: 200, headers: { "Content-Type": "text/plain" } });
+        return new Response("plain text", {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
       });
       vi.stubGlobal("fetch", fetchMock);
       const budget = createBudget(1000, undefined);

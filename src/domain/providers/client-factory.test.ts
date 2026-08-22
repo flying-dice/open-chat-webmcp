@@ -34,23 +34,26 @@ function config(type: ProviderType): ProviderConfig {
 }
 
 describe("createProviderClientFactory", () => {
-  test.each(ALL_PROVIDER_TYPES)("dispatches a %s config to the %s factory, and no other", (kind) => {
-    const calls: ProviderType[] = [];
-    const factories: ProviderClientFactories = {
-      ollama: () => {
-        calls.push("ollama");
-        return stubClient("ollama");
-      },
-      openai: () => {
-        calls.push("openai");
-        return stubClient("openai");
-      },
-    };
-    const build = createProviderClientFactory(factories);
-    const client = build(config(kind));
-    expect(client.type).toBe(kind);
-    expect(calls).toEqual([kind]);
-  });
+  test.each(ALL_PROVIDER_TYPES)(
+    "dispatches a %s config to the %s factory, and no other",
+    (kind) => {
+      const calls: ProviderType[] = [];
+      const factories: ProviderClientFactories = {
+        ollama: () => {
+          calls.push("ollama");
+          return stubClient("ollama");
+        },
+        openai: () => {
+          calls.push("openai");
+          return stubClient("openai");
+        },
+      };
+      const build = createProviderClientFactory(factories);
+      const client = build(config(kind));
+      expect(client.type).toBe(kind);
+      expect(calls).toEqual([kind]);
+    },
+  );
 
   it("passes the resolved config through to the chosen factory unchanged", () => {
     let received: ProviderConfig | undefined;

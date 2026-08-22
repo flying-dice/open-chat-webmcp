@@ -36,14 +36,19 @@ function normalizeServerInfo(raw: unknown): McpServerInfo | undefined {
   };
 }
 
-export function validateInitializeResult(response: JsonRpcResponseMsg): McpResult<McpConnectionInfo> {
+export function validateInitializeResult(
+  response: JsonRpcResponseMsg,
+): McpResult<McpConnectionInfo> {
   if (response.error) return { ok: false, error: classifyRpcError(response.error) };
 
   const result = response.result;
   if (!isRecord(result) || typeof result.protocolVersion !== "string") {
     return {
       ok: false,
-      error: { kind: "invalid-response", message: "initialize response was missing protocolVersion." },
+      error: {
+        kind: "invalid-response",
+        message: "initialize response was missing protocolVersion.",
+      },
     };
   }
   if (!SUPPORTED_PROTOCOL_VERSIONS.includes(result.protocolVersion)) {

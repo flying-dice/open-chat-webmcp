@@ -23,14 +23,20 @@ describe("getPreset", () => {
   });
 
   it("returns the matching preset for a known id", () => {
-    expect(getPreset("ollama")).toEqual(expect.objectContaining({ id: "ollama", type: "ollama", local: true }));
+    expect(getPreset("ollama")).toEqual(
+      expect.objectContaining({ id: "ollama", type: "ollama", local: true }),
+    );
   });
 });
 
 describe("iconKeyForProvider", () => {
   it("uses the preset's own icon when presetId still matches a known backend", () => {
-    expect(iconKeyForProvider({ type: "openai", presetId: "openai" })).toBe(getPreset("openai")?.icon);
-    expect(iconKeyForProvider({ type: "ollama", presetId: "ollama" })).toBe(getPreset("ollama")?.icon);
+    expect(iconKeyForProvider({ type: "openai", presetId: "openai" })).toBe(
+      getPreset("openai")?.icon,
+    );
+    expect(iconKeyForProvider({ type: "ollama", presetId: "ollama" })).toBe(
+      getPreset("ollama")?.icon,
+    );
   });
 
   it("falls back to the ollama glyph for an ollama-type provider with no matching preset", () => {
@@ -40,7 +46,9 @@ describe("iconKeyForProvider", () => {
 
   it("falls back to the generic glyph for an openai-type provider with no matching preset", () => {
     expect(iconKeyForProvider({ type: "openai", presetId: undefined })).toBe("smart_toy");
-    expect(iconKeyForProvider({ type: "openai", presetId: "since-removed-preset" })).toBe("smart_toy");
+    expect(iconKeyForProvider({ type: "openai", presetId: "since-removed-preset" })).toBe(
+      "smart_toy",
+    );
   });
 
   it("never lets an unrecognized presetId of the wrong type borrow another backend's icon", () => {

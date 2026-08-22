@@ -61,7 +61,10 @@ describe("McpServerForm", () => {
       status: "signed-in",
       auth: fakeOAuthAuth(),
     });
-    services.mcpSignIn.completeManual = async () => ({ status: "signed-in", auth: fakeOAuthAuth() });
+    services.mcpSignIn.completeManual = async () => ({
+      status: "signed-in",
+      auth: fakeOAuthAuth(),
+    });
     services.mcpSignIn.redirectUri = () => "https://fake-extension-id.chromiumapp.org/";
     services.permissions.has = async () => true;
     services.permissions.request = async () => true;
@@ -81,7 +84,11 @@ describe("McpServerForm", () => {
     };
   }
 
-  async function selectOption(user: ReturnType<typeof userEvent.setup>, triggerLabel: string, optionName: string) {
+  async function selectOption(
+    user: ReturnType<typeof userEvent.setup>,
+    triggerLabel: string,
+    optionName: string,
+  ) {
     // The trigger IS a <button>, and its <Field.Label for=...> makes its
     // accessible NAME the label text ("Transport"/"Authentication"), not its
     // current value — confirmed by direct inspection (dom-accessibility-api
@@ -117,7 +124,9 @@ describe("McpServerForm", () => {
     const user = userEvent.setup();
     render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
 
-    expect(screen.getByRole("button", { name: "Transport" })).toHaveTextContent("Auto (recommended)");
+    expect(screen.getByRole("button", { name: "Transport" })).toHaveTextContent(
+      "Auto (recommended)",
+    );
     await selectOption(user, "Transport", "Streamable HTTP");
     expect(screen.getByRole("button", { name: "Transport" })).toHaveTextContent("Streamable HTTP");
   });
@@ -326,9 +335,7 @@ describe("McpServerForm", () => {
     await user.type(screen.getByPlaceholderText("Value"), "Bearer xyz");
 
     // No auth configured yet (authMode is "none") — not reserved.
-    expect(
-      screen.queryByText(/Authorization" is already set/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Authorization" is already set/)).not.toBeInTheDocument();
 
     await selectOption(user, "Authentication", "Bearer token");
     await user.type(screen.getByLabelText("Bearer token"), "a-real-token");
@@ -399,7 +406,9 @@ describe("McpServerForm", () => {
     await user.click(screen.getByRole("button", { name: "Add server" }));
 
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ auth: expect.objectContaining({ type: "oauth", accessToken: "fake-token" }) }),
+      expect.objectContaining({
+        auth: expect.objectContaining({ type: "oauth", accessToken: "fake-token" }),
+      }),
     );
   });
 });

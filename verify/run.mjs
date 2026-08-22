@@ -85,9 +85,13 @@ async function main() {
   console.log(demoHandle.alreadyRunning ? "Demo server already running." : "Demo server started.");
 
   try {
-    console.log("Resolving Chrome for Testing and launching it with dist-verify/ loaded unpacked, WebMCP enabled ...");
+    console.log(
+      "Resolving Chrome for Testing and launching it with dist-verify/ loaded unpacked, WebMCP enabled ...",
+    );
     ext = await launchExtension({ enableWebMcp: true });
-    console.log(`Chrome for Testing ${ext.buildId}; extension id resolved at runtime: ${ext.extensionId}`);
+    console.log(
+      `Chrome for Testing ${ext.buildId}; extension id resolved at runtime: ${ext.extensionId}`,
+    );
 
     const { context, extensionId } = ext;
 
@@ -104,30 +108,41 @@ async function main() {
     // Tool discovery via getTools(), against the real document.modelContext
     // ---------------------------------------------------------------------
     let tabId = null;
-    await report.run("Tool discovery works against demo/index.html via native getTools()", async () => {
-      await demoPage.goto(DEMO_INDEX_URL);
-      await demoPage.waitForFunction(
-        () => document.getElementById("status")?.dataset.kind === "ok",
-        { timeout: 10000 },
-      );
-      tabId = await findTabId(controlPage, DEMO_INDEX_URL);
-      assert(tabId !== null, `could not find an open tab for ${DEMO_INDEX_URL}`);
-      const res = await pollUntil(
-        () => getToolsResponse(controlPage, tabId),
-        (r) => r.tools.length === EXPECTED_FIXED_TOOLS.length,
-        { timeoutMs: 5000, label: "worker registry to report all 7 fixed demo tools" },
-      );
-      assert(res.available === true, `expected available:true on a page with document.modelContext, got ${res.available}`);
-      assertSetEqual(res.tools.map((t) => t.name), EXPECTED_FIXED_TOOLS, "tool set from demo/index.html");
+    await report.run(
+      "Tool discovery works against demo/index.html via native getTools()",
+      async () => {
+        await demoPage.goto(DEMO_INDEX_URL);
+        await demoPage.waitForFunction(
+          () => document.getElementById("status")?.dataset.kind === "ok",
+          { timeout: 10000 },
+        );
+        tabId = await findTabId(controlPage, DEMO_INDEX_URL);
+        assert(tabId !== null, `could not find an open tab for ${DEMO_INDEX_URL}`);
+        const res = await pollUntil(
+          () => getToolsResponse(controlPage, tabId),
+          (r) => r.tools.length === EXPECTED_FIXED_TOOLS.length,
+          { timeoutMs: 5000, label: "worker registry to report all 7 fixed demo tools" },
+        );
+        assert(
+          res.available === true,
+          `expected available:true on a page with document.modelContext, got ${res.available}`,
+        );
+        assertSetEqual(
+          res.tools.map((t) => t.name),
+          EXPECTED_FIXED_TOOLS,
+          "tool set from demo/index.html",
+        );
 
-      const readNotes = res.tools.find((t) => t.name === "read-notes-content");
-      assert(readNotes, "read-notes-content tool missing from discovery");
-      assert(
-        readNotes.annotations?.readOnlyHint === true && readNotes.annotations?.untrustedContentHint === true,
-        `expected read-notes-content annotations {readOnlyHint:true, untrustedContentHint:true}, got ${JSON.stringify(readNotes.annotations)}`,
-      );
-      return { tabId, tools: res.tools.map((t) => t.name) };
-    });
+        const readNotes = res.tools.find((t) => t.name === "read-notes-content");
+        assert(readNotes, "read-notes-content tool missing from discovery");
+        assert(
+          readNotes.annotations?.readOnlyHint === true &&
+            readNotes.annotations?.untrustedContentHint === true,
+          `expected read-notes-content annotations {readOnlyHint:true, untrustedContentHint:true}, got ${JSON.stringify(readNotes.annotations)}`,
+        );
+        return { tabId, tools: res.tools.map((t) => t.name) };
+      },
+    );
 
     // ---------------------------------------------------------------------
     // Registry clears on navigation (kept from the pre-46 suite — still the
@@ -141,18 +156,23 @@ async function main() {
       const res = await pollUntil(
         () => getToolsResponse(controlPage, tabId),
         (r) => r.tools.length === 0,
-        { timeoutMs: 5000, label: "worker registry to clear after navigating away from demo/index.html" },
+        {
+          timeoutMs: 5000,
+          label: "worker registry to clear after navigating away from demo/index.html",
+        },
       );
-      assert(res.tools.length === 0, `expected an empty tool list after navigation, got: ${res.tools.map((t) => t.name).join(", ")}`);
+      assert(
+        res.tools.length === 0,
+        `expected an empty tool list after navigation, got: ${res.tools.map((t) => t.name).join(", ")}`,
+      );
       return { toolsAfterNav: res.tools.length };
     });
 
     // Navigate back so the remaining demo-page checks have a live tab again.
     await demoPage.goto(DEMO_INDEX_URL);
-    await demoPage.waitForFunction(
-      () => document.getElementById("status")?.dataset.kind === "ok",
-      { timeout: 10000 },
-    );
+    await demoPage.waitForFunction(() => document.getElementById("status")?.dataset.kind === "ok", {
+      timeout: 10000,
+    });
     tabId = await pollUntil(
       () => findTabId(controlPage, DEMO_INDEX_URL),
       (id) => id !== null,
@@ -161,7 +181,10 @@ async function main() {
     await pollUntil(
       () => getTools(controlPage, tabId),
       (t) => t.length === EXPECTED_FIXED_TOOLS.length,
-      { timeoutMs: 5000, label: "worker registry to re-report all 7 tools after navigating back to demo/index.html" },
+      {
+        timeoutMs: 5000,
+        label: "worker registry to re-report all 7 tools after navigating back to demo/index.html",
+      },
     );
 
     // ---------------------------------------------------------------------
@@ -186,7 +209,10 @@ async function main() {
       const afterUnregister = await pollUntil(
         () => getTools(controlPage, tabId),
         (t) => !t.some((x) => x.name === "dynamic-echo"),
-        { timeoutMs: 3000, label: '"dynamic-echo" to disappear from the registry after AbortController.abort()' },
+        {
+          timeoutMs: 3000,
+          label: '"dynamic-echo" to disappear from the registry after AbortController.abort()',
+        },
       );
       assert(
         !afterUnregister.some((t) => t.name === "dynamic-echo"),
@@ -199,50 +225,70 @@ async function main() {
     // Tool call end to end: success, error, and timeout paths, all through
     // the real executeTool() round trip (src/content/relay.ts).
     // ---------------------------------------------------------------------
-    await report.run("Tool call end-to-end: read-page-state round-trips through executeTool with parsed MCP content", async () => {
-      const res = await callTool(controlPage, tabId, "read-page-state", {});
-      assert(res.ok === true, `expected ok:true, got ${JSON.stringify(res)}`);
-      const data = parseMcpContent(res.result);
-      assert(
-        typeof data.title === "string" && typeof data.url === "string",
-        `unexpected parsed content shape: ${JSON.stringify(data)}`,
-      );
-      return data;
-    });
+    await report.run(
+      "Tool call end-to-end: read-page-state round-trips through executeTool with parsed MCP content",
+      async () => {
+        const res = await callTool(controlPage, tabId, "read-page-state", {});
+        assert(res.ok === true, `expected ok:true, got ${JSON.stringify(res)}`);
+        const data = parseMcpContent(res.result);
+        assert(
+          typeof data.title === "string" && typeof data.url === "string",
+          `unexpected parsed content shape: ${JSON.stringify(data)}`,
+        );
+        return data;
+      },
+    );
 
-    await report.run("Tool call end-to-end: add-note mutates the page and create-task accepts a rich schema", async () => {
-      const addRes = await callTool(controlPage, tabId, "add-note", { text: "verify harness note" });
-      assert(addRes.ok === true, `expected ok:true from add-note, got ${JSON.stringify(addRes)}`);
-      const addData = parseMcpContent(addRes.result);
-      assert(addData.added === "verify harness note", `unexpected add-note result: ${JSON.stringify(addData)}`);
+    await report.run(
+      "Tool call end-to-end: add-note mutates the page and create-task accepts a rich schema",
+      async () => {
+        const addRes = await callTool(controlPage, tabId, "add-note", {
+          text: "verify harness note",
+        });
+        assert(addRes.ok === true, `expected ok:true from add-note, got ${JSON.stringify(addRes)}`);
+        const addData = parseMcpContent(addRes.result);
+        assert(
+          addData.added === "verify harness note",
+          `unexpected add-note result: ${JSON.stringify(addData)}`,
+        );
 
-      const taskRes = await callTool(controlPage, tabId, "create-task", {
-        title: "Ship it",
-        priority: "high",
-        assignee: { name: "Jonathan" },
-      });
-      assert(taskRes.ok === true, `expected ok:true from create-task, got ${JSON.stringify(taskRes)}`);
-      const taskData = parseMcpContent(taskRes.result);
-      assert(taskData.priority === "high", `unexpected create-task result: ${JSON.stringify(taskData)}`);
-      return { addData, taskData };
-    });
+        const taskRes = await callTool(controlPage, tabId, "create-task", {
+          title: "Ship it",
+          priority: "high",
+          assignee: { name: "Jonathan" },
+        });
+        assert(
+          taskRes.ok === true,
+          `expected ok:true from create-task, got ${JSON.stringify(taskRes)}`,
+        );
+        const taskData = parseMcpContent(taskRes.result);
+        assert(
+          taskData.priority === "high",
+          `unexpected create-task result: ${JSON.stringify(taskData)}`,
+        );
+        return { addData, taskData };
+      },
+    );
 
-    await report.run("Tool call end-to-end: always-throws surfaces a clean error, not a hang or crash", async () => {
-      const res = await callTool(controlPage, tabId, "always-throws", {});
-      assert(res.ok === false, `expected ok:false, got ${JSON.stringify(res)}`);
-      // Chrome's native executeTool() does not propagate the thrown Error's
-      // own message text across the WebIDL boundary — it reports its own
-      // generic wording instead. Measured directly against Chrome for
-      // Testing 152.0.7977.54 while building this harness (card 46); the
-      // check is that a throwing tool cleanly surfaces AS an error (ok:false,
-      // some message), not that the original "Deliberate failure..." text
-      // survives.
-      assert(
-        typeof res.error === "string" && res.error.length > 0,
-        `expected a non-empty error message for a throwing tool, got: ${res.error}`,
-      );
-      return { error: res.error };
-    });
+    await report.run(
+      "Tool call end-to-end: always-throws surfaces a clean error, not a hang or crash",
+      async () => {
+        const res = await callTool(controlPage, tabId, "always-throws", {});
+        assert(res.ok === false, `expected ok:false, got ${JSON.stringify(res)}`);
+        // Chrome's native executeTool() does not propagate the thrown Error's
+        // own message text across the WebIDL boundary — it reports its own
+        // generic wording instead. Measured directly against Chrome for
+        // Testing 152.0.7977.54 while building this harness (card 46); the
+        // check is that a throwing tool cleanly surfaces AS an error (ok:false,
+        // some message), not that the original "Deliberate failure..." text
+        // survives.
+        assert(
+          typeof res.error === "string" && res.error.length > 0,
+          `expected a non-empty error message for a throwing tool, got: ${res.error}`,
+        );
+        return { error: res.error };
+      },
+    );
 
     await report.run(
       "Tool call end-to-end: hangs-forever hits the relay's own executeTool timeout and returns a clean error",
@@ -252,11 +298,13 @@ async function main() {
         const elapsedMs = Date.now() - startedAt;
         assert(res.ok === false, `expected ok:false, got ${JSON.stringify(res)}`);
         assert(
-          typeof res.error === "string" && res.error.includes(`Timed out after ${RELAY_EXECUTE_TIMEOUT_MS}ms`),
+          typeof res.error === "string" &&
+            res.error.includes(`Timed out after ${RELAY_EXECUTE_TIMEOUT_MS}ms`),
           `expected the relay's own EXECUTE_TIMEOUT_MS=${RELAY_EXECUTE_TIMEOUT_MS} error (src/content/relay.ts), got: ${res.error}`,
         );
         assert(
-          elapsedMs >= RELAY_EXECUTE_TIMEOUT_MS - 1000 && elapsedMs < RELAY_EXECUTE_TIMEOUT_MS + 5000,
+          elapsedMs >= RELAY_EXECUTE_TIMEOUT_MS - 1000 &&
+            elapsedMs < RELAY_EXECUTE_TIMEOUT_MS + 5000,
           `expected the timeout to fire close to the relay's ${RELAY_EXECUTE_TIMEOUT_MS}ms (not the worker's 30s CALL_TIMEOUT_MS backstop in src/background/sw.ts), took ${elapsedMs}ms`,
         );
         return { error: res.error, elapsedMs };
@@ -270,7 +318,10 @@ async function main() {
       "Registry recovers after the MV3 service worker is killed (runtime:refresh-tools path)",
       async () => {
         const baseline = await getTools(controlPage, tabId);
-        assert(baseline.length > 0, "expected a non-empty baseline tool list before killing the worker");
+        assert(
+          baseline.length > 0,
+          "expected a non-empty baseline tool list before killing the worker",
+        );
 
         const cdp = await attachServiceWorkerCdp(context);
         try {
@@ -291,7 +342,10 @@ async function main() {
           const recovered = await getTools(controlPage, tabId);
 
           const restarted = await cdp.waitForStatus(running.versionId, "running", 8000);
-          assert(restarted, "CDP never confirmed the service worker came back to runningStatus 'running'");
+          assert(
+            restarted,
+            "CDP never confirmed the service worker came back to runningStatus 'running'",
+          );
           assert(
             restarted.versionId === running.versionId,
             "expected the same service worker versionId to restart (a different id would mean this wasn't a restart)",
@@ -360,8 +414,13 @@ async function main() {
           () => document.getElementById("status")?.dataset.kind === "error",
           { timeout: 10000 },
         );
-        const modelContextIsUndefined = await unavailDemoPage.evaluate(() => document.modelContext === undefined);
-        assert(modelContextIsUndefined, "expected document.modelContext to be undefined without --enable-features=WebMCP");
+        const modelContextIsUndefined = await unavailDemoPage.evaluate(
+          () => document.modelContext === undefined,
+        );
+        assert(
+          modelContextIsUndefined,
+          "expected document.modelContext to be undefined without --enable-features=WebMCP",
+        );
 
         const unavailTabId = await pollUntil(
           () => findTabId(unavailControlPage, DEMO_INDEX_URL),

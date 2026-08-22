@@ -4,12 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeChromeStorage } from "../chrome-storage/testing/fake-chrome-storage";
-import {
-  chat,
-  getCapabilities,
-  listModels,
-  type OllamaChatParams,
-} from "./client";
+import { chat, getCapabilities, listModels, type OllamaChatParams } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -78,7 +73,9 @@ describe("listModels", () => {
   });
 
   it("applies custom headers (decisions/15) on top of no Content-Type for a GET", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ models: [] }));
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      jsonResponse({ models: [] }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await listModels({
@@ -122,7 +119,9 @@ describe("error mapping", () => {
   it("maps a non-403 HTTP error to kind 'http' with status/statusText/body", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("server exploded", { status: 500, statusText: "Internal Error" })),
+      vi.fn(
+        async () => new Response("server exploded", { status: 500, statusText: "Internal Error" }),
+      ),
     );
 
     const result = await listModels({ baseUrl: "http://localhost:11434" });
@@ -220,7 +219,10 @@ describe("getCapabilities", () => {
   });
 
   it("no 'tools' entry maps to no-tools", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ capabilities: ["completion"] })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ capabilities: ["completion"] })),
+    );
     const result = await getCapabilities({ name: "m", digest: "d2" }, { baseUrl: "http://x" });
     expect(result).toEqual({ ok: true, value: { status: "no-tools", detail: ["completion"] } });
   });
@@ -239,7 +241,9 @@ describe("getCapabilities", () => {
   });
 
   it("Content-Type is applied for the POST and wins over a conflicting custom header", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ capabilities: [] }));
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      jsonResponse({ capabilities: [] }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await getCapabilities(
@@ -307,17 +311,23 @@ describe("chat() — NDJSON stream parsing", () => {
     });
     const toolCallId = (events[2] as { toolCalls: { id?: string }[] }).toolCalls[0].id;
     expect(toolCallId).toBeTruthy();
-    const done = events[3] as { type: string; message: { tool_calls?: unknown[] }; stats: { doneReason?: string; evalCount?: number } };
+    const done = events[3] as {
+      type: string;
+      message: { tool_calls?: unknown[] };
+      stats: { doneReason?: string; evalCount?: number };
+    };
     expect(done.type).toBe("done");
     expect(done.stats.doneReason).toBe("stop");
     expect(done.stats.evalCount).toBe(42);
     // The tool call id on "done"'s message matches the one synthesized for the "tool-calls" event.
-    expect((done.message.tool_calls as { id?: string }[] | undefined)).toBeUndefined();
+    expect(done.message.tool_calls as { id?: string }[] | undefined).toBeUndefined();
   });
 
   it("reassembles a NDJSON line split across an arbitrary chunk boundary", async () => {
-    const line = JSON.stringify({ message: { role: "assistant", content: "Hello" }, done: false }) + "\n";
-    const doneLine = JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n";
+    const line =
+      JSON.stringify({ message: { role: "assistant", content: "Hello" }, done: false }) + "\n";
+    const doneLine =
+      JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n";
     const full = line + doneLine;
     const bytes = enc.encode(full);
     // Split mid-line at an arbitrary byte offset, not aligned to `\n`.
@@ -333,7 +343,11 @@ describe("chat() — NDJSON stream parsing", () => {
   });
 
   it("flushes a trailing partial line with no terminating newline", async () => {
-    const body = JSON.stringify({ message: { role: "assistant", content: "" }, done: true, done_reason: "stop" });
+    const body = JSON.stringify({
+      message: { role: "assistant", content: "" },
+      done: true,
+      done_reason: "stop",
+    });
     // No trailing \n at all — server closed the stream mid-line-terminator.
     vi.stubGlobal(
       "fetch",
@@ -377,7 +391,10 @@ describe("chat() — NDJSON stream parsing", () => {
         }),
       },
     } as unknown as Response;
-    vi.stubGlobal("fetch", vi.fn(async () => abortingResponse));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => abortingResponse),
+    );
 
     const events = await collect(chat(baseParams()));
     expect(events).toEqual([{ type: "error", error: { kind: "aborted" } }]);
@@ -390,7 +407,10 @@ describe("chat() — NDJSON stream parsing", () => {
     );
     const events = await collect(chat(baseParams()));
     expect(events).toEqual([
-      { type: "error", error: { kind: "invalid-response", message: "Response had no body to stream." } },
+      {
+        type: "error",
+        error: { kind: "invalid-response", message: "Response had no body to stream." },
+      },
     ]);
   });
 
@@ -415,7 +435,9 @@ describe("chat() — NDJSON stream parsing", () => {
     await collect(
       chat(
         baseParams({
-          tools: [{ name: "search", description: "search the web", inputSchema: { type: "object" } }],
+          tools: [
+            { name: "search", description: "search the web", inputSchema: { type: "object" } },
+          ],
         }),
       ),
     );
@@ -423,7 +445,10 @@ describe("chat() — NDJSON stream parsing", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const sentBody = JSON.parse(init.body as string);
     expect(sentBody.tools).toEqual([
-      { type: "function", function: { name: "search", description: "search the web", parameters: { type: "object" } } },
+      {
+        type: "function",
+        function: { name: "search", description: "search the web", parameters: { type: "object" } },
+      },
     ]);
   });
 });
@@ -446,7 +471,9 @@ describe("chaos: stream faults", () => {
     // treated as one: the partial content already streamed stays (never
     // discarded), but the generator's last event is a terminal error rather
     // than ending silently as though the reply were complete.
-    const body = JSON.stringify({ message: { role: "assistant", content: "The answer is" }, done: false }) + "\n";
+    const body =
+      JSON.stringify({ message: { role: "assistant", content: "The answer is" }, done: false }) +
+      "\n";
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => streamResponse([enc.encode(body)])),
@@ -459,7 +486,8 @@ describe("chaos: stream faults", () => {
         type: "error",
         error: {
           kind: "invalid-response",
-          message: "The connection closed before Ollama sent a completion signal — the reply above may be truncated.",
+          message:
+            "The connection closed before Ollama sent a completion signal — the reply above may be truncated.",
         },
       },
     ]);
@@ -470,7 +498,9 @@ describe("chaos: stream faults", () => {
     // exercises `chat()`'s POST-loop flush of a trailing partial line (no
     // `\n` at all), the other code path that calls `parseNdjsonLine`.
     const body =
-      JSON.stringify({ message: { role: "assistant", content: "ok" }, done: false }) + "\n" + "{not json, no newline";
+      JSON.stringify({ message: { role: "assistant", content: "ok" }, done: false }) +
+      "\n" +
+      "{not json, no newline";
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => streamResponse([enc.encode(body)])),
@@ -495,7 +525,10 @@ describe("chaos: stream faults", () => {
               return Promise.resolve({
                 done: false,
                 value: enc.encode(
-                  JSON.stringify({ message: { role: "assistant", content: "partial" }, done: false }) + "\n",
+                  JSON.stringify({
+                    message: { role: "assistant", content: "partial" },
+                    done: false,
+                  }) + "\n",
                 ),
               });
             }
@@ -505,7 +538,10 @@ describe("chaos: stream faults", () => {
         }),
       },
     } as unknown as Response;
-    vi.stubGlobal("fetch", vi.fn(async () => abortingResponse));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => abortingResponse),
+    );
 
     const events = await collect(chat(baseParams()));
     expect(events).toEqual([

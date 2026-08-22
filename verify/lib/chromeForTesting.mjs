@@ -60,7 +60,7 @@ export async function resolveChromeForTesting() {
     buildId = await resolveBuildId(Browser.CHROME, platform, ChromeReleaseChannel.STABLE);
   } catch (err) {
     throw new Error(
-      "verify: could not resolve the current Chrome for Testing \"stable\" build id (this needs network " +
+      'verify: could not resolve the current Chrome for Testing "stable" build id (this needs network ' +
         `access on first run, or after a version bump): ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -76,7 +76,9 @@ export async function resolveChromeForTesting() {
     return { executablePath, buildId, platform };
   }
 
-  console.log(`Chrome for Testing ${buildId} (${platform}) not found in ${CACHE_DIR} — downloading (first run only)...`);
+  console.log(
+    `Chrome for Testing ${buildId} (${platform}) not found in ${CACHE_DIR} — downloading (first run only)...`,
+  );
   let installed;
   try {
     installed = await install({

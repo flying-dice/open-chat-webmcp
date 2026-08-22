@@ -118,11 +118,7 @@ function looksLikeNoRelay(message: string): boolean {
   );
 }
 
-function sendToRelay(
-  tabId: number,
-  msg: unknown,
-  timeoutMs: number,
-): Promise<RelayReachResult> {
+function sendToRelay(tabId: number, msg: unknown, timeoutMs: number): Promise<RelayReachResult> {
   return new Promise((resolve) => {
     let settled = false;
     const timer = setTimeout(() => {
@@ -267,9 +263,7 @@ async function pullToolsFromRelay(
     return { ok: false, restricted: result.reason === "no-relay" };
   }
   if (!isToolsUpdatedMessage(result.response)) {
-    console.warn(
-      `[webmcp][sw] tab ${tabId} relay replied to refresh with an unexpected shape`,
-    );
+    console.warn(`[webmcp][sw] tab ${tabId} relay replied to refresh with an unexpected shape`);
     return { ok: false, restricted: false };
   }
   return {
@@ -306,9 +300,7 @@ function broadcastToolsUpdated(msg: RuntimeToolsUpdatedMessage): void {
 // Request handlers
 // ---------------------------------------------------------------------------
 
-async function handleGetTools(
-  req: RuntimeGetToolsRequest,
-): Promise<RuntimeGetToolsResponse> {
+async function handleGetTools(req: RuntimeGetToolsRequest): Promise<RuntimeGetToolsResponse> {
   const cached = registry.get(req.tabId);
   if (cached) {
     return {
@@ -353,9 +345,7 @@ async function handleGetTools(
   };
 }
 
-async function handleCallTool(
-  req: RuntimeCallToolRequest,
-): Promise<RuntimeCallToolResponse> {
+async function handleCallTool(req: RuntimeCallToolRequest): Promise<RuntimeCallToolResponse> {
   const result = await sendToRelay(req.tabId, req, SW_CALL_TIMEOUT_MS);
 
   if (!result.ok) {
@@ -402,7 +392,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return false;
       }
       const tabId = sender.tab.id;
-      setRegistryEntry(tabId, { origin: message.origin, available: message.available, tools: message.tools });
+      setRegistryEntry(tabId, {
+        origin: message.origin,
+        available: message.available,
+        tools: message.tools,
+      });
       broadcastToolsUpdated({ ...message, tabId });
       return false;
     }

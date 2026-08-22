@@ -69,15 +69,25 @@
 
   let { mode, initial, onSubmit, onCancel }: Props = $props();
 
-  const TRANSPORT_OPTIONS: { value: McpTransportPreference; label: string; description: string }[] = [
-    {
-      value: "auto",
-      label: "Auto (recommended)",
-      description: "Tries the modern Streamable HTTP transport first, falling back to legacy HTTP+SSE.",
-    },
-    { value: "streamable-http", label: "Streamable HTTP", description: "Pin to the modern transport only." },
-    { value: "sse", label: "HTTP+SSE (legacy)", description: "Pin to the deprecated transport only." },
-  ];
+  const TRANSPORT_OPTIONS: { value: McpTransportPreference; label: string; description: string }[] =
+    [
+      {
+        value: "auto",
+        label: "Auto (recommended)",
+        description:
+          "Tries the modern Streamable HTTP transport first, falling back to legacy HTTP+SSE.",
+      },
+      {
+        value: "streamable-http",
+        label: "Streamable HTTP",
+        description: "Pin to the modern transport only.",
+      },
+      {
+        value: "sse",
+        label: "HTTP+SSE (legacy)",
+        description: "Pin to the deprecated transport only.",
+      },
+    ];
 
   // `initial` (when present) only ever seeds this form's editable state
   // once, at mount — same "uncontrolled after mount" posture as
@@ -94,10 +104,18 @@
   // `buildData()` reads from.
   type AuthMode = "none" | "bearer" | "oauth";
   let authMode = $state<AuthMode>(
-    untrack(() => (initial?.auth?.type === "bearer" ? "bearer" : initial?.auth?.type === "oauth" ? "oauth" : "none")),
+    untrack(() =>
+      initial?.auth?.type === "bearer"
+        ? "bearer"
+        : initial?.auth?.type === "oauth"
+          ? "oauth"
+          : "none",
+    ),
   );
 
-  let authToken = $state(untrack(() => (initial?.auth?.type === "bearer" ? initial.auth.token : "")));
+  let authToken = $state(
+    untrack(() => (initial?.auth?.type === "bearer" ? initial.auth.token : "")),
+  );
   let showAuthToken = $state(false);
 
   // The OAuth credential, held only in local state until the surrounding
@@ -271,7 +289,10 @@
     testOutcome = undefined;
     const draft = buildData();
     if (!originPatternForUrl(draft.url)) {
-      testOutcome = { kind: "invalid-response", message: "Enter a valid http:// or https:// URL first." };
+      testOutcome = {
+        kind: "invalid-response",
+        message: "Enter a valid http:// or https:// URL first.",
+      };
       return;
     }
     const headerError = firstHeaderError(headers, isReservedHeader);

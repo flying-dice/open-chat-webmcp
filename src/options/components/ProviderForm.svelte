@@ -112,8 +112,18 @@
     needsApiKey: boolean;
     defaultBaseUrl: string;
   }[] = [
-    { value: "ollama", label: "Ollama", needsApiKey: false, defaultBaseUrl: "http://localhost:11434" },
-    { value: "openai", label: "OpenAI-compatible", needsApiKey: true, defaultBaseUrl: DEFAULT_OPENAI_BASE_URL },
+    {
+      value: "ollama",
+      label: "Ollama",
+      needsApiKey: false,
+      defaultBaseUrl: "http://localhost:11434",
+    },
+    {
+      value: "openai",
+      label: "OpenAI-compatible",
+      needsApiKey: true,
+      defaultBaseUrl: DEFAULT_OPENAI_BASE_URL,
+    },
   ];
 
   // `initial` (when present) only ever seeds this form's editable state
@@ -225,7 +235,10 @@
     testOutcome = undefined;
     const draft = buildData();
     if (!originPatternForUrl(draft.baseUrl)) {
-      testOutcome = { kind: "invalid-response", message: "Enter a valid http:// or https:// base URL first." };
+      testOutcome = {
+        kind: "invalid-response",
+        message: "Enter a valid http:// or https:// base URL first.",
+      };
       return;
     }
     const headerError = firstHeaderError(headers, isReservedHeader);

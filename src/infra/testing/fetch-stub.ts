@@ -18,7 +18,8 @@ export function stubFetchByUrl(
   routes: Record<string, () => Response | Promise<Response>>,
 ): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const route = routes[url];
     if (!route) {
       return new Response(`no stub route registered for ${url}`, { status: 404 });

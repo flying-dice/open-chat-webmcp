@@ -41,7 +41,9 @@ describe("isJsonRpcResponse", () => {
   });
 
   it("accepts an envelope with jsonrpc:2.0 and an error key", () => {
-    expect(isJsonRpcResponse({ jsonrpc: "2.0", id: 1, error: { code: -1, message: "x" } })).toBe(true);
+    expect(isJsonRpcResponse({ jsonrpc: "2.0", id: 1, error: { code: -1, message: "x" } })).toBe(
+      true,
+    );
   });
 
   it("rejects an object missing both result and error", () => {
@@ -74,7 +76,9 @@ describe("tryParseJsonRpcError", () => {
     expect(tryParseJsonRpcError(undefined)).toBeUndefined();
     expect(tryParseJsonRpcError("not json")).toBeUndefined();
     expect(tryParseJsonRpcError(JSON.stringify({ result: {} }))).toBeUndefined();
-    expect(tryParseJsonRpcError(JSON.stringify({ error: { code: "not-a-number", message: "m" } }))).toBeUndefined();
+    expect(
+      tryParseJsonRpcError(JSON.stringify({ error: { code: "not-a-number", message: "m" } })),
+    ).toBeUndefined();
   });
 });
 
@@ -117,7 +121,10 @@ describe("toResultFromJsonRpc", () => {
       id: 1,
       error: { code: -32601, message: "Unknown tool" },
     });
-    expect(result).toEqual({ ok: false, error: { kind: "rpc-error", code: -32601, message: "Unknown tool", data: undefined } });
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "rpc-error", code: -32601, message: "Unknown tool", data: undefined },
+    });
   });
 
   it("maps a result envelope to ok:true with the result payload", () => {
@@ -133,7 +140,12 @@ describe("classifyHttpErrorResponse", () => {
       { status: 500, statusText: "Internal Server Error" },
     );
     const error = await classifyHttpErrorResponse(response);
-    expect(error).toEqual({ kind: "rpc-error", code: -32000, message: "Server error", data: undefined });
+    expect(error).toEqual({
+      kind: "rpc-error",
+      code: -32000,
+      message: "Server error",
+      data: undefined,
+    });
   });
 
   it("maps a non-JSON-RPC body to 'not-mcp-endpoint', including status and a truncated body", async () => {
@@ -157,9 +169,12 @@ describe("classifyHttpErrorResponse", () => {
 
 describe("safeAuthMessage", () => {
   it("extracts a JSON-RPC error's message when present", async () => {
-    const response = new Response(JSON.stringify({ error: { code: -1, message: "Unauthorized" } }), {
-      status: 401,
-    });
+    const response = new Response(
+      JSON.stringify({ error: { code: -1, message: "Unauthorized" } }),
+      {
+        status: 401,
+      },
+    );
     await expect(safeAuthMessage(response)).resolves.toBe("Unauthorized");
   });
 

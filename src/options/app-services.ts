@@ -38,7 +38,9 @@ let current: OptionsServices | undefined;
 /** Called ONCE by src/options/main.ts, before `mount(App)`. Throws on a second call — see the side panel twin for why a duplicate bundle is a real bug, not a harmless one. */
 export function initOptionsServices(services: OptionsServices): void {
   if (current) {
-    throw new Error("[webmcp] options services were already initialised — main.ts wires them once.");
+    throw new Error(
+      "[webmcp] options services were already initialised — main.ts wires them once.",
+    );
   }
   current = services;
 }
@@ -46,7 +48,9 @@ export function initOptionsServices(services: OptionsServices): void {
 /** The wired services. Throws if the composition root has not run. */
 export function optionsServices(): OptionsServices {
   if (!current) {
-    throw new Error("[webmcp] options services are not initialised — src/options/main.ts must run first.");
+    throw new Error(
+      "[webmcp] options services are not initialised — src/options/main.ts must run first.",
+    );
   }
   return current;
 }

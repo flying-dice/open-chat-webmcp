@@ -1,9 +1,6 @@
 {
   "files": [],
-  "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ],
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
   // Solution-style configs carry no sources, so these options compile
   // nothing — they exist because the shadcn-svelte CLI resolves the aliases
   // in components.json against the ROOT tsconfig.json and errors out if

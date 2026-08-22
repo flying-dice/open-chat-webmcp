@@ -63,7 +63,10 @@ describe("createOllamaProvider", () => {
         controller.close();
       },
     });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(stream, { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(stream, { status: 200 })),
+    );
 
     const provider = createOllamaProvider({
       id: "p1",
@@ -79,7 +82,10 @@ describe("createOllamaProvider", () => {
       type: "tool-calls",
       toolCalls: [{ name: "search", arguments: { q: "x" } }],
     });
-    const done = events[1] as { type: string; stats: { doneReason?: string; raw?: Record<string, unknown> } };
+    const done = events[1] as {
+      type: string;
+      stats: { doneReason?: string; raw?: Record<string, unknown> };
+    };
     expect(done.type).toBe("done");
     expect(done.stats.doneReason).toBe("stop");
     expect(done.stats.raw?.evalCount).toBe(10);

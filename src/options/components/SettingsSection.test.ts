@@ -137,11 +137,15 @@ describe("SettingsSection", () => {
 
     render(SettingsSection);
 
-    await waitFor(() => expect(pageRadio("always-confirm")).toHaveAttribute("aria-checked", "true"));
+    await waitFor(() =>
+      expect(pageRadio("always-confirm")).toHaveAttribute("aria-checked", "true"),
+    );
     expect(pageRadio("default")).toHaveAttribute("aria-checked", "false");
     expect(pageRadio("auto-run-all")).toHaveAttribute("aria-checked", "false");
 
-    await waitFor(() => expect(mcpRadio("trust-read-only")).toHaveAttribute("aria-checked", "true"));
+    await waitFor(() =>
+      expect(mcpRadio("trust-read-only")).toHaveAttribute("aria-checked", "true"),
+    );
     expect(mcpRadio("always-confirm")).toHaveAttribute("aria-checked", "false");
     expect(mcpRadio("auto-run-all")).toHaveAttribute("aria-checked", "false");
   });
@@ -181,9 +185,13 @@ describe("SettingsSection", () => {
 
     await user.click(mcpRadio("trust-read-only"));
 
-    await waitFor(() => expect(mcpRadio("trust-read-only")).toHaveAttribute("aria-checked", "true"));
+    await waitFor(() =>
+      expect(mcpRadio("trust-read-only")).toHaveAttribute("aria-checked", "true"),
+    );
     expect(mcpRadio("always-confirm")).toHaveAttribute("aria-checked", "false");
-    expect(services.settings.setMcpApprovalPolicy).toHaveBeenCalledExactlyOnceWith("trust-read-only");
+    expect(services.settings.setMcpApprovalPolicy).toHaveBeenCalledExactlyOnceWith(
+      "trust-read-only",
+    );
     expect(services.settings.setApprovalPolicy).not.toHaveBeenCalled();
 
     // The page group is untouched by the MCP-policy click.

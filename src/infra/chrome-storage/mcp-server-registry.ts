@@ -32,11 +32,7 @@ const SYNC_KEY_SERVERS = "mcp:servers:list";
 const LOCAL_KEY_AUTH_PREFIX = "mcp:auth:";
 const LOCAL_KEY_HEADERS_PREFIX = "mcp:headers:";
 
-const TRANSPORT_PREFERENCES: readonly McpTransportPreference[] = [
-  "auto",
-  "streamable-http",
-  "sse",
-];
+const TRANSPORT_PREFERENCES: readonly McpTransportPreference[] = ["auto", "streamable-http", "sse"];
 
 /** The credential fields of an `McpServerConfig`, as the keyed-record store's `parts`. */
 interface McpServerCredentials {
@@ -62,9 +58,7 @@ function decodeServerCore(v: unknown): McpServerConfigCore | undefined {
   return undefined;
 }
 
-function isAuthorizationServerMetadata(
-  v: unknown,
-): v is McpOAuthAuth["authorizationServer"] {
+function isAuthorizationServerMetadata(v: unknown): v is McpOAuthAuth["authorizationServer"] {
   return (
     isRecord(v) &&
     typeof v.issuer === "string" &&
@@ -134,8 +128,7 @@ export function createChromeStorageMcpServerRegistry(
       }),
       headers: credentialPart<Record<string, string>>({
         keyPrefix: LOCAL_KEY_HEADERS_PREFIX,
-        decode: (raw) =>
-          isHeadersMap(raw) && Object.keys(raw).length > 0 ? raw : undefined,
+        decode: (raw) => (isHeadersMap(raw) && Object.keys(raw).length > 0 ? raw : undefined),
         isEmpty: (value) => Object.keys(value).length === 0,
       }),
     },

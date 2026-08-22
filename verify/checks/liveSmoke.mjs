@@ -46,7 +46,9 @@ async function pickToolCapableModel() {
   if (!res.ok) return null;
   const body = await res.json();
   const models = Array.isArray(body?.models) ? body.models : [];
-  const withTools = models.find((m) => Array.isArray(m.capabilities) && m.capabilities.includes("tools"));
+  const withTools = models.find(
+    (m) => Array.isArray(m.capabilities) && m.capabilities.includes("tools"),
+  );
   return withTools ? (withTools.model ?? withTools.name) : null;
 }
 
@@ -124,14 +126,20 @@ async function main() {
       timeout: 10000,
     });
 
-    await report.run("Real side panel picks up the active demo tab and its page tools", async () => {
-      // The header's context chip carries the tracked tab's title once
-      // tab-sync has resolved it — cheap, unambiguous evidence the panel
-      // is tracking the demo tab rather than sitting on whatever it saw at
-      // mount (its own chrome-extension:// origin has no title to show).
-      await panel.getByText("WebMCP Demo", { exact: false }).first().waitFor({ state: "visible", timeout: 15000 });
-      return { trackedTab: true };
-    });
+    await report.run(
+      "Real side panel picks up the active demo tab and its page tools",
+      async () => {
+        // The header's context chip carries the tracked tab's title once
+        // tab-sync has resolved it — cheap, unambiguous evidence the panel
+        // is tracking the demo tab rather than sitting on whatever it saw at
+        // mount (its own chrome-extension:// origin has no title to show).
+        await panel
+          .getByText("WebMCP Demo", { exact: false })
+          .first()
+          .waitFor({ state: "visible", timeout: 15000 });
+        return { trackedTab: true };
+      },
+    );
 
     await report.run(
       `Confirming the seeded default selection (${providerName} · ${model}) via the real model picker`,
@@ -182,9 +190,15 @@ async function main() {
           .waitFor({ state: "visible", timeout: 120000 });
 
         replyText = (await panel.locator("body").innerText()).trim();
-        assert(replyText.length > 0, "expected some rendered text in the panel after the reply finished streaming");
+        assert(
+          replyText.length > 0,
+          "expected some rendered text in the panel after the reply finished streaming",
+        );
 
-        sawToolCall = await panel.getByText("read-page-state", { exact: false }).first().isVisible();
+        sawToolCall = await panel
+          .getByText("read-page-state", { exact: false })
+          .first()
+          .isVisible();
 
         return { replyLength: replyText.length, toolCallVisible: sawToolCall };
       },

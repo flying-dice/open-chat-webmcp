@@ -64,9 +64,7 @@ export interface ProviderSelection {
 }
 
 /** Result of resolving a provider id that may have been deleted since it was selected. */
-export type ProviderResolution =
-  | { status: "ok"; config: ProviderConfig }
-  | { status: "dangling" };
+export type ProviderResolution = { status: "ok"; config: ProviderConfig } | { status: "dangling" };
 
 /** Resolution of a full `{ providerId, model }` selection — the shape a picker actually needs to decide what to render. */
 export type SelectionResolution =

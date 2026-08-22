@@ -79,7 +79,13 @@ function parseTokenResponse(
   authorizationServer: McpAuthorizationServerInfo,
 ): McpResult<McpOAuthAuth> {
   if (!isRecord(raw) || typeof raw.access_token !== "string" || raw.access_token.length === 0) {
-    return { ok: false, error: { kind: "invalid-response", message: "Token endpoint did not return an access_token." } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: "Token endpoint did not return an access_token.",
+      },
+    };
   }
   const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
   return {
@@ -100,7 +106,13 @@ function parseTokenResponse(
 
 function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): McpResult<McpOAuthAuth> {
   if (!isRecord(raw) || typeof raw.access_token !== "string" || raw.access_token.length === 0) {
-    return { ok: false, error: { kind: "invalid-response", message: "Refresh response did not include an access_token." } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: "Refresh response did not include an access_token.",
+      },
+    };
   }
   const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
   return {
@@ -110,7 +122,8 @@ function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): McpResult<Mc
       accessToken: raw.access_token,
       // RFC 6749 §6: the server MAY issue a new refresh token; if it
       // doesn't, the existing one remains valid and must be kept.
-      refreshToken: typeof raw.refresh_token === "string" ? raw.refresh_token : previous.refreshToken,
+      refreshToken:
+        typeof raw.refresh_token === "string" ? raw.refresh_token : previous.refreshToken,
       expiresAt: expiresIn !== undefined ? Date.now() + expiresIn * 1000 : undefined,
       scope: typeof raw.scope === "string" ? raw.scope : previous.scope,
     },
@@ -155,7 +168,13 @@ async function runAuthorizationFlow(
   discovery: McpAuthorizationServerInfo,
 ): Promise<McpResult<McpOAuthAuth>> {
   if (typeof chrome === "undefined" || !chrome.identity) {
-    return { ok: false, error: { kind: "invalid-response", message: "chrome.identity is unavailable in this context." } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: "chrome.identity is unavailable in this context.",
+      },
+    };
   }
 
   const redirectUri = chrome.identity.getRedirectURL();
@@ -174,13 +193,19 @@ async function runAuthorizationFlow(
 
   let responseUrl: string | undefined;
   try {
-    responseUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl.toString(), interactive: true });
+    responseUrl = await chrome.identity.launchWebAuthFlow({
+      url: authUrl.toString(),
+      interactive: true,
+    });
   } catch (err) {
     return {
       ok: false,
       error: {
         kind: "auth",
-        message: err instanceof Error ? err.message : "The sign-in window was closed or the user denied access.",
+        message:
+          err instanceof Error
+            ? err.message
+            : "The sign-in window was closed or the user denied access.",
       },
     };
   }
@@ -192,22 +217,40 @@ async function runAuthorizationFlow(
   try {
     redirected = new URL(responseUrl);
   } catch {
-    return { ok: false, error: { kind: "invalid-response", message: "The authorization redirect was not a valid URL." } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: "The authorization redirect was not a valid URL.",
+      },
+    };
   }
 
   const oauthError = redirected.searchParams.get("error");
   if (oauthError) {
     return {
       ok: false,
-      error: { kind: "auth", message: redirected.searchParams.get("error_description") ?? oauthError },
+      error: {
+        kind: "auth",
+        message: redirected.searchParams.get("error_description") ?? oauthError,
+      },
     };
   }
   if (redirected.searchParams.get("state") !== state) {
-    return { ok: false, error: { kind: "auth", message: "Authorization response state did not match the request — aborting." } };
+    return {
+      ok: false,
+      error: {
+        kind: "auth",
+        message: "Authorization response state did not match the request — aborting.",
+      },
+    };
   }
   const code = redirected.searchParams.get("code");
   if (!code) {
-    return { ok: false, error: { kind: "invalid-response", message: "Authorization redirect had no code parameter." } };
+    return {
+      ok: false,
+      error: { kind: "invalid-response", message: "Authorization redirect had no code parameter." },
+    };
   }
 
   return exchangeCodeForToken(config, discovery, code, verifier, redirectUri);
@@ -255,7 +298,10 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
     if (!auth || auth.type !== "oauth") {
       return {
         ok: false,
-        error: { kind: "auth", message: `Server "${config.name}" has no OAuth credentials configured.` },
+        error: {
+          kind: "auth",
+          message: `Server "${config.name}" has no OAuth credentials configured.`,
+        },
       };
     }
 

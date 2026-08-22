@@ -79,9 +79,11 @@ function createFakeChrome() {
     tabs: {
       onUpdated: { addListener: (l: TabsUpdatedListener) => tabsUpdatedListeners.push(l) },
       onRemoved: { addListener: (l: TabsRemovedListener) => tabsRemovedListeners.push(l) },
-      sendMessage: vi.fn((tabId: number, message: unknown, callback: (response?: unknown) => void) => {
-        tabsSendMessageImpl(tabId, message, callback);
-      }),
+      sendMessage: vi.fn(
+        (tabId: number, message: unknown, callback: (response?: unknown) => void) => {
+          tabsSendMessageImpl(tabId, message, callback);
+        },
+      ),
     },
   } as unknown as typeof chrome;
 
@@ -138,7 +140,13 @@ describe("sw.ts message router", () => {
     await loadSw();
 
     const response = await fake.deliver(
-      { type: "runtime:tools-updated", tabId: -1, origin: "https://a.example", available: true, tools: [{ name: "x" }] },
+      {
+        type: "runtime:tools-updated",
+        tabId: -1,
+        origin: "https://a.example",
+        available: true,
+        tools: [{ name: "x" }],
+      },
       { tab: { id: 7 } },
     );
     // A one-way notification: the listener returns false, no response ever fires.
@@ -161,7 +169,13 @@ describe("sw.ts message router", () => {
     await loadSw();
 
     await fake.deliver(
-      { type: "runtime:tools-updated", tabId: -1, origin: "https://a.example", available: true, tools: [{ name: "x" }] },
+      {
+        type: "runtime:tools-updated",
+        tabId: -1,
+        origin: "https://a.example",
+        available: true,
+        tools: [{ name: "x" }],
+      },
       {}, // no sender.tab at all
     );
 
@@ -184,7 +198,13 @@ describe("sw.ts message router", () => {
       vi.stubGlobal("chrome", fake.chrome);
       fake.setTabsSendMessageImpl((_tabId, message, callback) => {
         expect((message as { type: string }).type).toBe("runtime:refresh-tools");
-        callback({ type: "runtime:tools-updated", tabId: 3, origin: "https://b.example", available: true, tools: [{ name: "y" }] });
+        callback({
+          type: "runtime:tools-updated",
+          tabId: 3,
+          origin: "https://b.example",
+          available: true,
+          tools: [{ name: "y" }],
+        });
       });
       await loadSw();
 
@@ -202,7 +222,9 @@ describe("sw.ts message router", () => {
       const fake = createFakeChrome();
       vi.stubGlobal("chrome", fake.chrome);
       fake.setTabsSendMessageImpl((_tabId, _message, callback) => {
-        fake.setLastError({ message: "Could not establish connection. Receiving end does not exist." });
+        fake.setLastError({
+          message: "Could not establish connection. Receiving end does not exist.",
+        });
         callback(undefined);
       });
       await loadSw();
@@ -220,7 +242,9 @@ describe("sw.ts message router", () => {
     it("a relay that answers with an unexpected shape degrades to empty tools, not a crash", async () => {
       const fake = createFakeChrome();
       vi.stubGlobal("chrome", fake.chrome);
-      fake.setTabsSendMessageImpl((_tabId, _message, callback) => callback({ type: "runtime:tools-updated" })); // missing origin/available/tools
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) =>
+        callback({ type: "runtime:tools-updated" }),
+      ); // missing origin/available/tools
       await loadSw();
 
       const response = await fake.deliver({ type: "runtime:get-tools", tabId: 4 });
@@ -239,17 +263,33 @@ describe("sw.ts message router", () => {
       });
       await loadSw();
 
-      const response = await fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "doThing", args: {} });
-      expect(response).toEqual({ type: "runtime:call-tool-response", ok: true, result: { done: true } });
+      const response = await fake.deliver({
+        type: "runtime:call-tool",
+        tabId: 5,
+        name: "doThing",
+        args: {},
+      });
+      expect(response).toEqual({
+        type: "runtime:call-tool-response",
+        ok: true,
+        result: { done: true },
+      });
     });
 
     it("a relay response of an unexpected shape is reported as a call failure, never passed through raw", async () => {
       const fake = createFakeChrome();
       vi.stubGlobal("chrome", fake.chrome);
-      fake.setTabsSendMessageImpl((_tabId, _message, callback) => callback({ unexpected: "shape" }));
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) =>
+        callback({ unexpected: "shape" }),
+      );
       await loadSw();
 
-      const response = await fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "doThing", args: {} });
+      const response = await fake.deliver({
+        type: "runtime:call-tool",
+        tabId: 5,
+        name: "doThing",
+        args: {},
+      });
       expect(response).toMatchObject({ type: "runtime:call-tool-response", ok: false });
     });
 
@@ -257,14 +297,23 @@ describe("sw.ts message router", () => {
       const fake = createFakeChrome();
       vi.stubGlobal("chrome", fake.chrome);
       fake.setTabsSendMessageImpl((_tabId, _message, callback) => {
-        fake.setLastError({ message: "Could not establish connection. Receiving end does not exist." });
+        fake.setLastError({
+          message: "Could not establish connection. Receiving end does not exist.",
+        });
         callback(undefined);
       });
       await loadSw();
 
-      const response = await fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "doThing", args: {} });
+      const response = await fake.deliver({
+        type: "runtime:call-tool",
+        tabId: 5,
+        name: "doThing",
+        args: {},
+      });
       expect(response).toMatchObject({ type: "runtime:call-tool-response", ok: false });
-      expect((response as { error: string }).error).toContain("No WebMCP relay is available in tab 5");
+      expect((response as { error: string }).error).toContain(
+        "No WebMCP relay is available in tab 5",
+      );
     });
 
     describe("chaos: overlapping calls to the same tab resolve independently, even out of order", () => {
@@ -277,8 +326,18 @@ describe("sw.ts message router", () => {
         });
         await loadSw();
 
-        const firstCall = fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "toolA", args: {} });
-        const secondCall = fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "toolB", args: {} });
+        const firstCall = fake.deliver({
+          type: "runtime:call-tool",
+          tabId: 5,
+          name: "toolA",
+          args: {},
+        });
+        const secondCall = fake.deliver({
+          type: "runtime:call-tool",
+          tabId: 5,
+          name: "toolB",
+          args: {},
+        });
         await vi.waitFor(() => expect(pending.length).toBe(2));
 
         // Resolve the SECOND request first (out-of-order delivery from the relay/tab).
@@ -288,8 +347,16 @@ describe("sw.ts message router", () => {
         forToolA.callback({ type: "runtime:call-tool-response", ok: true, result: "result-for-A" });
 
         const [first, second] = await Promise.all([firstCall, secondCall]);
-        expect(first).toEqual({ type: "runtime:call-tool-response", ok: true, result: "result-for-A" });
-        expect(second).toEqual({ type: "runtime:call-tool-response", ok: true, result: "result-for-B" });
+        expect(first).toEqual({
+          type: "runtime:call-tool-response",
+          ok: true,
+          result: "result-for-A",
+        });
+        expect(second).toEqual({
+          type: "runtime:call-tool-response",
+          ok: true,
+          result: "result-for-B",
+        });
       });
 
       it("a call for a NEWER turn resolves correctly even while an OLDER, now-superseded call to the same tab is still stuck waiting", async () => {
@@ -307,15 +374,33 @@ describe("sw.ts message router", () => {
         });
         await loadSw();
 
-        const stalePromise = fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "staleTool", args: {} });
-        const freshResult = await fake.deliver({ type: "runtime:call-tool", tabId: 5, name: "freshTool", args: {} });
+        const stalePromise = fake.deliver({
+          type: "runtime:call-tool",
+          tabId: 5,
+          name: "staleTool",
+          args: {},
+        });
+        const freshResult = await fake.deliver({
+          type: "runtime:call-tool",
+          tabId: 5,
+          name: "freshTool",
+          args: {},
+        });
 
-        expect(freshResult).toEqual({ type: "runtime:call-tool-response", ok: true, result: "fresh-result" });
+        expect(freshResult).toEqual({
+          type: "runtime:call-tool-response",
+          ok: true,
+          result: "fresh-result",
+        });
         expect(calls).toBe(2);
 
         // The stale call finally answers late — it must resolve to ITS OWN result, never the fresh one's.
         staleCallback?.({ type: "runtime:call-tool-response", ok: true, result: "stale-result" });
-        await expect(stalePromise).resolves.toEqual({ type: "runtime:call-tool-response", ok: true, result: "stale-result" });
+        await expect(stalePromise).resolves.toEqual({
+          type: "runtime:call-tool-response",
+          ok: true,
+          result: "stale-result",
+        });
       });
     });
   });
@@ -326,7 +411,13 @@ describe("sw.ts message router", () => {
       vi.stubGlobal("chrome", fake.chrome);
       await loadSw();
       await fake.deliver(
-        { type: "runtime:tools-updated", tabId: -1, origin: "https://a.example", available: true, tools: [{ name: "x" }] },
+        {
+          type: "runtime:tools-updated",
+          tabId: -1,
+          origin: "https://a.example",
+          available: true,
+          tools: [{ name: "x" }],
+        },
         { tab: { id: 7 } },
       );
 
@@ -342,7 +433,13 @@ describe("sw.ts message router", () => {
       vi.stubGlobal("chrome", fake.chrome);
       await loadSw();
       await fake.deliver(
-        { type: "runtime:tools-updated", tabId: -1, origin: "https://a.example", available: true, tools: [{ name: "x" }] },
+        {
+          type: "runtime:tools-updated",
+          tabId: -1,
+          origin: "https://a.example",
+          available: true,
+          tools: [{ name: "x" }],
+        },
         { tab: { id: 7 } },
       );
 
@@ -359,11 +456,23 @@ describe("sw.ts message router", () => {
       await loadSw();
 
       await fake.deliver(
-        { type: "runtime:tools-updated", tabId: -1, origin: "https://a.example", available: true, tools: [{ name: "x" }] },
+        {
+          type: "runtime:tools-updated",
+          tabId: -1,
+          origin: "https://a.example",
+          available: true,
+          tools: [{ name: "x" }],
+        },
         { tab: { id: 1 } },
       );
       await fake.deliver(
-        { type: "runtime:tools-updated", tabId: -1, origin: "https://b.example", available: true, tools: [{ name: "y" }, { name: "z" }] },
+        {
+          type: "runtime:tools-updated",
+          tabId: -1,
+          origin: "https://b.example",
+          available: true,
+          tools: [{ name: "y" }, { name: "z" }],
+        },
         { tab: { id: 2 } },
       );
 

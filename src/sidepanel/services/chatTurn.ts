@@ -25,7 +25,11 @@
 // module does not name that adapter either: both halves of `pageTools` arrive
 // from src/sidepanel/app-services.ts, wired by the composition root.
 
-import { denyByDefaultApprovalRequester, type ApprovalRequester, type ToolExecutor } from "../../domain/chat";
+import {
+  denyByDefaultApprovalRequester,
+  type ApprovalRequester,
+  type ToolExecutor,
+} from "../../domain/chat";
 import type { ChatProvider } from "../../domain/providers";
 import { chat, sidePanelServices } from "../app-services";
 import { getMergedToolsForTab } from "./mcpTools";

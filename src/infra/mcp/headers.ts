@@ -45,7 +45,9 @@ function effectiveCustomHeaders(config: McpServerConfig): Record<string, string>
 
 /** The bearer-token `Authorization` header, unchanged from before oauth support existed — a pure, synchronous mapping used only for `config.auth.type === "bearer"`. The oauth case is handled by {@link resolveAuthHeader}, which never calls this. */
 function authHeader(config: McpServerConfig): Record<string, string> {
-  return config.auth?.type === "bearer" && config.auth.token ? { Authorization: `Bearer ${config.auth.token}` } : {};
+  return config.auth?.type === "bearer" && config.auth.token
+    ? { Authorization: `Bearer ${config.auth.token}` }
+    : {};
 }
 
 /**

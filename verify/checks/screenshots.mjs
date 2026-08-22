@@ -91,7 +91,9 @@ async function requireLocator(locator, what) {
   try {
     await locator.first().waitFor({ state: "visible", timeout: 5000 });
   } catch {
-    throw new Error(`Screenshot matrix incomplete: could not find ${what} (${locator}) — selector drifted?`);
+    throw new Error(
+      `Screenshot matrix incomplete: could not find ${what} (${locator}) — selector drifted?`,
+    );
   }
   return locator.first();
 }
@@ -162,7 +164,10 @@ async function captureSidepanel(page, extensionId, outDir) {
   // `.picker__trigger` is a styling-free hook class kept on the composer's
   // model chip purely for this locator (ProviderPicker.svelte) — the chip's
   // own accessible name is the model id, which moves with seed data.
-  const modelChip = await requireLocator(page.locator(".picker__trigger"), "the composer's model-picker trigger");
+  const modelChip = await requireLocator(
+    page.locator(".picker__trigger"),
+    "the composer's model-picker trigger",
+  );
   await modelChip.click();
   await page.waitForTimeout(250);
   files.push(await shoot(page, outDir, "sidepanel-dark-model-sheet"));
@@ -184,7 +189,10 @@ async function captureSidepanel(page, extensionId, outDir) {
   await page.waitForTimeout(250);
   files.push(await shoot(page, outDir, "sidepanel-dark-activity-expanded"));
 
-  const firstRow = await requireLocator(page.locator(".step .row-head"), "a tool-call step's header row");
+  const firstRow = await requireLocator(
+    page.locator(".step .row-head"),
+    "a tool-call step's header row",
+  );
   await firstRow.click();
   await page.waitForTimeout(250);
   files.push(await shoot(page, outDir, "sidepanel-dark-activity-payload"));

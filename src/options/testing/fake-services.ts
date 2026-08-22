@@ -37,11 +37,7 @@ import type {
   ProviderRegistry,
   ProviderSelection,
 } from "../../domain/providers";
-import type {
-  ApprovalPolicy,
-  McpApprovalPolicy,
-  SettingsStore,
-} from "../../domain/settings";
+import type { ApprovalPolicy, McpApprovalPolicy, SettingsStore } from "../../domain/settings";
 import type {
   McpServerConfig,
   McpServerRegistry,
@@ -199,7 +195,9 @@ export function createFakeMcpToolGateway(overrides: Partial<McpToolGateway> = {}
   };
 }
 
-export function createFakeHostPermissions(overrides: Partial<HostPermissions> = {}): HostPermissions {
+export function createFakeHostPermissions(
+  overrides: Partial<HostPermissions> = {},
+): HostPermissions {
   return {
     has: async () => true,
     request: async () => true,

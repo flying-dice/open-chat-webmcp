@@ -56,7 +56,11 @@ function createStreamableHttpSession(
       if (response.status === 401 || response.status === 403) {
         return {
           ok: false,
-          error: { kind: "auth", status: response.status, message: await safeAuthMessage(response) },
+          error: {
+            kind: "auth",
+            status: response.status,
+            message: await safeAuthMessage(response),
+          },
         };
       }
       if (!response.ok) {
@@ -71,11 +75,20 @@ function createStreamableHttpSession(
         } catch (err) {
           return {
             ok: false,
-            error: { kind: "invalid-response", message: err instanceof Error ? err.message : String(err) },
+            error: {
+              kind: "invalid-response",
+              message: err instanceof Error ? err.message : String(err),
+            },
           };
         }
         if (!isJsonRpcResponse(json)) {
-          return { ok: false, error: { kind: "invalid-response", message: "Response body wasn't a JSON-RPC envelope." } };
+          return {
+            ok: false,
+            error: {
+              kind: "invalid-response",
+              message: "Response body wasn't a JSON-RPC envelope.",
+            },
+          };
         }
         return toResult(json);
       }
@@ -85,7 +98,10 @@ function createStreamableHttpSession(
       }
       return {
         ok: false,
-        error: { kind: "invalid-response", message: `Unexpected content type "${contentType || "(none)"}".` },
+        error: {
+          kind: "invalid-response",
+          message: `Unexpected content type "${contentType || "(none)"}".`,
+        },
       };
     },
     async notify(method, params) {
@@ -117,7 +133,12 @@ export async function tryStreamableHttp(
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
-  const initMsg = { jsonrpc: "2.0", id: 1, method: "initialize", params: initializeParams(clientInfo) };
+  const initMsg = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: initializeParams(clientInfo),
+  };
 
   let response: Response;
   try {
@@ -171,7 +192,10 @@ export async function tryStreamableHttp(
     initResponse = json;
   } else if (contentType.includes("text/event-stream")) {
     if (!response.body) {
-      return { outcome: "failed", error: { kind: "not-mcp-endpoint", message: "SSE response had no body." } };
+      return {
+        outcome: "failed",
+        error: { kind: "not-mcp-endpoint", message: "SSE response had no body." },
+      };
     }
     const found = await readSseForResponse(response.body, 1, budget);
     if (!found.ok) return { outcome: "failed", error: found.error };
@@ -189,7 +213,13 @@ export async function tryStreamableHttp(
   const parsedInit = validateInitializeResult(initResponse);
   if (!parsedInit.ok) return { outcome: "failed", error: parsedInit.error };
 
-  const session = createStreamableHttpSession(config.url, headers, sessionId, parsedInit.value, budget);
+  const session = createStreamableHttpSession(
+    config.url,
+    headers,
+    sessionId,
+    parsedInit.value,
+    budget,
+  );
   await session.notify("notifications/initialized");
   return { outcome: "connected", session };
 }

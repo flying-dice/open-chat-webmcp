@@ -244,10 +244,14 @@ export function fenceUntrustedContent(toolName: string, content: string): string
  */
 export function toModelMessage(entry: TranscriptEntry): ChatMessage {
   const untrusted =
-    entry.role === "tool" && entry.content !== "" && entry.toolAnnotations?.untrustedContentHint === true;
+    entry.role === "tool" &&
+    entry.content !== "" &&
+    entry.toolAnnotations?.untrustedContentHint === true;
   return {
     role: entry.role,
-    content: untrusted ? fenceUntrustedContent(entry.toolName ?? "unknown tool", entry.content) : entry.content,
+    content: untrusted
+      ? fenceUntrustedContent(entry.toolName ?? "unknown tool", entry.content)
+      : entry.content,
     toolCalls: entry.toolCalls,
     toolCallId: entry.toolCallId,
     toolName: entry.toolName,

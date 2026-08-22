@@ -107,7 +107,9 @@ describe("chat records round-trip through ChatStore", () => {
   it("chat 1 is an all-success run, so its activity group is the collapsed contrast to chat 0's", async () => {
     const { chats } = seeded();
     const chat = await chats.getChat(FIXTURE_CHAT_IDS[1]);
-    const statuses = (chat?.messages ?? []).filter((m) => m.role === "tool").map((m) => m.toolStatus);
+    const statuses = (chat?.messages ?? [])
+      .filter((m) => m.role === "tool")
+      .map((m) => m.toolStatus);
 
     expect(statuses.length).toBeGreaterThan(0);
     expect(statuses.every((s) => s === "success")).toBe(true);

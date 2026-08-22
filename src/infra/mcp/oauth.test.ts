@@ -38,7 +38,9 @@ function oauthAuth(overrides: Partial<McpOAuthAuth> = {}): McpOAuthAuth {
   };
 }
 
-function fakeTokenStore(): McpAuthTokenStore & { saved: { serverId: string; auth: McpOAuthAuth }[] } {
+function fakeTokenStore(): McpAuthTokenStore & {
+  saved: { serverId: string; auth: McpOAuthAuth }[];
+} {
   const saved: { serverId: string; auth: McpOAuthAuth }[] = [];
   return {
     saved,
@@ -90,7 +92,9 @@ describe("getValidAuth", () => {
   });
 
   it("near-expiry (inside the 60s skew window): triggers a refresh", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ access_token: "at-fresh", expires_in: 3600 }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ access_token: "at-fresh", expires_in: 3600 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const client = createMcpOAuthClient({ tokenStore: fakeTokenStore() });
     const auth = oauthAuth({ expiresAt: Date.now() + 30_000 }); // inside the 60s skew
@@ -134,7 +138,9 @@ describe("getValidAuth", () => {
   it("a server-issued replacement refresh token is kept over the old one", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse({ access_token: "at-fresh", refresh_token: "rt-new", expires_in: 3600 })),
+      vi.fn(async () =>
+        jsonResponse({ access_token: "at-fresh", refresh_token: "rt-new", expires_in: 3600 }),
+      ),
     );
     const client = createMcpOAuthClient({ tokenStore: fakeTokenStore() });
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
@@ -150,7 +156,9 @@ describe("getValidAuth", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const client = createMcpOAuthClient({ tokenStore: fakeTokenStore() });
-    const { refreshToken: _refreshToken, ...withoutRefresh } = oauthAuth({ expiresAt: Date.now() - 1000 });
+    const { refreshToken: _refreshToken, ...withoutRefresh } = oauthAuth({
+      expiresAt: Date.now() - 1000,
+    });
 
     const result = await client.getValidAuth(serverConfig(withoutRefresh));
 
@@ -165,9 +173,12 @@ describe("getValidAuth", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ error: "invalid_grant", error_description: "Refresh token revoked" }), {
-            status: 400,
-          }),
+          new Response(
+            JSON.stringify({ error: "invalid_grant", error_description: "Refresh token revoked" }),
+            {
+              status: 400,
+            },
+          ),
       ),
     );
     const tokenStore = fakeTokenStore();
@@ -203,7 +214,10 @@ describe("getValidAuth", () => {
   });
 
   it("a successful refresh whose token-store persistence FAILS still resolves ok — the never-throws surface swallows the storage error", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ access_token: "at-fresh", expires_in: 3600 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ access_token: "at-fresh", expires_in: 3600 })),
+    );
     const failingTokenStore: McpAuthTokenStore = {
       saveAuth: vi.fn(async () => {
         // Deliberately NOT phrased as a literal "chrome . storage . <area> . <op>"
@@ -225,7 +239,10 @@ describe("getValidAuth", () => {
   });
 
   it("a malformed refresh response (no access_token) is reported as invalid-response, nothing persisted", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ not_a_token: true })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ not_a_token: true })),
+    );
     const tokenStore = fakeTokenStore();
     const client = createMcpOAuthClient({ tokenStore });
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });

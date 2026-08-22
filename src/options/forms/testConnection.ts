@@ -46,9 +46,7 @@ export type TestOutcome =
  * function makes no permission decisions itself, so it can be reused to
  * test an unsaved draft config as easily as a persisted one.
  */
-export async function testProviderConnection(
-  config: ProviderConfig,
-): Promise<TestOutcome> {
+export async function testProviderConnection(config: ProviderConfig): Promise<TestOutcome> {
   // Card 75: `createProviderClient` is now the exhaustive dispatcher from
   // src/domain/providers/client-factory.ts — there is no "unregistered
   // provider type" state left to throw for, so this no longer needs a

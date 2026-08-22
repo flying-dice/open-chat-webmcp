@@ -67,12 +67,18 @@ interface OauthOverrides {
 }
 
 function makeOauth(overrides: OauthOverrides = {}): McpOAuthClient & {
-  calls: { registerClient: number; runAuthorizationFlow: number; discoverAuthorizationServer: number };
+  calls: {
+    registerClient: number;
+    runAuthorizationFlow: number;
+    discoverAuthorizationServer: number;
+  };
 } {
   const calls = { registerClient: 0, runAuthorizationFlow: 0, discoverAuthorizationServer: 0 };
   const discoverAuthorizationServer = vi.fn(async () => {
     calls.discoverAuthorizationServer++;
-    return overrides.discoverAuthorizationServer ? overrides.discoverAuthorizationServer() : ok(okDiscovery);
+    return overrides.discoverAuthorizationServer
+      ? overrides.discoverAuthorizationServer()
+      : ok(okDiscovery);
   });
   const registerClient = vi.fn(async () => {
     calls.registerClient++;
@@ -128,7 +134,8 @@ describe("chaos: McpSignIn.begin — invalid or declined input", () => {
   it("surfaces an error and stops when discovery itself fails", async () => {
     const { signIn, oauth } = makeSignIn({
       oauthOverrides: {
-        discoverAuthorizationServer: async () => err({ kind: "unreachable", message: "network unreachable" }),
+        discoverAuthorizationServer: async () =>
+          err({ kind: "unreachable", message: "network unreachable" }),
       },
     });
 
@@ -201,7 +208,8 @@ describe("chaos: McpSignIn.begin — failure between registration and the PKCE f
   it("never starts the authorization flow when dynamic client registration is rejected", async () => {
     const { signIn, oauth } = makeSignIn({
       oauthOverrides: {
-        registerClient: async () => err({ kind: "not-mcp-endpoint", message: "registration_endpoint returned 404" }),
+        registerClient: async () =>
+          err({ kind: "not-mcp-endpoint", message: "registration_endpoint returned 404" }),
       },
     });
 
@@ -252,16 +260,19 @@ describe("chaos: McpSignIn.completeManual — malformed or missing manual input"
   it.each([
     ["empty string", ""],
     ["whitespace only", "   \t  "],
-  ])("rejects a client id that is %s without ever starting the authorization flow", async (_label, clientId) => {
-    const { signIn, oauth } = makeSignIn();
-    const result = await signIn.completeManual({
-      serverUrl: "https://mcp.example.com",
-      clientId,
-      discovery,
-    });
-    expect(result.status).toBe("error");
-    expect(oauth.calls.runAuthorizationFlow).toBe(0);
-  });
+  ])(
+    "rejects a client id that is %s without ever starting the authorization flow",
+    async (_label, clientId) => {
+      const { signIn, oauth } = makeSignIn();
+      const result = await signIn.completeManual({
+        serverUrl: "https://mcp.example.com",
+        clientId,
+        discovery,
+      });
+      expect(result.status).toBe("error");
+      expect(oauth.calls.runAuthorizationFlow).toBe(0);
+    },
+  );
 
   it("trims a whitespace-only client secret down to undefined rather than sending it as an empty credential", async () => {
     const { signIn, oauth } = makeSignIn();
@@ -283,7 +294,8 @@ describe("chaos: McpSignIn.completeManual — malformed or missing manual input"
   it("surfaces an error rather than 'signed-in' when the flow itself is rejected", async () => {
     const { signIn } = makeSignIn({
       oauthOverrides: {
-        runAuthorizationFlow: async () => err({ kind: "invalid-response", message: "server returned no access_token" }),
+        runAuthorizationFlow: async () =>
+          err({ kind: "invalid-response", message: "server returned no access_token" }),
       },
     });
 

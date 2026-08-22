@@ -100,7 +100,9 @@ describe("connect", () => {
 
   it("transport 'auto': a 405 from streamable HTTP also falls back to the legacy transport", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
-      init.method === "POST" ? new Response("method not allowed", { status: 405 }) : new Response("", { status: 500 }),
+      init.method === "POST"
+        ? new Response("method not allowed", { status: 405 })
+        : new Response("", { status: 500 }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const budget = createBudget(1000, undefined);
@@ -117,7 +119,11 @@ describe("connect", () => {
     vi.stubGlobal("fetch", fetchMock);
     const budget = createBudget(1000, undefined);
 
-    const result = await connect(serverConfig({ transport: "auto" }), { auth: noopAuth, clientInfo }, budget);
+    const result = await connect(
+      serverConfig({ transport: "auto" }),
+      { auth: noopAuth, clientInfo },
+      budget,
+    );
     budget.cleanup();
 
     expect(result.ok).toBe(false);
@@ -125,11 +131,17 @@ describe("connect", () => {
   });
 
   it("transport 'streamable-http' (pinned): a 404 fails outright — pinning suppresses the auto-fallback", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response("not found", { status: 404 }));
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) => new Response("not found", { status: 404 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const budget = createBudget(1000, undefined);
 
-    const result = await connect(serverConfig({ transport: "streamable-http" }), { auth: noopAuth, clientInfo }, budget);
+    const result = await connect(
+      serverConfig({ transport: "streamable-http" }),
+      { auth: noopAuth, clientInfo },
+      budget,
+    );
     budget.cleanup();
 
     expect(result.ok).toBe(false);
@@ -139,8 +151,11 @@ describe("connect", () => {
 
   it("transport 'sse' (pinned): skips streamable HTTP entirely and goes straight to the legacy GET", async () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      if (init?.method === "POST") throw new Error("streamable HTTP must not be attempted when transport is pinned to sse");
-      return new Response("no SSE stub wired — this test only asserts the request shape", { status: 500 });
+      if (init?.method === "POST")
+        throw new Error("streamable HTTP must not be attempted when transport is pinned to sse");
+      return new Response("no SSE stub wired — this test only asserts the request shape", {
+        status: 500,
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
     const budget = createBudget(1000, undefined);
@@ -176,7 +191,11 @@ describe("connect", () => {
       vi.stubGlobal("fetch", fetchMock);
       const budget = createBudget(1000, undefined);
 
-      const result = await connect(serverConfig({ transport: "auto" }), { auth: noopAuth, clientInfo }, budget);
+      const result = await connect(
+        serverConfig({ transport: "auto" }),
+        { auth: noopAuth, clientInfo },
+        budget,
+      );
       budget.cleanup();
 
       // A network-level failure (not a 404/405) is NOT the documented

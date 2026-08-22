@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
-	import { HugeiconsIcon } from "@hugeicons/svelte"
-	import { ArrowRight01Icon } from '@hugeicons/core-free-icons';
-	import { cn } from "$lib/utils.js";
+  import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+  import { cn } from "$lib/utils.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		inset,
-		children,
-		...restProps
-	}: DropdownMenuPrimitive.SubTriggerProps & {
-		inset?: boolean;
-	} = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    inset,
+    children,
+    ...restProps
+  }: DropdownMenuPrimitive.SubTriggerProps & {
+    inset?: boolean;
+  } = $props();
 </script>
 
 <DropdownMenuPrimitive.SubTrigger

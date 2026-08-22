@@ -110,10 +110,12 @@
   let unsubscribeMcpPolicy: (() => void) | undefined;
 
   onMount(() => {
-    optionsServices().settings.getApprovalPolicy()
+    optionsServices()
+      .settings.getApprovalPolicy()
       .then((p) => (policy = p))
       .finally(() => (policyLoading = false));
-    optionsServices().settings.getMcpApprovalPolicy()
+    optionsServices()
+      .settings.getMcpApprovalPolicy()
       .then((p) => (mcpPolicy = p))
       .finally(() => (mcpPolicyLoading = false));
 
@@ -123,7 +125,9 @@
     // reflecting what this tab itself last wrote. Two independent
     // subscriptions (decisions/20) — one can never fire the other's callback.
     unsubscribePolicy = optionsServices().settings.onApprovalPolicyChange((p) => (policy = p));
-    unsubscribeMcpPolicy = optionsServices().settings.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
+    unsubscribeMcpPolicy = optionsServices().settings.onMcpApprovalPolicyChange(
+      (p) => (mcpPolicy = p),
+    );
   });
 
   onDestroy(() => {

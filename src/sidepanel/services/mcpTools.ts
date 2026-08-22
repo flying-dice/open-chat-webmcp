@@ -249,7 +249,10 @@ async function executeServerTool(
     return { ok: false, error: describeMcpError(result.error) };
   }
   if (result.value.isError) {
-    return { ok: false, error: contentToText(result.value.content) || "The server reported an error for this call." };
+    return {
+      ok: false,
+      error: contentToText(result.value.content) || "The server reported an error for this call.",
+    };
   }
   return { ok: true, result: successResult(result.value) };
 }

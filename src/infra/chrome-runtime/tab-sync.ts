@@ -327,9 +327,7 @@ export function startTabSync(options: TabSyncOptions): () => void {
     // (SPA setting document.title) does not warrant a transcript reset —
     // just refresh the displayed title in place.
     if (changeInfo.url !== undefined) {
-      void withRefreshLock(() =>
-        refreshActiveTab(opts, tabId, false, () => activeTabId === tabId),
-      );
+      void withRefreshLock(() => refreshActiveTab(opts, tabId, false, () => activeTabId === tabId));
       return;
     }
     // A favicon can arrive after the title (or replace it later), and both

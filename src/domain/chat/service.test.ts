@@ -13,7 +13,8 @@ import type { MergedTool, ToolOrigin } from "../tools";
 // ---------------------------------------------------------------------------
 
 const page: PageContext = { tabId: 1, title: "Example Page", origin: "https://example.com" };
-const originLabel = (origin: ToolOrigin): string => (origin.kind === "page" ? "this page" : origin.serverName);
+const originLabel = (origin: ToolOrigin): string =>
+  origin.kind === "page" ? "this page" : origin.serverName;
 
 /** Never lets anything auto-run — every test that doesn't care about the approval outcome uses this. */
 const denyPolicy: ApprovalPolicyGate = { mayAutoRun: async () => false };
@@ -141,7 +142,10 @@ describe("ChatService.syncToTab", () => {
     expect(service.current()?.origin).toBe("https://example.com");
     expect(service.activeTabId()).toBe(1);
     expect(service.activeTabOrigin()).toBe("https://example.com");
-    expect(store.pointers.get(1)).toEqual({ chatId: service.current()!.id, origin: "https://example.com" });
+    expect(store.pointers.get(1)).toEqual({
+      chatId: service.current()!.id,
+      origin: "https://example.com",
+    });
   });
 });
 
@@ -266,7 +270,10 @@ describe("ChatService selection", () => {
     expect(service.getSelection(1)).toBeUndefined();
     expect(await service.setSelection(1, { providerId: "p", model: "m" }, false)).toBe(true);
 
-    expect(service.getSelection(1)).toEqual({ selection: { providerId: "p", model: "m" }, explicit: false });
+    expect(service.getSelection(1)).toEqual({
+      selection: { providerId: "p", model: "m" },
+      explicit: false,
+    });
     expect(service.getSelection(999)).toBeUndefined();
   });
 
@@ -319,7 +326,9 @@ describe("ChatService transcript mutators", () => {
     await service.syncToTab(1, "https://a.example.com");
     const id = service.addUserMessage("hello");
     expect(id).not.toBe("");
-    expect(service.current()!.messages).toEqual([expect.objectContaining({ id, role: "user", content: "hello" })]);
+    expect(service.current()!.messages).toEqual([
+      expect.objectContaining({ id, role: "user", content: "hello" }),
+    ]);
   });
 
   it("beginAssistantMessage / appendAssistantDelta / endAssistantMessage build up a streamed reply", async () => {
@@ -376,7 +385,9 @@ describe("ChatService transcript mutators", () => {
 
 describe("ChatService.runTurn — auto-run tool call end to end", () => {
   it("mirrors an auto-run tool call into the transcript AND the chat's tool-call log, then gives the model a second round", async () => {
-    const { service } = makeService({ policy: { mayAutoRun: async (tool) => tool?.annotations.readOnlyHint === true } });
+    const { service } = makeService({
+      policy: { mayAutoRun: async (tool) => tool?.annotations.readOnlyHint === true },
+    });
     await service.syncToTab(1, "https://example.com");
 
     const readTool = makeTool({
@@ -385,7 +396,10 @@ describe("ChatService.runTurn — auto-run tool call end to end", () => {
       call: async () => ({ ok: true, result: "Example Domain" }),
     });
     const gateway = scriptedGateway([
-      [{ type: "tool-calls", toolCalls: [{ id: "call-1", name: "get_title", arguments: {} }] }, doneEvent()],
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "get_title", arguments: {} }] },
+        doneEvent(),
+      ],
       [{ type: "content", delta: "It's Example Domain" }, doneEvent()],
     ]);
 
@@ -407,7 +421,9 @@ describe("ChatService.runTurn — auto-run tool call end to end", () => {
       expect.objectContaining({ name: "get_title", mode: "auto", result: "Example Domain" }),
     ]);
     expect(gateway.requests).toHaveLength(2);
-    expect(chat.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe("It's Example Domain");
+    expect(chat.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe(
+      "It's Example Domain",
+    );
   });
 });
 
@@ -723,7 +739,9 @@ describe("chaos: acting on a chat mid-turn from elsewhere", () => {
     await turnPromise;
     // The turn kept writing to its captured `target`, unaffected by the
     // panel swapping to a fresh chat underneath it.
-    expect(chat.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe("still writing");
+    expect(chat.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe(
+      "still writing",
+    );
     expect(service.isTurnActive(chat.id)).toBe(false);
   });
 });

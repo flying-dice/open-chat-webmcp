@@ -212,7 +212,13 @@ function toolSequenceMessages(chatId, at) {
     // The carrier `groupTranscript` drops from display but which must NOT
     // close the open activity group (decisions/26) — without that rule this
     // empty message would split the timeline in two.
-    { id: `${chatId}-carrier`, role: "assistant", content: "", createdAt: at + 20, toolCalls: carrierCalls },
+    {
+      id: `${chatId}-carrier`,
+      role: "assistant",
+      content: "",
+      createdAt: at + 20,
+      toolCalls: carrierCalls,
+    },
     {
       id: `${chatId}-call-1`,
       role: "tool",
@@ -353,8 +359,19 @@ function cleanRunMessages(chatId, at) {
   ];
   return [
     { id: `${chatId}-u`, role: "user", content: FIXTURE_CHAT_PROMPTS[1], createdAt: at },
-    { id: `${chatId}-a1`, role: "assistant", content: "One moment, checking the page.", createdAt: at + 10 },
-    { id: `${chatId}-carrier`, role: "assistant", content: "", createdAt: at + 20, toolCalls: carrierCalls },
+    {
+      id: `${chatId}-a1`,
+      role: "assistant",
+      content: "One moment, checking the page.",
+      createdAt: at + 10,
+    },
+    {
+      id: `${chatId}-carrier`,
+      role: "assistant",
+      content: "",
+      createdAt: at + 20,
+      toolCalls: carrierCalls,
+    },
     {
       id: `${chatId}-call-1`,
       role: "tool",

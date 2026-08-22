@@ -66,7 +66,9 @@ import { openPicker, openOptionsPage } from "../stores/selection.svelte";
 
 function resetToBaseline(): void {
   state.providersStatus = "loaded";
-  state.providers = [{ id: "p1", type: "ollama", name: "Local", baseUrl: "http://localhost:11434" }];
+  state.providers = [
+    { id: "p1", type: "ollama", name: "Local", baseUrl: "http://localhost:11434" },
+  ];
   state.resolution = {
     status: "ok",
     config: { id: "p1", type: "ollama", name: "Local", baseUrl: "http://localhost:11434" },
@@ -209,7 +211,9 @@ describe("Composer", () => {
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
       expect(
-        screen.getByText("No provider is registered yet — add one on the options page to start chatting."),
+        screen.getByText(
+          "No provider is registered yet — add one on the options page to start chatting.",
+        ),
       ).toBeInTheDocument();
       const button = screen.getByRole("button", { name: "Open options to add a provider" });
       await user.click(button);

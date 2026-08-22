@@ -8,12 +8,7 @@
 // (`content`/`structuredContent`/`isError`) match
 // /specification/2025-06-18/server/tools.
 
-import type {
-  McpResult,
-  McpTool,
-  McpToolCallResult,
-  McpToolContent,
-} from "../../domain/tools";
+import type { McpResult, McpTool, McpToolCallResult, McpToolContent } from "../../domain/tools";
 import { isRecord } from "./json-rpc";
 import type { McpWireSession } from "./session";
 
@@ -29,9 +24,17 @@ function normalizeTool(raw: unknown): McpTool | null {
   };
 }
 
-function parseToolsListResult(value: unknown): McpResult<{ tools: McpTool[]; nextCursor?: string }> {
+function parseToolsListResult(
+  value: unknown,
+): McpResult<{ tools: McpTool[]; nextCursor?: string }> {
   if (!isRecord(value) || !Array.isArray(value.tools)) {
-    return { ok: false, error: { kind: "invalid-response", message: "tools/list result was missing a `tools` array." } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: "tools/list result was missing a `tools` array.",
+      },
+    };
   }
   const tools = value.tools.map(normalizeTool).filter((t): t is McpTool => t !== null);
   const nextCursor = typeof value.nextCursor === "string" ? value.nextCursor : undefined;
@@ -69,7 +72,8 @@ function normalizeContent(raw: unknown): McpToolContent {
             type: "resource",
             resource: {
               uri: raw.resource.uri,
-              mimeType: typeof raw.resource.mimeType === "string" ? raw.resource.mimeType : undefined,
+              mimeType:
+                typeof raw.resource.mimeType === "string" ? raw.resource.mimeType : undefined,
               text: typeof raw.resource.text === "string" ? raw.resource.text : undefined,
               blob: typeof raw.resource.blob === "string" ? raw.resource.blob : undefined,
             },
@@ -82,7 +86,13 @@ function normalizeContent(raw: unknown): McpToolContent {
 
 function parseToolCallResult(value: unknown): McpResult<McpToolCallResult> {
   if (!isRecord(value) || !Array.isArray(value.content)) {
-    return { ok: false, error: { kind: "invalid-response", message: "tools/call result was missing a `content` array." } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: "tools/call result was missing a `content` array.",
+      },
+    };
   }
   return {
     ok: true,

@@ -24,7 +24,9 @@
     return typeof v === "object" && v !== null && !Array.isArray(v);
   }
 
-  const properties = $derived(isRecord(schema?.properties) ? (schema.properties as Record<string, unknown>) : undefined);
+  const properties = $derived(
+    isRecord(schema?.properties) ? (schema.properties as Record<string, unknown>) : undefined,
+  );
   const required = $derived(
     Array.isArray(schema?.required)
       ? (schema.required as unknown[]).filter((r): r is string => typeof r === "string")

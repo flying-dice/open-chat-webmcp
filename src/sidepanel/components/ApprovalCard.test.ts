@@ -127,7 +127,9 @@ describe("ApprovalCard", () => {
       render(ApprovalCard, { request });
 
       await user.click(
-        screen.getByRole("checkbox", { name: "Don't ask again for this tool on this page (this session)" }),
+        screen.getByRole("checkbox", {
+          name: "Don't ask again for this tool on this page (this session)",
+        }),
       );
       await user.click(screen.getByRole("button", { name: "Approve" }));
 
@@ -140,7 +142,9 @@ describe("ApprovalCard", () => {
       render(ApprovalCard, { request });
 
       expect(
-        screen.getByRole("checkbox", { name: "Don't ask again for this tool on this page (this session)" }),
+        screen.getByRole("checkbox", {
+          name: "Don't ask again for this tool on this page (this session)",
+        }),
       ).toBeInTheDocument();
     });
 
@@ -152,7 +156,9 @@ describe("ApprovalCard", () => {
       render(ApprovalCard, { request });
 
       expect(
-        screen.getByRole("checkbox", { name: "Don't ask again for this tool on this server (this session)" }),
+        screen.getByRole("checkbox", {
+          name: "Don't ask again for this tool on this server (this session)",
+        }),
       ).toBeInTheDocument();
     });
 

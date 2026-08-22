@@ -39,7 +39,8 @@ export function createPageToolExecutor(tabId: number): PageToolExecutor {
       const response = (await chrome.runtime.sendMessage(request)) as
         | RuntimeCallToolResponse
         | undefined;
-      if (!response) return { ok: false, error: "No response from the extension's background worker." };
+      if (!response)
+        return { ok: false, error: "No response from the extension's background worker." };
       if (!response.ok) {
         return { ok: false, error: response.error ?? "Tool call failed for an unknown reason." };
       }

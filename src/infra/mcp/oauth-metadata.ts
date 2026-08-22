@@ -60,7 +60,9 @@ function wellKnownCandidates(baseUrl: string, wellKnownName: string): string[] {
   }
   const path = parsed.pathname.replace(/\/+$/, "");
   const bareOrigin = `${parsed.origin}/.well-known/${wellKnownName}`;
-  return path.length > 0 ? [`${parsed.origin}/.well-known/${wellKnownName}${path}`, bareOrigin] : [bareOrigin];
+  return path.length > 0
+    ? [`${parsed.origin}/.well-known/${wellKnownName}${path}`, bareOrigin]
+    : [bareOrigin];
 }
 
 /** Try each candidate URL in order, returning the first that resolves; if none do, the last (most-generic) candidate's error, since that's the most standard location a server that implements this metadata at all would use. */
@@ -101,7 +103,10 @@ export async function discoverAuthorizationServer(
   try {
     origin = new URL(mcpServerUrl).origin;
   } catch {
-    return { ok: false, error: { kind: "not-mcp-endpoint", message: `"${mcpServerUrl}" is not a valid URL.` } };
+    return {
+      ok: false,
+      error: { kind: "not-mcp-endpoint", message: `"${mcpServerUrl}" is not a valid URL.` },
+    };
   }
 
   let issuerCandidate = origin;
@@ -121,7 +126,9 @@ export async function discoverAuthorizationServer(
     const body = protectedResource.value;
     const servers =
       isRecord(body) && Array.isArray(body.authorization_servers)
-        ? body.authorization_servers.filter((s): s is string => typeof s === "string" && s.length > 0)
+        ? body.authorization_servers.filter(
+            (s): s is string => typeof s === "string" && s.length > 0,
+          )
         : [];
     if (servers.length > 0) issuerCandidate = servers[0];
     if (isRecord(body)) resourceScopes = parseScopes(body.scopes_supported);
@@ -157,7 +164,8 @@ export async function discoverAuthorizationServer(
       issuer: body.issuer,
       authorizationEndpoint: body.authorization_endpoint,
       tokenEndpoint: body.token_endpoint,
-      registrationEndpoint: typeof body.registration_endpoint === "string" ? body.registration_endpoint : undefined,
+      registrationEndpoint:
+        typeof body.registration_endpoint === "string" ? body.registration_endpoint : undefined,
       scopesSupported: resourceScopes ?? parseScopes(body.scopes_supported),
     },
   };
@@ -209,11 +217,20 @@ export async function registerClient(
   } catch (err) {
     return {
       ok: false,
-      error: { kind: "invalid-response", message: `Registration response was not valid JSON: ${err instanceof Error ? err.message : String(err)}` },
+      error: {
+        kind: "invalid-response",
+        message: `Registration response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      },
     };
   }
   if (!isRecord(json) || typeof json.client_id !== "string" || json.client_id.length === 0) {
-    return { ok: false, error: { kind: "invalid-response", message: `${registrationEndpoint} did not return a client_id.` } };
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-response",
+        message: `${registrationEndpoint} did not return a client_id.`,
+      },
+    };
   }
 
   return {

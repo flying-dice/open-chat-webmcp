@@ -39,12 +39,7 @@
  *   its `cause`.
  */
 // TODO: clean-code - 0.3 - KISS: two of these five members are unreachable — a repo-wide search for `new StorageError(` finds exactly one construction site (src/infra/chrome-storage/area.ts), which only ever produces "Unavailable" or "Unexpected". "NotFound" and "Conflict" are never constructed anywhere in src/ — premature generality in the domain's own error vocabulary.
-export type StorageErrorKind =
-  | "Unavailable"
-  | "NotFound"
-  | "Conflict"
-  | "Corrupt"
-  | "Unexpected";
+export type StorageErrorKind = "Unavailable" | "NotFound" | "Conflict" | "Corrupt" | "Unexpected";
 
 /**
  * The one error every storage port speaks. `cause` keeps whatever the

@@ -13,7 +13,10 @@ import { OAUTH_REQUEST_TIMEOUT_MS } from "./timeouts";
 
 export function classifyFetchError(err: unknown): McpError {
   if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
-    return { kind: "timeout", message: `Timed out after ${OAUTH_REQUEST_TIMEOUT_MS}ms during OAuth discovery/token exchange.` };
+    return {
+      kind: "timeout",
+      message: `Timed out after ${OAUTH_REQUEST_TIMEOUT_MS}ms during OAuth discovery/token exchange.`,
+    };
   }
   if (err instanceof TypeError) {
     return {
@@ -36,7 +39,10 @@ export async function fetchJson(url: string): Promise<McpResult<unknown>> {
   if (!response.ok) {
     return {
       ok: false,
-      error: { kind: "not-mcp-endpoint", message: `${url} responded ${response.status} ${response.statusText}.` },
+      error: {
+        kind: "not-mcp-endpoint",
+        message: `${url} responded ${response.status} ${response.statusText}.`,
+      },
     };
   }
   try {
@@ -53,7 +59,10 @@ export async function fetchJson(url: string): Promise<McpResult<unknown>> {
 }
 
 /** POST `application/x-www-form-urlencoded` `body` to a token endpoint and parse the JSON response, classifying a non-2xx per RFC 6749 §5.2's standard `error`/`error_description` shape as `kind: "auth"` (the same kind an expired bearer token produces) rather than the generic HTTP-failure kinds {@link fetchJson} uses for metadata GETs. */
-export async function postToken(tokenEndpoint: string, body: URLSearchParams): Promise<McpResult<unknown>> {
+export async function postToken(
+  tokenEndpoint: string,
+  body: URLSearchParams,
+): Promise<McpResult<unknown>> {
   let response: Response;
   try {
     response = await fetch(tokenEndpoint, {
@@ -75,7 +84,10 @@ export async function postToken(tokenEndpoint: string, body: URLSearchParams): P
 
   if (!response.ok) {
     const errCode = isRecord(json) && typeof json.error === "string" ? json.error : undefined;
-    const description = isRecord(json) && typeof json.error_description === "string" ? json.error_description : undefined;
+    const description =
+      isRecord(json) && typeof json.error_description === "string"
+        ? json.error_description
+        : undefined;
     return {
       ok: false,
       error: {
@@ -83,12 +95,17 @@ export async function postToken(tokenEndpoint: string, body: URLSearchParams): P
         status: response.status,
         message:
           description ??
-          (errCode ? `Token request failed: ${errCode}` : `Token endpoint responded ${response.status} ${response.statusText}.`),
+          (errCode
+            ? `Token request failed: ${errCode}`
+            : `Token endpoint responded ${response.status} ${response.statusText}.`),
       },
     };
   }
   if (json === undefined) {
-    return { ok: false, error: { kind: "invalid-response", message: "Token endpoint did not return valid JSON." } };
+    return {
+      ok: false,
+      error: { kind: "invalid-response", message: "Token endpoint did not return valid JSON." },
+    };
   }
   return { ok: true, value: json };
 }

@@ -92,7 +92,10 @@ const WEBMCP_CHROME_ARG = "--enable-features=WebMCP";
 const CANDIDATE_PATHS = {
   darwin: [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    path.join(process.env.HOME ?? "", "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    path.join(
+      process.env.HOME ?? "",
+      "Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ),
   ],
   linux: ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"],
   win32: [
@@ -156,9 +159,9 @@ async function openDemoPage() {
       demoHandle.alreadyRunning
         ? `Demo server already running on :5175 — opening ${DEMO_INDEX_URL}.`
         : `Started the demo server in the background on :5175 — opening ${DEMO_INDEX_URL}. ` +
-          "It's a real WebMCP fixture page (read-only, mutating, throwing and hanging tools) to try the " +
-          "extension against immediately. It keeps running after this script exits — stop it later with " +
-          "`lsof -ti:5175 | xargs kill` if you don't want it lingering.",
+            "It's a real WebMCP fixture page (read-only, mutating, throwing and hanging tools) to try the " +
+            "extension against immediately. It keeps running after this script exits — stop it later with " +
+            "`lsof -ti:5175 | xargs kill` if you don't want it lingering.",
     );
     return DEMO_INDEX_URL;
   } catch (err) {
@@ -186,7 +189,9 @@ async function main() {
   // as separate positional start-page args; verified directly (ps showed
   // both on the launched process's command line, both tabs present, no
   // errors attributable to it).
-  const startUrls = isFirstRun ? ["chrome://extensions/", WEBMCP_FLAGS_URL] : [await openDemoPage()];
+  const startUrls = isFirstRun
+    ? ["chrome://extensions/", WEBMCP_FLAGS_URL]
+    : [await openDemoPage()];
   const webMcpAlreadyEnabled = isWebMcpFlagEnabledInProfile();
 
   const child = spawn(
@@ -236,7 +241,7 @@ async function main() {
         "and opens straight into the demo page instead.",
     );
     console.log(
-      "\nA second tab also opened, on chrome://flags, at the \"WebMCP for testing\" flag. This is a FALLBACK, not\n" +
+      '\nA second tab also opened, on chrome://flags, at the "WebMCP for testing" flag. This is a FALLBACK, not\n' +
         "the primary path — every launch already passes " +
         WEBMCP_CHROME_ARG +
         " on the command line (see the WebMCP\n" +

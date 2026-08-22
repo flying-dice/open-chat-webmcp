@@ -260,10 +260,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * UI (src/options/components/ProviderForm.svelte) is what refuses a
  * reserved header *visibly*, before it's ever saved.
  */
-function buildHeaders(
-  custom: ProviderHeader[] | undefined,
-  contentType?: string,
-): Headers {
+function buildHeaders(custom: ProviderHeader[] | undefined, contentType?: string): Headers {
   const headers = new Headers();
   for (const { key, value } of custom ?? []) {
     if (key.trim().length === 0) continue;
@@ -305,14 +302,9 @@ function normalizeModel(raw: unknown): OllamaModel | null {
     size: typeof raw.size === "number" ? raw.size : 0,
     modifiedAt: typeof raw.modified_at === "string" ? raw.modified_at : "",
     family: typeof details?.family === "string" ? details.family : undefined,
-    parameterSize:
-      typeof details?.parameter_size === "string"
-        ? details.parameter_size
-        : undefined,
+    parameterSize: typeof details?.parameter_size === "string" ? details.parameter_size : undefined,
     quantizationLevel:
-      typeof details?.quantization_level === "string"
-        ? details.quantization_level
-        : undefined,
+      typeof details?.quantization_level === "string" ? details.quantization_level : undefined,
   };
 }
 
@@ -325,19 +317,15 @@ export async function listModels(opts?: {
   defaults?: ProviderDefaultsStore;
 }): Promise<ProviderResult<OllamaModel[]>> {
   const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
-  const result = await ollamaFetchJson<{ models?: unknown }>(
-    baseUrl,
-    "/api/tags",
-    { method: "GET", headers: buildHeaders(opts?.headers), signal: opts?.signal },
-  );
+  const result = await ollamaFetchJson<{ models?: unknown }>(baseUrl, "/api/tags", {
+    method: "GET",
+    headers: buildHeaders(opts?.headers),
+    signal: opts?.signal,
+  });
   if (!result.ok) return result;
 
-  const rawModels = Array.isArray(result.value.models)
-    ? result.value.models
-    : [];
-  const models = rawModels
-    .map(normalizeModel)
-    .filter((m): m is OllamaModel => m !== null);
+  const rawModels = Array.isArray(result.value.models) ? result.value.models : [];
+  const models = rawModels.map(normalizeModel).filter((m): m is OllamaModel => m !== null);
 
   return { ok: true, value: models };
 }
@@ -384,22 +372,16 @@ export async function getCapabilities(
   }
 
   const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
-  const result = await ollamaFetchJson<{ capabilities?: unknown }>(
-    baseUrl,
-    "/api/show",
-    {
-      method: "POST",
-      headers: buildHeaders(opts?.headers, "application/json"),
-      body: JSON.stringify({ model: model.name }),
-      signal: opts?.signal,
-    },
-  );
+  const result = await ollamaFetchJson<{ capabilities?: unknown }>(baseUrl, "/api/show", {
+    method: "POST",
+    headers: buildHeaders(opts?.headers, "application/json"),
+    body: JSON.stringify({ model: model.name }),
+    signal: opts?.signal,
+  });
   if (!result.ok) return result;
 
   const capabilities = Array.isArray(result.value.capabilities)
-    ? result.value.capabilities.filter(
-        (c): c is string => typeof c === "string",
-      )
+    ? result.value.capabilities.filter((c): c is string => typeof c === "string")
     : [];
   const value: ModelCapabilities = {
     status: capabilities.includes("tools") ? "tool-capable" : "no-tools",
@@ -515,10 +497,7 @@ export interface OllamaChatParams {
   defaults?: ProviderDefaultsStore;
 }
 
-function normalizeToolCall(
-  raw: unknown,
-  nextId: () => string,
-): OllamaToolCall | null {
+function normalizeToolCall(raw: unknown, nextId: () => string): OllamaToolCall | null {
   if (!isRecord(raw) || !isRecord(raw.function)) return null;
   const name = raw.function.name;
   if (typeof name !== "string") return null;
@@ -546,18 +525,14 @@ function normalizeChatMessage(
       : undefined);
 
   return {
-    role:
-      role === "system" || role === "user" || role === "tool"
-        ? role
-        : "assistant",
+    role: role === "system" || role === "user" || role === "tool" ? role : "assistant",
     content: typeof record.content === "string" ? record.content : "",
     ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
   };
 }
 
 function extractStats(raw: Record<string, unknown>): OllamaChatStats {
-  const num = (v: unknown): number | undefined =>
-    typeof v === "number" ? v : undefined;
+  const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
   return {
     doneReason: typeof raw.done_reason === "string" ? raw.done_reason : undefined,
     totalDuration: num(raw.total_duration),
@@ -570,10 +545,7 @@ function extractStats(raw: Record<string, unknown>): OllamaChatStats {
 }
 
 /** Yields 0-2 events for one parsed NDJSON line: an optional content delta and/or tool-calls, then an optional terminal done. */
-function* chatEventsFromLine(
-  raw: unknown,
-  nextId: () => string,
-): Generator<OllamaStreamEvent> {
+function* chatEventsFromLine(raw: unknown, nextId: () => string): Generator<OllamaStreamEvent> {
   if (!isRecord(raw)) return;
 
   const message = isRecord(raw.message) ? raw.message : undefined;

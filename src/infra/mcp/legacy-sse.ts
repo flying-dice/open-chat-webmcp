@@ -93,7 +93,9 @@ class LegacySsePump {
       // budget regardless of what happens to this pump.
     } finally {
       if (!this.endpointDeferred.settled) {
-        this.endpointDeferred.reject(new Error("SSE stream ended before an endpoint event arrived."));
+        this.endpointDeferred.reject(
+          new Error("SSE stream ended before an endpoint event arrived."),
+        );
       }
     }
   }
@@ -211,7 +213,10 @@ export async function connectLegacySse(
   if (!contentType.includes("text/event-stream") || !response.body) {
     return {
       ok: false,
-      error: { kind: "not-mcp-endpoint", message: "Server did not open an SSE stream for the legacy MCP transport either." },
+      error: {
+        kind: "not-mcp-endpoint",
+        message: "Server did not open an SSE stream for the legacy MCP transport either.",
+      },
     };
   }
 
@@ -231,7 +236,12 @@ export async function connectLegacySse(
   }
 
   let nextId = 2; // id 1 is used for initialize, below.
-  const initMsg = { jsonrpc: "2.0", id: 1, method: "initialize", params: initializeParams(clientInfo) };
+  const initMsg = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: initializeParams(clientInfo),
+  };
   const waitForInit = pump.waitForResponse(1);
   const posted = await postLegacyMessage(postEndpoint, baseHeaders, initMsg, budget);
   if (!posted.ok) {
@@ -248,7 +258,10 @@ export async function connectLegacySse(
       ok: false,
       error: budget.timedOut()
         ? { kind: "timeout", message: "Timed out waiting for the initialize response." }
-        : { kind: "invalid-response", message: "Legacy SSE stream closed before the initialize response arrived." },
+        : {
+            kind: "invalid-response",
+            message: "Legacy SSE stream closed before the initialize response arrived.",
+          },
     };
   }
 
@@ -263,7 +276,12 @@ export async function connectLegacySse(
     async request(method, params) {
       const id = nextId++;
       const waiter = pump.waitForResponse(id);
-      const sent = await postLegacyMessage(postEndpoint, baseHeaders, { jsonrpc: "2.0", id, method, params: params ?? {} }, budget);
+      const sent = await postLegacyMessage(
+        postEndpoint,
+        baseHeaders,
+        { jsonrpc: "2.0", id, method, params: params ?? {} },
+        budget,
+      );
       if (!sent.ok) return sent;
       try {
         const resp = await raceWithBudget(waiter, budget);
@@ -273,12 +291,20 @@ export async function connectLegacySse(
           ok: false,
           error: budget.timedOut()
             ? { kind: "timeout", message: `Timed out waiting for a response to "${method}".` }
-            : { kind: "invalid-response", message: "Legacy SSE stream closed before a response arrived." },
+            : {
+                kind: "invalid-response",
+                message: "Legacy SSE stream closed before a response arrived.",
+              },
         };
       }
     },
     async notify(method, params) {
-      await postLegacyMessage(postEndpoint, baseHeaders, { jsonrpc: "2.0", method, params: params ?? {} }, budget);
+      await postLegacyMessage(
+        postEndpoint,
+        baseHeaders,
+        { jsonrpc: "2.0", method, params: params ?? {} },
+        budget,
+      );
     },
     close() {
       pump.close();

@@ -3,7 +3,12 @@
 // resolveCapability, resolveCapabilities, isSelectable, reasonForCapability.
 // The only fake here is an in-memory ChatProvider — no chrome/fetch/DOM.
 import { describe, expect, it } from "vitest";
-import { isSelectable, reasonForCapability, resolveCapabilities, resolveCapability } from "./capability";
+import {
+  isSelectable,
+  reasonForCapability,
+  resolveCapabilities,
+  resolveCapability,
+} from "./capability";
 import {
   describeProviderError,
   type ChatProvider,
@@ -93,7 +98,10 @@ describe("resolveCapabilities", () => {
     const result = await resolveCapabilities(client, [model("good"), model("bad")]);
     expect(result).toEqual([
       { model: model("good"), capability: ok },
-      { model: model("bad"), capability: { status: "unknown", detail: [describeProviderError(error)] } },
+      {
+        model: model("bad"),
+        capability: { status: "unknown", detail: [describeProviderError(error)] },
+      },
     ]);
   });
 
@@ -131,27 +139,33 @@ describe("reasonForCapability", () => {
   });
 
   it("falls back to a default sentence when status is unknown with no detail", () => {
-    expect(reasonForCapability({ status: "unknown" })).toBe("Tool support not verified for this model.");
+    expect(reasonForCapability({ status: "unknown" })).toBe(
+      "Tool support not verified for this model.",
+    );
   });
 
   it("uses the detail text when status is no-tools and detail is present", () => {
-    expect(reasonForCapability({ status: "no-tools", detail: ["no tools capability reported"] })).toBe(
-      "no tools capability reported",
-    );
+    expect(
+      reasonForCapability({ status: "no-tools", detail: ["no tools capability reported"] }),
+    ).toBe("no tools capability reported");
   });
 
   it("falls back to a default sentence when status is no-tools with no detail", () => {
-    expect(reasonForCapability({ status: "no-tools" })).toBe("This model doesn't support tool calling.");
+    expect(reasonForCapability({ status: "no-tools" })).toBe(
+      "This model doesn't support tool calling.",
+    );
   });
 
   it("returns the joined detail for tool-capable when present, else undefined", () => {
-    expect(reasonForCapability({ status: "tool-capable", detail: ["confirmed via /api/show"] })).toBe(
-      "confirmed via /api/show",
-    );
+    expect(
+      reasonForCapability({ status: "tool-capable", detail: ["confirmed via /api/show"] }),
+    ).toBe("confirmed via /api/show");
     expect(reasonForCapability({ status: "tool-capable" })).toBeUndefined();
   });
 
   it("joins a multi-entry detail array with a space", () => {
-    expect(reasonForCapability({ status: "no-tools", detail: ["line one", "line two"] })).toBe("line one line two");
+    expect(reasonForCapability({ status: "no-tools", detail: ["line one", "line two"] })).toBe(
+      "line one line two",
+    );
   });
 });

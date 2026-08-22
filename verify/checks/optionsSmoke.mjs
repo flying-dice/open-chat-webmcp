@@ -79,7 +79,9 @@ async function main() {
 
     await page.goto(optionsUrl(extensionId));
     await page.waitForLoadState("domcontentloaded");
-    await page.getByRole("heading", { name: "Chat providers" }).waitFor({ state: "visible", timeout: 5000 });
+    await page
+      .getByRole("heading", { name: "Chat providers" })
+      .waitFor({ state: "visible", timeout: 5000 });
 
     // -----------------------------------------------------------------
     // Provider: add via the preset flow
@@ -90,14 +92,13 @@ async function main() {
       // (the label "Ollama" AND the secondary "No API key" line), so its
       // computed accessible name is both concatenated — an exact "Ollama"
       // match would miss it. Filter by contained text instead.
-      await page
-        .getByRole("button")
-        .filter({ hasText: "Ollama" })
-        .first()
-        .click();
+      await page.getByRole("button").filter({ hasText: "Ollama" }).first().click();
       const nameField = page.locator("#pf-name");
       await nameField.waitFor({ state: "visible", timeout: 5000 });
-      assert((await nameField.inputValue()) === "Ollama", "expected the Ollama preset to pre-fill the display name");
+      assert(
+        (await nameField.inputValue()) === "Ollama",
+        "expected the Ollama preset to pre-fill the display name",
+      );
       const urlField = page.locator("#pf-url");
       const prefilledUrl = await urlField.inputValue();
       assert(prefilledUrl.length > 0, "expected the Ollama preset to pre-fill a base URL");
@@ -114,30 +115,33 @@ async function main() {
       },
     );
 
-    await step("Provider header row: add, reserved-name (Content-Type) error, then remove", async () => {
-      await page.getByRole("button", { name: "Add header" }).click();
-      const firstKey = page.locator("#pf-header-0-key");
-      await firstKey.fill("x-tenant-id");
-      // The value input is the sibling text input in the same row.
-      const firstRow = firstKey.locator("xpath=ancestor::div[contains(@class,'items-start')]");
-      await firstRow.locator('input[placeholder="Value"]').fill("acme-corp");
+    await step(
+      "Provider header row: add, reserved-name (Content-Type) error, then remove",
+      async () => {
+        await page.getByRole("button", { name: "Add header" }).click();
+        const firstKey = page.locator("#pf-header-0-key");
+        await firstKey.fill("x-tenant-id");
+        // The value input is the sibling text input in the same row.
+        const firstRow = firstKey.locator("xpath=ancestor::div[contains(@class,'items-start')]");
+        await firstRow.locator('input[placeholder="Value"]').fill("acme-corp");
 
-      await page.getByRole("button", { name: "Add header" }).click();
-      const secondKey = page.getByPlaceholder("Header name, e.g. x-api-key").nth(1);
-      await secondKey.fill("Content-Type");
-      // headerRowError (src/options/forms/headerRows.ts) only reaches the
-      // reserved-name check once BOTH halves of a row are non-blank.
-      const secondRow = secondKey.locator("xpath=ancestor::div[contains(@class,'items-start')]");
-      await secondRow.locator('input[placeholder="Value"]').fill("anything");
-      const reservedError = page.getByText("Content-Type is set automatically", { exact: false });
-      await reservedError.waitFor({ state: "visible", timeout: 5000 });
-      shots.push(await shoot(page, "options-smoke-provider-header-reserved-error"));
+        await page.getByRole("button", { name: "Add header" }).click();
+        const secondKey = page.getByPlaceholder("Header name, e.g. x-api-key").nth(1);
+        await secondKey.fill("Content-Type");
+        // headerRowError (src/options/forms/headerRows.ts) only reaches the
+        // reserved-name check once BOTH halves of a row are non-blank.
+        const secondRow = secondKey.locator("xpath=ancestor::div[contains(@class,'items-start')]");
+        await secondRow.locator('input[placeholder="Value"]').fill("anything");
+        const reservedError = page.getByText("Content-Type is set automatically", { exact: false });
+        await reservedError.waitFor({ state: "visible", timeout: 5000 });
+        shots.push(await shoot(page, "options-smoke-provider-header-reserved-error"));
 
-      // Remove the offending second row — its own "Remove header …" button.
-      await page.getByRole("button", { name: /Remove header Content-Type/i }).click();
-      await reservedError.waitFor({ state: "detached", timeout: 5000 });
-      return { addedRows: 2, reservedErrorShown: true, removedOffendingRow: true };
-    });
+        // Remove the offending second row — its own "Remove header …" button.
+        await page.getByRole("button", { name: /Remove header Content-Type/i }).click();
+        await reservedError.waitFor({ state: "detached", timeout: 5000 });
+        return { addedRows: 2, reservedErrorShown: true, removedOffendingRow: true };
+      },
+    );
 
     await step('Show/Hide an API key value via "Add one anyway"', async () => {
       // "Add one anyway" only renders for a LOCAL preset of a needs-key TYPE
@@ -154,12 +158,21 @@ async function main() {
       const keyField = page.locator("#pf-key");
       await keyField.waitFor({ state: "visible", timeout: 5000 });
       await keyField.fill("sk-smoke-test-not-a-real-key");
-      assert((await keyField.getAttribute("type")) === "password", "expected the key field masked by default");
+      assert(
+        (await keyField.getAttribute("type")) === "password",
+        "expected the key field masked by default",
+      );
       await page.getByRole("button", { name: "Show", exact: true }).click();
-      assert((await keyField.getAttribute("type")) === "text", "expected Show to unmask the key field");
+      assert(
+        (await keyField.getAttribute("type")) === "text",
+        "expected Show to unmask the key field",
+      );
       shots.push(await shoot(page, "options-smoke-provider-key-shown"));
       await page.getByRole("button", { name: "Hide", exact: true }).click();
-      assert((await keyField.getAttribute("type")) === "password", "expected Hide to re-mask the key field");
+      assert(
+        (await keyField.getAttribute("type")) === "password",
+        "expected Hide to re-mask the key field",
+      );
       // Done with the LM Studio detour — cancel it and re-open the Ollama
       // preset form so the following save step operates on the provider this
       // run is actually adding. (The header rows exercised two steps ago were
@@ -231,7 +244,9 @@ async function main() {
       // first, same as the provider form.
       const firstRow = firstKey.locator("xpath=ancestor::div[contains(@class,'items-start')]");
       await firstRow.locator('input[placeholder="Value"]').fill("anything");
-      const reservedError = page.getByText("is set automatically by the client", { exact: false }).first();
+      const reservedError = page
+        .getByText("is set automatically by the client", { exact: false })
+        .first();
       await reservedError.waitFor({ state: "visible", timeout: 5000 });
       shots.push(await shoot(page, "options-smoke-mcp-header-reserved-error"));
       await page.getByRole("button", { name: /Remove header Content-Type/i }).click();

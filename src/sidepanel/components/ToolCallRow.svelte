@@ -75,7 +75,11 @@
    * value; every render below branches on it explicitly.
    */
   const displayStatus = $derived(
-    message.toolStatus !== "pending" ? (message.toolStatus ?? "pending") : live ? "running" : "stalled",
+    message.toolStatus !== "pending"
+      ? (message.toolStatus ?? "pending")
+      : live
+        ? "running"
+        : "stalled",
   );
 
   // The dot's colour reuses "pending"'s for "running" (see `dotClass`

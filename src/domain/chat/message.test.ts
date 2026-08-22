@@ -67,7 +67,12 @@ describe("toModelMessage", () => {
   });
 
   it("does not fence a tool entry whose tool was not annotated untrusted", () => {
-    const entry = toolEntry("t1", call, { mode: "auto", annotations: { untrustedContentHint: false } }, 0);
+    const entry = toolEntry(
+      "t1",
+      call,
+      { mode: "auto", annotations: { untrustedContentHint: false } },
+      0,
+    );
     entry.content = "trusted result";
     expect(toModelMessage(entry).content).toBe("trusted result");
   });
@@ -79,7 +84,12 @@ describe("toModelMessage", () => {
   });
 
   it("does not fence an untrusted tool entry whose content is still empty (pending)", () => {
-    const entry = toolEntry("t1", call, { mode: "auto", annotations: { untrustedContentHint: true } }, 0);
+    const entry = toolEntry(
+      "t1",
+      call,
+      { mode: "auto", annotations: { untrustedContentHint: true } },
+      0,
+    );
     expect(entry.content).toBe("");
     expect(toModelMessage(entry).content).toBe("");
   });
@@ -136,7 +146,12 @@ describe("toModelConversation", () => {
   });
 
   it("fences an untrusted tool result in the conversation sent to the model without mutating the source entries", () => {
-    const toolMsg = toolEntry("t1", call, { mode: "auto", annotations: { untrustedContentHint: true } }, 0);
+    const toolMsg = toolEntry(
+      "t1",
+      call,
+      { mode: "auto", annotations: { untrustedContentHint: true } },
+      0,
+    );
     toolMsg.content = "attacker-controlled text";
     const entries: TranscriptEntry[] = [userEntry("u1", "check the page", 0), toolMsg];
 

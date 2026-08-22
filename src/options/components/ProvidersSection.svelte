@@ -105,7 +105,9 @@
   // TODO: clean-code - 0.45 - DRY: refreshPermissions (Promise.all + Object.fromEntries over cached grants) and handleMove/handleTest below are the same generic reorder/permission-gate plumbing duplicated a second time in McpServersSection.svelte, with no domain-specific reason left to be typed twice.
   async function refreshPermissions(): Promise<void> {
     const entries = await Promise.all(
-      providers.map(async (p) => [p.id, await optionsServices().permissions.has(p.baseUrl)] as const),
+      providers.map(
+        async (p) => [p.id, await optionsServices().permissions.has(p.baseUrl)] as const,
+      ),
     );
     permissionGranted = Object.fromEntries(entries);
   }
@@ -195,7 +197,10 @@
       staleDefaultReason = `No client is registered for provider type "${resolved.config.type}".`;
       return;
     }
-    const capability = await resolveCapability(client, { id: resolved.model, name: resolved.model });
+    const capability = await resolveCapability(client, {
+      id: resolved.model,
+      name: resolved.model,
+    });
     staleDefaultReason = isSelectable(capability)
       ? undefined
       : (reasonForCapability(capability) ?? "This model can't be confirmed as tool-capable.");
@@ -273,7 +278,9 @@
   }
 
   /** `provider`'s tool-capable model options, or `[]` while loading/blocked — exactly what ProviderRow's dropdown renders. */
-  function defaultModelOptionsFor(provider: ProviderConfig): { model: ProviderModel; capability: ModelCapabilities }[] {
+  function defaultModelOptionsFor(
+    provider: ProviderConfig,
+  ): { model: ProviderModel; capability: ModelCapabilities }[] {
     const state = defaultModelOptionsState[provider.id];
     return state?.status === "loaded" ? state.options : [];
   }
@@ -313,7 +320,10 @@
     const options = defaultModelOptionsFor(provider);
     if (!options.some((o) => o.model.id === modelId)) return;
 
-    await optionsServices().providers.setDefaultSelection({ providerId: provider.id, model: modelId });
+    await optionsServices().providers.setDefaultSelection({
+      providerId: provider.id,
+      model: modelId,
+    });
     defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }

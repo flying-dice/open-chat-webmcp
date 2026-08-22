@@ -43,7 +43,11 @@ function initOk(): Response {
 /** A minimal, well-behaved streamable-http server: initialize, then answers any request with `handle`. */
 function stubServer(handle: (method: string, params: unknown) => unknown) {
   return vi.fn(async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(init.body as string) as { id?: number; method: string; params?: unknown };
+    const body = JSON.parse(init.body as string) as {
+      id?: number;
+      method: string;
+      params?: unknown;
+    };
     if (body.method === "initialize") return initOk();
     if (body.method === "notifications/initialized") return jsonResponse({ ok: true });
     return jsonResponse({ jsonrpc: "2.0", id: body.id, result: handle(body.method, body.params) });
@@ -61,12 +65,19 @@ describe("createMcpToolGateway", () => {
 
       expect(result).toEqual({
         ok: true,
-        value: { protocolVersion: "2025-06-18", serverInfo: { name: "srv" }, instructions: undefined },
+        value: {
+          protocolVersion: "2025-06-18",
+          serverInfo: { name: "srv" },
+          instructions: undefined,
+        },
       });
     });
 
     it("propagates a connect failure untouched", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("boom", { status: 500 })),
+      );
       const gateway = createMcpToolGateway({ auth: noopAuth });
 
       const result = await gateway.testServerConnection(serverConfig());
@@ -105,8 +116,13 @@ describe("createMcpToolGateway", () => {
     it("invokes the named tool with its arguments and returns the decoded result", async () => {
       const fetchMock = stubServer((method, params) => {
         if (method === "tools/call") {
-          const { name, arguments: args } = params as { name: string; arguments: Record<string, unknown> };
-          return { content: [{ type: "text", text: `called ${name} with ${JSON.stringify(args)}` }] };
+          const { name, arguments: args } = params as {
+            name: string;
+            arguments: Record<string, unknown>;
+          };
+          return {
+            content: [{ type: "text", text: `called ${name} with ${JSON.stringify(args)}` }],
+          };
         }
         return {};
       });
@@ -127,7 +143,11 @@ describe("createMcpToolGateway", () => {
 
   describe("discoverAllServerTools", () => {
     it("per-server failure isolation: one dead server never affects another's successful result (decisions/14)", async () => {
-      const good = serverConfig({ id: "good", name: "Good Server", url: "https://good.example/rpc" });
+      const good = serverConfig({
+        id: "good",
+        name: "Good Server",
+        url: "https://good.example/rpc",
+      });
       const bad = serverConfig({ id: "bad", name: "Bad Server", url: "https://bad.example/rpc" });
 
       vi.stubGlobal(
@@ -137,7 +157,11 @@ describe("createMcpToolGateway", () => {
           const body = JSON.parse(init.body as string) as { id?: number; method: string };
           if (body.method === "initialize") return initOk();
           if (body.method === "notifications/initialized") return jsonResponse({ ok: true });
-          return jsonResponse({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "onlyTool" }] } });
+          return jsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: { tools: [{ name: "onlyTool" }] },
+          });
         }),
       );
       const gateway = createMcpToolGateway({ auth: noopAuth });
@@ -149,7 +173,11 @@ describe("createMcpToolGateway", () => {
           status: "ok",
           serverId: "good",
           serverName: "Good Server",
-          connection: { protocolVersion: "2025-06-18", serverInfo: { name: "srv" }, instructions: undefined },
+          connection: {
+            protocolVersion: "2025-06-18",
+            serverInfo: { name: "srv" },
+            instructions: undefined,
+          },
           tools: [
             {
               name: "onlyTool",

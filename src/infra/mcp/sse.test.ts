@@ -53,7 +53,7 @@ describe("extractSseMessages", () => {
   });
 
   it("is chunk-boundary-safe: a message split across two calls with persisted state reassembles correctly", () => {
-    const full = "event: custom\ndata: {\"a\":1}\n\n";
+    const full = 'event: custom\ndata: {"a":1}\n\n';
     const splitAt = Math.floor(full.length / 2);
     const state = freshSseState();
 
@@ -99,7 +99,9 @@ describe("scanForResponse", () => {
   });
 
   it("returns undefined when nothing matches", () => {
-    const events = [{ event: "message", data: JSON.stringify({ jsonrpc: "2.0", id: 99, result: "x" }) }];
+    const events = [
+      { event: "message", data: JSON.stringify({ jsonrpc: "2.0", id: 99, result: "x" }) },
+    ];
     expect(scanForResponse(events, 1)).toBeUndefined();
   });
 
@@ -143,12 +145,17 @@ describe("readSseForResponse", () => {
 
   it("resolves ok:false invalid-response when the stream ends with no matching response", async () => {
     const budget = createBudget(1000, undefined);
-    const body = streamOf([`data: ${JSON.stringify({ jsonrpc: "2.0", id: 99, result: "wrong" })}\n\n`]);
+    const body = streamOf([
+      `data: ${JSON.stringify({ jsonrpc: "2.0", id: 99, result: "wrong" })}\n\n`,
+    ]);
     const result = await readSseForResponse(body, 1, budget);
     budget.cleanup();
     expect(result).toEqual({
       ok: false,
-      error: { kind: "invalid-response", message: "SSE stream ended without a matching JSON-RPC response." },
+      error: {
+        kind: "invalid-response",
+        message: "SSE stream ended without a matching JSON-RPC response.",
+      },
     });
   });
 

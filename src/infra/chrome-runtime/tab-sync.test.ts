@@ -13,7 +13,12 @@
 // without reimplementing the browser.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTabToolsLookup, startTabSync, type TabSyncSession, type TabSyncView } from "./tab-sync";
+import {
+  createTabToolsLookup,
+  startTabSync,
+  type TabSyncSession,
+  type TabSyncView,
+} from "./tab-sync";
 
 type ActivatedListener = (info: { tabId: number }) => void;
 type UpdatedListener = (
@@ -118,7 +123,8 @@ function makeView(): TabSyncView & {
     toolsChanges,
     pageResolved: (page) => resolved.push(page),
     pageMetaChanged: () => undefined,
-    toolsChanged: (tabId, tools, available) => toolsChanges.push({ tabId, count: tools.length, available }),
+    toolsChanged: (tabId, tools, available) =>
+      toolsChanges.push({ tabId, count: tools.length, available }),
   };
 }
 
@@ -152,7 +158,13 @@ describe("chaos: runtime:tools-updated racing a tab switch", () => {
 
     // A `runtime:tools-updated` broadcast for the OLD tab (1) arrives late —
     // e.g. the relay was already mid-flight with it when the switch happened.
-    fake.fireMessage({ type: "runtime:tools-updated", tabId: 1, origin: "https://a.example.com", available: true, tools: [{ name: "x" }] });
+    fake.fireMessage({
+      type: "runtime:tools-updated",
+      tabId: 1,
+      origin: "https://a.example.com",
+      available: true,
+      tools: [{ name: "x" }],
+    });
 
     expect(view.toolsChanges).toEqual([]); // never applied — tab 1 is stale
     stop();
@@ -176,7 +188,13 @@ describe("chaos: runtime:tools-updated racing a tab switch", () => {
     const stop = startTabSync({ session, view });
     await vi.waitFor(() => expect(view.resolved.length).toBeGreaterThan(0));
 
-    const message = { type: "runtime:tools-updated", tabId: 1, origin: "https://a.example.com", available: true, tools: [{ name: "x" }, { name: "y" }] };
+    const message = {
+      type: "runtime:tools-updated",
+      tabId: 1,
+      origin: "https://a.example.com",
+      available: true,
+      tools: [{ name: "x" }, { name: "y" }],
+    };
     fake.fireMessage(message);
     fake.fireMessage(message); // exact duplicate delivery
 
@@ -190,15 +208,31 @@ describe("chaos: runtime:tools-updated racing a tab switch", () => {
 
 describe("chaos: the three-state tool availability model stays distinguishable end to end", () => {
   it.each([
-    ["ordinary page with no tools registered", { available: true, restricted: false, tools: [] }, { available: true, restricted: false, tools: [] }],
-    ["WebMCP not enabled in this Chrome build", { available: false, restricted: false, tools: [] }, { available: false, restricted: false, tools: [] }],
-    ["a restricted page (chrome://, the Web Store, ...) — no relay to even ask", { available: false, restricted: true, tools: [] }, { available: false, restricted: true, tools: [] }],
+    [
+      "ordinary page with no tools registered",
+      { available: true, restricted: false, tools: [] },
+      { available: true, restricted: false, tools: [] },
+    ],
+    [
+      "WebMCP not enabled in this Chrome build",
+      { available: false, restricted: false, tools: [] },
+      { available: false, restricted: false, tools: [] },
+    ],
+    [
+      "a restricted page (chrome://, the Web Store, ...) — no relay to even ask",
+      { available: false, restricted: true, tools: [] },
+      { available: false, restricted: true, tools: [] },
+    ],
   ])("%s", async (_label, response, expected) => {
     const fake = createFakeChrome();
     vi.stubGlobal("chrome", fake.chrome);
     fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
     fake.setActive(1);
-    fake.setSendMessageImpl(async () => ({ type: "runtime:get-tools-response", tabId: 1, ...response }));
+    fake.setSendMessageImpl(async () => ({
+      type: "runtime:get-tools-response",
+      tabId: 1,
+      ...response,
+    }));
     const session = makeSession();
     const view = makeView();
 
@@ -214,7 +248,9 @@ describe("chaos: the three-state tool availability model stays distinguishable e
     vi.stubGlobal("chrome", fake.chrome);
     fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
     fake.setActive(1);
-    fake.setSendMessageImpl(() => Promise.reject(new Error("Could not establish connection. Receiving end does not exist.")));
+    fake.setSendMessageImpl(() =>
+      Promise.reject(new Error("Could not establish connection. Receiving end does not exist.")),
+    );
     const session = makeSession();
     const view = makeView();
 
@@ -239,7 +275,12 @@ describe("chaos: createTabToolsLookup against a wedged or misbehaving worker", (
   it("resolves to an empty list for a well-formed but malformed-shape response (missing tools field)", async () => {
     const fake = createFakeChrome();
     vi.stubGlobal("chrome", fake.chrome);
-    fake.setSendMessageImpl(async () => ({ type: "runtime:get-tools-response", tabId: 1, available: true, restricted: false }));
+    fake.setSendMessageImpl(async () => ({
+      type: "runtime:get-tools-response",
+      tabId: 1,
+      available: true,
+      restricted: false,
+    }));
 
     const lookup = createTabToolsLookup();
     await expect(lookup(1)).resolves.toEqual([]);

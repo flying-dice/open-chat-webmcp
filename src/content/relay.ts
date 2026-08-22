@@ -156,7 +156,10 @@ function sendRuntimeMessage(msg: RuntimeMessage): void {
   }
 }
 
-function safeRespond(sendResponse: (response: RuntimeMessage) => void, response: RuntimeMessage): void {
+function safeRespond(
+  sendResponse: (response: RuntimeMessage) => void,
+  response: RuntimeMessage,
+): void {
   try {
     sendResponse(response);
   } catch (err) {
@@ -193,13 +196,19 @@ function safeJson<T>(v: unknown): T | undefined {
  * (decisions/16) — parsed defensively since it's page-supplied and may be
  * absent or malformed.
  */
-function parseInputSchema(raw: string | undefined, toolName: string): Record<string, unknown> | undefined {
+function parseInputSchema(
+  raw: string | undefined,
+  toolName: string,
+): Record<string, unknown> | undefined {
   if (raw === undefined) return undefined;
   try {
     const parsed: unknown = JSON.parse(raw);
     return isRecord(parsed) ? parsed : undefined;
   } catch (err) {
-    console.warn(`[webmcp][relay] tool "${toolName}" has a malformed inputSchema JSON string; dropping it`, err);
+    console.warn(
+      `[webmcp][relay] tool "${toolName}" has a malformed inputSchema JSON string; dropping it`,
+      err,
+    );
     return undefined;
   }
 }
@@ -337,7 +346,10 @@ async function handleCallTool(
   const args = isRecord(req.args) ? req.args : {};
 
   try {
-    const resultJson = await callWithTimeout(() => callExecuteTool(mc, tool, args), RELAY_EXECUTE_TIMEOUT_MS);
+    const resultJson = await callWithTimeout(
+      () => callExecuteTool(mc, tool, args),
+      RELAY_EXECUTE_TIMEOUT_MS,
+    );
 
     // executeTool resolves to a nullable JSON string (decisions/16) — parse
     // it, and pass `null` straight through rather than trying to JSON.parse
@@ -374,7 +386,9 @@ async function handleCallTool(
 // wait out any more, so this is just a fetch-and-respond.
 // ---------------------------------------------------------------------------
 
-async function handleRefreshToolsRequest(sendResponse: (response: RuntimeMessage) => void): Promise<void> {
+async function handleRefreshToolsRequest(
+  sendResponse: (response: RuntimeMessage) => void,
+): Promise<void> {
   if (MODEL_CONTEXT_AVAILABLE) {
     try {
       await refreshTools();
@@ -442,7 +456,9 @@ if (MODEL_CONTEXT_AVAILABLE) {
 // tab in the meantime. Re-fetch so it catches up.
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && MODEL_CONTEXT_AVAILABLE) {
-    refreshTools().catch((err) => console.warn("[webmcp][relay] bfcache-restore refresh failed", err));
+    refreshTools().catch((err) =>
+      console.warn("[webmcp][relay] bfcache-restore refresh failed", err),
+    );
   }
 });
 

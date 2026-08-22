@@ -129,12 +129,22 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
     try {
       const session = await connect(config, ctx, budget);
       if (!session.ok) {
-        return { status: "error", serverId: config.id, serverName: config.name, error: session.error };
+        return {
+          status: "error",
+          serverId: config.id,
+          serverName: config.name,
+          error: session.error,
+        };
       }
       try {
         const tools = await listToolsViaSession(session.value);
         if (!tools.ok) {
-          return { status: "error", serverId: config.id, serverName: config.name, error: tools.error };
+          return {
+            status: "error",
+            serverId: config.id,
+            serverName: config.name,
+            error: tools.error,
+          };
         }
         return {
           status: "ok",
@@ -157,7 +167,10 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
         status: "error",
         serverId: config.id,
         serverName: config.name,
-        error: { kind: "invalid-response", message: err instanceof Error ? err.message : String(err) },
+        error: {
+          kind: "invalid-response",
+          message: err instanceof Error ? err.message : String(err),
+        },
       };
     } finally {
       budget.cleanup();

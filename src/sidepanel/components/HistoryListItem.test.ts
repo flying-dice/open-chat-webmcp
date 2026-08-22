@@ -84,7 +84,9 @@ describe("HistoryListItem", () => {
       },
     });
 
-    await user.click(screen.getByRole("button", { name: /Delete chat from https:\/\/example\.com/ }));
+    await user.click(
+      screen.getByRole("button", { name: /Delete chat from https:\/\/example\.com/ }),
+    );
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onOpen).not.toHaveBeenCalled();
   });
@@ -128,7 +130,9 @@ describe("HistoryListItem", () => {
       },
     });
     expect(screen.getByRole("button", { name: /hello there/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Delete chat from https:\/\/example\.com/ })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Delete chat from https:\/\/example\.com/ }),
+    ).toBeDisabled();
     unmount();
 
     render(HistoryListItem, {

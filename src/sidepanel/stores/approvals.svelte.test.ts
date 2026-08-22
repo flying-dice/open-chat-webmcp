@@ -33,7 +33,11 @@ let callCounter = 0;
 function pageRequest(name?: string): ApprovalRequest {
   callCounter += 1;
   return {
-    call: { id: `call-${callCounter}`, name: name ?? `pageTool${callCounter}`, arguments: {} } as ToolCall,
+    call: {
+      id: `call-${callCounter}`,
+      name: name ?? `pageTool${callCounter}`,
+      arguments: {},
+    } as ToolCall,
     tool: undefined,
   };
 }
@@ -48,7 +52,10 @@ function serverRequest(name?: string): { request: ApprovalRequest; tool: MergedT
     call: async () => ({ ok: true, result: undefined }),
   };
   return {
-    request: { call: { id: `call-${callCounter}`, name: toolName, arguments: {} } as ToolCall, tool },
+    request: {
+      call: { id: `call-${callCounter}`, name: toolName, arguments: {} } as ToolCall,
+      tool,
+    },
     tool,
   };
 }
@@ -171,7 +178,9 @@ describe("chaos: a decision for a dismissed request", () => {
   });
 
   it("dismissing denies every pending request independently — none are left stuck, none affect each other's identity", async () => {
-    const decisions = [pageRequest("t1"), pageRequest("t2"), pageRequest("t3")].map((r) => requestApproval(r));
+    const decisions = [pageRequest("t1"), pageRequest("t2"), pageRequest("t3")].map((r) =>
+      requestApproval(r),
+    );
     expect(approvals.pending).toHaveLength(3);
 
     dismissAllPending();

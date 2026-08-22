@@ -25,7 +25,12 @@
 // `capability.detail` text plus a fallback sentence, and decisions/11 makes
 // that exact wording a cross-surface contract.
 
-import { describeProviderError, type ChatProvider, type ModelCapabilities, type ProviderModel } from "./provider";
+import {
+  describeProviderError,
+  type ChatProvider,
+  type ModelCapabilities,
+  type ProviderModel,
+} from "./provider";
 
 /**
  * Resolve one model's capability through `client.getCapabilities`, folding a

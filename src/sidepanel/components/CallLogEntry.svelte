@@ -49,7 +49,9 @@
   });
 
   let expanded = $state(
-    untrack(() => entry.mode !== "auto" || entry.endedAt === undefined || entry.error !== undefined),
+    untrack(
+      () => entry.mode !== "auto" || entry.endedAt === undefined || entry.error !== undefined,
+    ),
   );
 
   const modeLabel: Record<ToolCallLogEntry["mode"], string> = {

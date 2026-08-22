@@ -70,7 +70,10 @@ describe("listModels", () => {
   });
 
   it("404/405 map to not-supported (no /v1/models-equivalent)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 404 })),
+    );
     const result = await provider().listModels();
     expect(result).toEqual({
       ok: false,
@@ -107,7 +110,10 @@ describe("error mapping", () => {
   });
 
   it("403 also maps to kind 'auth' (treated the same as 401 here)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 403 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 403 })),
+    );
     const events = await collect(provider().chat(baseParams()));
     expect(events[0]).toMatchObject({ type: "error", error: { kind: "auth", status: 403 } });
   });
@@ -115,7 +121,9 @@ describe("error mapping", () => {
   it("429 maps to kind 'http' (no special-casing for rate limits)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("rate limited", { status: 429, statusText: "Too Many Requests" })),
+      vi.fn(
+        async () => new Response("rate limited", { status: 429, statusText: "Too Many Requests" }),
+      ),
     );
     const events = await collect(provider().chat(baseParams()));
     expect(events).toEqual([
@@ -149,15 +157,24 @@ describe("error mapping", () => {
   });
 
   it("a response with no body maps to invalid-response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
     const events = await collect(provider().chat(baseParams()));
     expect(events).toEqual([
-      { type: "error", error: { kind: "invalid-response", message: "Response had no body to stream." } },
+      {
+        type: "error",
+        error: { kind: "invalid-response", message: "Response had no body to stream." },
+      },
     ]);
   });
 
   it("a non-JSON error body falls back to the raw body text", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("plain text failure", { status: 500 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("plain text failure", { status: 500 })),
+    );
     const events = await collect(provider().chat(baseParams()));
     expect(events[0]).toMatchObject({
       type: "error",
@@ -180,7 +197,10 @@ describe("chat() — SSE parsing", () => {
         usage: { prompt_tokens: 5, completion_tokens: 2 },
       }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "Hel" });
@@ -209,8 +229,14 @@ describe("chat() — SSE parsing", () => {
   });
 
   it("ignores comment/keepalive lines (leading ':') without breaking parsing", async () => {
-    const body = ": keepalive\n\n" + sseEvent({ choices: [{ delta: { content: "hi" } }] }) + "data: [DONE]\n\n";
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    const body =
+      ": keepalive\n\n" +
+      sseEvent({ choices: [{ delta: { content: "hi" } }] }) +
+      "data: [DONE]\n\n";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "hi" });
@@ -222,7 +248,10 @@ describe("chat() — SSE parsing", () => {
       "data: {not valid json\n\n" +
       sseEvent({ choices: [{ delta: { content: "still-ok" } }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     const contentEvents = events.filter((e) => e.type === "content");
@@ -235,7 +264,10 @@ describe("chat() — SSE parsing", () => {
   it("handles the final event arriving with no trailing blank line (stream just closes)", async () => {
     // No trailing \n\n after the last data: line, and no [DONE] at all.
     const body = sseEvent({ choices: [{ delta: { content: "tail" } }] }).slice(0, -1);
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "tail" });
@@ -244,12 +276,31 @@ describe("chat() — SSE parsing", () => {
 
   it("assembles a tool call whose name/arguments stream as fragments across many events, keyed by index", async () => {
     const body =
-      sseEvent({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "get_", arguments: "" } }] } }] }) +
-      sseEvent({ choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "weather", arguments: '{"ci' } }] } }] }) +
-      sseEvent({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'ty":"NYC"}' } }] } }] }) +
+      sseEvent({
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, id: "call_1", function: { name: "get_", arguments: "" } }],
+            },
+          },
+        ],
+      }) +
+      sseEvent({
+        choices: [
+          {
+            delta: { tool_calls: [{ index: 0, function: { name: "weather", arguments: '{"ci' } }] },
+          },
+        ],
+      }) +
+      sseEvent({
+        choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'ty":"NYC"}' } }] } }],
+      }) +
       sseEvent({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
@@ -277,7 +328,10 @@ describe("chat() — SSE parsing", () => {
       }) +
       sseEvent({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
@@ -288,10 +342,21 @@ describe("chat() — SSE parsing", () => {
 
   it("malformed/incomplete tool-call arguments JSON falls back to an empty-args call rather than throwing", async () => {
     const body =
-      sseEvent({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "f", arguments: "{not json" } }] } }] }) +
+      sseEvent({
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, id: "c1", function: { name: "f", arguments: "{not json" } }],
+            },
+          },
+        ],
+      }) +
       sseEvent({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([enc.encode(body)])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([enc.encode(body)])),
+    );
 
     const events = await collect(provider().chat(baseParams()));
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
@@ -313,7 +378,9 @@ describe("headers actually applied to the request", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await collect(
-      provider({ apiKey: "sk-real", headers: [{ key: "X-Tenant", value: "acme" }] }).chat(baseParams()),
+      provider({ apiKey: "sk-real", headers: [{ key: "X-Tenant", value: "acme" }] }).chat(
+        baseParams(),
+      ),
     );
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -370,7 +437,9 @@ describe("headers actually applied to the request", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await collect(
-      provider({ headers: [{ key: "Authorization", value: "Bearer user-supplied" }] }).chat(baseParams()),
+      provider({ headers: [{ key: "Authorization", value: "Bearer user-supplied" }] }).chat(
+        baseParams(),
+      ),
     );
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];

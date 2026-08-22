@@ -204,7 +204,10 @@ export function createMcpSignIn(deps: McpSignInDeps): McpSignIn {
     async completeManual(input): Promise<McpSignInCompletion> {
       const clientId = input.clientId.trim();
       if (clientId.length === 0) {
-        return { status: "error", message: "Enter the client ID from the OAuth app you registered." };
+        return {
+          status: "error",
+          message: "Enter the client ID from the OAuth app you registered.",
+        };
       }
 
       const flow = await oauth.runAuthorizationFlow(

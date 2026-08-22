@@ -107,7 +107,9 @@ describe("validateInitializeResult", () => {
     });
 
     it("a protocolVersion this client does not recognize at all is protocol-mismatch, naming what it requested and what it supports", () => {
-      const result = validateInitializeResult(response({ result: { protocolVersion: "1999-01-01" } }));
+      const result = validateInitializeResult(
+        response({ result: { protocolVersion: "1999-01-01" } }),
+      );
       expect(result).toEqual({
         ok: false,
         error: {
@@ -122,7 +124,9 @@ describe("validateInitializeResult", () => {
 
     it("a malformed serverInfo (missing name) is dropped rather than failing the whole handshake", () => {
       const result = validateInitializeResult(
-        response({ result: { protocolVersion: "2025-06-18", serverInfo: { title: "no name here" } } }),
+        response({
+          result: { protocolVersion: "2025-06-18", serverInfo: { title: "no name here" } },
+        }),
       );
       expect(result.ok).toBe(true);
       if (!result.ok) return;

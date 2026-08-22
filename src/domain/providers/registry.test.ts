@@ -70,13 +70,22 @@ class FakeProviderRegistry implements ProviderRegistry {
 }
 
 function config(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
-  return { id: "p1", type: "ollama", name: "Local Ollama", baseUrl: "http://localhost:11434", ...overrides };
+  return {
+    id: "p1",
+    type: "ollama",
+    name: "Local Ollama",
+    baseUrl: "http://localhost:11434",
+    ...overrides,
+  };
 }
 
 describe("resolveProvider", () => {
   it("resolves to 'ok' with the config when the provider is still registered", async () => {
     const registry = new FakeProviderRegistry([config()]);
-    await expect(resolveProvider(registry, "p1")).resolves.toEqual({ status: "ok", config: config() });
+    await expect(resolveProvider(registry, "p1")).resolves.toEqual({
+      status: "ok",
+      config: config(),
+    });
   });
 
   it("resolves to 'dangling' when the provider id isn't registered", async () => {

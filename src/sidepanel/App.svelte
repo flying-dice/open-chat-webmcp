@@ -46,7 +46,11 @@
   import { chat, sidePanelServices } from "./app-services";
   import { selection } from "./stores/selection.svelte";
   import { panel, requestStop } from "./stores/panel.svelte";
-  import { dismissAllPending, initApprovalPolicySync, requestApproval } from "./stores/approvals.svelte";
+  import {
+    dismissAllPending,
+    initApprovalPolicySync,
+    requestApproval,
+  } from "./stores/approvals.svelte";
 
   let view = $state<"chat" | "inspector" | "history">("chat");
 
@@ -82,14 +86,14 @@
    * so the UI never implies a tool call earlier in the transcript could be
    * re-run here.
    */
-  const chatOriginMismatch = $derived.by(():
-    | { chatOrigin: string; pageOrigin: string }
-    | undefined => {
-    const chatOrigin = panel.activeChatOrigin;
-    const pageOrigin = panel.pageInfo?.origin;
-    if (!chatOrigin || !pageOrigin || chatOrigin === pageOrigin) return undefined;
-    return { chatOrigin, pageOrigin };
-  });
+  const chatOriginMismatch = $derived.by(
+    (): { chatOrigin: string; pageOrigin: string } | undefined => {
+      const chatOrigin = panel.activeChatOrigin;
+      const pageOrigin = panel.pageInfo?.origin;
+      if (!chatOrigin || !pageOrigin || chatOrigin === pageOrigin) return undefined;
+      return { chatOrigin, pageOrigin };
+    },
+  );
 
   /**
    * The cross-origin notice is an announcement — read once, then out of the
@@ -210,7 +214,9 @@
         noProviders
           ? "No provider is registered yet — add one on the options page, then pick it from the picker in the header."
           : "No provider/model selected yet — pick one from the picker in the header before sending a message.",
-        noProviders ? [{ kind: "open-options", label: "Open options to add a provider" }] : undefined,
+        noProviders
+          ? [{ kind: "open-options", label: "Open options to add a provider" }]
+          : undefined,
       );
       return;
     }

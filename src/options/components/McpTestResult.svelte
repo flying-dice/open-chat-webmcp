@@ -17,7 +17,11 @@
   // and unmounting this component on that gap would silently collapse a list
   // the user had expanded.
   import type { McpTestOutcome } from "../forms/mcpTestConnection";
-  import { mcpTestResultClass, mcpTestResultMessage, mcpTestResultTools } from "../forms/testResultDisplay";
+  import {
+    mcpTestResultClass,
+    mcpTestResultMessage,
+    mcpTestResultTools,
+  } from "../forms/testResultDisplay";
   import { Button } from "$lib/components/ui/button";
 
   interface Props {

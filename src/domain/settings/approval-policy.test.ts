@@ -43,12 +43,9 @@ describe("DEFAULT_MCP_APPROVAL_POLICY", () => {
 });
 
 describe("isApprovalPolicy", () => {
-  test.each([["default"], ["always-confirm"], ["auto-run-all"]])(
-    "accepts %s",
-    (value) => {
-      expect(isApprovalPolicy(value)).toBe(true);
-    },
-  );
+  test.each([["default"], ["always-confirm"], ["auto-run-all"]])("accepts %s", (value) => {
+    expect(isApprovalPolicy(value)).toBe(true);
+  });
 
   test.each([
     ["trust-read-only"], // valid MCP value, not a page value
@@ -64,12 +61,9 @@ describe("isApprovalPolicy", () => {
 });
 
 describe("isMcpApprovalPolicy", () => {
-  test.each([["always-confirm"], ["trust-read-only"], ["auto-run-all"]])(
-    "accepts %s",
-    (value) => {
-      expect(isMcpApprovalPolicy(value)).toBe(true);
-    },
-  );
+  test.each([["always-confirm"], ["trust-read-only"], ["auto-run-all"]])("accepts %s", (value) => {
+    expect(isMcpApprovalPolicy(value)).toBe(true);
+  });
 
   test.each([
     ["default"], // valid page value, not an MCP value
@@ -173,11 +167,17 @@ describe("page and server rules are independent", () => {
 // ---------------------------------------------------------------------------
 
 describe("untrustedContentHint does not affect the auto-run decision", () => {
-  function pageSubject(readOnlyHint: boolean, untrustedContentHint: boolean | undefined): ToolApprovalSubject {
+  function pageSubject(
+    readOnlyHint: boolean,
+    untrustedContentHint: boolean | undefined,
+  ): ToolApprovalSubject {
     return { origin: { kind: "page" }, annotations: { readOnlyHint, untrustedContentHint } };
   }
 
-  function serverSubject(readOnlyHint: boolean, untrustedContentHint: boolean | undefined): ToolApprovalSubject {
+  function serverSubject(
+    readOnlyHint: boolean,
+    untrustedContentHint: boolean | undefined,
+  ): ToolApprovalSubject {
     return {
       origin: { kind: "server", serverId: "srv-1", serverName: "Test Server" },
       annotations: { readOnlyHint, untrustedContentHint },

@@ -150,7 +150,11 @@ describe("credential split (decisions/15, decisions/27) — oauth auth", () => {
 
   it("updateServer with auth: undefined explicitly clears a stored oauth token (a refresh-with-no-token can't silently delete sign-in any other way)", async () => {
     const { registry, fake } = setup();
-    const added = await registry.addServer({ name: "S", url: "https://mcp.example", auth: oauthAuth });
+    const added = await registry.addServer({
+      name: "S",
+      url: "https://mcp.example",
+      auth: oauthAuth,
+    });
 
     const updated = await registry.updateServer(added.id, { auth: undefined });
 
@@ -206,7 +210,13 @@ describe("defensive decoding of corrupted/foreign-written storage", () => {
     fake.sync.seed({
       "mcp:servers:list": [
         { id: "ok", name: "Good", url: "https://x", enabled: true, transport: "auto" },
-        { id: "bad", name: "No transport", url: "https://y", enabled: true, transport: "carrier-pigeon" },
+        {
+          id: "bad",
+          name: "No transport",
+          url: "https://y",
+          enabled: true,
+          transport: "carrier-pigeon",
+        },
       ],
     });
     const list = await registry.listServers();

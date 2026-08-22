@@ -75,9 +75,7 @@
 
   const index = Array.isArray(all["chat:index"]) ? all["chat:index"] : [];
 
-  const chatKeys = Object.keys(all).filter(
-    (k) => k.startsWith("chat:") && k !== "chat:index",
-  );
+  const chatKeys = Object.keys(all).filter((k) => k.startsWith("chat:") && k !== "chat:index");
 
   // Mirrors src/lib/session.ts's isRecord/isToolCallMode/isToolCallLogEntry/
   // isChatMessageLike/isProviderSelectionLike/isChatSession EXACTLY (card 59

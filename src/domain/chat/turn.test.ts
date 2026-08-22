@@ -268,7 +268,10 @@ describe("runTurn — read-only tool auto-run", () => {
       ...baseOpts({
         tools: { toolsForTurn: async () => [readTool] },
         approvals,
-        policy: { mayAutoRun: async (tool: MergedTool | undefined) => tool?.annotations.readOnlyHint === true },
+        policy: {
+          mayAutoRun: async (tool: MergedTool | undefined) =>
+            tool?.annotations.readOnlyHint === true,
+        },
         attachTools: true,
       }),
     });
@@ -301,7 +304,10 @@ describe("runTurn — denied tool call", () => {
     const session = createChat("https://example.com");
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
-    const mutatingTool = makeTool({ name: "delete_item", call: vi.fn(async () => ({ ok: true as const, result: "x" })) });
+    const mutatingTool = makeTool({
+      name: "delete_item",
+      call: vi.fn(async () => ({ ok: true as const, result: "x" })),
+    });
     const approvals = vi.fn(async () => "denied" as ApprovalDecision);
 
     const gateway = scriptedGateway([
@@ -420,7 +426,10 @@ describe("runTurn — MAX_ITERATIONS cap", () => {
       async *chat(params) {
         requests.push(params);
         round += 1;
-        yield { type: "tool-calls", toolCalls: [{ id: `call-${round}`, name: "loop_tool", arguments: {} }] };
+        yield {
+          type: "tool-calls",
+          toolCalls: [{ id: `call-${round}`, name: "loop_tool", arguments: {} }],
+        };
         yield doneEvent();
       },
     };
@@ -453,10 +462,17 @@ describe("runTurn — hanging tool call", () => {
     const session = createChat("https://example.com");
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
-    const hangingTool = makeTool({ name: "hang", readOnlyHint: true, call: () => new Promise(() => {}) });
+    const hangingTool = makeTool({
+      name: "hang",
+      readOnlyHint: true,
+      call: () => new Promise(() => {}),
+    });
 
     const gateway = scriptedGateway([
-      [{ type: "tool-calls", toolCalls: [{ id: "call-1", name: "hang", arguments: {} }] }, doneEvent()],
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "hang", arguments: {} }] },
+        doneEvent(),
+      ],
       [{ type: "content", delta: "done" }, doneEvent()],
     ]);
 
@@ -492,7 +508,10 @@ describe("runTurn — hallucinated tool name", () => {
 
     const gateway = scriptedGateway([
       [
-        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "does_not_exist", arguments: {} }] },
+        {
+          type: "tool-calls",
+          toolCalls: [{ id: "call-1", name: "does_not_exist", arguments: {} }],
+        },
         doneEvent(),
       ],
       [{ type: "content", delta: "sorry about that" }, doneEvent()],
@@ -515,7 +534,7 @@ describe("runTurn — hallucinated tool name", () => {
 
     const result = session.messages.find((m) => m.role === "tool");
     expect(result?.toolStatus).toBe("error");
-    expect(result?.content).toContain('"does_not_exist" isn\'t in this turn\'s tool list');
+    expect(result?.content).toContain("\"does_not_exist\" isn't in this turn's tool list");
     expect(gateway.requests).toHaveLength(2);
   });
 });
@@ -672,7 +691,10 @@ describe("runTurn — stop during an approval wait", () => {
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
     const controller = new AbortController();
-    const mutatingTool = makeTool({ name: "delete_item", call: vi.fn(async () => ({ ok: true as const, result: "x" })) });
+    const mutatingTool = makeTool({
+      name: "delete_item",
+      call: vi.fn(async () => ({ ok: true as const, result: "x" })),
+    });
 
     const approvalRequested = deferred();
     const pendingApproval = new Promise<ApprovalDecision>(() => {
@@ -684,7 +706,10 @@ describe("runTurn — stop during an approval wait", () => {
     });
 
     const gateway = scriptedGateway([
-      [{ type: "tool-calls", toolCalls: [{ id: "call-1", name: "delete_item", arguments: {} }] }, doneEvent()],
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "delete_item", arguments: {} }] },
+        doneEvent(),
+      ],
     ]);
 
     const turn = runTurn({
@@ -813,10 +838,17 @@ describe("runTurn — further tool-call edge cases", () => {
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
     const huge = { data: "x".repeat(9000) };
-    const tool = makeTool({ name: "dump", readOnlyHint: true, call: async () => ({ ok: true, result: huge }) });
+    const tool = makeTool({
+      name: "dump",
+      readOnlyHint: true,
+      call: async () => ({ ok: true, result: huge }),
+    });
 
     const gateway = scriptedGateway([
-      [{ type: "tool-calls", toolCalls: [{ id: "call-1", name: "dump", arguments: {} }] }, doneEvent()],
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "dump", arguments: {} }] },
+        doneEvent(),
+      ],
       [{ type: "content", delta: "ok" }, doneEvent()],
     ]);
 
@@ -852,7 +884,10 @@ describe("runTurn — terminal stream error note wording", () => {
           error: {
             kind: "unreachable-or-cors",
             message: "Could not reach the server.",
-            fix: { label: "Set this environment variable", command: "OLLAMA_ORIGINS=* ollama serve" },
+            fix: {
+              label: "Set this environment variable",
+              command: "OLLAMA_ORIGINS=* ollama serve",
+            },
           },
         };
       },
@@ -1000,8 +1035,16 @@ describe("chaos: duplicate tool-call ids from the model", () => {
     const session = createChat("https://example.com");
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
-    const toolA = makeTool({ name: "a", readOnlyHint: true, call: async () => ({ ok: true, result: "A result" }) });
-    const toolB = makeTool({ name: "b", readOnlyHint: true, call: async () => ({ ok: true, result: "B result" }) });
+    const toolA = makeTool({
+      name: "a",
+      readOnlyHint: true,
+      call: async () => ({ ok: true, result: "A result" }),
+    });
+    const toolB = makeTool({
+      name: "b",
+      readOnlyHint: true,
+      call: async () => ({ ok: true, result: "B result" }),
+    });
 
     const gateway = scriptedGateway([
       [
@@ -1032,8 +1075,16 @@ describe("chaos: duplicate tool-call ids from the model", () => {
 
     const toolResults = session.messages.filter((m) => m.role === "tool");
     expect(toolResults).toHaveLength(2);
-    expect(toolResults[0]).toMatchObject({ toolName: "a", toolStatus: "success", content: "A result" });
-    expect(toolResults[1]).toMatchObject({ toolName: "b", toolStatus: "success", content: "B result" });
+    expect(toolResults[0]).toMatchObject({
+      toolName: "a",
+      toolStatus: "success",
+      content: "A result",
+    });
+    expect(toolResults[1]).toMatchObject({
+      toolName: "b",
+      toolStatus: "success",
+      content: "B result",
+    });
   });
 });
 
@@ -1042,7 +1093,11 @@ describe("chaos: partial failure across a round's tool calls", () => {
     const session = createChat("https://example.com");
     const { transcript } = makeTranscript(session);
     const { presenter } = makePresenter();
-    const toolA = makeTool({ name: "a", readOnlyHint: true, call: async () => ({ ok: true, result: "a-ok" }) });
+    const toolA = makeTool({
+      name: "a",
+      readOnlyHint: true,
+      call: async () => ({ ok: true, result: "a-ok" }),
+    });
     const toolB = makeTool({
       name: "b",
       readOnlyHint: true,
@@ -1050,7 +1105,11 @@ describe("chaos: partial failure across a round's tool calls", () => {
         throw new Error("b blew up");
       },
     });
-    const toolC = makeTool({ name: "c", readOnlyHint: true, call: async () => ({ ok: true, result: "c-ok" }) });
+    const toolC = makeTool({
+      name: "c",
+      readOnlyHint: true,
+      call: async () => ({ ok: true, result: "c-ok" }),
+    });
 
     const gateway = scriptedGateway([
       [
@@ -1083,12 +1142,18 @@ describe("chaos: partial failure across a round's tool calls", () => {
     const toolResults = session.messages.filter((m) => m.role === "tool");
     expect(toolResults).toHaveLength(3);
     expect(toolResults[0]).toMatchObject({ toolName: "a", toolStatus: "success", content: "a-ok" });
-    expect(toolResults[1]).toMatchObject({ toolName: "b", toolStatus: "error", content: "b blew up" });
+    expect(toolResults[1]).toMatchObject({
+      toolName: "b",
+      toolStatus: "error",
+      content: "b blew up",
+    });
     expect(toolResults[2]).toMatchObject({ toolName: "c", toolStatus: "success", content: "c-ok" });
     // The failure of call 2 did not end the turn early — the model still got
     // a second round with all three outcomes to summarise.
     expect(gateway.requests).toHaveLength(2);
-    expect(session.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe("summarised");
+    expect(session.messages.filter((m) => m.role === "assistant").at(-1)?.content).toBe(
+      "summarised",
+    );
   });
 });
 
@@ -1118,7 +1183,10 @@ describe("chaos: stream reports tool calls then dies before 'done'", () => {
     const gateway = scriptedGateway([
       [
         { type: "tool-calls", toolCalls: [{ id: "call-1", name: "a", arguments: {} }] },
-        { type: "error", error: { kind: "http", status: 500, statusText: "Internal Server Error", body: "" } },
+        {
+          type: "error",
+          error: { kind: "http", status: 500, statusText: "Internal Server Error", body: "" },
+        },
       ],
     ]);
 
@@ -1154,7 +1222,10 @@ describe("chaos: stream reports tool calls then dies before 'done'", () => {
     const gateway = scriptedGateway([
       [
         { type: "tool-calls", toolCalls: [{ id: "call-1", name: "a", arguments: {} }] },
-        { type: "error", error: { kind: "http", status: 500, statusText: "Internal Server Error", body: "" } },
+        {
+          type: "error",
+          error: { kind: "http", status: 500, statusText: "Internal Server Error", body: "" },
+        },
       ],
     ]);
 
@@ -1182,10 +1253,17 @@ describe("chaos: stream dies immediately after a successful tool round, before a
     const session = createChat("https://example.com");
     const { transcript, notes } = makeTranscript(session);
     const { presenter } = makePresenter();
-    const tool = makeTool({ name: "lookup", readOnlyHint: true, call: async () => ({ ok: true, result: "found it" }) });
+    const tool = makeTool({
+      name: "lookup",
+      readOnlyHint: true,
+      call: async () => ({ ok: true, result: "found it" }),
+    });
 
     const gateway = scriptedGateway([
-      [{ type: "tool-calls", toolCalls: [{ id: "call-1", name: "lookup", arguments: {} }] }, doneEvent()],
+      [
+        { type: "tool-calls", toolCalls: [{ id: "call-1", name: "lookup", arguments: {} }] },
+        doneEvent(),
+      ],
       // Round 2: the model never streams anything before the connection dies.
       [{ type: "error", error: { kind: "invalid-response", message: "connection reset" } }],
     ]);

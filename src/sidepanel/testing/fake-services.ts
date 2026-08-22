@@ -64,23 +64,21 @@ import type {
   ExtensionShellAccess,
   TracingSwitch,
 } from "../app-services";
-import type { ChatService, ChatServiceSnapshot, ChatStore, ChatSummary, RunTurnRequest } from "../../domain/chat";
+import type {
+  ChatService,
+  ChatServiceSnapshot,
+  ChatStore,
+  ChatSummary,
+  RunTurnRequest,
+} from "../../domain/chat";
 import type {
   ProviderClientFactory,
   ProviderConfig,
   ProviderRegistry,
   ProviderSelection,
 } from "../../domain/providers";
-import type {
-  ApprovalPolicy,
-  McpApprovalPolicy,
-  SettingsStore,
-} from "../../domain/settings";
-import type {
-  McpServerConfig,
-  McpServerRegistry,
-  McpToolGateway,
-} from "../../domain/tools";
+import type { ApprovalPolicy, McpApprovalPolicy, SettingsStore } from "../../domain/settings";
+import type { McpServerConfig, McpServerRegistry, McpToolGateway } from "../../domain/tools";
 import type { HostPermissions } from "../../domain/permissions";
 
 // ---------------------------------------------------------------------------
@@ -270,7 +268,9 @@ export function createFakeMcpToolGateway(overrides: Partial<McpToolGateway> = {}
   };
 }
 
-export function createFakeHostPermissions(overrides: Partial<HostPermissions> = {}): HostPermissions {
+export function createFakeHostPermissions(
+  overrides: Partial<HostPermissions> = {},
+): HostPermissions {
   return {
     has: async () => true,
     request: async () => true,
@@ -282,12 +282,17 @@ export function createFakeHostPermissions(overrides: Partial<HostPermissions> = 
 export function createFakePageToolAccess(overrides: Partial<PageToolAccess> = {}): PageToolAccess {
   return {
     toolsForTab: async () => [],
-    executorForTab: (_tabId: number) => async () => ({ ok: false, error: "not implemented in test fake" }),
+    executorForTab: (_tabId: number) => async () => ({
+      ok: false,
+      error: "not implemented in test fake",
+    }),
     ...overrides,
   };
 }
 
-export function createFakeExtensionShell(overrides: Partial<ExtensionShellAccess> = {}): ExtensionShellAccess {
+export function createFakeExtensionShell(
+  overrides: Partial<ExtensionShellAccess> = {},
+): ExtensionShellAccess {
   return {
     openOptionsPage: vi.fn(),
     ...overrides,

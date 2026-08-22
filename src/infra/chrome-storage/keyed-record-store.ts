@@ -126,11 +126,7 @@ export function createKeyedRecordStore<TCore extends { id: string }, TParts>(
   }
 
   /** Write one credential part, or CLEAR it when the value is absent or empty. The two are the same outcome on purpose — see {@link CredentialPart.isEmpty}. */
-  async function writePart(
-    name: keyof TParts & string,
-    id: string,
-    value: unknown,
-  ): Promise<void> {
+  async function writePart(name: keyof TParts & string, id: string, value: unknown): Promise<void> {
     const part = partFor(name);
     const key = partStorageKey(name, id);
     if (value === undefined || part.isEmpty(value)) {

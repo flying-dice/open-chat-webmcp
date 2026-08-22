@@ -33,9 +33,7 @@ describe("originPatternForUrl", () => {
   });
 
   it("accepts an IPv4-literal host", () => {
-    expect(originPatternForUrl("http://192.168.1.5:11434/api")).toBe(
-      "http://192.168.1.5:11434/*",
-    );
+    expect(originPatternForUrl("http://192.168.1.5:11434/api")).toBe("http://192.168.1.5:11434/*");
   });
 
   it("accepts an IPv6-literal host, keeping the bracket syntax", () => {
@@ -66,16 +64,13 @@ describe("originPatternForUrl", () => {
     expect(originPatternForUrl(url)).toBeUndefined();
   });
 
-  it.each([
-    ["not a url at all"],
-    [""],
-    ["http://"],
-    ["   "],
-    ["://missing-scheme"],
-  ])("returns undefined rather than throwing for unparseable input: %j", (url) => {
-    expect(() => originPatternForUrl(url)).not.toThrow();
-    expect(originPatternForUrl(url)).toBeUndefined();
-  });
+  it.each([["not a url at all"], [""], ["http://"], ["   "], ["://missing-scheme"]])(
+    "returns undefined rather than throwing for unparseable input: %j",
+    (url) => {
+      expect(() => originPatternForUrl(url)).not.toThrow();
+      expect(originPatternForUrl(url)).toBeUndefined();
+    },
+  );
 
   it("treats a bare host with no scheme as unparseable, not as implicitly http", () => {
     expect(originPatternForUrl("example.com")).toBeUndefined();

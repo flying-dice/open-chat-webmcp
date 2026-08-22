@@ -3,7 +3,12 @@
 // (card 83).
 
 import { describe, expect, it, vi } from "vitest";
-import { CLIENT_CONTROLLED_HEADERS, type McpOAuthAuth, type McpServerConfig, type McpTokenResolver } from "../../domain/tools";
+import {
+  CLIENT_CONTROLLED_HEADERS,
+  type McpOAuthAuth,
+  type McpServerConfig,
+  type McpTokenResolver,
+} from "../../domain/tools";
 import { buildBaseHeaders, resolveAuthHeader } from "./headers";
 
 function baseConfig(overrides: Partial<McpServerConfig> = {}): McpServerConfig {
@@ -36,19 +41,27 @@ describe("CLIENT_CONTROLLED_HEADERS", () => {
 
 describe("buildBaseHeaders — reserved-header protection", () => {
   it("drops content-type/accept custom headers regardless of case", () => {
-    const config = baseConfig({ headers: { "Content-Type": "text/plain", ACCEPT: "text/html", "X-Ok": "v" } });
+    const config = baseConfig({
+      headers: { "Content-Type": "text/plain", ACCEPT: "text/html", "X-Ok": "v" },
+    });
     const result = buildBaseHeaders(config, {});
     expect(result).toEqual({ "X-Ok": "v" });
   });
 
   it("drops a custom Authorization header when a non-empty bearer token is configured", () => {
-    const config = baseConfig({ auth: { type: "bearer", token: "tok" }, headers: { Authorization: "Bearer evil" } });
+    const config = baseConfig({
+      auth: { type: "bearer", token: "tok" },
+      headers: { Authorization: "Bearer evil" },
+    });
     const result = buildBaseHeaders(config, { Authorization: "Bearer tok" });
     expect(result).toEqual({ Authorization: "Bearer tok" });
   });
 
   it("does NOT reserve Authorization when the bearer token is empty — hasResolvableAuth is false", () => {
-    const config = baseConfig({ auth: { type: "bearer", token: "" }, headers: { Authorization: "Bearer user-supplied" } });
+    const config = baseConfig({
+      auth: { type: "bearer", token: "" },
+      headers: { Authorization: "Bearer user-supplied" },
+    });
     const result = buildBaseHeaders(config, {});
     expect(result).toEqual({ Authorization: "Bearer user-supplied" });
   });
@@ -118,6 +131,9 @@ describe("resolveAuthHeader", () => {
       })),
     };
     const result = await resolveAuthHeader(config, resolver);
-    expect(result).toEqual({ ok: false, error: { kind: "auth", message: "expired, no refresh token" } });
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "auth", message: "expired, no refresh token" },
+    });
   });
 });

@@ -199,9 +199,7 @@ export interface ToolDescriptor {
 }
 
 /** Uniform never-throw outcome of invoking a merged tool, independent of whether it ran on the page or a remote server. */
-export type MergedToolCallOutcome =
-  | { ok: true; result: unknown }
-  | { ok: false; error: string };
+export type MergedToolCallOutcome = { ok: true; result: unknown } | { ok: false; error: string };
 
 export type MergedToolExecutor = (
   args: Record<string, unknown>,

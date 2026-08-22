@@ -26,10 +26,7 @@ Element.prototype.scrollIntoView = () => undefined;
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
-import type {
-  ModelListEntry,
-  ModelsState,
-} from "../stores/selection.svelte";
+import type { ModelListEntry, ModelsState } from "../stores/selection.svelte";
 import type { ModelCapabilities, ProviderConfig, ProviderModel } from "../../domain/providers";
 
 const state = vi.hoisted(() => ({
@@ -103,7 +100,13 @@ import {
 // ---------------------------------------------------------------------------
 
 function provider(id: string, overrides: Partial<ProviderConfig> = {}): ProviderConfig {
-  return { id, type: "ollama", name: `Provider ${id}`, baseUrl: `https://${id}.example.com`, ...overrides };
+  return {
+    id,
+    type: "ollama",
+    name: `Provider ${id}`,
+    baseUrl: `https://${id}.example.com`,
+    ...overrides,
+  };
 }
 
 function model(id: string, name = id): ProviderModel {
@@ -111,8 +114,14 @@ function model(id: string, name = id): ProviderModel {
 }
 
 const TOOL_CAPABLE: ModelCapabilities = { status: "tool-capable" };
-const NO_TOOLS: ModelCapabilities = { status: "no-tools", detail: ["No function-calling on this model."] };
-const UNKNOWN: ModelCapabilities = { status: "unknown", detail: ["Could not verify tool support."] };
+const NO_TOOLS: ModelCapabilities = {
+  status: "no-tools",
+  detail: ["No function-calling on this model."],
+};
+const UNKNOWN: ModelCapabilities = {
+  status: "unknown",
+  detail: ["Could not verify tool support."],
+};
 
 function entry(m: ProviderModel, capability: ModelCapabilities | undefined): ModelListEntry {
   return { model: m, capability };
@@ -267,7 +276,11 @@ describe("ProviderPicker", () => {
     const a = provider("a", { name: "Custom Host" });
     state.providers = [a];
     state.modelsByProvider = {
-      a: { status: "not-supported", message: "This provider has no model-listing API.", manualEntry: undefined },
+      a: {
+        status: "not-supported",
+        message: "This provider has no model-listing API.",
+        manualEntry: undefined,
+      },
     };
 
     render(ProviderPicker);
@@ -308,9 +321,7 @@ describe("ProviderPicker", () => {
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
     state.modelsByProvider = {
-      a: loaded(
-        Array.from({ length: 8 }, (_, i) => entry(model(`model-${i}`), TOOL_CAPABLE)),
-      ),
+      a: loaded(Array.from({ length: 8 }, (_, i) => entry(model(`model-${i}`), TOOL_CAPABLE))),
     };
 
     render(ProviderPicker);
@@ -324,9 +335,7 @@ describe("ProviderPicker", () => {
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
     state.modelsByProvider = {
-      a: loaded(
-        Array.from({ length: 9 }, (_, i) => entry(model(`model-${i}`), TOOL_CAPABLE)),
-      ),
+      a: loaded(Array.from({ length: 9 }, (_, i) => entry(model(`model-${i}`), TOOL_CAPABLE))),
     };
 
     render(ProviderPicker);

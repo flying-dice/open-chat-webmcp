@@ -169,9 +169,7 @@ export function describeProviderError(error: ProviderError): string {
 }
 
 /** Result of a non-streaming call: never throws, always branch on `ok`. */
-export type ProviderResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: ProviderError };
+export type ProviderResult<T> = { ok: true; value: T } | { ok: false; error: ProviderError };
 
 // ---------------------------------------------------------------------------
 // Models & capabilities (decisions/11-provider-capability-detection.md)
@@ -311,9 +309,7 @@ export interface ChatProvider {
    * callers should fall back to a user-entered model id in that case, never
    * treat it as a hard failure.
    */
-  listModels(opts?: {
-    signal?: AbortSignal;
-  }): Promise<ProviderResult<ProviderModel[]>>;
+  listModels(opts?: { signal?: AbortSignal }): Promise<ProviderResult<ProviderModel[]>>;
 
   /** Resolve tool-calling support for one model (decisions/11). Never guesses: returns `"unknown"` rather than assuming either way when the provider can't say. */
   getCapabilities(

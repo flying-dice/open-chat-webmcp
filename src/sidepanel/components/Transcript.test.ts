@@ -48,7 +48,11 @@ function userMsg(id: string, content: string): TranscriptEntry {
   return { id, role: "user", content, createdAt: 0 };
 }
 
-function assistantMsg(id: string, content: string, extra: Partial<TranscriptEntry> = {}): TranscriptEntry {
+function assistantMsg(
+  id: string,
+  content: string,
+  extra: Partial<TranscriptEntry> = {},
+): TranscriptEntry {
   return { id, role: "assistant", content, createdAt: 0, ...extra };
 }
 
@@ -240,7 +244,9 @@ describe("Transcript", () => {
         }),
       });
 
-      await fireEvent.click(screen.getByRole("button", { name: "Open options to check the API key" }));
+      await fireEvent.click(
+        screen.getByRole("button", { name: "Open options to check the API key" }),
+      );
       expect(openOptionsPage).toHaveBeenCalledTimes(1);
     });
 

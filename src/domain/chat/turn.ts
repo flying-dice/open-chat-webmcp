@@ -37,8 +37,18 @@
 // section. Generation is not paused by this — deltas and auto-run calls keep
 // flowing regardless of which chat is on screen.
 
-import { describeProviderError, type ChatMessage, type ProviderError, type ToolCall } from "../providers";
-import { toSerializedTools, type MergedTool, type MergedToolCallOutcome, type ToolOrigin } from "../tools";
+import {
+  describeProviderError,
+  type ChatMessage,
+  type ProviderError,
+  type ToolCall,
+} from "../providers";
+import {
+  toSerializedTools,
+  type MergedTool,
+  type MergedToolCallOutcome,
+  type ToolOrigin,
+} from "../tools";
 import type { ApprovalPolicyGate } from "../settings";
 import type { ChatSession } from "./session";
 import {
@@ -187,7 +197,10 @@ export function buildSystemPrompt(
     // not just to what a human sees) in addition to what a server tool's
     // namespaced name already implies.
     const toolLines = tools
-      .map((t) => `- ${t.name} (runs on ${originLabel(t.origin)})${t.description ? `: ${t.description}` : ""}`)
+      .map(
+        (t) =>
+          `- ${t.name} (runs on ${originLabel(t.origin)})${t.description ? `: ${t.description}` : ""}`,
+      )
       .join("\n");
     parts.push(
       `You may call these tools to read or act on ${originLabel({ kind: "page" })} or on a connected MCP server:\n${toolLines}\n\n` +
@@ -240,9 +253,18 @@ async function runLoop(opts: RunTurnOptions, tools: MergedTool[]): Promise<void>
     // model, not a continuation of the previous round's `calling`.
     presenter.phaseChanged(target.id, { kind: "waiting" });
 
-    const { toolCalls, terminalError } = await streamOneTurn(opts, conversation, tools, assistantId);
+    const { toolCalls, terminalError } = await streamOneTurn(
+      opts,
+      conversation,
+      tools,
+      assistantId,
+    );
     presenter.streamingChanged(target.id, null);
-    transcript.endAssistantMessage(assistantId, toolCalls.length > 0 ? toolCalls : undefined, target);
+    transcript.endAssistantMessage(
+      assistantId,
+      toolCalls.length > 0 ? toolCalls : undefined,
+      target,
+    );
     // Deliberately NOT cleared here (decisions/26's anti-flicker rule): the
     // gap between this round's assistant message closing and either the next
     // tool call or the next model request must not blink the indicator off.
@@ -360,7 +382,9 @@ async function streamOneTurn(
   // "aborted" is the user hitting Stop mid-stream, not a connection failure —
   // a stream was live up to that point, so it reads as a success, same as a
   // clean finish. Anything else terminal is a real failure.
-  presenter.modelContact(terminalError && terminalError.kind !== "aborted" ? "failed" : "succeeded");
+  presenter.modelContact(
+    terminalError && terminalError.kind !== "aborted" ? "failed" : "succeeded",
+  );
 
   return { toolCalls, terminalError };
 }
@@ -369,7 +393,11 @@ async function streamOneTurn(
 // Tool-call execution
 // ---------------------------------------------------------------------------
 
-async function executeToolCall(opts: RunTurnOptions, tools: MergedTool[], call: ToolCall): Promise<void> {
+async function executeToolCall(
+  opts: RunTurnOptions,
+  tools: MergedTool[],
+  call: ToolCall,
+): Promise<void> {
   const { target, transcript, presenter, signal } = opts;
 
   // ONE lookup resolves the model's requested name to its merged entry — page
@@ -444,7 +472,11 @@ async function executeToolCall(opts: RunTurnOptions, tools: MergedTool[], call: 
     return;
   }
 
-  const outcome = await raceToolCall(tool.call(call.arguments, { signal }), signal, opts.toolCallTimeoutMs);
+  const outcome = await raceToolCall(
+    tool.call(call.arguments, { signal }),
+    signal,
+    opts.toolCallTimeoutMs,
+  );
 
   transcript.updateToolCallResult(
     id,
@@ -456,7 +488,10 @@ async function executeToolCall(opts: RunTurnOptions, tools: MergedTool[], call: 
 }
 
 /** The call-time snapshot of a tool's display metadata (see `TranscriptEntry.toolAnnotations`) — all `undefined` for a tool that wasn't in this turn's list. */
-function toolSnapshot(mode: ToolCallSnapshot["mode"], tool: MergedTool | undefined): ToolCallSnapshot {
+function toolSnapshot(
+  mode: ToolCallSnapshot["mode"],
+  tool: MergedTool | undefined,
+): ToolCallSnapshot {
   return {
     mode,
     annotations: tool?.annotations,
@@ -466,7 +501,10 @@ function toolSnapshot(mode: ToolCallSnapshot["mode"], tool: MergedTool | undefin
 }
 
 /** Races the injected approval promise against `signal` so a Stop mid-approval-wait resolves as "denied" rather than hanging the loop forever. Never throws — a rejected requester promise also resolves as "denied". */
-function raceApproval(decision: Promise<ApprovalDecision>, signal: AbortSignal): Promise<ApprovalDecision> {
+function raceApproval(
+  decision: Promise<ApprovalDecision>,
+  signal: AbortSignal,
+): Promise<ApprovalDecision> {
   if (signal.aborted) return Promise.resolve<ApprovalDecision>("denied");
   return new Promise<ApprovalDecision>((resolve) => {
     let settled = false;

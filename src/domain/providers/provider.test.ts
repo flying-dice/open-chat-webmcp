@@ -3,13 +3,21 @@
 // reserved-header rule (reservedHeaderReason). Zero platform mocks — pure
 // functions over plain data (decisions/30-vitest-test-pyramid.md).
 import { describe, expect, it, test } from "vitest";
-import { describeProviderError, reservedHeaderReason, type ProviderError, type ProviderType } from "./provider";
+import {
+  describeProviderError,
+  reservedHeaderReason,
+  type ProviderError,
+  type ProviderType,
+} from "./provider";
 
 describe("describeProviderError", () => {
   test.each<[string, ProviderError, string]>([
     [
       "unreachable-or-cors",
-      { kind: "unreachable-or-cors", message: "Could not reach http://localhost:11434 — is Ollama running?" },
+      {
+        kind: "unreachable-or-cors",
+        message: "Could not reach http://localhost:11434 — is Ollama running?",
+      },
       "Could not reach http://localhost:11434 — is Ollama running?",
     ],
     ["aborted", { kind: "aborted" }, "Request was cancelled."],
@@ -81,22 +89,44 @@ describe("reservedHeaderReason", () => {
   );
 
   it("reserves Accept only for openai, case-insensitively", () => {
-    expect(reservedHeaderReason("Accept", { type: "openai", apiKeyConfigured: false })).toBeDefined();
-    expect(reservedHeaderReason("accept", { type: "openai", apiKeyConfigured: true })).toBeDefined();
-    expect(reservedHeaderReason("Accept", { type: "ollama", apiKeyConfigured: false })).toBeUndefined();
-    expect(reservedHeaderReason("Accept", { type: "ollama", apiKeyConfigured: true })).toBeUndefined();
+    expect(
+      reservedHeaderReason("Accept", { type: "openai", apiKeyConfigured: false }),
+    ).toBeDefined();
+    expect(
+      reservedHeaderReason("accept", { type: "openai", apiKeyConfigured: true }),
+    ).toBeDefined();
+    expect(
+      reservedHeaderReason("Accept", { type: "ollama", apiKeyConfigured: false }),
+    ).toBeUndefined();
+    expect(
+      reservedHeaderReason("Accept", { type: "ollama", apiKeyConfigured: true }),
+    ).toBeUndefined();
   });
 
   it("reserves Authorization only for openai, and only while an API key is configured", () => {
-    expect(reservedHeaderReason("Authorization", { type: "openai", apiKeyConfigured: true })).toBeDefined();
-    expect(reservedHeaderReason("authorization", { type: "openai", apiKeyConfigured: true })).toBeDefined();
-    expect(reservedHeaderReason("Authorization", { type: "openai", apiKeyConfigured: false })).toBeUndefined();
-    expect(reservedHeaderReason("Authorization", { type: "ollama", apiKeyConfigured: true })).toBeUndefined();
-    expect(reservedHeaderReason("Authorization", { type: "ollama", apiKeyConfigured: false })).toBeUndefined();
+    expect(
+      reservedHeaderReason("Authorization", { type: "openai", apiKeyConfigured: true }),
+    ).toBeDefined();
+    expect(
+      reservedHeaderReason("authorization", { type: "openai", apiKeyConfigured: true }),
+    ).toBeDefined();
+    expect(
+      reservedHeaderReason("Authorization", { type: "openai", apiKeyConfigured: false }),
+    ).toBeUndefined();
+    expect(
+      reservedHeaderReason("Authorization", { type: "ollama", apiKeyConfigured: true }),
+    ).toBeUndefined();
+    expect(
+      reservedHeaderReason("Authorization", { type: "ollama", apiKeyConfigured: false }),
+    ).toBeUndefined();
   });
 
   it("does not reserve an arbitrary custom header name", () => {
-    expect(reservedHeaderReason("X-My-Header", { type: "openai", apiKeyConfigured: true })).toBeUndefined();
-    expect(reservedHeaderReason("X-My-Header", { type: "ollama", apiKeyConfigured: false })).toBeUndefined();
+    expect(
+      reservedHeaderReason("X-My-Header", { type: "openai", apiKeyConfigured: true }),
+    ).toBeUndefined();
+    expect(
+      reservedHeaderReason("X-My-Header", { type: "ollama", apiKeyConfigured: false }),
+    ).toBeUndefined();
   });
 });

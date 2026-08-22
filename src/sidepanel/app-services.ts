@@ -101,7 +101,9 @@ let current: SidePanelServices | undefined;
  */
 export function initSidePanelServices(services: SidePanelServices): void {
   if (current) {
-    throw new Error("[webmcp] side panel services were already initialised — main.ts wires them once.");
+    throw new Error(
+      "[webmcp] side panel services were already initialised — main.ts wires them once.",
+    );
   }
   current = services;
 }
@@ -113,7 +115,9 @@ export function initSidePanelServices(services: SidePanelServices): void {
  */
 export function sidePanelServices(): SidePanelServices {
   if (!current) {
-    throw new Error("[webmcp] side panel services are not initialised — src/sidepanel/main.ts must run first.");
+    throw new Error(
+      "[webmcp] side panel services are not initialised — src/sidepanel/main.ts must run first.",
+    );
   }
   return current;
 }

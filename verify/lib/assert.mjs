@@ -4,7 +4,9 @@ export function assert(cond, message) {
 
 export function assertEqual(actual, expected, message) {
   if (actual !== expected) {
-    throw new Error(`${message} (expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)})`);
+    throw new Error(
+      `${message} (expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)})`,
+    );
   }
 }
 
@@ -21,7 +23,11 @@ export function assertSetEqual(actual, expected, message) {
 }
 
 /** Poll `fn` until `predicate(result)` is true, or throw on timeout. */
-export async function pollUntil(fn, predicate, { timeoutMs = 5000, intervalMs = 150, label = "condition" } = {}) {
+export async function pollUntil(
+  fn,
+  predicate,
+  { timeoutMs = 5000, intervalMs = 150, label = "condition" } = {},
+) {
   const started = Date.now();
   let last;
   while (Date.now() - started < timeoutMs) {
@@ -29,5 +35,7 @@ export async function pollUntil(fn, predicate, { timeoutMs = 5000, intervalMs = 
     if (predicate(last)) return last;
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  throw new Error(`timed out after ${timeoutMs}ms waiting for: ${label} (last value: ${JSON.stringify(last)})`);
+  throw new Error(
+    `timed out after ${timeoutMs}ms waiting for: ${label} (last value: ${JSON.stringify(last)})`,
+  );
 }

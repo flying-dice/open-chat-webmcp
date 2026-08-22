@@ -173,14 +173,10 @@ async function toHttpError(
     };
   }
 
-  if (
-    opts?.treatMissingAsNotSupported &&
-    (response.status === 404 || response.status === 405)
-  ) {
+  if (opts?.treatMissingAsNotSupported && (response.status === 404 || response.status === 405)) {
     return {
       kind: "not-supported",
-      message:
-        "This endpoint does not expose a model-listing API. Enter a model id manually.",
+      message: "This endpoint does not expose a model-listing API. Enter a model id manually.",
     };
   }
 
@@ -245,11 +241,8 @@ async function listModels(
     };
   }
 
-  const rawModels =
-    isRecord(json) && Array.isArray(json.data) ? json.data : [];
-  const models = rawModels
-    .map(normalizeModel)
-    .filter((m): m is ProviderModel => m !== null);
+  const rawModels = isRecord(json) && Array.isArray(json.data) ? json.data : [];
+  const models = rawModels.map(normalizeModel).filter((m): m is ProviderModel => m !== null);
 
   return { ok: true, value: models };
 }
@@ -457,10 +450,7 @@ interface SseParseState {
  * are ignored rather than rejected, so an OpenAI-compatible host that adds
  * one doesn't break parsing.
  */
-function extractSseEvents(
-  state: SseParseState,
-  opts?: { flush?: boolean },
-): string[] {
+function extractSseEvents(state: SseParseState, opts?: { flush?: boolean }): string[] {
   const events: string[] = [];
 
   const consumeLine = (rawLine: string) => {
@@ -647,8 +637,7 @@ async function* chat(
   }
 
   function buildStats(): ChatStats {
-    const num = (v: unknown): number | undefined =>
-      typeof v === "number" ? v : undefined;
+    const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
     return {
       doneReason: finishReason,
       promptTokens: usage ? num(usage.prompt_tokens) : undefined,
@@ -756,4 +745,3 @@ export function createOpenAiProvider(config: ProviderConfig): ChatProvider {
     },
   };
 }
-

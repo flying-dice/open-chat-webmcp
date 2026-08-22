@@ -35,7 +35,10 @@ function annotationBadges(annotations?: ToolAnnotations): string {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  );
 }
 
 /** Renders the "currently registered tools" panel from a live registry map.
@@ -129,7 +132,9 @@ function replacePending(
   const entry = document.querySelector(`.log-entry[data-id="${id}"] .log-outcome`);
   if (!entry) return;
   if (outcome.ok) {
-    const text = outcome.result.content.map((c) => ("text" in c ? c.text : JSON.stringify(c))).join(" ");
+    const text = outcome.result.content
+      .map((c) => ("text" in c ? c.text : JSON.stringify(c)))
+      .join(" ");
     const badge = outcome.result.isError
       ? '<span class="outcome-error">isError</span>'
       : '<span class="outcome-ok">ok</span>';

@@ -40,7 +40,9 @@
   );
   const format = $derived(typeof rec?.format === "string" ? (rec.format as string) : undefined);
   const enumValues = $derived(Array.isArray(rec?.enum) ? (rec.enum as unknown[]) : undefined);
-  const properties = $derived(isRecord(rec?.properties) ? (rec.properties as Record<string, unknown>) : undefined);
+  const properties = $derived(
+    isRecord(rec?.properties) ? (rec.properties as Record<string, unknown>) : undefined,
+  );
   const requiredList = $derived(
     Array.isArray(rec?.required)
       ? (rec.required as unknown[]).filter((r): r is string => typeof r === "string")
@@ -49,7 +51,9 @@
   const items = $derived(rec?.items);
   const itemsRecord = $derived(isRecord(items) ? items : undefined);
   const itemProperties = $derived(
-    isRecord(itemsRecord?.properties) ? (itemsRecord.properties as Record<string, unknown>) : undefined,
+    isRecord(itemsRecord?.properties)
+      ? (itemsRecord.properties as Record<string, unknown>)
+      : undefined,
   );
   const itemRequiredList = $derived(
     Array.isArray(itemsRecord?.required)
@@ -60,7 +64,8 @@
   const typeLabel = $derived.by(() => {
     if (!type) return "any";
     if (type === "array") {
-      const itemType = typeof itemsRecord?.type === "string" ? (itemsRecord.type as string) : undefined;
+      const itemType =
+        typeof itemsRecord?.type === "string" ? (itemsRecord.type as string) : undefined;
       return itemType ? `array<${itemType}>` : "array";
     }
     return type;

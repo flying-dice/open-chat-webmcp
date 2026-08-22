@@ -63,9 +63,10 @@ type ChangeListener = (
   areaName: chrome.storage.AreaName,
 ) => void;
 
-function createArea(
-  notify: (changes: Record<string, chrome.storage.StorageChange>) => void,
-): { area: FakeStorageArea; api: chrome.storage.StorageArea } {
+function createArea(notify: (changes: Record<string, chrome.storage.StorageChange>) => void): {
+  area: FakeStorageArea;
+  api: chrome.storage.StorageArea;
+} {
   const data = new Map<string, unknown>();
   const pending: PendingFailure[] = [];
   const counts: Record<FakeStorageOp, number> = { get: 0, set: 0, remove: 0 };

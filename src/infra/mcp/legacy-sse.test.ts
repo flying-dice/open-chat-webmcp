@@ -63,7 +63,9 @@ function controllableSseStream() {
 }
 
 const ENDPOINT_EVENT = "event: endpoint\ndata: /session/abc\n\n";
-function initResponseEvent(result: Record<string, unknown> = { protocolVersion: "2025-06-18" }): string {
+function initResponseEvent(
+  result: Record<string, unknown> = { protocolVersion: "2025-06-18" },
+): string {
   return `data: ${JSON.stringify({ jsonrpc: "2.0", id: 1, result })}\n\n`;
 }
 
@@ -72,7 +74,10 @@ describe("connectLegacySse", () => {
     const { stream, push } = controllableSseStream();
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "GET") {
-        return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
       }
       // Every POST (initialize, then notifications/initialized) goes here.
       expect(url).toBe("https://mcp.example/session/abc");
@@ -90,7 +95,11 @@ describe("connectLegacySse", () => {
     expect(result).toEqual({
       ok: true,
       value: expect.objectContaining({
-        connection: { protocolVersion: "2025-06-18", serverInfo: undefined, instructions: undefined },
+        connection: {
+          protocolVersion: "2025-06-18",
+          serverInfo: undefined,
+          instructions: undefined,
+        },
       }),
     });
     if (result.ok) result.value.close();
@@ -101,7 +110,10 @@ describe("connectLegacySse", () => {
     const { stream, push } = controllableSseStream();
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "GET") {
-        return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
       }
       posted.push(url);
       const body = JSON.parse(init?.body as string) as { method: string };
@@ -112,7 +124,12 @@ describe("connectLegacySse", () => {
     push(ENDPOINT_EVENT);
     const budget = createBudget(1000, undefined);
 
-    const result = await connectLegacySse(serverConfig({ url: "https://mcp.example/base/sse" }), {}, clientInfo, budget);
+    const result = await connectLegacySse(
+      serverConfig({ url: "https://mcp.example/base/sse" }),
+      {},
+      clientInfo,
+      budget,
+    );
     budget.cleanup();
 
     expect(result.ok).toBe(true);
@@ -125,16 +142,27 @@ describe("connectLegacySse", () => {
     it("401 on the opening GET fails as kind 'auth'", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(JSON.stringify({ error: { code: -32000, message: "Unauthorized" } }), { status: 401 })),
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: { code: -32000, message: "Unauthorized" } }), {
+              status: 401,
+            }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result).toEqual({ ok: false, error: { kind: "auth", status: 401, message: "Unauthorized" } });
+      expect(result).toEqual({
+        ok: false,
+        error: { kind: "auth", status: 401, message: "Unauthorized" },
+      });
     });
 
     it("a non-ok GET response fails as not-mcp-endpoint, naming that both transports were tried", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("nope", { status: 500 })),
+      );
       const budget = createBudget(1000, undefined);
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
@@ -146,14 +174,20 @@ describe("connectLegacySse", () => {
     it("an ok GET response that isn't an SSE stream fails as not-mcp-endpoint", async () => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response("hi", { status: 200, headers: { "Content-Type": "text/plain" } })),
+        vi.fn(
+          async () =>
+            new Response("hi", { status: 200, headers: { "Content-Type": "text/plain" } }),
+        ),
       );
       const budget = createBudget(1000, undefined);
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
       expect(result).toEqual({
         ok: false,
-        error: { kind: "not-mcp-endpoint", message: "Server did not open an SSE stream for the legacy MCP transport either." },
+        error: {
+          kind: "not-mcp-endpoint",
+          message: "Server did not open an SSE stream for the legacy MCP transport either.",
+        },
       });
     });
 
@@ -176,7 +210,10 @@ describe("connectLegacySse", () => {
       const { stream, cancelled } = controllableSseStream();
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } })),
+        vi.fn(
+          async () =>
+            new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+        ),
       );
       const budget = createBudget(15, undefined); // fires almost immediately
 
@@ -195,7 +232,10 @@ describe("connectLegacySse", () => {
         "fetch",
         vi.fn(async (_url: string, init?: RequestInit) => {
           if (init?.method === "GET") {
-            return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+            return new Response(stream, {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream" },
+            });
           }
           return jsonResponse({ ok: true }); // the initialize POST is accepted, but no reply is ever pushed
         }),
@@ -220,7 +260,10 @@ describe("connectLegacySse", () => {
         "fetch",
         vi.fn(async (_url: string, init?: RequestInit) => {
           if (init?.method === "GET") {
-            return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+            return new Response(stream, {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream" },
+            });
           }
           postCount++;
           throw new TypeError("Failed to fetch");
@@ -244,9 +287,15 @@ describe("connectLegacySse", () => {
         "fetch",
         vi.fn(async (_url: string, init?: RequestInit) => {
           if (init?.method === "GET") {
-            return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+            return new Response(stream, {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream" },
+            });
           }
-          return new Response(JSON.stringify({ error: { code: -32000, message: "Unauthorized" } }), { status: 401 });
+          return new Response(
+            JSON.stringify({ error: { code: -32000, message: "Unauthorized" } }),
+            { status: 401 },
+          );
         }),
       );
       const budget = createBudget(1000, undefined);
@@ -255,7 +304,10 @@ describe("connectLegacySse", () => {
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
 
-      expect(result).toEqual({ ok: false, error: { kind: "auth", status: 401, message: "Unauthorized" } });
+      expect(result).toEqual({
+        ok: false,
+        error: { kind: "auth", status: 401, message: "Unauthorized" },
+      });
       expect(cancelled()).toBe(true);
     });
 
@@ -263,10 +315,14 @@ describe("connectLegacySse", () => {
       const { stream, push, cancelled } = controllableSseStream();
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         const body = JSON.parse(init?.body as string) as { method: string };
-        if (body.method === "initialize") push(initResponseEvent({ protocolVersion: "not-a-real-version" }));
+        if (body.method === "initialize")
+          push(initResponseEvent({ protocolVersion: "not-a-real-version" }));
         return jsonResponse({ ok: true });
       });
       vi.stubGlobal("fetch", fetchMock);
@@ -288,7 +344,10 @@ describe("connectLegacySse", () => {
       const { stream, push } = controllableSseStream();
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         const body = JSON.parse(init?.body as string) as { method: string };
         if (body.method === "initialize") push(initResponseEvent());
@@ -309,7 +368,10 @@ describe("connectLegacySse", () => {
       const { stream, push } = controllableSseStream();
       const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         posted.push(url);
         const body = JSON.parse(init?.body as string) as { method: string };
@@ -331,7 +393,10 @@ describe("connectLegacySse", () => {
       const { stream, push } = controllableSseStream();
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         const body = JSON.parse(init?.body as string) as { method: string };
         if (body.method === "initialize") {
@@ -359,13 +424,18 @@ describe("connectLegacySse", () => {
       const { stream, push } = controllableSseStream();
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         const body = JSON.parse(init?.body as string) as { id?: number; method: string };
         if (body.method === "initialize") {
           push(initResponseEvent());
         } else if (typeof body.id === "number") {
-          push(`data: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { echoedId: body.id } })}\n\n`);
+          push(
+            `data: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { echoedId: body.id } })}\n\n`,
+          );
         }
         return jsonResponse({ ok: true });
       });
@@ -418,7 +488,10 @@ describe("connectLegacySse", () => {
       let toolCallSeen = false;
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         const body = JSON.parse(init?.body as string) as { method: string };
         if (body.method === "initialize") {
@@ -427,7 +500,10 @@ describe("connectLegacySse", () => {
         }
         if (body.method === "tools/call") {
           toolCallSeen = true;
-          return new Response(JSON.stringify({ error: { code: -32000, message: "Access token expired" } }), { status: 401 });
+          return new Response(
+            JSON.stringify({ error: { code: -32000, message: "Access token expired" } }),
+            { status: 401 },
+          );
         }
         return jsonResponse({ ok: true });
       });
@@ -444,14 +520,20 @@ describe("connectLegacySse", () => {
       budget.cleanup();
 
       expect(toolCallSeen).toBe(true);
-      expect(result).toEqual({ ok: false, error: { kind: "auth", status: 401, message: "Access token expired" } });
+      expect(result).toEqual({
+        ok: false,
+        error: { kind: "auth", status: 401, message: "Access token expired" },
+      });
     });
 
     it("request() times out when the relay accepts the POST but the SSE stream never delivers a matching response", async () => {
       const { stream, push } = controllableSseStream();
       const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
         if (init?.method === "GET") {
-          return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
         }
         const body = JSON.parse(init?.body as string) as { method: string };
         if (body.method === "initialize") push(initResponseEvent());
