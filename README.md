@@ -1,10 +1,13 @@
 # OpenChat (WebMCP)
 
-A Chrome MV3 extension that puts a chat model in a side panel next to any tab
-and lets it *drive that page* through [WebMCP](https://github.com/webmachinelearning/webmcp) —
-tools a web page publishes on `document.modelContext`. The model reads and
-acts on the page you're looking at, with your approval on anything that isn't
-explicitly marked read-only.
+A Chrome MV3 extension that puts a chat model in a side panel next to any tab.
+It works on **every** page: ask about the text you have selected, or share the
+page's content, and — on pages that publish
+[WebMCP](https://github.com/webmachinelearning/webmcp) tools on
+`document.modelContext` — let the model *drive the page* as well, with your
+approval on anything that isn't explicitly marked read-only. What it can see
+is governed by one visible control on the composer, which you can switch off
+per page (see [Privacy and trust](docs/03-privacy-and-trust.md)).
 
 It talks to either a local [Ollama](https://ollama.com) server or any
 OpenAI-compatible Chat Completions endpoint (OpenAI itself, Azure OpenAI,
@@ -28,6 +31,16 @@ themes: 11 PNGs — to gitignored `verify/output/screenshots/`. See
 
 ## What it does
 
+- **Works on any page, not only WebMCP ones.** Select text and a "Selected
+  text" chip appears on the composer, ready to go with your next message; or
+  share the page's own text with one toggle. Both are pulled only when you
+  act (clicking into the panel, or pressing Send), both are shown before they
+  are sent and recorded on the message afterwards, and both are fenced as
+  untrusted page content in the prompt. The context strip is a real consent
+  control: dismiss it and the assistant is fully blind to that page — no
+  tools, no text, nothing — until you switch it back on
+  (`decisions/40-page-context-access.md`,
+  [Privacy and trust](docs/03-privacy-and-trust.md)).
 - Reads tools directly from a page's **native** `document.modelContext` —
   the same registry the browser itself maintains, so this extension sees
   exactly what any other WebMCP consumer (like the official inspector
@@ -80,9 +93,10 @@ account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
     work on a stock Chrome while a local demo page does not — see
     [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md#turning-it-on).
 
-  Without one of these, the extension still loads and chat still works, but
-  the side panel reports WebMCP as unavailable rather than showing any page
-  tools — see
+  Without one of these, the extension still loads, chat still works, and page
+  context (selected text, page content) still works — WebMCP is not involved
+  in either. What you lose is page *tools*: the side panel reports WebMCP as
+  unavailable rather than showing any — see
   [docs/04-troubleshooting.md](docs/04-troubleshooting.md#a-tab-shows-no-tools--no-relay-in-this-tab).
 - At least one provider: either a locally running
   [Ollama](https://ollama.com), or an API key for an OpenAI-compatible

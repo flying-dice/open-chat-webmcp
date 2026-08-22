@@ -539,6 +539,7 @@
   "toolsPanel_notSharingDescription": "공유가 꺼져 있는 동안에는 이 페이지의 도구가 표시되지 않습니다. 입력창 위의 표시줄에서 다시 켜세요.",
   "pageContext_contentRestrictedNotice": "Chrome이 확장 프로그램의 이 페이지 읽기를 차단하므로 텍스트를 공유할 수 없습니다.",
   "pageContext_contentUnavailableNotice": "지금 이 페이지를 읽지 못해 페이지 텍스트 없이 메시지를 보냈습니다.",
+  "pageContext_selectionStaleNotice": "페이지가 바뀌어서 선택했던 텍스트는 메시지와 함께 보내지 않았습니다.",
   "note_iterationCap": "도구 호출을 {limit}회 반복했지만 최종 답변에 이르지 못해 중단했습니다. 다시 질문하거나 요청 범위를 좁혀 보세요.",
   "openOptionsCheckApiKeyAction": "옵션을 열어 API 키 확인",
   "toolOutcome_denied": "이 호출을 거부했습니다.",

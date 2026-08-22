@@ -553,6 +553,7 @@
   "toolsPanel_notSharingDescription": "Die Tools dieser Seite bleiben verborgen, solange das Teilen aus ist. Schalten Sie es in der Leiste über dem Eingabefeld wieder ein.",
   "pageContext_contentRestrictedNotice": "Chrome lässt Erweiterungen diese Seite nicht lesen, deshalb kann ihr Text nicht geteilt werden.",
   "pageContext_contentUnavailableNotice": "Diese Seite ließ sich gerade nicht lesen, deshalb wurde Ihre Nachricht ohne den Seitentext gesendet.",
+  "pageContext_selectionStaleNotice": "Die Seite hat sich geändert, deshalb wurde der von Ihnen markierte Text nicht mitgesendet.",
   "note_iterationCap": "Nach {limit} Runden mit Tool-Aufrufen ohne abschließende Antwort abgebrochen. Fragen Sie erneut oder grenzen Sie die Anfrage ein, um fortzufahren.",
   "openOptionsCheckApiKeyAction": "Optionen öffnen und API-Schlüssel prüfen",
   "toolOutcome_denied": "Sie haben diesen Aufruf abgelehnt.",

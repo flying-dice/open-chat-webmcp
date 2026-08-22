@@ -567,6 +567,7 @@
   "toolsPanel_notSharingDescription": "Les outils de cette page restent masqués tant que le partage est désactivé. Réactivez-le dans la barre au-dessus de la zone de message.",
   "pageContext_contentRestrictedNotice": "Chrome empêche les extensions de lire cette page : son texte ne peut donc pas être partagé.",
   "pageContext_contentUnavailableNotice": "Cette page n’a pas pu être lue à l’instant : votre message a été envoyé sans le texte de la page.",
+  "pageContext_selectionStaleNotice": "La page a changé : le texte que vous aviez sélectionné n’a donc pas été envoyé avec votre message.",
   "note_iterationCap": "Arrêt après {limit} séries d’appels d’outils sans réponse finale. Reposez la question ou restreignez la demande pour continuer.",
   "openOptionsCheckApiKeyAction": "Ouvrir les options pour vérifier la clé API",
   "toolOutcome_denied": "Vous avez refusé cet appel.",

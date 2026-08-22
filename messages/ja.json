@@ -539,6 +539,7 @@
   "toolsPanel_notSharingDescription": "共有をオフにしている間、このページのツールは表示されません。入力欄の上のバーからもう一度オンにできます。",
   "pageContext_contentRestrictedNotice": "Chrome はこのページの読み取りを拡張機能に許可していないため、テキストを共有できません。",
   "pageContext_contentUnavailableNotice": "このページを読み取れなかったため、ページのテキストなしでメッセージを送信しました。",
+  "pageContext_selectionStaleNotice": "ページが変わったため、選択していたテキストはメッセージと一緒に送信されませんでした。",
   "note_iterationCap": "ツール呼び出しを {limit} 回繰り返しても最終的な回答に至らなかったため、停止しました。もう一度質問するか、内容を絞ってお試しください。",
   "openOptionsCheckApiKeyAction": "オプションを開いて API キーを確認",
   "toolOutcome_denied": "この呼び出しを拒否しました。",

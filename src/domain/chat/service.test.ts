@@ -1225,4 +1225,196 @@ describe("ChatService.runTurn — what the transcript records about shared page 
 
     expect(entry.sharedContext).toBeUndefined();
   });
+
+  it("puts the fenced context in the prompt, anchored to the message it was shared with", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const gateway = scriptedGateway([[doneEvent()]]);
+    await service.runTurn("what does this say?", {
+      model: gateway,
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+      sharingAllowed: true,
+      pageContext: [snapshot("selection", "the highlighted sentence")],
+    });
+
+    const sent = gateway.requests[0]!.messages;
+    const contextIndex = sent.findIndex((m) => m.content.includes("the highlighted sentence"));
+    expect(contextIndex).toBeGreaterThan(0);
+    expect(sent[contextIndex + 1]?.content).toBe("what does this say?");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE SEND SEAM (card 120): the user's message goes up FIRST, the page is
+// asked afterwards. See `PageContextCollector` in ./service.ts for why.
+// ---------------------------------------------------------------------------
+
+describe("ChatService.runTurn — collecting page context after the message is on screen", () => {
+  function snapshot(text: string): PageContextSnapshot {
+    return {
+      mode: "selection",
+      text,
+      url: "https://example.com/",
+      title: "Example",
+      truncated: false,
+      bytes: text.length,
+    };
+  }
+
+  function request(
+    pageContext: RunTurnRequest["pageContext"],
+    overrides: Partial<RunTurnRequest> = {},
+  ): RunTurnRequest {
+    return {
+      model: scriptedGateway([[doneEvent()]]),
+      modelId: "m",
+      tools: { toolsForTurn: async () => [] },
+      approvals: vi.fn(async () => "denied" as ApprovalDecision),
+      page,
+      attachTools: false,
+      sharingAllowed: true,
+      pageContext,
+      ...overrides,
+    };
+  }
+
+  it("renders the user's message BEFORE the collector resolves — a wedged page cannot make Send look broken", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const pull = deferred<readonly PageContextSnapshot[]>();
+
+    const turn = service.runTurn(
+      "is this page lying to me?",
+      request(() => pull.promise),
+    );
+
+    // Not a single `await` in between: this is the state of the transcript in
+    // the same tick the user pressed Send, with the pull still outstanding.
+    expect(service.current()!.messages).toHaveLength(1);
+    expect(service.current()!.messages[0]).toMatchObject({
+      role: "user",
+      content: "is this page lying to me?",
+    });
+
+    pull.resolve([snapshot("the claim I highlighted")]);
+    await turn;
+  });
+
+  it("registers the turn during the pull, so Stop works while the page is being read", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const chatId = service.current()!.id;
+    const pull = deferred<readonly PageContextSnapshot[]>();
+
+    const turn = service.runTurn(
+      "hello",
+      request(() => pull.promise),
+    );
+    expect(service.isTurnActive(chatId)).toBe(true);
+
+    pull.resolve([]);
+    await turn;
+    expect(service.isTurnActive(chatId)).toBe(false);
+  });
+
+  it("never contacts the model when Stop lands while the page is still being read", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const chatId = service.current()!.id;
+    const pull = deferred<readonly PageContextSnapshot[]>();
+    const gateway = scriptedGateway([[doneEvent()]]);
+
+    const turn = service.runTurn(
+      "hello",
+      request(() => pull.promise, { model: gateway }),
+    );
+    service.requestStop(chatId);
+    pull.resolve([snapshot("some text")]);
+    await turn;
+
+    expect(gateway.requests).toHaveLength(0);
+    // The message the user sent stays — it is a truthful record of what they
+    // did, and so is the marker for what went with it.
+    expect(service.current()!.messages[0]?.content).toBe("hello");
+    expect(service.current()!.messages[0]?.sharedContext).toEqual([
+      { kind: "page-selection", truncated: false },
+    ]);
+  });
+
+  it("stamps the marker onto the message once the collector answers", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const pull = deferred<readonly PageContextSnapshot[]>();
+
+    const turn = service.runTurn(
+      "q",
+      request(() => pull.promise),
+    );
+    expect(service.current()!.messages[0]?.sharedContext).toBeUndefined();
+
+    pull.resolve([snapshot("shared text")]);
+    await turn;
+    expect(service.current()!.messages[0]?.sharedContext).toEqual([
+      { kind: "page-selection", truncated: false },
+    ]);
+  });
+
+  it("leaves the stored shape untouched when the collector comes back empty", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    await service.runTurn(
+      "q",
+      request(async () => []),
+    );
+
+    expect(service.current()!.messages[0]?.sharedContext).toBeUndefined();
+    expect(Object.keys(service.current()!.messages[0]!)).not.toContain("sharedContext");
+  });
+
+  it("applies the gate to a collector's answer too — a collected snapshot is not a trusted one", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const gateway = scriptedGateway([[doneEvent()]]);
+    await service.runTurn(
+      "q",
+      request(async () => [snapshot("SHOULD NOT REACH THE MODEL")], {
+        sharingAllowed: false,
+        model: gateway,
+      }),
+    );
+
+    expect(service.current()!.messages[0]?.sharedContext).toBeUndefined();
+    expect(JSON.stringify(gateway.requests[0]!.messages)).not.toContain("SHOULD NOT REACH");
+  });
+
+  it("keeps writing the turn to the chat it started in when the panel swaps chats mid-pull", async () => {
+    // The seam's real hazard: moving the pull after the append opens a window
+    // in which the panel can point somewhere else. The one-shot capture
+    // (decisions/25 §3) runs BEFORE the pull for exactly this reason, so the
+    // marker and the reply land on the chat the user typed into.
+    const { service } = makeService();
+    await service.syncToTab(1, "https://example.com");
+    const original = service.current()!;
+    const pull = deferred<readonly PageContextSnapshot[]>();
+
+    const turn = service.runTurn(
+      "about this page",
+      request(() => pull.promise),
+    );
+    await service.syncToTab(2, "https://elsewhere.example");
+    expect(service.current()!.id).not.toBe(original.id);
+
+    pull.resolve([snapshot("the bit I highlighted")]);
+    await turn;
+
+    expect(original.messages[0]?.sharedContext).toEqual([
+      { kind: "page-selection", truncated: false },
+    ]);
+    expect(original.messages.some((m) => m.role === "assistant")).toBe(true);
+    expect(service.current()!.messages).toHaveLength(0);
+  });
 });

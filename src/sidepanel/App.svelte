@@ -366,25 +366,33 @@
 
     // Card 119 (decisions/40): the send is the second of the two gestures a
     // page-context pull is allowed to happen on, and the authoritative one —
-    // the user may have changed their selection while typing. `collectTurnContext`
-    // is the whole of the gate's UI-side enforcement: it pulls nothing and
-    // returns nothing while sharing is dismissed, so a dismissal made between
-    // the chip appearing and Send being pressed is honoured by the turn that
-    // send starts. The gate is read AFTER the pull for the same reason.
-    void (async () => {
-      const pageContext = await collectTurnContext();
-      await sendTurn(text, {
-        provider,
-        model: resolution.model,
-        tabId,
-        pageTitle,
-        pageOrigin,
-        attachTools: pageSharing.sharing && selection.activeCapability?.status === "tool-capable",
-        sharingAllowed: pageSharing.sharing,
-        pageContext,
-        requestApproval,
-      });
-    })();
+    // the user may have changed their selection while typing.
+    // `collectTurnContext` is the whole of the gate's UI-side enforcement: it
+    // pulls nothing and returns nothing while sharing is dismissed, so a
+    // dismissal made between the chip appearing and Send being pressed is
+    // honoured by the turn that send starts.
+    //
+    // CARD 120 MOVED THE SEAM. This used to `await collectTurnContext()`
+    // right here, before `sendTurn` — which meant that on a page whose main
+    // thread is wedged, Send did nothing visible for up to three seconds
+    // (card 118's pull rung) before the user's own message appeared. The
+    // collector is now handed to the turn instead of called in front of it:
+    // `ChatService.runTurn` appends the message, captures its chat and
+    // registers the turn synchronously, then pulls. Nothing about the gate
+    // moved — `collectTurnContext` still reads it at attach time, and
+    // `sharingAllowed` is read at the moment Send is pressed, which is the
+    // same instant for every case the gate is about.
+    void sendTurn(text, {
+      provider,
+      model: resolution.model,
+      tabId,
+      pageTitle,
+      pageOrigin,
+      attachTools: pageSharing.sharing && selection.activeCapability?.status === "tool-capable",
+      sharingAllowed: pageSharing.sharing,
+      pageContext: collectTurnContext,
+      requestApproval,
+    });
   }
 
   /**

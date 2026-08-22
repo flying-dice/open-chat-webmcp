@@ -28,6 +28,7 @@
 import {
   denyByDefaultApprovalRequester,
   type ApprovalRequester,
+  type PageContextCollector,
   type PageContextSnapshot,
   type ToolExecutor,
 } from "../../domain/chat";
@@ -73,11 +74,18 @@ export interface SendTurnOptions {
    */
   sharingAllowed: boolean;
   /**
-   * What the user shared from the page for this turn, pulled at send
-   * (selection first, then the page extract). Card 119 records it as a
-   * transcript marker; card 120 is what puts it, fenced, into the prompt.
+   * What the user shared from the page for this turn — a selection first,
+   * then the page extract. Recorded as a transcript marker (card 119) and
+   * placed in the prompt, fenced as untrusted content (card 120).
+   *
+   * PASS THE COLLECTOR, NOT ITS RESULT. `collectTurnContext`
+   * (../stores/pageSharing.svelte.ts) is a round trip to the tab that can
+   * take up to card 118's 3-second rung on a wedged page; handing the
+   * function over lets `ChatService.runTurn` put the user's message on screen
+   * first and pull afterwards, instead of the composer sitting silent for
+   * three seconds. See `PageContextCollector` in src/domain/chat/service.ts.
    */
-  pageContext?: readonly PageContextSnapshot[] | undefined;
+  pageContext?: readonly PageContextSnapshot[] | PageContextCollector | undefined;
   /** Defaults to `denyByDefaultApprovalRequester` — the decisions/05 fail-safe: if the real approval UI were somehow never wired in, every call needing approval fails closed. */
   requestApproval?: ApprovalRequester;
 }

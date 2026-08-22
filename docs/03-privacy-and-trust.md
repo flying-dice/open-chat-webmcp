@@ -5,6 +5,97 @@ and doesn't protect you from. Nothing here is designed to alarm or to
 reassure — it's what's actually implemented, cited to the code and the
 decision records that explain why.
 
+## The rule: only what you visibly share
+
+Until `decisions/40-page-context-access.md`, this extension could only see
+what a page chose to *publish* as WebMCP tools. It can now also read the page
+itself — the text you have selected, and (when you ask for it) an extraction
+of the page's visible text. That is a real widening of what the extension can
+see, so it comes with one rule that the code is built around:
+
+> **Nothing leaves the page without a user-visible artifact, before and
+> after.** Before: a chip on the composer showing exactly what is about to go
+> with your message. After: a marker on that message in the transcript
+> recording what went with it.
+
+There is no background reading. The two page-reading messages in the
+extension's protocol are *pull only* — there is deliberately no
+"page-context-changed" notification message for the panel to subscribe to
+(`src/infra/chrome-runtime/protocol.ts`), and the domain port that pulls one
+has no `subscribe` method to call (`PageContextSource`,
+`src/domain/chat/page-context.ts`). A page read happens on exactly three
+gestures, all yours: clicking into the panel, the panel starting to point at a
+different page, and pressing Send. Nothing polls, and nothing streams.
+
+### The sharing gate
+
+The context strip above the composer — the one that says
+"Sharing *page name* · N tools" — is a **consent control, not a label**. Its
+✕ ("Stop sharing this page") makes the assistant fully blind to that page:
+
+- its tools disappear from the tools panel, from every count in the UI, and
+  are never attached to a turn;
+- no selection or page text can be pulled at all — the port is not called;
+- the strip changes to "Not sharing this page" with an equally visible
+  "Share this page" button to undo it.
+
+The gate is enforced in two independent places on purpose. The side panel
+refuses to pull or attach anything while it is down
+(`src/sidepanel/stores/pageSharing.svelte.ts`), and the turn engine itself
+refuses to look up the page's tools or put any page text in the prompt
+regardless of what it was handed (`src/domain/chat/turn.ts`,
+`src/domain/chat/service.ts`). A consent gate enforced only in the UI is a
+promise about one caller's discipline; enforced in the domain it is a property
+of running a turn at all.
+
+**Scope of a dismissal**: per tab, per origin, in memory. Navigating to a
+different site turns sharing back on (a dismissal is a judgement about *this
+page*, not a site blocklist you never asked to create); a different tab is
+unaffected; and closing the panel resets everything to the sharing-on default.
+Nothing about the gate is written to storage.
+
+**Restricted pages are unchanged.** On `chrome://` URLs, the Chrome Web Store,
+the built-in PDF viewer and anywhere else Chrome refuses to run a content
+script, there is no relay and nothing to withhold; the strip says so and
+offers no gate controls at all.
+
+### What the model is actually sent
+
+Shared page text is **untrusted input** and is treated exactly like a tool
+result (`decisions/17-spec-annotations-and-untrusted-content.md`): wrapped in
+an explicit `<<<UNTRUSTED_TOOL_RESULT>>>` / `<<<END_UNTRUSTED_TOOL_RESULT>>>`
+fence with a preamble stating that a web page wrote it, that it is data and
+never instructions, which page it came from, and — when it stopped at the
+16 KB extraction cap — that the model has *not* been shown all of it. Our own
+fence markers are stripped out of the page's text before it goes in, so a page
+that includes them in its own content cannot close the fence early and have
+what follows read as though it were trusted
+(`neutralizeFenceMarkers`, `src/domain/chat/message.ts`).
+
+This is defence in depth, not a hard boundary. A sufficiently clever page can
+still write text that talks a model into something, which is why the fence is
+paired with a standing instruction in the system prompt rather than relied on
+alone — and why every tool call that could *act* on your behalf still stops
+for the approval card described below.
+
+### What is not stored
+
+The shared text itself is **never written to disk**. The transcript records
+only that something was shared — `{kind: "page-selection" | "page-content",
+truncated: boolean}` (`SharedContextMarker`, `src/domain/chat/message.ts`) —
+so a page's content cannot outlive the conversation it was shared with. The
+text of your selection is, of course, part of the request that went to your
+model provider, and if that provider is a cloud one, that is where it went.
+
+### The one thing that keeps working while sharing is off
+
+The background worker keeps a local registry of which tools each tab has
+published, refreshed as tabs navigate. That cache is *not* cleared by
+dismissing sharing — but while sharing is dismissed nothing from it reaches
+the model or the UI: the tools are not offered to a turn, not listed, and not
+counted. It is local discovery bookkeeping, not content, and it never leaves
+your machine either way.
+
 ## Conversation history is stored unencrypted, and it can contain page content
 
 Every chat is written to `chrome.storage.local` **unencrypted**, debounced
@@ -22,6 +113,9 @@ is currently showing). That history includes:
   visible to you as a logged-in user on that site — and the model calls that
   tool, the result becomes part of the stored conversation, in plain text,
   on disk.
+- **Not** the page text or selection you shared with a turn — only a marker
+  saying that you shared one (see above). That text reached your model
+  provider, but it is not in the stored transcript.
 
 There is no encryption-at-rest for this data and no opt-out of storing it
 short of deleting individual chats (the side panel's History view), using
@@ -89,8 +183,10 @@ auto-run tool card word it that way in the UI itself
 "verified safe" badge.
 
 The real boundary this extension relies on is narrower and behavioral: *you*
-chose to open the side panel on this specific tab. It never runs against a
-page you haven't opened it on.
+chose to open the side panel on this specific tab, and — since
+`decisions/40-page-context-access.md` — you can withdraw that on any page with
+one click. It never runs against a page you haven't opened it on, and never
+reads a page you have told it to stop sharing.
 
 ## No telemetry, no backend
 
@@ -106,6 +202,7 @@ JavaScript context, same-origin, with that page's own privileges — see
 [docs/01-architecture.md](01-architecture.md)). If you run Ollama locally and
 never configure a cloud provider, no chat content leaves your machine at
 all; if you configure a cloud provider, your conversation (including tool
-call results, per above) goes to whatever endpoint you pointed it at, under
-whatever privacy terms that provider offers — this extension has no
-visibility into or control over what that provider does with it afterward.
+call results and any page text you shared, per above) goes to whatever
+endpoint you pointed it at, under whatever privacy terms that provider offers
+— this extension has no visibility into or control over what that provider
+does with it afterward.

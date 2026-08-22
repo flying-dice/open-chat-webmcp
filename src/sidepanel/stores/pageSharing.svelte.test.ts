@@ -357,6 +357,124 @@ describe("what goes with the turn", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// CARD 120's CHAOS CASES: what happens between the chip appearing and Send
+// actually landing. The send-time re-pull already made sending stale text
+// impossible; these pin that the user is TOLD, and that a gesture made during
+// the pull is honoured by the turn it was made during.
+// ---------------------------------------------------------------------------
+
+describe("what changes between the chip and the send", () => {
+  it("drops a selection the page has navigated away from, and says so", async () => {
+    sourceAnswering("what I highlighted on the old page");
+    await refreshSelection();
+    expect(pageSharing.selection).toBeDefined();
+
+    // The navigation: the browser's own selection is gone, so the send-time
+    // pull comes back empty (card 118: a SUCCESS, not an error).
+    sourceAnswering("");
+
+    expect(await collectTurnContext()).toEqual([]);
+    expect(panelNotices.all).toHaveLength(1);
+    expect(pageSharing.selection).toBeUndefined();
+  });
+
+  it("says so for a CROSS-ORIGIN navigation too, where the chip's snapshot belongs to another key", async () => {
+    sourceAnswering("highlighted on example.com");
+    await refreshSelection();
+
+    showPage({ tabId: 1, origin: "https://elsewhere.example" });
+    sourceAnswering("");
+
+    expect(await collectTurnContext()).toEqual([]);
+    expect(panelNotices.all).toHaveLength(1);
+  });
+
+  it("stays quiet when the user dismissed the chip themselves — that is not staleness", async () => {
+    sourceAnswering("selected text");
+    await refreshSelection();
+    dismissSelection();
+
+    expect(await collectTurnContext()).toEqual([]);
+    expect(panelNotices.all).toHaveLength(0);
+  });
+
+  it("stays quiet when there was never a chip to lose", async () => {
+    sourceAnswering("");
+
+    expect(await collectTurnContext()).toEqual([]);
+    expect(panelNotices.all).toHaveLength(0);
+  });
+
+  it("stays quiet when the selection is still there — the fresh read simply replaces it", async () => {
+    sourceAnswering("first");
+    await refreshSelection();
+    sourceAnswering("second");
+
+    const attached = await collectTurnContext();
+
+    expect(attached.map((s) => s.text)).toEqual(["second"]);
+    expect(panelNotices.all).toHaveLength(0);
+  });
+
+  it("attaches nothing at all once sharing is dismissed between the chip and the send", async () => {
+    const { pull } = sourceAnswering("selected text");
+    await refreshSelection();
+    setSharing(false);
+
+    expect(await collectTurnContext()).toEqual([]);
+    // One pull, the one that produced the chip — the send made none.
+    expect(pull).toHaveBeenCalledTimes(1);
+    expect(panelNotices.all).toHaveLength(0);
+  });
+
+  it("honours a dismissal made WHILE the page text is being pulled", async () => {
+    // The nearest thing to "dismissed mid-turn" this seam can express: the
+    // gesture lands after `collectTurnContext` has already checked the gate
+    // and gone to the page. The gate is re-read when the answer comes back,
+    // so nothing new is attached.
+    let releaseExtract: (() => void) | undefined;
+    services.pageContext = {
+      pull: async (_tabId, mode) => {
+        if (mode === "selection") return ok(snapshot("", { mode }));
+        await new Promise<void>((resolve) => {
+          releaseExtract = resolve;
+        });
+        return ok(snapshot("the whole page", { mode }));
+      },
+    };
+    setShareContent(true);
+
+    const collecting = collectTurnContext();
+    await vi.waitFor(() => expect(releaseExtract).toBeDefined());
+    setSharing(false);
+    releaseExtract?.();
+
+    expect(await collecting).toEqual([]);
+  });
+
+  it("drops a page extract that arrives after the panel has moved to another page", async () => {
+    let releaseExtract: (() => void) | undefined;
+    services.pageContext = {
+      pull: async (_tabId, mode) => {
+        if (mode === "selection") return ok(snapshot("", { mode }));
+        await new Promise<void>((resolve) => {
+          releaseExtract = resolve;
+        });
+        return ok(snapshot("text from the page we left", { mode }));
+      },
+    };
+    setShareContent(true);
+
+    const collecting = collectTurnContext();
+    await vi.waitFor(() => expect(releaseExtract).toBeDefined());
+    showPage({ tabId: 2, origin: "https://elsewhere.example" });
+    releaseExtract?.();
+
+    expect(await collecting).toEqual([]);
+  });
+});
+
 describe("the focus sync", () => {
   it("re-reads the selection when the panel takes focus", async () => {
     const { pull } = sourceAnswering("highlighted while the panel was away");

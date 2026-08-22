@@ -567,6 +567,7 @@
   "toolsPanel_notSharingDescription": "Las herramientas de esta página quedan ocultas mientras no la compartas. Vuelve a activarlo en la barra sobre el cuadro de mensaje.",
   "pageContext_contentRestrictedNotice": "Chrome impide que las extensiones lean esta página, así que su texto no se puede compartir.",
   "pageContext_contentUnavailableNotice": "No se pudo leer esta página ahora mismo, así que tu mensaje se envió sin el texto de la página.",
+  "pageContext_selectionStaleNotice": "La página cambió, así que el texto que habías seleccionado no se envió con tu mensaje.",
   "note_iterationCap": "Se detuvo tras {limit} rondas de llamadas a herramientas sin una respuesta final. Vuelve a preguntar o acota la petición para continuar.",
   "openOptionsCheckApiKeyAction": "Abrir opciones para comprobar la clave de API",
   "toolOutcome_denied": "Denegaste esta llamada.",

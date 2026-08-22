@@ -539,6 +539,7 @@
   "toolsPanel_notSharingDescription": "共享关闭时，此页面的工具不会显示。可在消息框上方的栏中重新开启。",
   "pageContext_contentRestrictedNotice": "Chrome 禁止扩展读取此页面，因此无法共享其文本。",
   "pageContext_contentUnavailableNotice": "刚才无法读取此页面，因此消息已在不含页面文本的情况下发送。",
+  "pageContext_selectionStaleNotice": "页面已变更，因此您之前选中的文本未随消息一起发送。",
   "note_iterationCap": "已进行 {limit} 轮工具调用仍未得到最终答复，因此已停止。可以再问一次，或缩小问题范围以继续。",
   "openOptionsCheckApiKeyAction": "打开选项页检查 API 密钥",
   "toolOutcome_denied": "你拒绝了这次调用。",

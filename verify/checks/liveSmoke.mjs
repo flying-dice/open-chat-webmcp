@@ -21,6 +21,16 @@
 // automates the flagged "drive a real end-to-end turn" human-verification
 // item wherever a local Ollama is actually reachable, the way earlier cards
 // found it to be.
+//
+// Card 120 (decisions/40-page-context-access.md) adds a SECOND real turn:
+// text selected in the page reaches the model and comes back in the answer.
+// It lives here rather than in sharingGateScenario.mjs because it is the one
+// assertion in the page-context feature that cannot be made without a model
+// — the gate, the chip and the tool hiding are all provable against the DOM,
+// and that scenario proves them with no Ollama needed. The seam-level
+// assertion of the exact fenced prompt is a unit test instead
+// (src/domain/chat/turn.test.ts, at the ModelGateway fake), which is where
+// the prompt's shape can be pinned character by character.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -154,11 +164,122 @@ async function main() {
       },
     );
 
+    // -----------------------------------------------------------------------
+    // Card 120 (decisions/40): the page-context feature end to end, against a
+    // real model. Everything below this line is about ONE claim — that text
+    // the user selects in the page reaches the model, fenced, and comes back
+    // in the answer.
+    //
+    // The selected text is a NONCE injected into the page at runtime, and it
+    // is deliberately NOT reachable through any of the demo page's seven
+    // tools: `read-page-state` returns the title/URL/counts, `read-notes-content`
+    // returns the notes list, and this paragraph is neither. So a reply
+    // containing the nonce can only have come through the selection pull —
+    // the model could not have called its way to it. That is what makes this
+    // a test of the feature rather than of the demo page.
+    // -----------------------------------------------------------------------
+    const nonce = `zarquon-${Math.random().toString(36).slice(2, 10)}`;
+    let sawSelectionMarker = false;
+    await report.run(
+      "Page context end to end: select text on the demo page -> send -> the live model's reply repeats the selected text",
+      async () => {
+        const selected = await demoPage.evaluate((token) => {
+          const paragraph = document.createElement("p");
+          paragraph.id = "verify-selection-target";
+          paragraph.textContent = `The secret passphrase for this page is ${token}.`;
+          document.querySelector("main")?.prepend(paragraph);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          const range = document.createRange();
+          range.selectNodeContents(paragraph);
+          selection.addRange(range);
+          return selection.toString().trim();
+        }, nonce);
+        assert(
+          typeof selected === "string" && selected.includes(nonce),
+          `could not put a real selection carrying "${nonce}" on the demo page`,
+        );
+
+        // The panel's own "focus" event is the pull gesture card 119 wired up
+        // — see sharingGateScenario.mjs for why this is dispatched rather
+        // than driven with bringToFront().
+        await panel.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await panel
+          .getByText("Selected text", { exact: true })
+          .waitFor({ state: "visible", timeout: 25000 });
+
+        const textarea = panel.getByRole("textbox", { name: "Message" });
+        await textarea.click();
+        await textarea.fill(
+          "Repeat the secret passphrase from the text I have selected, exactly as written. " +
+            "Do not call any tools. Answer with the passphrase and nothing else.",
+        );
+        // `exact` matters here and only here: with a selection chip on
+        // screen its dismiss button ("Don't send the selected text") also
+        // matches a loose "Send".
+        await panel.getByRole("button", { name: "Send", exact: true }).click();
+
+        // The transcript marker is the DETERMINISTIC half of this check: card
+        // 119 derives it from what was actually attached to the turn (and
+        // re-applies the sharing gate while doing so), so its presence is the
+        // extension's own record that the selection went with this message —
+        // independent of anything the model chose to say.
+        await panel
+          .getByText("Selected text shared", { exact: true })
+          .first()
+          .waitFor({ state: "visible", timeout: 30000 });
+        sawSelectionMarker = true;
+
+        // Waited for by POLLING rather than `waitFor`, so a reply that never
+        // finishes reports what the panel actually shows instead of a bare
+        // timeout — the difference between "the model is slow" and "the turn
+        // failed" is in that text, and a live smoke that cannot tell them
+        // apart is not worth much.
+        const replies = panel.getByRole("button", { name: "Copy response" });
+        const deny = panel.getByRole("button", { name: "Deny", exact: true });
+        const deadline = Date.now() + 120000;
+        let deniedCalls = 0;
+        while ((await replies.count()) < 2) {
+          if (Date.now() > deadline) {
+            const shown = (await panel.locator("body").innerText()).trim();
+            assert(false, `the second reply never finished streaming. Panel text:\n${shown}`);
+          }
+          // A local model asked not to call tools may call one anyway, and a
+          // mutating call parks the turn on an approval card until a HUMAN
+          // decides — which, unattended, is forever. Denying keeps the turn
+          // moving and does not weaken the claim: the passphrase is not
+          // reachable through any tool on this page, so the reply still has
+          // to have come from the selection. (Observed live: this is what
+          // made the first run of this check hang for its full timeout.)
+          if (
+            await deny
+              .first()
+              .isVisible()
+              .catch(() => false)
+          ) {
+            await deny.first().click();
+            deniedCalls += 1;
+          }
+          await panel.waitForTimeout(500);
+        }
+
+        const transcript = (await panel.locator("body").innerText()).trim();
+        // The model half: the nonce is in the reply, and it could only have
+        // arrived through the fenced selection.
+        assert(
+          transcript.includes(nonce),
+          `expected the reply to repeat the selected passphrase "${nonce}"; panel text was:\n${transcript}`,
+        );
+        return { nonce, markerShown: sawSelectionMarker, deniedCalls };
+      },
+    );
+
     mkdirSync(SCREENSHOT_DIR, { recursive: true });
     const screenshotPath = path.join(SCREENSHOT_DIR, "live-smoke-turn.png");
     await panel.screenshot({ path: screenshotPath });
     console.log(`Screenshot: ${screenshotPath}`);
     console.log(`Tool-call round trip visible in transcript: ${sawToolCall}`);
+    console.log(`Shared-selection marker visible in transcript: ${sawSelectionMarker}`);
 
     const ok = report.print();
     process.exitCode = ok ? 0 : 1;

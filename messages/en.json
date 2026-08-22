@@ -622,6 +622,7 @@
   "toolsPanel_notSharingDescription": "This page's tools stay hidden while sharing is off. Turn it back on from the bar above the message box.",
   "pageContext_contentRestrictedNotice": "Chrome blocks extensions from reading this page, so its text can't be shared.",
   "pageContext_contentUnavailableNotice": "Couldn't read this page just now, so your message was sent without the page text.",
+  "pageContext_selectionStaleNotice": "The page changed, so the text you had selected wasn’t sent with your message.",
   "note_iterationCap": "Stopped after {limit} tool-call rounds without a final answer. Ask again, or narrow the request, to continue.",
   "openOptionsCheckApiKeyAction": "Open options to check the API key",
   "toolOutcome_denied": "You denied this call.",

@@ -609,6 +609,7 @@
   "toolsPanel_notSharingDescription": "تبقى أدوات هذه الصفحة مخفية ما دامت المشاركة متوقفة. أعِد تفعيلها من الشريط أعلى مربع الرسالة.",
   "pageContext_contentRestrictedNotice": "يمنع Chrome الإضافات من قراءة هذه الصفحة، لذا لا يمكن مشاركة نصها.",
   "pageContext_contentUnavailableNotice": "تعذّرت قراءة هذه الصفحة الآن، لذا أُرسلت رسالتك بدون نص الصفحة.",
+  "pageContext_selectionStaleNotice": "تغيّرت الصفحة، لذلك لم يُرسَل النص الذي حدّدته مع رسالتك.",
   "note_iterationCap": "توقّف بعد {limit} جولات من استدعاءات الأدوات دون إجابة نهائية. اسأل مرة أخرى أو ضيّق الطلب للمتابعة.",
   "openOptionsCheckApiKeyAction": "فتح الخيارات للتحقق من مفتاح API",
   "toolOutcome_denied": "لقد رفضت هذا الاستدعاء.",

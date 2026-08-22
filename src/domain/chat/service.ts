@@ -105,13 +105,50 @@ export interface RunTurnRequest {
    * panel puts a selection before a whole-page extract, since the selection
    * is the more specific answer to "what am I asking about".
    *
-   * Card 119 uses this for one thing only: recording the transcript marker on
-   * the user's message. Putting the fenced text into the prompt is card 120's
-   * (decisions/40's untrusted-content rule, decisions/17's mechanism), which
-   * is why this reaches ./turn.ts as data it does not yet read.
+   * Used for two things, both of them card 120's: the fenced blocks in the
+   * prompt (./turn.ts, decisions/17's mechanism) and the transcript marker on
+   * the user's message (card 119).
+   *
+   * PASS A COLLECTOR, NOT AN ARRAY, WHEN GETTING IT COSTS ANYTHING — see
+   * {@link PageContextCollector}. An array is the right shape for a caller
+   * that already holds the snapshots.
    */
-  pageContext?: readonly PageContextSnapshot[] | undefined;
+  pageContext?: readonly PageContextSnapshot[] | PageContextCollector | undefined;
 }
+
+/**
+ * A caller's promise to go and fetch what the user shared, run by
+ * {@link ChatService.runTurn} AFTER the user's message is on screen (card
+ * 120).
+ *
+ * ── WHY THIS EXISTS: THE SEND SEAM ────────────────────────────────────────
+ *
+ * Pulling page context is a round trip to the tab (panel → worker → relay),
+ * bounded by card 118's 3-second rung. Measured at ~40ms on a healthy page —
+ * but a page whose main thread is wedged is exactly the page a user is most
+ * likely to be asking about, and card 119 flagged the consequence: the panel
+ * awaited the pull BEFORE calling `runTurn`, so for up to three seconds after
+ * pressing Send nothing happened at all. No bubble, no spinner, no evidence
+ * the click registered. The single worst failure a chat UI can have is
+ * looking broken while working correctly.
+ *
+ * Handing the pull to the service instead of awaiting it first inverts that:
+ * `runTurn` appends the user's message synchronously, captures its target
+ * chat in the same tick (decisions/25 §3 — the one-shot capture that a
+ * caller-side await would have put a tab switch's worth of risk in front of),
+ * registers the turn so Stop works during the pull, and only then goes and
+ * gets the context. The bubble is on screen in the same frame as the click.
+ *
+ * The transcript marker is applied to that message once the collector
+ * answers, which is the one visible consequence: on a slow page the "Selected
+ * text shared" annotation appears a moment after the message it belongs to.
+ * That is the honest ordering — the marker records what was ACTUALLY shared,
+ * so it cannot be drawn before that is known.
+ *
+ * Never throws by contract; a collector that cannot get anything returns an
+ * empty list, having already told the user in whatever way suits its surface.
+ */
+export type PageContextCollector = () => Promise<readonly PageContextSnapshot[]>;
 
 /** A chat's persisted provider/model choice, plus whether the user actually made it (card 35). */
 export interface StoredSelection {
@@ -324,9 +361,12 @@ export interface ChatServiceDeps {
  * text was shared when none was would be the transcript lying about the
  * privacy-relevant fact it exists to record.
  */
-function sharedContextMarkers(request: RunTurnRequest): SharedContextMarker[] {
-  if (!request.sharingAllowed) return [];
-  return (request.pageContext ?? [])
+function sharedContextMarkers(
+  sharingAllowed: boolean,
+  snapshots: readonly PageContextSnapshot[],
+): SharedContextMarker[] {
+  if (!sharingAllowed) return [];
+  return snapshots
     .filter((snapshot) => snapshot.text !== "")
     .map((snapshot) => ({
       kind: snapshot.mode === "selection" ? "page-selection" : "page-content",
@@ -452,6 +492,28 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
   function findEntry(target: ChatSession, id: string): TranscriptEntry | undefined {
     return target.messages.find((m) => m.id === id);
+  }
+
+  /**
+   * Record what a turn ACTUALLY shared on the user's message, once the
+   * collector has answered (card 120's send seam).
+   *
+   * Writes nothing when there is nothing to record, so an ordinary turn's
+   * stored entry is byte-for-byte what it was — `sharedContext` is absent,
+   * never `[]` (see `userEntry` in ./message.ts). The entry is looked up
+   * rather than held: this runs after an `await`, and the only object it is
+   * allowed to touch is the captured `target`, never `session`.
+   */
+  function applySharedContext(
+    target: ChatSession,
+    id: string,
+    markers: readonly SharedContextMarker[],
+  ): void {
+    if (markers.length === 0) return;
+    const entry = findEntry(target, id);
+    if (!entry) return;
+    entry.sharedContext = [...markers];
+    save(target, { immediate: true });
   }
 
   const service: ChatService = {
@@ -735,7 +797,20 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     // -----------------------------------------------------------------------
 
     async runTurn(userText, request) {
-      service.addUserMessage(userText, sharedContextMarkers(request));
+      // Card 120's SEND SEAM. When the caller passed a collector rather than
+      // an array, the user's message goes up NOW — before the page is asked
+      // for anything — and earns its markers once the collector answers (see
+      // `PageContextCollector`). Everything between here and the collector's
+      // await is synchronous, so the bubble renders in the same frame as the
+      // click even when the pull goes on to take its full 3-second rung.
+      const supplied = request.pageContext;
+      const collector = typeof supplied === "function" ? supplied : undefined;
+      const immediate: readonly PageContextSnapshot[] =
+        typeof supplied === "function" ? [] : (supplied ?? []);
+      const userMessageId = service.addUserMessage(
+        userText,
+        sharedContextMarkers(request.sharingAllowed, immediate),
+      );
 
       // THE ONE-SHOT CAPTURE (decisions/25 §3, card 58). Read here, right
       // after the user's message landed on whichever chat was current at that
@@ -758,6 +833,24 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       stopHandlers.set(target.id, () => controller.abort());
 
       try {
+        let pageContext = immediate;
+        if (collector) {
+          // The turn is already registered above, so Stop works — and is
+          // honoured — while this is in flight. `collector` never throws by
+          // contract; a failure comes back as an empty list, already reported
+          // by whichever surface asked for it.
+          pageContext = await collector();
+          applySharedContext(
+            target,
+            userMessageId,
+            sharedContextMarkers(request.sharingAllowed, pageContext),
+          );
+          // Stop pressed during the pull ends the turn before the model is
+          // ever contacted. The user's message and its markers stay: they are
+          // a truthful record of what they sent and what went with it.
+          if (controller.signal.aborted) return;
+        }
+
         await runTurn({
           target,
           transcript: service,
@@ -770,7 +863,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           page: request.page,
           attachTools: request.attachTools,
           sharingAllowed: request.sharingAllowed,
-          pageContext: request.pageContext,
+          pageContext,
+          userMessageId,
           originLabel: deps.originLabel,
           toolCallTimeoutMs: deps.toolCallTimeoutMs,
           signal: controller.signal,
