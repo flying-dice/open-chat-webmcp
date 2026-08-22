@@ -1,15 +1,13 @@
 # Troubleshooting
 
-There is **no dedicated in-app diagnostics UI yet** — that's
-`boards/project-backlog/14-connection-diagnostics-and-empty-states.md`,
-still in the backlog. What exists today is: each provider client returns a
-specific, worded error for the failure modes it can distinguish, and the
-options page's "Test connection" button and the side panel's provider picker
-surface that text. This page collects the failure modes that genuinely exist
-in the code right now, and their real fixes. Once card 14 lands, expect this
-page to be largely superseded by whatever the in-UI empty states end up
-saying — treat this as the ground truth on *mechanism*, not as a preview of
-that UI's copy.
+Most of these failures now surface **in the UI**, as a worded notice with a
+concrete next step, rather than as a raw error string
+(`boards/project-backlog/14-connection-diagnostics-and-empty-states.md`): each
+provider client returns a specific, classified error for the failure modes it
+can distinguish, the options page's "Test connection" button and the side
+panel's provider picker render it, and a failed turn can offer a retry or an
+open-options chip. This page is the ground truth on *mechanism* — what the
+code actually distinguishes and what the real fix is — behind that copy.
 
 ## Ollama: connection fails with a generic error
 
@@ -19,7 +17,7 @@ if you haven't. In short: Ollama rejects the extension's origin by default,
 and a blocked CORS preflight and a genuinely dead server produce the
 identical bare failure in `fetch()`, so **you cannot tell them apart from
 the error alone**. The Ollama client's own error message
-(`src/lib/ollama.ts`) states this explicitly and names the fix
+(`src/infra/ollama/client.ts`) states this explicitly and names the fix
 (`OLLAMA_ORIGINS=chrome-extension://*`, restart the server) rather than
 reporting a bare "network error", but it still can't tell you *which* of the
 two is actually true. Check both:
@@ -33,7 +31,7 @@ two is actually true. Check both:
 ## OpenAI-compatible: "Authentication failed (401)"
 
 The API key is missing, wrong, or expired for the base URL configured. The
-OpenAI client (`src/lib/providers/openai.ts`) classifies HTTP 401/403
+OpenAI client (`src/infra/openai/index.ts`) classifies HTTP 401/403
 specifically as an `"auth"` error kind and words it this way rather than a
 generic HTTP failure — check the key in the options page's provider form.
 
@@ -75,7 +73,7 @@ ignores every WebMCP tool and looks broken
   allowlist of known tool-calling model IDs. A model not on that list gets
   this "unknown" state rather than being guessed either way. If you believe
   the model genuinely supports tool calling, this is the allowlist being out
-  of date (`src/lib/providers/openai.ts`), not a configuration problem on
+  of date (`src/infra/openai/index.ts`), not a configuration problem on
   your end — there is currently no user-facing override to force it on.
 
 ## A tab shows no tools / "no relay in this tab"
@@ -142,7 +140,9 @@ time" message instead of one naming the actual tool, that ladder has
 regressed (it has happened twice before, on the older four-layer version of
 it — `boards/project-backlog/28-fix-inverted-tool-call-timeout-ladder.md`,
 `boards/project-backlog/30-panel-timeout-outside-ladder.md`) and is worth
-filing as a bug rather than working around.
+filing as a bug rather than working around. All three rungs are now declared
+once, in `src/infra/webmcp/timeouts.mjs`, and `npm run verify` asserts the
+innermost one end to end against that same constant.
 
 ## Closing the panel mid-reply loses the rest of the answer
 
@@ -157,7 +157,7 @@ continuation of it.
 ## Switching provider/model mid-conversation looks fine, then loses messages later
 
 This was a real bug, fixed — `boards/project-backlog/29-selection-store-stale-session-write.md`
-and [docs/01-architecture.md](01-architecture.md#session-ownership-one-chatsession-one-owner).
+and [docs/01-architecture.md](01-architecture.md#session-ownership-one-chat-one-owner).
 If you observe the symptom (conversation looks right until the panel is
 closed and reopened, then some messages are missing) on the current code,
 that fix has regressed — it isn't a known, accepted limitation like the two

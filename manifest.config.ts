@@ -19,11 +19,29 @@ export default defineManifest({
   // so WebMCP is now the binding constraint.
   minimum_chrome_version: "149",
 
-  // "identity" is for chrome.identity.launchWebAuthFlow/getRedirectURL only
-  // (decisions/27-oauth-for-http-mcp-servers.md) — the generic web-auth-flow
-  // API, not Chrome's Google-specific getAuthToken flow, so no `oauth2`
-  // manifest key is needed alongside it.
-  permissions: ["sidePanel", "storage", "tabs", "scripting", "identity"],
+  // Every entry below is reached for by name somewhere in src/ — checked at
+  // the 0.2.0 release gate (card 86), and worth re-checking whenever one is
+  // added, since an unjustified permission is both a store-review problem and
+  // a real grant a user has no way to decline.
+  //
+  //   sidePanel  chrome.sidePanel.setPanelBehavior (src/background/sw.ts)
+  //   storage    every repository in src/infra/chrome-storage
+  //   tabs       the per-tab registry and tab-sync listeners
+  //              (src/background/sw.ts, src/infra/chrome-runtime/tab-sync.ts)
+  //   identity   chrome.identity.launchWebAuthFlow/getRedirectURL only
+  //              (decisions/27-oauth-for-http-mcp-servers.md) — the generic
+  //              web-auth-flow API, not Chrome's Google-specific
+  //              getAuthToken flow, so no `oauth2` manifest key is needed
+  //              alongside it
+  //
+  // "scripting" WAS here, from the card 01 scaffold, and is gone as of card
+  // 86: it existed for the MAIN-world "adopt-or-provide" bridge, which
+  // decisions/16-native-webmcp-client.md deleted outright. Nothing has called
+  // chrome.scripting since — the ISOLATED-world relay is a declared
+  // `content_scripts` entry, which needs no scripting permission at all — so
+  // it had been shipping as a dead grant. `chrome.permissions` itself needs
+  // no permission; the optional HOSTS it requests are declared below.
+  permissions: ["sidePanel", "storage", "tabs", "identity"],
   host_permissions: ["http://localhost/*", "http://127.0.0.1/*"],
   optional_host_permissions: ["http://*/*", "https://*/*"],
 

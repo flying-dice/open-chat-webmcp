@@ -75,3 +75,8 @@ export async function launchExtension({ enableWebMcp = true } = {}) {
 export function sidepanelUrl(extensionId) {
   return `chrome-extension://${extensionId}/src/sidepanel/index.html`;
 }
+
+/** The options page, as `options_page` in manifest.config.ts declares it. Opened as an ordinary tab by verify/checks/screenshots.mjs — there is nothing extension-specific about how Chrome renders it, so a plain navigation is the real thing. */
+export function optionsUrl(extensionId) {
+  return `chrome-extension://${extensionId}/src/options/index.html`;
+}

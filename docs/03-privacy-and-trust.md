@@ -7,11 +7,13 @@ decision records that explain why.
 
 ## Conversation history is stored unencrypted, and it can contain page content
 
-Every chat session — one per tab — is written to `chrome.storage.local`
-**unencrypted**, debounced during streaming and flushed on unload
+Every chat is written to `chrome.storage.local` **unencrypted**, debounced
+during streaming and flushed on unload
 (`src/infra/chrome-storage/chat-store.ts`,
-`decisions/07-session-state-and-persistence.md`).
-That history includes:
+`decisions/07-session-state-and-persistence.md` as revised by
+`decisions/13-global-tab-aware-chat-history.md` — a chat is its own thing with
+its own id, listed globally; a tab holds a soft pointer to whichever chat it
+is currently showing). That history includes:
 
 - Everything you typed.
 - Everything the model replied.
@@ -22,9 +24,13 @@ That history includes:
   on disk.
 
 There is no encryption-at-rest for this data and no opt-out of storing it
-short of using **Clear history** (options page) or not using the extension
-on sites carrying data you don't want retained. Sessions are capped (oldest
-evicted first) but not automatically deleted on any particular schedule.
+short of deleting individual chats (the side panel's History view), using
+**Clear history** (options page), or not using the extension on sites carrying
+data you don't want retained. Deletion is the intended way chats go away;
+there is also a backstop cap of 400 retained chats (`MAX_RETAINED_CHATS`,
+`src/domain/chat/session.ts`) that evicts the oldest by `updatedAt`, so
+storage stays bounded for a user who never deletes anything. Nothing is
+deleted on a schedule.
 
 Anyone with local filesystem access to your Chrome profile (another OS user
 account with access, malware, physical access to an unlocked machine) can
@@ -45,7 +51,19 @@ trade-off is explicit: a freshly signed-in profile has to re-enter every
 provider's key from scratch, because none of them ever left the machine they
 were entered on.
 
-The options page states this next to the API key field, not just here.
+The same split covers every other credential the extension holds: a
+provider's custom request **header values**
+(`decisions/15-custom-headers-are-credentials.md` — a header value is a
+credential by default), and, for each registered MCP server, its bearer token
+or its OAuth 2.1 access/refresh tokens
+(`decisions/27-oauth-for-http-mcp-servers.md`). All of them live in
+`chrome.storage.local` under a per-id key, written by exactly one module
+(`src/infra/chrome-storage/keyed-record-store.ts`), and structurally cannot
+reach the sync area: only the non-credential "core" of a provider or server
+record — name, URL, type, enabled flag — is ever synced.
+
+The options page states this next to the API key and bearer-token fields, not
+just here.
 
 ## Tool annotations are the page's own claims, not a security boundary
 
@@ -67,7 +85,7 @@ split is a **UX convenience** for keeping the common read-heavy case fluid,
 not a safety mechanism, and both the approval card and the collapsed
 auto-run tool card word it that way in the UI itself
 (`src/sidepanel/components/ApprovalCard.svelte`,
-`src/sidepanel/components/ToolCallCard.svelte`) rather than presenting a
+`src/sidepanel/components/ToolCallRow.svelte`) rather than presenting a
 "verified safe" badge.
 
 The real boundary this extension relies on is narrower and behavioral: *you*
@@ -80,7 +98,9 @@ The extension has no analytics, crash reporting, or usage tracking of its
 own, and ships no backend service — there is nothing this project's authors
 operate that your data passes through. Every network request the extension
 makes goes to a provider you explicitly configured (a local Ollama server or
-an OpenAI-compatible endpoint you supplied the base URL and key for) or to
+an OpenAI-compatible endpoint you supplied the base URL and key for), to an
+MCP server you explicitly registered and enabled (plus, during sign-in, that
+server's own advertised OAuth authorization server), or to
 the page you're already on (WebMCP tool calls execute in that page's own
 JavaScript context, same-origin, with that page's own privileges — see
 [docs/01-architecture.md](01-architecture.md)). If you run Ollama locally and

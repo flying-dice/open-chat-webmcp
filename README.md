@@ -9,7 +9,7 @@ explicitly marked read-only.
 It talks to either a local [Ollama](https://ollama.com) server or any
 OpenAI-compatible Chat Completions endpoint (OpenAI itself, Azure OpenAI,
 OpenRouter, LM Studio, etc.) — you register one or more providers in the
-options page and pick a provider + model per tab. See
+options page and pick a provider + model per chat. See
 `decisions/12-branding-openchat-webmcp.md` for why the project is named this
 way: "OpenChat" is the product, not tied to one backend; "(WebMCP)" names the
 mechanism. The repository directory and git remote are intentionally left as
@@ -21,8 +21,9 @@ to the user's discretion.
 | ![The side panel in light mode: an activity timeline of four tool calls followed by the model's summary, with the page-context strip and composer docked at the bottom](docs/images/sidepanel-light.png) | ![The same conversation in dark mode](docs/images/sidepanel-dark.png) |
 
 *Both captured at 400px by `npm run verify`, which writes the full
-light/dark × 320/400px matrix (plus the overflow menu, model picker and
-activity timeline) to gitignored `verify/output/screenshots/` — see
+light/dark × 320/400px matrix — plus the overflow menu, the model picker, the
+activity timeline in all three of its states, and the options page in both
+themes: 11 PNGs — to gitignored `verify/output/screenshots/`. See
 [Verification harness](#verification-harness).*
 
 ## What it does
@@ -42,7 +43,10 @@ activity timeline) to gitignored `verify/output/screenshots/` — see
   self-reported "read-only" claim isn't something you can see the effect of
   the way you can a page
   (`decisions/20-approval-policy-is-per-tool-source.md`).
-- Keeps one conversation per browser tab, persisted across panel close/reopen.
+- Keeps a global, browsable chat history. A chat is its own thing with its own
+  id, not a property of a tab; a tab points at whichever chat it is currently
+  showing, and chats survive panel close/reopen and tab switches
+  (`decisions/13-global-tab-aware-chat-history.md`).
 - Built on [shadcn-svelte](https://shadcn-svelte.com) + Tailwind CSS v4 (Maia
   style, Zinc base colour), light and dark, down to Chrome's 320px minimum
   side-panel width — see
@@ -107,8 +111,63 @@ root has no `manifest.json` at its top level and will not load.
 For iterative development, `npm run dev` runs Vite with HMR for the side
 panel and options page; you still need to reload the unpacked extension in
 `chrome://extensions` after most changes, since content scripts and the
-service worker aren't hot-reloadable. `npm run check` runs `svelte-check`
-plus `tsc` with no build output.
+service worker aren't hot-reloadable.
+
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run build` | the real MV3 bundle into `dist/` — the folder you load unpacked |
+| `npm run dev` | Vite with HMR for the two Svelte surfaces |
+| `npm run check` | `svelte-check` + `tsc`, no build output |
+| `npm test` | Vitest — the domain/infra/component pyramid, ~6s. `npm run test:watch`, `npm run test:coverage` |
+| `npm run guard` | the architecture guards: `guard:boundaries` (dependency-cruiser + a source scan for platform globals) and `guard:clean-code` |
+| `npm run verify` | the end-to-end harness: real Chrome for Testing, the built extension, a real WebMCP page. Needs a display |
+| `npm run demo` | serves the WebMCP fixture page on `:5175` |
+| `npm run launch` | rebuilds and opens `dist/` in your real installed Chrome |
+
+**The release gate is all five of** `check`, `test`, `build`, `guard`,
+`verify` **green** — see [docs/05-testing.md](docs/05-testing.md).
+
+`npm run guard:clean-code` deserves a note, because it will fail a build on a
+comment. Code review leaves markers in place rather than in a tracker:
+
+```
+// TODO: clean-code - 0.4 - DRY: mirrors ProviderRow.svelte's permission gate
+```
+
+A score **> 0.5 fails** the guard; **≤ 0.5 is reported and allowed** —
+documented, visible, accepted debt. A marker whose score can't be parsed also
+fails, because a violation nobody can score is a violation nobody can triage.
+See [decisions/31](decisions/31-clean-code-guard.md).
+
+## Architecture in brief
+
+Four runtime contexts (an ISOLATED-world content relay, the MV3 service
+worker, the side panel, the options page) and four layers inside them:
+
+```
+src/domain/<context>   chat · providers · tools · permissions (+ a storage
+                       shared kernel). The model, the rules, and the PORTS.
+                       No chrome.*, no fetch, no DOM, no Svelte, no npm dep.
+src/infra/<tech>       chrome-storage · chrome-runtime · mcp · ollama ·
+                       openai · webmcp · dom. One folder per technology.
+src/ui                 shared presentation + the vendored shadcn-svelte kit.
+src/{sidepanel,options,background,content}
+                       the four surfaces, one composition root each — the
+                       only modules allowed to name a concrete adapter.
+```
+
+The dependency direction is **composition root → infra → domain, and nothing
+else**, and `npm run guard` enforces it rather than trusting it: eleven
+dependency-cruiser rules over the import graph (plus two hygiene ones), and a
+source scan for the platform *globals* an import lint structurally cannot see
+(`chrome.*` outside an adapter or a root; anything platform-shaped inside
+`src/domain`). Every
+folder under `src/domain` and `src/infra` carries its own `README.md` with the
+full inventory. Full detail:
+[docs/01-architecture.md](docs/01-architecture.md),
+[decisions/29](decisions/29-ddd-hexagonal-typescript-layout.md).
 
 ## Provider setup
 
@@ -294,6 +353,31 @@ install path; set `CHROME_PATH` to override. If Chrome can't be found the
 script fails with a clear message rather than silently falling back to
 Chromium.
 
+## Tests
+
+```
+npm test
+```
+
+Vitest, ~6 seconds, no browser and no network. Three layers in one command
+([decisions/30](decisions/30-vitest-test-pyramid.md)):
+
+- **domain** (`src/domain/**/*.test.ts`) — bare Node, **zero** platform mocks.
+  That the domain can be tested this way is enforced, not assumed:
+  `npm run guard` fails if a domain module so much as names `chrome.`,
+  `fetch(` or a DOM global.
+- **infra** (`src/infra/**/*.test.ts`) — real adapters against an in-memory
+  `chrome.storage` fake and a stubbed `fetch`, asserting that platform
+  failures (a quota `DOMException`, a 401, a malformed stored record) land as
+  the domain's own error vocabulary.
+- **component** (`src/{sidepanel,options,ui}/**/*.test.ts`) — jsdom +
+  `@testing-library/svelte`, driving components over fake ports.
+
+The output reports `expected fail` and `todo` counts alongside passes; both
+are deliberate. An `it.fails(...)` documents a **known bug** — it asserts the
+correct behaviour and goes loudly green the day someone fixes it. See
+[docs/05-testing.md](docs/05-testing.md).
+
 ## Verification harness
 
 ```
@@ -322,16 +406,14 @@ environment (MV3 extensions require a headed launch). It does not require
 Ollama or any provider configured — it only exercises the WebMCP
 relay/worker/demo path, not chat.
 
-This is the only part of the project that has been checked against a real
-running browser end to end; everything else in the codebase not covered by
-`npm run verify` has so far only been verified structurally (`npm run check`,
-`npm run build`, and reading emitted output) — see
-`boards/project-backlog/25-in-browser-verification-harness.md`.
+Nine required checks plus one best-effort screenshot matrix. This is the only
+layer that runs against a real browser; everything below it is `npm test`.
 
 ## Documentation
 
-- [docs/01-architecture.md](docs/01-architecture.md) — the three JS contexts,
-  how a tool call travels between them, and the timeout ladder.
+- [docs/01-architecture.md](docs/01-architecture.md) — the four runtime
+  contexts, the four layers (domain/infra/ui/surfaces) and the guards that
+  enforce them, how a tool call travels end to end, and the timeout ladder.
 - [docs/02-webmcp-compatibility.md](docs/02-webmcp-compatibility.md) — why
   native WebMCP is a hard requirement now, how to turn it on, and what's
   explicitly out of scope (polyfilled pages, iframes).
@@ -340,6 +422,8 @@ running browser end to end; everything else in the codebase not covered by
   through this extension.
 - [docs/04-troubleshooting.md](docs/04-troubleshooting.md) — first-run
   failure modes and their actual fixes.
+- [docs/05-testing.md](docs/05-testing.md) — the test pyramid, the shared
+  storage fixture, the screenshot matrix, and the release gate.
 
 ## Project status
 
@@ -348,18 +432,14 @@ project: `boards/project-backlog/` is the kanban board, `decisions/` records
 why things are shaped the way they are, and this `docs/` tree is kept current
 as behavior changes. A few things worth knowing if you're picking this up:
 
-- **No in-app connection diagnostics yet.** `boards/project-backlog/14-connection-diagnostics-and-empty-states.md`
-  (surfacing failures like "Ollama unreachable" or "no tool-capable models"
-  as UI, with a concrete fix rather than a raw error) is still in the
-  backlog. Today those failures surface as the error text the provider
-  client itself returns — usable, but not the polished empty-state UI the
-  card describes. [docs/04-troubleshooting.md](docs/04-troubleshooting.md)
-  reflects only what exists right now and will need revisiting once card 14
-  ships.
-- **No tools/call-log inspector yet.** `boards/project-backlog/11-tools-and-call-log-inspector.md`
-  (a second panel view listing every tool a page published and every call
-  made) is also still in the backlog. The approval cards in the transcript
-  are the only visibility into tool calls today.
+- **Two known bugs are already written down as failing tests.** `npm test`
+  reports them as `expected fail` rather than hiding them: a duplicate
+  tool-call id resolving against the wrong transcript entry, and a chat
+  reporting itself as not-turn-active while a second, overlapping turn is
+  still streaming. Both are queued for the improvement sprint, and each test
+  asserts the *correct* behaviour, so it goes loudly green the day someone
+  fixes the bug. An `expected fail` count other than 2 means one was fixed
+  (delete the `it.fails` marker) or a new one was written down.
 - **Iframe tool discovery is deferred.** The relay only injects into the top
   frame; tools published from an embedded widget or iframe are invisible to
   the extension. The native API defines the primitives needed to support this
@@ -374,7 +454,7 @@ as behavior changes. A few things worth knowing if you're picking this up:
 ## Third-party assets
 
 The UI is built from **[shadcn-svelte][shadcn]** components (MIT), vendored
-into `src/lib/components/ui/` by that project's CLI in the Maia style over the
+into `src/ui/components/ui/` by that project's CLI in the Maia style over the
 Zinc base colour, on top of **[Tailwind CSS][tw]** v4 (MIT).
 
 Standard icons are **[Hugeicons][hugeicons]** free icons
@@ -384,7 +464,7 @@ to component in `src/sidepanel/components/Icon.svelte`. Body text is
 locally via `@fontsource-variable/figtree` — nothing is fetched from a CDN at
 runtime.
 
-`src/lib/icons.ts` holds the only two hand-inlined marks. The `sparkle` glyph
+`src/ui/icons.ts` holds the only two hand-inlined marks. The `sparkle` glyph
 is a plain four-point star drawn for this project, since the reference panel's
 star is a product mark. The `ollama` glyph is the Ollama logo, taken from
 [Simple Icons][simpleicons] (CC0-1.0) and mechanically rescaled from their

@@ -30,7 +30,7 @@ import { findTabId, getTools, getToolsResponse, callTool } from "./lib/runtime.m
 import { attachServiceWorkerCdp, stopWorker } from "./lib/serviceWorker.mjs";
 import { createReport } from "./lib/report.mjs";
 import { assert, assertSetEqual, pollUntil } from "./lib/assert.mjs";
-import { screenshotSidepanel } from "./checks/screenshots.mjs";
+import { screenshotSurfaces } from "./checks/screenshots.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCREENSHOT_DIR = path.join(ROOT, "verify", "output", "screenshots");
@@ -313,15 +313,26 @@ async function main() {
       },
     );
 
+    // The control page is a REAL side panel, mounted on whatever tab is
+    // actually active, and it has been open since the top of this run —
+    // which means it has been creating and persisting chats of its own the
+    // whole time (one for its own `chrome-extension://` tab, one for the
+    // demo tab's trip through `about:blank`). Every check that needs it is
+    // done by here, and leaving it open makes those strays show up in the
+    // options page's chat-history screenshot below, where a reviewer has no
+    // way to tell a harness artefact from a real bug. The remaining check
+    // uses its own control page in a second browser.
+    await controlPage.close();
+
     // ---------------------------------------------------------------------
     // Screenshots — BEST EFFORT, but not silently so: checks/screenshots.mjs
     // asserts its full expected matrix, so a drifted selector reports SKIP
     // naming the missing shot rather than PASS with a shorter file list.
     // ---------------------------------------------------------------------
     await report.runBestEffort(
-      "Side panel screenshots: 320/400px x light/dark, plus the overflow menu and model sheet (human eyeball check)",
+      "UI screenshots: side panel at 320/400px x light/dark plus its overflow menu, model sheet and activity timeline, and the options page in light/dark (human eyeball check)",
       async () => {
-        const { count, files } = await screenshotSidepanel(context, extensionId, SCREENSHOT_DIR);
+        const { count, files } = await screenshotSurfaces(context, extensionId, SCREENSHOT_DIR);
         return { count, files };
       },
     );
