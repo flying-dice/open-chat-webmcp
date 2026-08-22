@@ -59,6 +59,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 concurrency:
@@ -170,3 +171,75 @@ jobs:
           path: verify/output/screenshots
           if-no-files-found: ignore
           retention-days: 14
+
+  package:
+    name: Package (store zip)
+    # `needs: gate` rather than running standalone (card 117): packaging code
+    # that hasn't passed check/test/guard/build is not something worth
+    # shipping a zip for, and gate is the fast job — this adds one more
+    # build on top of a job that already ran one, not a second independent
+    # wait. Deliberately does NOT need `verify` — that job proves the built
+    # extension actually works in a real browser, which is orthogonal to
+    # whether the zip is well-formed, and gating packaging on a slower,
+    # headed-browser job would only slow down every push to main for no
+    # benefit to what this job actually checks.
+    needs: gate
+    runs-on: ubuntu-latest
+    # Only a push to main or a `v*` tag produces a zip anyone will consume —
+    # a pull_request run has nothing to attach it to, so this job (and the
+    # `contents: write` grant below, scoped to it alone) simply doesn't run
+    # for one. Every push-triggered event on this workflow is either a
+    # branch push to main or a tag push (see `on.push` above), so checking
+    # `github.event_name == 'push'` is sufficient — no need to separately
+    # spell out the branch/tag condition here.
+    if: github.event_name == 'push'
+    # Overrides the workflow-level `contents: read` for this job only —
+    # needed for the softprops/action-gh-release step below, which is a
+    # no-op (skipped) on every run except a tag push.
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # scripts/package.mjs (card 117): clean build into dist-package/, then
+      # every validation (manifest parses, version matches package.json,
+      # all ten _locales present and resolvable, every icon size correct,
+      # no source maps/dev artifacts) before it zips — a red exit here means
+      # a genuinely broken package, not a flaky check.
+      - name: Build the store package
+        run: npm run package
+
+      # Named without the version so a workflow run's artifact list stays
+      # predictable; the zip's own filename (inside this artifact) still
+      # carries the version. 90 days, well past the verify screenshots'
+      # 14 — this is the actual release deliverable, worth keeping around
+      # for a while after a push even if no tag/release ever gets cut from
+      # it (e.g. a main-branch dry run between releases).
+      - name: Upload store package
+        uses: actions/upload-artifact@v4
+        with:
+          name: openchat-webmcp-zip
+          path: openchat-webmcp-*.zip
+          retention-days: 90
+
+      # Only on a version tag push. softprops/action-gh-release creates the
+      # release for this tag if it doesn't exist yet (or updates it if it
+      # does) and attaches the zip — no separate "create release" step
+      # needed. GITHUB_TOKEN (implicit) is enough given the job-level
+      # `contents: write` above.
+      - name: Attach zip to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: openchat-webmcp-*.zip

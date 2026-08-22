@@ -138,6 +138,7 @@ service worker aren't hot-reloadable.
 | Script | What it does |
 | --- | --- |
 | `npm run build` | the real MV3 bundle into `dist/` — the folder you load unpacked |
+| `npm run package` | a clean, validated build into `dist-package/`, zipped to `openchat-webmcp-<version>.zip` at the repo root — the Chrome Web Store-ready artifact (`scripts/package.mjs`, [docs/08-store-listing.md](docs/08-store-listing.md)) |
 | `npm run dev:chrome` | the edit→see loop: Chrome for Testing with the extension already loaded, the demo server, and HMR into the running panel. `npm run dev:seed` seeds it from the shared fixtures — see [docs/07-development.md](docs/07-development.md) |
 | `npm run dev` | Vite with HMR for the two Svelte surfaces, without the browser |
 | `npm run check` | `svelte-check` + `tsc`, no build output. Also typechecks the tests, which is where the `@ts-expect-error` narrowing probes live |
@@ -167,7 +168,10 @@ service worker aren't hot-reloadable.
 required gate on every push and pull request, plus `verify` under `xvfb` on
 its own job with the screenshot matrix uploaded as a build artifact — see
 that file's header comments for the cache/artifact design
-(decisions/39-ci-pipeline.md).
+(decisions/39-ci-pipeline.md). A third job, `package`, runs `npm run package`
+after `gate` passes on every push to `main` and on `v*` tags — never on pull
+requests — uploading the store zip as a build artifact and, on a tag push,
+attaching it to a GitHub Release (`boards/project-backlog/117-store-packaging.md`).
 
 `npm run guard:clean-code` deserves a note, because it will fail a build on a
 comment. Code review leaves markers in place rather than in a tracker:
@@ -471,6 +475,10 @@ layer that runs against a real browser; everything below it is `npm test`.
   it: the `npm run dev:chrome` edit→see loop and what each kind of edit does,
   seeding, running one test or one verify check, Chrome for Testing vs your
   real Chrome, and troubleshooting.
+- [docs/08-store-listing.md](docs/08-store-listing.md) — the Chrome Web
+  Store listing draft: name/summary/description, category, the Privacy
+  practices disclosure answers, screenshots guidance, and the
+  review-readiness checklist (including the Chrome 156 WebMCP-flag caveat).
 
 ## Project status
 
@@ -494,9 +502,13 @@ as behavior changes. A few things worth knowing if you're picking this up:
   question is answered, it just isn't implemented. See
   `boards/project-backlog/18-iframe-tool-discovery.md` and
   [decisions/16](decisions/16-native-webmcp-client.md).
-- **No Chrome Web Store listing.** Packaging and store submission
-  (`boards/project-backlog/19-packaging-and-store-listing.md`) haven't
-  happened; the only way to run this is loading `dist/` unpacked as above.
+- **Not yet submitted to the Chrome Web Store.** `npm run package` builds a
+  validated, store-ready zip (`scripts/package.mjs`,
+  `boards/project-backlog/117-store-packaging.md`) and CI attaches it to a
+  GitHub Release on a `v*` tag, but nobody has filed the actual listing yet
+  — see [docs/08-store-listing.md](docs/08-store-listing.md) for the draft
+  copy and what's still open. Until then, loading `dist/` unpacked (above)
+  is the only way to run this.
 
 ## Third-party assets
 

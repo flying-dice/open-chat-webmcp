@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "package": "node scripts/package.mjs",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "lint": "biome lint --error-on-warnings .",
     "lint:fix": "biome lint --write .",
