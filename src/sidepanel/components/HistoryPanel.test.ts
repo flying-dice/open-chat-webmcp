@@ -44,8 +44,8 @@ describe("HistoryPanel", () => {
 
   beforeEach(() => {
     services.chats.listChatSummaries = async () => ok([]);
-    services.chat.openChat = async () => false;
-    services.chat.discardIfDeleted = async () => undefined;
+    services.chat.openChat = async () => ok(false);
+    services.chat.discardIfDeleted = async () => ok();
     services.chats.deleteChat = async () => ok();
     vi.restoreAllMocks();
   });
@@ -85,7 +85,7 @@ describe("HistoryPanel", () => {
 
   it("opens a chat and calls onOpenChat when openChat succeeds", async () => {
     services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
-    const openChat = vi.fn(async () => true);
+    const openChat = vi.fn(async () => ok(true));
     services.chat.openChat = openChat;
     const onOpenChat = vi.fn();
     const user = userEvent.setup();
@@ -97,9 +97,9 @@ describe("HistoryPanel", () => {
     await waitFor(() => expect(onOpenChat).toHaveBeenCalledTimes(1));
   });
 
-  it("does not call onOpenChat when openChat resolves false", async () => {
+  it("does not call onOpenChat when openChat resolves ok(false) — the chat is simply gone", async () => {
     services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
-    services.chat.openChat = async () => false;
+    services.chat.openChat = async () => ok(false);
     const onOpenChat = vi.fn();
     const user = userEvent.setup();
 
@@ -112,11 +112,11 @@ describe("HistoryPanel", () => {
 
   it("delete stops propagation: does not open the chat", async () => {
     services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
-    const openChat = vi.fn(async () => true);
+    const openChat = vi.fn(async () => ok(true));
     services.chat.openChat = openChat;
     const deleteChat = vi.fn(async () => ok());
     services.chats.deleteChat = deleteChat;
-    const discardIfDeleted = vi.fn(async () => undefined);
+    const discardIfDeleted = vi.fn(async () => ok());
     services.chat.discardIfDeleted = discardIfDeleted;
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const onOpenChat = vi.fn();
@@ -147,10 +147,12 @@ describe("HistoryPanel", () => {
   });
 
   // Card 92: `refresh()` (HistoryPanel.svelte) now gets a `Result` back from
-  // `listChatSummaries` rather than a rejecting promise, and on `err` it logs
-  // and returns WITHOUT touching `summaries` — the list that was already on
+  // `listChatSummaries` rather than a rejecting promise, and on `err` it
+  // returns WITHOUT touching `summaries` — the list that was already on
   // screen stays exactly as it was, rather than the effect's `status` flip
-  // dropping through to the empty state. `handleDelete` calls `refresh()`
+  // dropping through to the empty state. Card 95 adds the second half of the
+  // assertion: the reason is now ON SCREEN, above the preserved list, rather
+  // than in a console nobody has open. `handleDelete` calls `refresh()`
   // again after its own delete completes, which is the one place within a
   // single mount this second, later-failing read can happen — the initial
   // mount's `listChatSummaries` succeeds first so there is something on
@@ -164,9 +166,8 @@ describe("HistoryPanel", () => {
       ]);
     const deleteChat = vi.fn(async () => ok());
     services.chats.deleteChat = deleteChat;
-    services.chat.discardIfDeleted = vi.fn(async () => undefined);
+    services.chat.discardIfDeleted = vi.fn(async () => ok());
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const user = userEvent.setup();
 
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
@@ -188,6 +189,61 @@ describe("HistoryPanel", () => {
     expect(screen.getByText("first chat")).toBeInTheDocument();
     expect(screen.getByText("second chat")).toBeInTheDocument();
     expect(screen.queryByText("No chats yet")).not.toBeInTheDocument();
-    expect(warn).toHaveBeenCalledWith("[webmcp][history] could not list chats", err);
+    expect(await screen.findByText(/Couldn't load your chats/)).toBeInTheDocument();
+  });
+
+  // --------------------------------------------------------------------
+  // Card 95: the two `openChat`/`deleteChat` failure paths, on screen
+  // --------------------------------------------------------------------
+
+  it("shows why a chat could not be opened, and stays on the list", async () => {
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
+    services.chat.openChat = async () => fail(storageFailure());
+    const onOpenChat = vi.fn();
+    const user = userEvent.setup();
+
+    render(HistoryPanel, { props: { onOpenChat } });
+    await user.click(await screen.findByRole("button", { name: /hi there/ }));
+
+    expect(await screen.findByText(/Couldn't open that chat/)).toBeInTheDocument();
+    // The view does not switch: the service writes the tab pointer before it
+    // swaps the visible chat, so nothing changed and there is nothing to
+    // switch to.
+    expect(onOpenChat).not.toHaveBeenCalled();
+    // The row it failed on is still listed.
+    expect(screen.getByText("hi there")).toBeInTheDocument();
+  });
+
+  it("shows why a chat could not be deleted, and keeps the row", async () => {
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
+    const discardIfDeleted = vi.fn(async () => ok());
+    services.chat.discardIfDeleted = discardIfDeleted;
+    services.chats.deleteChat = async () => fail(storageFailure());
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    await user.click(await screen.findByRole("button", { name: /Delete chat from/ }));
+
+    expect(await screen.findByText(/Couldn't delete that chat/)).toBeInTheDocument();
+    // Card 92's rule, still pinned: no fresh-chat swap follows a delete that
+    // did not land.
+    expect(discardIfDeleted).not.toHaveBeenCalled();
+    expect(screen.getByText("hi there")).toBeInTheDocument();
+  });
+
+  it("reports a delete that landed but left the tab pointing at the deleted chat", async () => {
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
+    services.chats.deleteChat = async () => ok();
+    services.chat.discardIfDeleted = async () => fail(storageFailure());
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    await user.click(await screen.findByRole("button", { name: /Delete chat from/ }));
+
+    expect(
+      await screen.findByText(/Deleted that chat, but couldn't start a fresh one/),
+    ).toBeInTheDocument();
   });
 });

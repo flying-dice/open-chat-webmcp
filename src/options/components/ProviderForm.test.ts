@@ -10,9 +10,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { cleanup, render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import ProviderForm from "./ProviderForm.svelte";
-import { createFakeOptionsServices, initFakeOptionsServices } from "../testing/fake-services";
+import {
+  createFakeOptionsServices,
+  initFakeOptionsServices,
+  storageFailure,
+} from "../testing/fake-services";
 import type { ProviderConfig } from "../../domain/providers";
-import { ok } from "../../domain/result";
+import { fail, ok } from "../../domain/result";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
 // `afterEach` are Vitest GLOBALS (test.globals, which this project
@@ -97,7 +101,7 @@ describe("ProviderForm", () => {
     // `required` check (the value isn't `""`) but still fails the
     // component's own `name.trim().length === 0` guard, so it's the
     // reachable way to exercise that branch.
-    const onSubmit = vi.fn(async () => undefined);
+    const onSubmit = vi.fn(async () => ok());
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
@@ -110,7 +114,7 @@ describe("ProviderForm", () => {
   });
 
   it("blocks submit and shows an error for an invalid base URL", async () => {
-    const onSubmit = vi.fn(async () => undefined);
+    const onSubmit = vi.fn(async () => ok());
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
@@ -127,7 +131,7 @@ describe("ProviderForm", () => {
   });
 
   it("submits with a valid name and URL", async () => {
-    const onSubmit = vi.fn(async (_data: Omit<ProviderConfig, "id">) => undefined);
+    const onSubmit = vi.fn(async (_data: Omit<ProviderConfig, "id">) => ok());
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
@@ -146,8 +150,30 @@ describe("ProviderForm", () => {
     });
   });
 
+  // Card 95 (decisions/34-errors-as-values.md): `onSubmit` returns the
+  // registry's own `Result`, so a save the store refused is shown IN THE FORM
+  // — which is still open, with everything the user typed still in it. The
+  // `try/catch` this replaced could only ever have caught a rejection the
+  // parent section stopped producing in card 92.
+  it("shows why a save failed, in the still-open form", async () => {
+    const onSubmit = vi.fn(async () => fail(storageFailure()));
+    const user = userEvent.setup();
+    render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
+
+    await user.type(screen.getByLabelText("Display name"), "Local Ollama");
+    const urlInput = screen.getByLabelText("Base URL");
+    await user.clear(urlInput);
+    await user.type(urlInput, "http://localhost:11434");
+    await user.click(screen.getByRole("button", { name: /Add provider/ }));
+
+    expect(await screen.findByText(/Couldn't save this provider/)).toBeInTheDocument();
+    // Not stuck on "Saving…": the button is usable again for a retry.
+    expect(screen.getByRole("button", { name: /Add provider/ })).toBeEnabled();
+    expect(screen.getByLabelText("Display name")).toHaveValue("Local Ollama");
+  });
+
   it("cancel calls onCancel without submitting", async () => {
-    const onSubmit = vi.fn(async () => undefined);
+    const onSubmit = vi.fn(async () => ok());
     const onCancel = vi.fn();
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel } });
@@ -168,7 +194,7 @@ describe("ProviderForm", () => {
       props: {
         mode: "edit",
         initial: baseConfig({ apiKey: "sk-secret" }),
-        onSubmit: vi.fn(),
+        onSubmit: vi.fn(async () => ok()),
         onCancel: vi.fn(),
       },
     });
@@ -190,7 +216,9 @@ describe("ProviderForm", () => {
 
   it("adds and removes header rows", async () => {
     const user = userEvent.setup();
-    render(ProviderForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(ProviderForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     await user.click(screen.getByRole("button", { name: "Add header" }));
     await user.click(screen.getByRole("button", { name: "Add header" }));
@@ -201,7 +229,7 @@ describe("ProviderForm", () => {
   });
 
   it("shows an inline error for a reserved header name and blocks submit", async () => {
-    const onSubmit = vi.fn(async () => undefined);
+    const onSubmit = vi.fn(async () => ok());
     const user = userEvent.setup();
     render(ProviderForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
@@ -237,7 +265,9 @@ describe("ProviderForm", () => {
       },
     });
     const user = userEvent.setup();
-    render(ProviderForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(ProviderForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     await user.type(screen.getByLabelText("Display name"), "Local Ollama");
     const urlInput = screen.getByLabelText("Base URL");
@@ -255,7 +285,9 @@ describe("ProviderForm", () => {
 
   it("switching provider type to OpenAI-compatible reveals the API key field", async () => {
     const user = userEvent.setup();
-    render(ProviderForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(ProviderForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
     await selectOption(user, "Provider type", "OpenAI-compatible");

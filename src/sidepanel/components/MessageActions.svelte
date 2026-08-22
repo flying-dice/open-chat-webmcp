@@ -15,6 +15,7 @@
    * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
    * with Tailwind utilities; IconButton/Tooltip are already shadcn-backed.
    */
+  import { copyText } from "../../ui/clipboard";
   import IconButton from "./IconButton.svelte";
   import Tooltip from "./Tooltip.svelte";
   import Icon from "./Icon.svelte";
@@ -40,16 +41,13 @@
   const COPIED_RESET_MS = 1500;
 
   async function copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(content);
-      copied = true;
-      clearTimeout(resetTimer);
-      resetTimer = setTimeout(() => (copied = false), COPIED_RESET_MS);
-    } catch {
-      // Clipboard access can be refused (no user gesture, permissions
-      // policy). Staying silent is right: the button simply doesn't
-      // confirm, and nothing about the conversation is broken.
-    }
+    // Card 95: through src/ui/clipboard.ts's never-throws wrapper. Staying
+    // silent on a refusal is still right — the button simply doesn't confirm,
+    // and nothing about the conversation is broken.
+    if (!(await copyText(content))) return;
+    copied = true;
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(() => (copied = false), COPIED_RESET_MS);
   }
 
   $effect(() => () => clearTimeout(resetTimer));

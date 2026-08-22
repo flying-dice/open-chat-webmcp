@@ -24,7 +24,9 @@
     type ProviderConfig,
     type ProviderSelection,
   } from "../../domain/providers";
+  import { fail, ok, type Result } from "../../domain/result";
   import type { StorageError } from "../../domain/storage";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import {
     describeProviderError,
@@ -51,6 +53,8 @@
   let providers = $state<ProviderConfig[]>([]);
   let defaultSelection = $state<ProviderSelection | undefined>(undefined);
   let loading = $state(true);
+  /** Card 95: this section's storage-failure line — a read that left the list stale, or a write that did not land. Cleared by the next successful refresh. Form saves report into the form itself instead (see `reportWriteFailure`). */
+  let failure = $state<string | undefined>(undefined);
 
   /**
    * Card 52: one provider's tool-capable model options for the "Set as
@@ -113,15 +117,15 @@
     permissionGranted = Object.fromEntries(entries);
   }
 
-  // TODO: clean-code - 0.3 - DRY: buildClient (try createProviderClient, catch -> undefined) is duplicated verbatim in src/sidepanel/stores/selection.svelte.ts instead of being shared.
-  /** Mirrors `src/sidepanel/stores/selection.svelte.ts`'s `buildClient`: a missing factory (registry.ts: no client registered for this provider's type) is a programming-error path here, not a real `ProviderError` — `undefined` is the honest signal, never a fabricated network/auth failure. */
-  function buildClient(config: ProviderConfig): ChatProvider | undefined {
-    try {
-      return optionsServices().createProviderClient(config);
-    } catch {
-      return undefined;
-    }
-  }
+  /*
+   * REMOVED (card 95): `buildClient`, the `try/catch` twin of the one
+   * src/sidepanel/stores/selection.svelte.ts carried — see that file for the
+   * full reasoning. Short version: `createProviderClient` has been the
+   * exhaustive `Record<ProviderType, …>` dispatcher since card 75, so the
+   * catch guarded a state the compiler already rules out, and the
+   * "No client is registered for provider type …" messages it fed are gone
+   * with it rather than being left as unreachable copy.
+   */
 
   /**
    * Load (or reload) ONE provider's tool-capable model options — the unit of
@@ -137,14 +141,7 @@
     defaultModelOptionsTokens[provider.id] = token;
     defaultModelOptionsState[provider.id] = { status: "loading" };
 
-    const client = buildClient(provider);
-    if (!client) {
-      const message = `No client is registered for provider type "${provider.type}".`;
-      if (defaultModelOptionsTokens[provider.id] !== token) return;
-      defaultModelOptionsState[provider.id] = { status: "error", message };
-      return;
-    }
-
+    const client = optionsServices().createProviderClient(provider);
     const [models, listErr] = await client.listModels();
     if (defaultModelOptionsTokens[provider.id] !== token) return; // superseded by a later reload for this provider
 
@@ -203,11 +200,7 @@
       staleDefaultReason = "The provider it points to has been removed.";
       return;
     }
-    const client = buildClient(resolved.config);
-    if (!client) {
-      staleDefaultReason = `No client is registered for provider type "${resolved.config.type}".`;
-      return;
-    }
+    const client = optionsServices().createProviderClient(resolved.config);
     const capability = await resolveCapability(client, {
       id: resolved.model,
       name: resolved.model,
@@ -220,19 +213,22 @@
   async function refresh(): Promise<void> {
     const registry = optionsServices().providers;
     const [loaded, listErr] = await registry.listProviders();
-    // Card 92 / card 95: no error state on this section yet, so a failed
-    // read leaves the previous list showing and reports the reason rather
-    // than emptying the page and implying the user has no providers.
+    // Card 92 kept the previous list showing rather than emptying the page
+    // and implying the user has no providers; card 95 puts the reason where
+    // they can read it, which matters more here than on most sections — an
+    // empty-looking provider list is exactly the state someone would "fix"
+    // by re-adding a provider they already have.
     if (listErr) {
-      console.warn("[webmcp][providers] could not list providers", listErr);
+      failure = storageFailureMessage("Couldn't load your saved providers", listErr);
       return;
     }
     providers = loaded;
     const [storedDefault, defaultErr] = await registry.getDefaultSelection();
     if (defaultErr) {
-      console.warn("[webmcp][providers] could not read the default selection", defaultErr);
+      failure = storageFailureMessage("Couldn't read which provider is your default", defaultErr);
       return;
     }
+    failure = undefined;
     defaultSelection = storedDefault;
 
     // Drop model-option state for providers that no longer exist, so a
@@ -263,38 +259,49 @@
 
   /**
    * Card 92: every write handler below bails on a returned `StorageError`
-   * instead of carrying on, which is exactly what the rejection it replaces
-   * did — a form that did not save must not close, a removed row must not
-   * disappear, a default that did not persist must not be shown as set. Card
-   * 95 replaces each `console.warn` with a notice the user can actually see;
-   * what must not regress in the meantime is the CONTROL FLOW.
+   * instead of carrying on — a form that did not save must not close, a
+   * removed row must not disappear, a default that did not persist must not
+   * be shown as set. Card 95 keeps that CONTROL FLOW exactly as it was and
+   * replaces the `console.warn` it stood on with this section's alert.
+   *
+   * The two FORM writes do not come through here: `handleAddSubmit` and
+   * `handleEditSubmit` hand their error back to ProviderForm.svelte instead,
+   * because the form is still open with the user's input in it and an error
+   * three sections up the page is not where they are looking.
    */
   function reportWriteFailure(what: string, cause: StorageError): void {
-    console.warn(`[webmcp][providers] ${what}`, cause);
+    failure = storageFailureMessage(what, cause);
   }
 
-  async function handleAddSubmit(data: Omit<ProviderConfig, "id">): Promise<void> {
+  async function handleAddSubmit(
+    data: Omit<ProviderConfig, "id">,
+  ): Promise<Result<void, StorageError>> {
     const [, err] = await optionsServices().providers.addProvider(data);
-    if (err) return reportWriteFailure("could not add the provider", err);
+    if (err) return fail(err);
     addStep = "closed";
     chosenPreset = undefined;
     await refresh();
+    return ok();
   }
 
-  async function handleEditSubmit(id: string, data: Omit<ProviderConfig, "id">): Promise<void> {
+  async function handleEditSubmit(
+    id: string,
+    data: Omit<ProviderConfig, "id">,
+  ): Promise<Result<void, StorageError>> {
     const [, err] = await optionsServices().providers.updateProvider(id, data);
-    if (err) return reportWriteFailure("could not save the provider", err);
+    if (err) return fail(err);
     editingId = null;
     await refresh();
+    return ok();
   }
 
   async function handleRemove(provider: ProviderConfig): Promise<void> {
-    const ok = confirm(
+    const confirmed = confirm(
       `Remove "${provider.name}"? Any tab session currently using it will be left with a dangling provider and prompted to pick a replacement.`,
     );
-    if (!ok) return;
+    if (!confirmed) return;
     const [, err] = await optionsServices().providers.removeProvider(provider.id);
-    if (err) return reportWriteFailure("could not remove the provider", err);
+    if (err) return reportWriteFailure(`Couldn't remove "${provider.name}"`, err);
     delete testOutcomes[provider.id];
     delete permissionGranted[provider.id];
     await refresh();
@@ -313,9 +320,11 @@
     providers = next; // optimistic reorder while the write lands
     const [, err] = await optionsServices().providers.reorderProviders(next.map((p) => p.id));
     // The optimistic swap above already happened, so a failure here leaves
-    // the list showing an order storage does not have. `refresh()` on the
-    // next mount corrects it; card 95 says so on screen.
-    if (err) reportWriteFailure("could not save the new provider order", err);
+    // the list showing an order storage does not have — which is precisely
+    // why card 95 says so on screen rather than in the console: `refresh()`
+    // on the next mount silently puts the rows back, and a user who was not
+    // told would read that as the extension forgetting their arrangement.
+    if (err) reportWriteFailure("Couldn't save the new provider order", err);
   }
 
   /** Whether `provider`'s model options are still loading — the row shows a loading state, no reason yet (card 52). */
@@ -371,7 +380,7 @@
       providerId: provider.id,
       model: modelId,
     });
-    if (err) return reportWriteFailure("could not set the default provider and model", err);
+    if (err) return reportWriteFailure("Couldn't set the default provider and model", err);
     defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }
@@ -422,6 +431,15 @@
     </Card.Header>
 
     <Card.Content class="flex flex-col gap-4">
+      {#if failure}
+        <!-- Card 95: a storage read or write this section could not complete.
+             Above the list, and never INSTEAD of it — what is listed below is
+             still the last thing successfully read. -->
+        <Alert.Root variant="destructive">
+          <Alert.Description>{failure}</Alert.Description>
+        </Alert.Root>
+      {/if}
+
       <Alert.Root class="bg-muted/40">
         <Alert.Description>
           API keys and custom header values are stored unencrypted on this device
@@ -435,7 +453,7 @@
              one currently displayed as selectable) is no longer valid — surface
              it clearly instead of silently letting a broken default keep
              seeding new chats. -->
-        <Alert.Root variant="destructive" role="alert">
+        <Alert.Root variant="destructive">
           <Alert.Description>
             The default provider/model can no longer be confirmed as tool-capable: {staleDefaultReason}
             New chats seeded from it will need a different model picked in the side panel before

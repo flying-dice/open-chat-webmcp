@@ -48,6 +48,11 @@ import {
   type ToolAnnotations,
 } from "../infra/chrome-runtime";
 import { RELAY_EXECUTE_TIMEOUT_MS } from "../infra/webmcp";
+// The shared result kernel (decisions/34-errors-as-values.md). A content
+// script is a runtime surface like any other, and this is the one place in it
+// where a known failure — a page's own tool refusing the call — travels as a
+// value rather than as an exception.
+import { fail, ok, type Result } from "../domain/result";
 import type { ModelContextToolInfo } from "@mcp-b/webmcp-types";
 
 // Round-trip budget for a worker-initiated tool call — the innermost rung of
@@ -289,14 +294,28 @@ async function resolveTool(name: string): Promise<NativeToolInfo | undefined> {
  * form first, and fall back to the JSON-STRING form ONLY when that throws
  * with a message starting "Failed to parse input" — Chrome's exact wording
  * when it still wants the old string form (decisions/16 measured this
- * against Chrome 151/152). Anything else is a real tool error and is
- * rethrown, not swallowed into a second attempt.
+ * against Chrome 151/152). Anything else is a real tool error, and is
+ * RETURNED as one rather than re-thrown.
+ *
+ * Card 95 (decisions/34-errors-as-values.md) is what changed that last part.
+ * The `throw err;` this replaces was the only entry left on
+ * scripts/throw-allowlist.json that did not assert an invariant: a page tool
+ * failing is the most ordinary expected outcome there is, and the rethrow was
+ * only ever plumbing to carry it out through `callWithTimeout`'s promise into
+ * `handleCallTool`'s catch — which mapped it straight back into a value
+ * (`{ok:false, error}`). Returning the tuple says the same thing in the
+ * signature, and the two-attempt shape is now visible instead of hidden in a
+ * control-flow rethrow.
+ *
+ * The `catch` itself stays, and belongs here: this is the platform boundary,
+ * where a native WebIDL call's exception becomes a value. It is the only
+ * thing this function catches, and it catches it in one statement.
  */
 async function callExecuteTool(
   mc: NonNullable<typeof modelContext>,
   tool: NativeToolInfo,
   args: Record<string, unknown>,
-): Promise<string | null> {
+): Promise<Result<string | null, Error>> {
   try {
     // `@mcp-b/webmcp-types@4` only declares the JSON-string form (matching
     // decisions/16's current measurement) — this object-form attempt is
@@ -310,12 +329,15 @@ async function callExecuteTool(
       t: NativeToolInfo,
       a: Record<string, unknown>,
     ) => Promise<string | null>;
-    return await executeWithObject.call(mc, tool, args);
+    return ok(await executeWithObject.call(mc, tool, args));
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("Failed to parse input")) {
-      return await mc.executeTool(tool, JSON.stringify(args));
+      // The retry is NOT wrapped: a failure of the string form is this
+      // function's own terminal outcome, and `handleCallTool`'s boundary
+      // catch (which already has to exist for the timeout) reports it.
+      return ok(await mc.executeTool(tool, JSON.stringify(args)));
     }
-    throw err;
+    return fail(err instanceof Error ? err : new Error(describeError(err)));
   }
 }
 
@@ -345,11 +367,23 @@ async function handleCallTool(
 
   const args = isRecord(req.args) ? req.args : {};
 
+  // The `try` is the TIMEOUT's boundary, not the tool's: `callWithTimeout`
+  // rejects when the inner call outruns RELAY_EXECUTE_TIMEOUT_MS (and if the
+  // string-form retry inside `callExecuteTool` throws). The tool's own failure
+  // arrives as `execErr` below — a value, since card 95.
   try {
-    const resultJson = await callWithTimeout(
+    const [resultJson, execErr] = await callWithTimeout(
       () => callExecuteTool(mc, tool, args),
       RELAY_EXECUTE_TIMEOUT_MS,
     );
+    if (execErr) {
+      safeRespond(sendResponse, {
+        type: "runtime:call-tool-response",
+        ok: false,
+        error: describeError(execErr),
+      });
+      return;
+    }
 
     // executeTool resolves to a nullable JSON string (decisions/16) — parse
     // it, and pass `null` straight through rather than trying to JSON.parse

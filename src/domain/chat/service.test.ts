@@ -180,10 +180,11 @@ describe("ChatService.syncToTab", () => {
     });
   });
 
-  // Card 92 (decisions/34-errors-as-values.md): `ChatStore.getOrCreateChatForTab`
-  // now returns a `Result`, and this lifecycle method's own signature is
-  // still `Promise<void>` (card 95 is where that changes), so a read failure
-  // has nowhere to go but `reportStorageFailure`.
+  // Card 92/95 (decisions/34-errors-as-values.md): `syncToTab` is one of the
+  // two methods that deliberately KEEP a `Promise<void>` signature — nobody
+  // asked for the swap (it is a `chrome.tabs` event), so there is no caller
+  // to hand a failure to and the recovery lives here. `reportStorageFailure`
+  // is where it goes, and this test is what keeps it from going silent.
   it("does NOT adopt a fabricated empty chat when the store read fails, and reports through reportStorageFailure", async () => {
     const reportStorageFailure = vi.fn();
     const { service, store } = makeService({ reportStorageFailure });
@@ -252,7 +253,7 @@ describe("ChatService.applyNavigation", () => {
     otherChat.messages.push(userEntry("u1", "hi", Date.now()));
     await store.save(otherChat, { immediate: true });
 
-    expect(await service.openChat(otherChat.id)).toBe(true);
+    expect(await service.openChat(otherChat.id)).toEqual([true, undefined]);
     expect(service.current()!.id).toBe(otherChat.id);
     // Opening a cross-origin chat from History does NOT change the tab's
     // recorded origin (decision 13) — a real navigation must still be
@@ -285,8 +286,31 @@ describe("ChatService.startNewChat", () => {
 
   it("is a no-op when no tab is loaded", async () => {
     const { service } = makeService();
-    await expect(service.startNewChat("https://example.com")).resolves.toBeUndefined();
+    await expect(service.startNewChat("https://example.com")).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
     expect(service.current()).toBeUndefined();
+  });
+
+  // Card 95: `startNewChat` writes the tab pointer BEFORE it swaps the
+  // visible chat, which is the whole reason its typed failure is worth
+  // anything — a caller told "that did not save" must not already be looking
+  // at the new chat with the old one retired off screen.
+  it("returns the write failure and leaves the CURRENT chat on screen when the tab pointer cannot be written", async () => {
+    const reportStorageFailure = vi.fn();
+    const { service, store } = makeService({ reportStorageFailure });
+    await service.syncToTab(1, "https://a.example.com");
+    const before = service.current();
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.setCurrentChatForTab = boom;
+    const [, err] = await service.startNewChat("https://a.example.com");
+
+    expect(err).toBe(boom);
+    expect(service.current()).toBe(before);
+    // Returned, NOT reported: this one has a caller (card 95's posture 1).
+    expect(reportStorageFailure).not.toHaveBeenCalled();
   });
 });
 
@@ -310,15 +334,51 @@ describe("ChatService.discardIfDeleted", () => {
 
     expect(service.current()).toBe(chat);
   });
+
+  it("hands back startNewChat's write failure rather than swallowing it (card 95)", async () => {
+    const { service, store } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const chat = service.current()!;
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.setCurrentChatForTab = boom;
+    const [, err] = await service.discardIfDeleted(chat.id);
+
+    expect(err).toBe(boom);
+    // The deleted chat is still what this tab shows: the caller (History)
+    // says so rather than the panel silently pretending it moved on.
+    expect(service.current()).toBe(chat);
+  });
 });
 
-// Card 92 (decisions/34-errors-as-values.md): `openChat`'s own signature
-// keeps returning `Promise<boolean>` (card 95 grows it a typed result), so
-// an unreadable store collapses to `false` — the same affordance a chat that
-// no longer resolves gets — but MUST still be reported, unlike a genuine
-// missing chat, which is not a fault.
+// Card 95: an EVENT-driven method absorbs what a user-driven one returns.
+// `applyNavigation` runs off a `chrome.tabs` update, so its inner
+// `startNewChat` failure has no caller to reach — it must reach the report
+// instead, and the tab must not be left showing a chat for the old origin
+// with no explanation anywhere.
+describe("ChatService.applyNavigation — storage failure", () => {
+  it("reports the failed pointer write and keeps the previous chat rather than returning it", async () => {
+    const reportStorageFailure = vi.fn();
+    const { service, store } = makeService({ reportStorageFailure });
+    await service.syncToTab(1, "https://a.example.com");
+    const before = service.current();
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.setCurrentChatForTab = boom;
+    await expect(service.applyNavigation(1, "https://b.example.com")).resolves.toBeUndefined();
+
+    expect(service.current()).toBe(before);
+    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+  });
+});
+
+// Card 95 (decisions/34-errors-as-values.md): `openChat` returns
+// `Result<boolean, StorageError>`, and the three outcomes it can now express
+// are exactly the three a History view needs to tell apart — opened, not
+// there any more, and "the store did not answer". Card 92 collapsed the last
+// two into `false` because the signature had nowhere else to put them.
 describe("ChatService.openChat — storage failure", () => {
-  it("returns false, leaves the current chat untouched, and reports the failure when the store read fails", async () => {
+  it("returns the read failure, leaves the current chat untouched, and does NOT report it (the caller was told)", async () => {
     const reportStorageFailure = vi.fn();
     const { service, store } = makeService({ reportStorageFailure });
     await service.syncToTab(1, "https://a.example.com");
@@ -327,9 +387,36 @@ describe("ChatService.openChat — storage failure", () => {
     const boom = new StorageError("Unavailable", "the store did not answer");
     store.failures.getChat = boom;
 
-    await expect(service.openChat("some-other-chat-id")).resolves.toBe(false);
+    const [opened, err] = await service.openChat("some-other-chat-id");
+    expect(opened).toBeUndefined();
+    expect(err).toBe(boom);
     expect(service.current()).toBe(before);
-    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+    expect(reportStorageFailure).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes a chat that is simply gone (ok(false)) from a store that did not answer", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+
+    await expect(service.openChat("never-existed")).resolves.toEqual([false, undefined]);
+  });
+
+  it("does not swap the visible chat when the tab pointer write fails", async () => {
+    const { service, store } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const before = service.current();
+
+    const other = createChat("https://other.example.com");
+    await store.save(other, { immediate: true });
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.setCurrentChatForTab = boom;
+    const [, err] = await service.openChat(other.id);
+
+    expect(err).toBe(boom);
+    // Pointer first, swap second: History stays where it is and can say why,
+    // instead of the transcript having already changed underneath it.
+    expect(service.current()).toBe(before);
   });
 });
 
@@ -343,7 +430,10 @@ describe("ChatService selection", () => {
     await service.syncToTab(1, "https://a.example.com");
 
     expect(service.getSelection(1)).toBeUndefined();
-    expect(await service.setSelection(1, { providerId: "p", model: "m" }, false)).toBe(true);
+    expect(await service.setSelection(1, { providerId: "p", model: "m" }, false)).toEqual([
+      true,
+      undefined,
+    ]);
 
     expect(service.getSelection(1)).toEqual({
       selection: { providerId: "p", model: "m" },
@@ -352,9 +442,31 @@ describe("ChatService selection", () => {
     expect(service.getSelection(999)).toBeUndefined();
   });
 
-  it("setSelection returns false when no chat is loaded for that tab", async () => {
+  it("setSelection returns ok(false) when no chat is loaded for that tab", async () => {
     const { service } = makeService();
-    expect(await service.setSelection(1, { providerId: "p", model: "m" }, true)).toBe(false);
+    expect(await service.setSelection(1, { providerId: "p", model: "m" }, true)).toEqual([
+      false,
+      undefined,
+    ]);
+  });
+
+  // Card 95: the write failure is returned, and the choice STAYS on the live
+  // session — card 27's single-owner rule means this is the same object the
+  // turn appends to, and snapping it back would change which model a chat
+  // already in progress is talking to.
+  it("setSelection returns the write failure but leaves the choice live for this panel", async () => {
+    const { service, store } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.save = boom;
+    const [, err] = await service.setSelection(1, { providerId: "p", model: "m" }, true);
+
+    expect(err).toBe(boom);
+    expect(service.getSelection(1)).toEqual({
+      selection: { providerId: "p", model: "m" },
+      explicit: true,
+    });
   });
 });
 
@@ -382,7 +494,21 @@ describe("ChatService.renameCurrent", () => {
 
   it("is a no-op when no chat is loaded", async () => {
     const { service } = makeService();
-    await expect(service.renameCurrent("x")).resolves.toBeUndefined();
+    await expect(service.renameCurrent("x")).resolves.toEqual([undefined, undefined]);
+  });
+
+  // Card 95: the name the user typed is already on screen, so the failure is
+  // returned ("not durable") rather than the title being reverted under them.
+  it("returns the write failure with the new title still applied", async () => {
+    const { service, store } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.save = boom;
+    const [, err] = await service.renameCurrent("Named");
+
+    expect(err).toBe(boom);
+    expect(service.current()!.title).toBe("Named");
   });
 });
 
@@ -772,7 +898,7 @@ describe("chaos: acting on a chat mid-turn from elsewhere", () => {
     await store.deleteChat(chat.id);
     await service.syncToTab(2, "https://b.example.com"); // look elsewhere first
 
-    expect(await service.openChat(chat.id)).toBe(true);
+    expect(await service.openChat(chat.id)).toEqual([true, undefined]);
     expect(service.current()).toBe(chat); // re-attached to the SAME live object, not a 404
 
     gate.resolve();

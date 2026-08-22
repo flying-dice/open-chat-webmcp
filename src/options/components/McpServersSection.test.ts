@@ -9,13 +9,14 @@
 // Deliberately narrow: this file exists for ONE fact card 92 introduced —
 // `refresh()`'s `listServers()` read can now fail as a checked `Result`
 // instead of always resolving, and `McpServersSection.svelte` responds by
-// leaving whatever was already rendered in place and logging a warning,
-// rather than emptying the section and implying the user has no servers
-// configured (see the component's `refresh` for the exact comment this
-// mirrors). Every other behaviour of this section — add/edit/remove/reorder,
+// leaving whatever was already rendered in place — rather than emptying the
+// section and implying the user has no servers configured (see the
+// component's `refresh` for the exact comment this mirrors). Card 95 adds the
+// other half: the reason is now an alert in the section rather than a
+// `console.warn`. Every other behaviour of this section — add/edit/remove/reorder,
 // the permission-badge lifecycle, the test-connection flow — is exercised at
 // the McpServerForm/McpServerRow layer already and is not re-asserted here.
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import McpServersSection from "./McpServersSection.svelte";
@@ -76,7 +77,6 @@ describe("McpServersSection", () => {
     // `chrome.storage` quota fault or the extension context invalidating
     // mid-session. `updateServer` (the write half of the toggle below) is
     // left alone: this test is about a READ failure, not a write one.
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     registry.listServers = async () => fail(storageFailure());
 
     // Any action that calls `refresh()` exercises the failure — toggling a
@@ -91,11 +91,33 @@ describe("McpServersSection", () => {
     // rendered before the click: same name, same "Disable" label (not
     // "Enable", which a successful refresh reflecting the toggle would have
     // shown), never the empty state.
-    await waitFor(() => expect(warn).toHaveBeenCalled());
+    // By text, not by `role="alert"`: shadcn's `Alert.Root` sets that role on
+    // every variant, including this section's standing credentials notice.
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn't load your saved MCP servers/)).toBeInTheDocument(),
+    );
     expect(screen.getByText("Ticket tracker")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Disable" })).toBeInTheDocument();
     expect(screen.queryByText("No MCP servers registered yet")).not.toBeInTheDocument();
+  });
 
-    warn.mockRestore();
+  // Card 95: the WRITE half. A toggle that did not land leaves the switch
+  // where it was, which is indistinguishable from a click that missed unless
+  // the section says so.
+  it("says why a server could not be toggled, and leaves the row as it was", async () => {
+    const registry = createFakeMcpServerRegistry([fakeServer()]);
+    registry.updateServer = async () => fail(storageFailure());
+    services.mcpServers = registry;
+
+    const user = userEvent.setup();
+    render(McpServersSection);
+
+    await waitFor(() => expect(screen.getByText("Ticket tracker")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Disable" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn't turn "Ticket tracker" off/)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Disable" })).toBeInTheDocument();
   });
 });

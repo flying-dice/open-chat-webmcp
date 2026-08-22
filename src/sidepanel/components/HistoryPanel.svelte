@@ -20,9 +20,11 @@
    * decisions/28) — no behaviour change, presentation only.
    */
   import type { ChatSummary } from "../../domain/chat";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import { chat, sidePanelServices } from "../app-services";
   import { panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
+  import * as Alert from "$lib/components/ui/alert";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { ItemGroup } from "$lib/components/ui/item";
   import {
@@ -47,17 +49,25 @@
   let openingId = $state<string | undefined>(undefined);
   let deletingId = $state<string | undefined>(undefined);
 
+  /**
+   * Card 95: this view's OWN error line, not the panel's notice channel
+   * (src/sidepanel/stores/notices.svelte.ts) — a list that would not load and
+   * a chat that would not delete are both about what is (or isn't) on this
+   * screen, and the notices render in the chat view, where this user is not
+   * looking. Cleared by the next attempt at the same thing.
+   */
+  let failure = $state<string | undefined>(undefined);
+
   async function refresh(): Promise<void> {
     const [loaded, err] = await sidePanelServices().chats.listChatSummaries();
-    // Card 92: the listing's failure is now a value, and this view has no
-    // error state to render it in yet — card 95 is where every surface grows
-    // one. Until then the previous list stands and the reason goes to the
-    // console, which is strictly more than the unhandled rejection this
-    // replaces left behind.
+    // Card 92 kept the previously-listed chats on screen rather than blanking
+    // them on a failed read, and that still holds: the list you can see is
+    // real, it is just possibly out of date. Card 95 says so out loud.
     if (err) {
-      console.warn("[webmcp][history] could not list chats", err);
+      failure = storageFailureMessage("Couldn't load your chats", err);
       return;
     }
+    failure = undefined;
     summaries = loaded;
   }
 
@@ -75,11 +85,21 @@
   async function handleOpen(chatId: string): Promise<void> {
     if (openingId || deletingId) return;
     openingId = chatId;
-    try {
-      if (await chat().openChat(chatId)) onOpenChat();
-    } finally {
-      openingId = undefined;
+    // Card 95: three outcomes now, not two. An error means the store could
+    // not be read (or the tab's new pointer not written) and NOTHING was
+    // swapped — the service writes the pointer before it changes the visible
+    // chat — so staying on this list with a reason is the honest response.
+    // `ok(false)` is the chat simply not being there any more, which the
+    // refresh below corrects on its own.
+    const [opened, err] = await chat().openChat(chatId);
+    openingId = undefined;
+    if (err) {
+      failure = storageFailureMessage("Couldn't open that chat", err);
+      return;
     }
+    failure = undefined;
+    if (opened) onOpenChat();
+    else await refresh();
   }
 
   async function handleDelete(summary: ChatSummary): Promise<void> {
@@ -91,30 +111,48 @@
     if (!ok) return;
 
     deletingId = summary.id;
-    try {
-      // Card 92: a delete that did not land must not be followed by the
-      // fresh-chat swap or the re-list — the rejection this replaces skipped
-      // both, and doing them anyway would show the chat as gone while it is
-      // still in storage and still the tab's current chat.
-      const [, err] = await sidePanelServices().chats.deleteChat(summary.id);
-      if (err) {
-        console.warn("[webmcp][history] could not delete the chat", err);
-        return;
-      }
-      // If this was the chat currently open in this tab, point the tab at
-      // a fresh one — otherwise the next message sent would silently
-      // recreate the chat we just deleted (see that function's doc
-      // comment).
-      await chat().discardIfDeleted(summary.id);
-      await refresh();
-    } finally {
+    // Card 92: a delete that did not land must not be followed by the
+    // fresh-chat swap or the re-list — doing them anyway would show the chat
+    // as gone while it is still in storage and still the tab's current chat.
+    // Card 95 puts the reason on screen instead of in the console.
+    const [, err] = await sidePanelServices().chats.deleteChat(summary.id);
+    if (err) {
       deletingId = undefined;
+      failure = storageFailureMessage("Couldn't delete that chat", err);
+      return;
+    }
+    // If this was the chat currently open in this tab, point the tab at
+    // a fresh one — otherwise the next message sent would silently
+    // recreate the chat we just deleted (see that function's doc
+    // comment). Its own failure is reported for a different reason than the
+    // delete's: the chat IS gone, and what did not happen is the tab moving
+    // off it.
+    const [, discardErr] = await chat().discardIfDeleted(summary.id);
+    deletingId = undefined;
+    // Re-list first, then re-state the discard failure over whatever the
+    // refresh concluded: the deleted row disappearing is the more useful of
+    // the two facts to show immediately, and the refresh's own success would
+    // otherwise clear a message about something that DID fail.
+    await refresh();
+    if (discardErr) {
+      failure = storageFailureMessage(
+        "Deleted that chat, but couldn't start a fresh one for this tab",
+        discardErr,
+      );
     }
   }
 </script>
 
 <ScrollArea class="min-h-0 min-w-0 flex-1">
   <div class="min-w-0 p-3">
+    {#if failure}
+      <!-- Card 95: above the list, not instead of it — whatever is listed
+           below is real, and hiding it would lose the user more than the
+           failure did. -->
+      <Alert.Root variant="destructive" class="mb-2">
+        <Alert.Description class="text-sm">{failure}</Alert.Description>
+      </Alert.Root>
+    {/if}
     {#if status === "loading"}
       <p class="p-2 text-sm text-muted-foreground">Loading…</p>
     {:else if summaries.length === 0}

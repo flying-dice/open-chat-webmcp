@@ -7,7 +7,7 @@
 // file — see that helper's header comment for why never `vi.resetModules()`.
 import "@testing-library/svelte/vitest";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/svelte";
+import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import OverflowMenu from "./OverflowMenu.svelte";
 import {
@@ -46,7 +46,7 @@ describe("OverflowMenu", () => {
 
   beforeEach(() => {
     services.chats.listChatSummaries = async () => ok([]);
-    services.chat.openChat = async () => false;
+    services.chat.openChat = async () => ok(false);
     services.shell.openOptionsPage = vi.fn();
   });
 
@@ -102,7 +102,7 @@ describe("OverflowMenu", () => {
 
   it("opens a recent chat and calls onOpenChat only when openChat succeeds", async () => {
     services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
-    const openChat = vi.fn(async () => true);
+    const openChat = vi.fn(async () => ok(true));
     services.chat.openChat = openChat;
     const onOpenChat = vi.fn();
     render(OverflowMenu, {
@@ -121,9 +121,9 @@ describe("OverflowMenu", () => {
     expect(onOpenChat).toHaveBeenCalledTimes(1);
   });
 
-  it("does not call onOpenChat when openChat resolves false", async () => {
+  it("does not call onOpenChat when openChat resolves ok(false)", async () => {
     services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
-    services.chat.openChat = async () => false;
+    services.chat.openChat = async () => ok(false);
     const onOpenChat = vi.fn();
     render(OverflowMenu, {
       props: {
@@ -198,16 +198,18 @@ describe("OverflowMenu", () => {
   });
 
   // Card 92: `handleOpenChange` (OverflowMenu.svelte) gets a `Result` back
-  // from `listChatSummaries` rather than a rejecting promise, and on `err` it
-  // only logs — `summaries` is left untouched — matching the same
+  // from `listChatSummaries` rather than a rejecting promise, and on `err`
+  // `summaries` is left untouched — matching the same
   // "don't blank what's already on screen" posture HistoryPanel.test.ts
   // covers for the full history view. First open succeeds and populates the
   // recent list; the menu is then closed and reopened with a FAILING read, so
   // the second open is the one that must leave the first open's list in
   // place rather than clearing it to "No chats yet.".
-  it("keeps the previously-loaded recent list, and logs, when a later open's storage read fails", async () => {
+  // Card 95 replaces that log with the menu's own one-line state: a
+  // shortcut list that could not be refreshed says so where the user is
+  // standing, and "More" (which reports properly) is one row below.
+  it("keeps the previously-loaded recent list and says so when a later open's storage read fails", async () => {
     services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const user = userEvent.setup();
 
     renderMenu();
@@ -230,8 +232,28 @@ describe("OverflowMenu", () => {
     // the failed re-fetch did not blank it.
     expect(await screen.findByText("hello world")).toBeInTheDocument();
     expect(screen.queryByText("No chats yet.")).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(warn).toHaveBeenCalledWith("[webmcp][history] could not list recent chats", err),
-    );
+    expect(await screen.findByText("Couldn't load your recent chats.")).toBeInTheDocument();
+  });
+
+  // Card 95: an unreadable store and a chat that is simply gone are
+  // different facts, but not to this menu — it has nothing to switch to
+  // either way, and the full History view is where the reason belongs.
+  it("does not switch views when openChat fails outright", async () => {
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hello world" })]);
+    services.chat.openChat = async () => fail(storageFailure());
+    const onOpenChat = vi.fn();
+    render(OverflowMenu, {
+      props: {
+        onOpenHistory: vi.fn(),
+        onOpenTools: vi.fn(),
+        onOpenChat,
+        connectionStatus: "connected",
+      },
+    });
+    const user = await openMenu();
+
+    await user.click(await screen.findByText("hello world"));
+
+    expect(onOpenChat).not.toHaveBeenCalled();
   });
 });

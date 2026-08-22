@@ -29,6 +29,7 @@
    */
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../../domain/chat";
+  import { copyText } from "../../ui/clipboard";
   import { originLabel } from "../presentation/toolOrigin";
   import { formatDuration } from "../presentation/duration";
   import ToolArgs from "./ToolArgs.svelte";
@@ -71,15 +72,13 @@
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function copyAsJson(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(entry, null, 2));
-      copied = true;
-      clearTimeout(copyTimer);
-      copyTimer = setTimeout(() => (copied = false), 1200);
-    } catch {
-      // Clipboard access can fail (no permission, insecure context, etc.) —
-      // the button just silently doesn't confirm; nothing else depends on it.
-    }
+    // Card 95: the clipboard's own catch lives in src/ui/clipboard.ts now.
+    // A refusal still just means the button doesn't confirm; nothing else
+    // depends on it.
+    if (!(await copyText(JSON.stringify(entry, null, 2)))) return;
+    copied = true;
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => (copied = false), 1200);
   }
 </script>
 

@@ -36,6 +36,9 @@
   } from "../../domain/providers";
   import { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
   import { originPatternForUrl } from "../../domain/permissions";
+  import type { Result } from "../../domain/result";
+  import type { StorageError } from "../../domain/storage";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import {
     firstHeaderError,
     toHeaderRows,
@@ -88,7 +91,14 @@
     preset?: ProviderPreset | undefined;
     /** "add" mode only: lets the user back out to the picker and choose a different backend without cancelling the whole flow. */
     onChangeBackend?: () => void;
-    onSubmit: (data: Omit<ProviderConfig, "id">) => Promise<void>;
+    /**
+     * Save the config. Card 95 (decisions/34-errors-as-values.md): the
+     * parent's registry write RETURNS its failure, so this prop does too —
+     * which is what lets the form keep the user's typed input on screen with
+     * the reason attached, instead of the `try/catch` this replaced, whose
+     * only trigger was a rejection the parent had already stopped producing.
+     */
+    onSubmit: (data: Omit<ProviderConfig, "id">) => Promise<Result<void, StorageError>>;
     onCancel: () => void;
   }
 
@@ -287,13 +297,12 @@
     }
 
     saving = true;
-    try {
-      await onSubmit(buildData());
-    } catch (err) {
-      formError = err instanceof Error ? err.message : String(err);
-    } finally {
-      saving = false;
-    }
+    const [, err] = await onSubmit(buildData());
+    saving = false;
+    // The form stays open on a failed save (the parent only closes it on
+    // success), so this is the one place the user can be told why — right
+    // under the fields they would otherwise be asked to retype.
+    if (err) formError = storageFailureMessage("Couldn't save this provider", err);
   }
 
   /** The provider-type dropdown's trigger text — shadcn's `Select` renders whatever we put in the trigger, unlike the native `<select>` this replaced. */

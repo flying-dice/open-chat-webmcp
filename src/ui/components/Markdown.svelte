@@ -1,5 +1,6 @@
 <script lang="ts">
   import { renderMarkdown } from "../markdown";
+  import { copyText } from "../clipboard";
 
   /**
    * Renders a markdown string as sanitised HTML.
@@ -66,22 +67,20 @@
     const codeEl = block?.querySelector("code");
     const text = codeEl?.textContent ?? "";
 
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        const original = button.textContent;
-        button.textContent = "Copied";
-        button.disabled = true;
-        clearTimeout(copyResetTimer);
-        copyResetTimer = setTimeout(() => {
-          button.textContent = original;
-          button.disabled = false;
-        }, 1500);
-      })
-      .catch(() => {
-        // Clipboard access can be denied (permissions, insecure context) —
-        // fail silently rather than throwing inside a click handler.
-      });
+    // Card 95: `copyText` never rejects (../clipboard.ts), so there is no
+    // `.catch` here any more — a denied clipboard resolves `false` and the
+    // button simply doesn't confirm, exactly as before.
+    void copyText(text).then((copied) => {
+      if (!copied) return;
+      const original = button.textContent;
+      button.textContent = "Copied";
+      button.disabled = true;
+      clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        button.textContent = original;
+        button.disabled = false;
+      }, 1500);
+    });
   }
 </script>
 

@@ -36,14 +36,28 @@
      */
     onDismiss?: () => void;
     dismissLabel?: string;
+    /**
+     * Card 95: `"failure"` for the one case the calm treatment above is
+     * wrong for — something the USER JUST DID did not happen (a chat that
+     * would not open, a name that did not save). Those arrive through
+     * src/sidepanel/stores/notices.svelte.ts and are never live state, so
+     * the rule the doc comment states still holds: red is reserved for a
+     * failed action, never for a configuration fact, which is exactly what
+     * stops it becoming the colour people learn to skip.
+     */
+    variant?: "notice" | "failure";
   }
 
-  const { children, onDismiss, dismissLabel = "Dismiss" }: Props = $props();
+  const { children, onDismiss, dismissLabel = "Dismiss", variant = "notice" }: Props = $props();
 </script>
 
-<Alert.Root>
+<!-- `Alert.Root` sets `role="alert"` itself, for every variant. -->
+<Alert.Root variant={variant === "failure" ? "destructive" : "default"}>
   <Alert.Description
-    class="text-sm text-muted-foreground [&_p:not(:last-child)]:mb-2 [&_strong]:font-medium [&_strong]:text-foreground"
+    class="text-sm [&_p:not(:last-child)]:mb-2 [&_strong]:font-medium [&_strong]:text-foreground {variant ===
+    'failure'
+      ? ''
+      : 'text-muted-foreground'}"
   >
     {@render children()}
   </Alert.Description>

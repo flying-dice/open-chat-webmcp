@@ -46,6 +46,8 @@
   import { chat, sidePanelServices } from "./app-services";
   import { selection } from "./stores/selection.svelte";
   import { panel, requestStop } from "./stores/panel.svelte";
+  import { dismissNotice, panelNotices, reportNotice } from "./stores/notices.svelte";
+  import { storageFailureMessage } from "../ui/storageMessage";
   import {
     dismissAllPending,
     initApprovalPolicySync,
@@ -191,7 +193,12 @@
     const info = panel.pageInfo;
     if (!info || panel.isTurnActive) return;
     if (panel.messages.length > 0) {
-      await chat().startNewChat(info.origin);
+      // Card 95: `startNewChat` writes the tab's pointer BEFORE swapping the
+      // visible chat (src/domain/chat/service.ts), so an error here means
+      // nothing changed — the conversation the user had is still on screen,
+      // and the notice is the whole of what they need to know.
+      const [, err] = await chat().startNewChat(info.origin);
+      if (err) reportNotice(storageFailureMessage("Couldn't start a new chat", err));
     }
     composerRef?.focusInput();
   }
@@ -267,8 +274,12 @@
    * never even offer the affordance outside chat, per the "opt-in per
    * render, never inferred" rule.
    */
-  function handleRename(title: string): void {
-    void chat().renameCurrent(title);
+  async function handleRename(title: string): Promise<void> {
+    // Card 95: the new name is already on screen (the service applies it to
+    // the live session before writing), so the notice says it is not durable
+    // rather than yanking the name back out from under the user.
+    const [, err] = await chat().renameCurrent(title);
+    if (err) reportNotice(storageFailureMessage("Couldn't save this chat's new name", err));
   }
 </script>
 
@@ -300,6 +311,22 @@
       {modelIcon}
     >
       {#snippet notices()}
+        <!-- Card 95: the panel's one notice channel
+             (src/sidepanel/stores/notices.svelte.ts). Every storage failure a
+             user's own action caused — a chat that would not open, a rename or
+             a model choice that did not persist — lands here as a value rather
+             than in the console. Always dismissible: each one is an
+             announcement about something that already happened, never live
+             state. -->
+        {#each panelNotices.all as notice (notice.id)}
+          <NoticeCard
+            variant="failure"
+            dismissLabel="Dismiss message"
+            onDismiss={() => dismissNotice(notice.id)}
+          >
+            <p>{notice.message}</p>
+          </NoticeCard>
+        {/each}
         {#if panel.pageInfo?.restricted}
           <NoticeCard>
             <p>

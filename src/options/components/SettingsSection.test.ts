@@ -12,7 +12,7 @@
 // about: the page policy and the MCP-server policy must never cross-
 // contaminate — changing one must never read, write, or visually affect the
 // other.
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import SettingsSection from "./SettingsSection.svelte";
@@ -36,36 +36,19 @@ afterEach(() => {
   cleanup();
 });
 
-// The two "revert on write failure" tests below deliberately trigger a
-// rejection inside `handlePolicyChange`/`handleMcpPolicyChange` that the
-// component's `onValueChange={(next) => handlePolicyChange(...)}` wiring
-// never awaits or catches (see the tests' own comment). Node's
-// `unhandledRejection` detection runs on a LATER turn of the event loop
-// than the `await waitFor(...)` in those tests settles on, so a listener
-// scoped to just those `it`s (attach-then-detach around the click) can miss
-// the event entirely and let it leak into whatever test runs next. Attached
-// once for the whole file instead, filtered to exactly the expected
-// message so any other unhandled rejection still fails the suite.
-function onExpectedWriteFailureRejection(reason: unknown): void {
-  if (reason instanceof Error && reason.message === "write failed") return;
-  throw reason;
-}
-// `process` is a Node global (Vitest itself runs on Node even though this
-// project is a jsdom test) — typed here as `unknown` and narrowed inline
-// rather than reaching for `@types/node`, which tsconfig.app.json (a
-// browser-targeted config, shared with the rest of this surface) doesn't
-// include.
-type NodeEventEmitterLike = {
-  on(event: "unhandledRejection", listener: (reason: unknown) => void): unknown;
-  off(event: "unhandledRejection", listener: (reason: unknown) => void): unknown;
-};
-const nodeProcess = (globalThis as { process?: NodeEventEmitterLike }).process;
-beforeAll(() => {
-  nodeProcess?.on("unhandledRejection", onExpectedWriteFailureRejection);
-});
-afterAll(() => {
-  nodeProcess?.off("unhandledRejection", onExpectedWriteFailureRejection);
-});
+/*
+ * REMOVED (card 95): this file's whole `process.on("unhandledRejection", …)`
+ * apparatus, plus the `NodeEventEmitterLike` shim it needed to reach `process`
+ * from a browser-targeted tsconfig.
+ *
+ * It existed because the two "revert on write failure" tests below drove a
+ * component that RETHREW the failure from a promise nothing awaited — so the
+ * only way to keep the suite green was to catch the resulting unhandled
+ * rejection by message and swallow it. That the tests needed a global
+ * exception filter to pass was the clearest possible statement that the
+ * rethrow had no owner. Card 95 replaced both throws with an alert in the
+ * section, and this scaffolding went with them.
+ */
 
 describe("SettingsSection", () => {
   const services = createFakeOptionsServices();
@@ -214,19 +197,16 @@ describe("SettingsSection", () => {
   // Card 92: `setApprovalPolicy`/`setMcpApprovalPolicy` no longer REJECT —
   // they resolve a `Result`, and the fake below returns `fail(storageFailure(...))`
   // to drive that path, same as the real adapter would on a genuine storage
-  // fault. handlePolicyChange applies the new value optimistically, then
-  // (SettingsSection.svelte, card 95's TODO) reverts `policy`/`mcpPolicy`
-  // back to the previous value on a checked `err` and RE-THROWS that error
-  // — the trigger changed from a caught exception to a checked value, but
-  // the rollback-then-rethrow behaviour itself is unchanged and still what
-  // these tests pin down. The component's `onValueChange={(next) =>
-  // handlePolicyChange(...)}` callback never awaits or catches the promise
-  // handlePolicyChange returns, so that rethrow surfaces as a genuine
-  // unhandled promise rejection rather than as something `userEvent.click`'s
-  // own promise propagates — see this file's top-level
-  // `onExpectedWriteFailureRejection` listener that absorbs exactly this
-  // (matched by message, which `storageFailure` below sets to "write failed"
-  // for that reason).
+  // fault. `handlePolicyChange` applies the new value optimistically and
+  // reverts it on a checked `err`.
+  //
+  // Card 95: the ROLLBACK is unchanged and is still what these two tests pin
+  // down — a policy the store did not accept must never be left showing,
+  // because this radio is the user's only picture of a security-relevant
+  // setting. What changed is what happens NEXT: the `throw err;` that used to
+  // follow the rollback (and reach nothing but the console, since
+  // `onValueChange` neither awaits nor catches) is now an alert in the
+  // section, asserted by the third test below.
 
   it("reverts the page policy to the previous selection when the write fails", async () => {
     services.settings.setApprovalPolicy = vi.fn(async () =>
@@ -242,6 +222,60 @@ describe("SettingsSection", () => {
     // Reverts back to "default" once the failed write settles.
     await waitFor(() => expect(pageRadio("default")).toHaveAttribute("aria-checked", "true"));
     expect(pageRadio("auto-run-all")).toHaveAttribute("aria-checked", "false");
+  });
+
+  // Card 95: the snap-back above is silent on its own — this is the half that
+  // tells the user their click did not take. Queried by TEXT rather than by
+  // `role="alert"`: shadcn's `Alert.Root` sets that role on every variant,
+  // including the standing safety-annotations notice this section already
+  // renders.
+  it("says why the page policy write failed, in the section itself", async () => {
+    services.settings.setApprovalPolicy = vi.fn(async () =>
+      fail(storageFailure("Unavailable", "write failed")),
+    );
+
+    const user = userEvent.setup();
+    render(SettingsSection);
+    await waitFor(() => expect(pageRadio("default")).toHaveAttribute("aria-checked", "true"));
+
+    await user.click(pageRadio("auto-run-all"));
+
+    expect(await screen.findByText(/Couldn't save that tool-approval policy/)).toBeInTheDocument();
+  });
+
+  // decisions/20 again: a failed MCP write must not put its message anywhere
+  // the page-policy section would show it, and vice versa.
+  it("says why the MCP policy write failed, without touching the page section", async () => {
+    services.settings.setMcpApprovalPolicy = vi.fn(async () =>
+      fail(storageFailure("Unavailable", "write failed")),
+    );
+
+    const user = userEvent.setup();
+    render(SettingsSection);
+    await waitFor(() => expect(mcpRadio("always-confirm")).toHaveAttribute("aria-checked", "true"));
+
+    await user.click(mcpRadio("trust-read-only"));
+
+    expect(
+      await screen.findByText(/Couldn't save that MCP server approval policy/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't save that tool-approval policy/)).not.toBeInTheDocument();
+  });
+
+  // Card 95: a policy that could not be READ leaves the group showing the
+  // documented default, which looks exactly like a deliberate setting — so
+  // the section has to say that it is a fallback, not the stored value.
+  it("says when the stored policy could not be read at all", async () => {
+    services.settings.getApprovalPolicy = vi.fn(async () =>
+      fail(storageFailure("Unavailable", "read failed")),
+    );
+
+    render(SettingsSection);
+
+    expect(
+      await screen.findByText(/Couldn't read your saved tool-approval policy/),
+    ).toBeInTheDocument();
+    expect(pageRadio("default")).toHaveAttribute("aria-checked", "true");
   });
 
   it("reverts the MCP policy to the previous selection when the write fails", async () => {

@@ -22,6 +22,7 @@
   // description instead, so nothing is deleted with less warning than before.
   import { onMount } from "svelte";
   import type { ChatSummary } from "../../domain/chat";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import * as Alert from "$lib/components/ui/alert";
@@ -38,14 +39,20 @@
   /** The AlertDialog replacing the old `confirm()` — closed explicitly once `chats.clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
   let confirmOpen = $state(false);
 
+  /** Card 95: this section's error line. One at a time — a failed listing and a failed clear-all cannot both be true of the same click, and the second attempt at either replaces it. */
+  let failure = $state<string | undefined>(undefined);
+
   async function refreshSessions(): Promise<void> {
     const [loaded, err] = await optionsServices().chats.listChatSummaries();
-    // Card 92 / card 95: no error state on this section yet, so a failed
-    // listing leaves the previous one showing and reports the reason.
+    // Card 92 kept the previous listing on screen rather than blanking it;
+    // card 95 says WHY it may be out of date. Blanking would be the worst
+    // reading of a failed read on this particular section, whose only button
+    // deletes everything it lists.
     if (err) {
-      console.warn("[webmcp][history] could not list chats", err);
+      failure = storageFailureMessage("Couldn't load your stored chats", err);
       return;
     }
+    failure = undefined;
     sessions = loaded;
   }
 
@@ -66,18 +73,19 @@
   async function handleClearAll(): Promise<void> {
     if (sessions.length === 0) return;
     clearingHistory = true;
-    try {
-      // Card 92: only empty the list when the clear actually landed — the
-      // rejection this replaces skipped this assignment, and showing an
-      // empty history for chats that are still in storage would be the worst
-      // possible lie for this particular button to tell.
-      const [, err] = await optionsServices().chats.clearAllChats();
-      if (err) console.warn("[webmcp][history] could not clear chat history", err);
-      else sessions = [];
-    } finally {
-      clearingHistory = false;
-      confirmOpen = false;
+    // Card 92: only empty the list when the clear actually landed — showing
+    // an empty history for chats that are still in storage would be the worst
+    // possible lie for this particular button to tell. Card 95: and say so,
+    // because a delete-everything button that appears to do nothing is the
+    // other way to lose the user's trust here.
+    const [, err] = await optionsServices().chats.clearAllChats();
+    if (err) failure = storageFailureMessage("Couldn't clear your chat history", err);
+    else {
+      failure = undefined;
+      sessions = [];
     }
+    clearingHistory = false;
+    confirmOpen = false;
   }
 </script>
 
@@ -95,6 +103,12 @@
     </Card.Header>
 
     <Card.Content class="flex flex-col gap-4">
+      {#if failure}
+        <Alert.Root variant="destructive">
+          <Alert.Description>{failure}</Alert.Description>
+        </Alert.Root>
+      {/if}
+
       <Alert.Root class="bg-muted/40">
         <Alert.Description>
           Conversation history — including page content and tool-call results from sites you've

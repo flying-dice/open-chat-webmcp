@@ -33,6 +33,7 @@
   // never saved.
   import { onDestroy, onMount } from "svelte";
   import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import * as Alert from "$lib/components/ui/alert";
   import * as Card from "$lib/components/ui/card";
@@ -102,9 +103,19 @@
 
   let policy = $state<ApprovalPolicy>("default");
   let policyLoading = $state(true);
+  /**
+   * Card 95: what replaced the rethrow. One message per group, cleared by the
+   * next successful change — both a READ that could not be trusted (the group
+   * is showing the documented default, which may not be what is stored) and a
+   * WRITE that did not land (the selection has just snapped back) end up here,
+   * because from the user's side they are the same fact: what this page shows
+   * and what the extension will actually do may differ.
+   */
+  let policyFailure = $state<string | undefined>(undefined);
 
   let mcpPolicy = $state<McpApprovalPolicy>("always-confirm");
   let mcpPolicyLoading = $state(true);
+  let mcpPolicyFailure = $state<string | undefined>(undefined);
 
   let unsubscribePolicy: (() => void) | undefined;
   let unsubscribeMcpPolicy: (() => void) | undefined;
@@ -113,18 +124,30 @@
     // Card 92: an unreadable policy leaves each radio group on the
     // documented default it was initialised with — the same value the
     // adapter substitutes for a stored value it cannot decode — rather than
-    // showing a blank group. Card 95 gives this section a real error notice.
+    // showing a blank group. Card 95 says so on screen: a group silently
+    // showing "Default" when the stored policy could not be read would tell
+    // the user their tool calls are gated one way while the gate itself
+    // (`ApprovalPolicyGate`, which reads the store independently and fails
+    // CLOSED) is behaving another.
     optionsServices()
       .settings.getApprovalPolicy()
       .then(([p, err]) => {
-        if (err) console.warn("[webmcp][settings] could not read the approval policy", err);
+        if (err)
+          policyFailure = storageFailureMessage(
+            "Couldn't read your saved tool-approval policy",
+            err,
+          );
         else policy = p;
       })
       .finally(() => (policyLoading = false));
     optionsServices()
       .settings.getMcpApprovalPolicy()
       .then(([p, err]) => {
-        if (err) console.warn("[webmcp][settings] could not read the MCP approval policy", err);
+        if (err)
+          mcpPolicyFailure = storageFailureMessage(
+            "Couldn't read your saved MCP server approval policy",
+            err,
+          );
         else mcpPolicy = p;
       })
       .finally(() => (mcpPolicyLoading = false));
@@ -145,22 +168,31 @@
     unsubscribeMcpPolicy?.();
   });
 
-  // The two rethrows below are the LAST throws of an expected failure left
-  // in this component, and they are card 95's to remove (see
-  // scripts/throw-allowlist.json). Card 92 changed only their trigger: the
-  // settings port returns a `Result` now, so the failure is a checked value
-  // rather than a caught exception — but until this section renders an error
-  // notice, rethrowing is still what stops a failed write from leaving the
-  // radio silently out of step with storage. The rollback is the part that
-  // must not regress; the throw is the placeholder.
+  // THE LAST TWO THROWS OF AN EXPECTED FAILURE IN THIS REPO, REMOVED (card
+  // 95, decisions/34-errors-as-values.md). Both were `throw err;` after the
+  // rollback below, and both were on scripts/throw-allowlist.json marked
+  // `migrates: card 95` — the only entries there that never asserted an
+  // invariant. What the rethrow actually did was reach the window's unhandled
+  // -rejection handler: the radio group's `onValueChange` neither awaits nor
+  // catches this promise, so the failure was "reported" to the devtools
+  // console of a page the user is not looking at, and the UI's only remaining
+  // signal was the selection quietly springing back.
+  //
+  // The ROLLBACK is the behaviour that must not regress, and it is unchanged:
+  // a policy the store did not accept must not be left showing, because this
+  // radio is the user's only picture of a security-relevant setting. What is
+  // new is that the snap-back now comes with the reason attached, in the
+  // section itself.
   async function handlePolicyChange(next: ApprovalPolicy): Promise<void> {
     const previous = policy;
     policy = next; // optimistic
     const [, err] = await optionsServices().settings.setApprovalPolicy(next);
     if (err) {
       policy = previous;
-      throw err;
+      policyFailure = storageFailureMessage("Couldn't save that tool-approval policy", err);
+      return;
     }
+    policyFailure = undefined;
   }
 
   async function handleMcpPolicyChange(next: McpApprovalPolicy): Promise<void> {
@@ -169,8 +201,13 @@
     const [, err] = await optionsServices().settings.setMcpApprovalPolicy(next);
     if (err) {
       mcpPolicy = previous;
-      throw err;
+      mcpPolicyFailure = storageFailureMessage(
+        "Couldn't save that MCP server approval policy",
+        err,
+      );
+      return;
     }
+    mcpPolicyFailure = undefined;
   }
 </script>
 
@@ -185,6 +222,13 @@
     </Card.Header>
 
     <Card.Content class="flex flex-col gap-4">
+      <!-- Card 95: what the two rethrows became. Above the radio group, so a
+           selection that sprang back is explained right where it happened. -->
+      {#if policyFailure}
+        <Alert.Root variant="destructive">
+          <Alert.Description>{policyFailure}</Alert.Description>
+        </Alert.Root>
+      {/if}
       {#if policyLoading}
         <p class="text-sm text-muted-foreground">Loading…</p>
       {:else}
@@ -241,6 +285,11 @@
     </Card.Header>
 
     <Card.Content class="flex flex-col gap-4">
+      {#if mcpPolicyFailure}
+        <Alert.Root variant="destructive">
+          <Alert.Description>{mcpPolicyFailure}</Alert.Description>
+        </Alert.Root>
+      {/if}
       {#if mcpPolicyLoading}
         <p class="text-sm text-muted-foreground">Loading…</p>
       {:else}

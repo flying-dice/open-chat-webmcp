@@ -10,6 +10,8 @@ import userEvent from "@testing-library/user-event";
 import McpServerForm from "./McpServerForm.svelte";
 import { createFakeOptionsServices, initFakeOptionsServices } from "../testing/fake-services";
 import type { McpOAuthAuth, McpSignInCompletion } from "../../domain/tools";
+import { ok, type Result } from "../../domain/result";
+import type { StorageError } from "../../domain/storage";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
 // `afterEach` are Vitest GLOBALS (test.globals in vitest.config.ts, which
@@ -122,7 +124,9 @@ describe("McpServerForm", () => {
 
   it("switches the transport selection", async () => {
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     expect(screen.getByRole("button", { name: "Transport" })).toHaveTextContent(
       "Auto (recommended)",
@@ -133,7 +137,9 @@ describe("McpServerForm", () => {
 
   it("shows the bearer token field only in bearer auth mode", async () => {
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     expect(screen.queryByLabelText("Bearer token")).not.toBeInTheDocument();
     expect(screen.queryByText("OAuth sign-in")).not.toBeInTheDocument();
@@ -158,7 +164,7 @@ describe("McpServerForm", () => {
 
   it("blocks submit with no display name", async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn();
+    const onSubmit = vi.fn(async () => ok());
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
     // A genuinely EMPTY name never reaches the component's own validation at
@@ -179,7 +185,7 @@ describe("McpServerForm", () => {
 
   it("blocks submit with an invalid URL", async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn();
+    const onSubmit = vi.fn(async () => ok());
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
     await user.type(screen.getByLabelText("Display name"), "My server");
@@ -192,7 +198,7 @@ describe("McpServerForm", () => {
 
   it("blocks submit on a reserved header name", async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn();
+    const onSubmit = vi.fn(async () => ok());
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 
     await user.type(screen.getByLabelText("Display name"), "My server");
@@ -231,7 +237,9 @@ describe("McpServerForm", () => {
       });
 
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
     await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
     await selectOption(user, "Authentication", "Sign in with OAuth");
 
@@ -256,7 +264,9 @@ describe("McpServerForm", () => {
     services.mcpSignIn.begin = async () => ({ status: "error", message: "boom" });
 
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
     await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
     await selectOption(user, "Authentication", "Sign in with OAuth");
 
@@ -280,7 +290,9 @@ describe("McpServerForm", () => {
     );
 
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
     await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
     await selectOption(user, "Authentication", "Sign in with OAuth");
 
@@ -303,7 +315,9 @@ describe("McpServerForm", () => {
 
   it("disconnects a signed-in OAuth credential", async () => {
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
     await user.type(screen.getByLabelText("MCP endpoint URL"), "https://mcp.example.com");
     await selectOption(user, "Authentication", "Sign in with OAuth");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
@@ -322,7 +336,9 @@ describe("McpServerForm", () => {
 
   it("adds and removes a header row", async () => {
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     await user.click(screen.getByRole("button", { name: "Add header" }));
     expect(screen.getByPlaceholderText("Header name, e.g. x-api-key")).toBeInTheDocument();
@@ -333,7 +349,9 @@ describe("McpServerForm", () => {
 
   it("reserves Authorization only once auth is actually configured", async () => {
     const user = userEvent.setup();
-    render(McpServerForm, { props: { mode: "add", onSubmit: vi.fn(), onCancel: vi.fn() } });
+    render(McpServerForm, {
+      props: { mode: "add", onSubmit: vi.fn(async () => ok()), onCancel: vi.fn() },
+    });
 
     await user.click(screen.getByRole("button", { name: "Add header" }));
     await user.type(screen.getByPlaceholderText("Header name, e.g. x-api-key"), "Authorization");
@@ -354,7 +372,7 @@ describe("McpServerForm", () => {
 
   it("calls onCancel, not onSubmit, when Cancel is clicked", async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn();
+    const onSubmit = vi.fn(async () => ok());
     const onCancel = vi.fn();
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel } });
 
@@ -365,10 +383,12 @@ describe("McpServerForm", () => {
   });
 
   it("submits the built config and shows a saving state meanwhile", async () => {
-    let resolveSubmit!: () => void;
+    // Card 95: `onSubmit` returns `Result<void, StorageError>` now, so the
+    // deferred promise resolves `ok()` rather than `undefined`.
+    let resolveSubmit!: (result: Result<void, StorageError>) => void;
     const onSubmit = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<Result<void, StorageError>>((resolve) => {
           resolveSubmit = resolve;
         }),
     );
@@ -393,12 +413,12 @@ describe("McpServerForm", () => {
       }),
     );
 
-    resolveSubmit();
+    resolveSubmit(ok());
     expect(await screen.findByRole("button", { name: "Add server" })).toBeEnabled();
   });
 
   it("submits with the snapshotted OAuth credential when auth mode is oauth", async () => {
-    const onSubmit = vi.fn(async () => undefined);
+    const onSubmit = vi.fn(async () => ok());
     const user = userEvent.setup();
     render(McpServerForm, { props: { mode: "add", onSubmit, onCancel: vi.fn() } });
 

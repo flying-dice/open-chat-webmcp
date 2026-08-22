@@ -165,12 +165,17 @@ export function createFakeChatService(overrides: Partial<ChatService> = {}): Cha
     activeTabOrigin: () => "",
     syncToTab: async () => undefined,
     applyNavigation: async () => undefined,
-    startNewChat: async () => undefined,
-    openChat: async () => false,
-    discardIfDeleted: async () => undefined,
-    renameCurrent: async () => undefined,
+    // Card 95: the five USER-DRIVEN lifecycle methods return
+    // `Result<…, StorageError>` now (src/domain/chat/service.ts) — a fake
+    // that answers `ok(false)`/`ok()` is the "nothing happened, and nothing
+    // went wrong" default; a test that wants the failure path overrides with
+    // `fail(storageFailure(...))`.
+    startNewChat: async () => ok(),
+    openChat: async () => ok(false),
+    discardIfDeleted: async () => ok(),
+    renameCurrent: async () => ok(),
     getSelection: () => undefined,
-    setSelection: async () => false,
+    setSelection: async () => ok(false),
     addUserMessage: () => "",
     beginAssistantMessage: () => "",
     appendAssistantDelta: () => undefined,

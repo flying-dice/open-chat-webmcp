@@ -17,8 +17,10 @@
   // Card/Alert/Empty/Button shell ProvidersSection got, kept in step with it
   // for the same reason the state layout is.
   import { onMount } from "svelte";
+  import { fail, ok, type Result } from "../../domain/result";
   import type { StorageError } from "../../domain/storage";
   import type { McpServerConfig } from "../../domain/tools";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
   import McpServerForm from "./McpServerForm.svelte";
@@ -32,6 +34,8 @@
 
   let servers = $state<McpServerConfig[]>([]);
   let loading = $state(true);
+  /** Card 95: this section's storage-failure line — mirrors ProvidersSection.svelte's, for the same reasons. Form saves report into McpServerForm.svelte instead. */
+  let failure = $state<string | undefined>(undefined);
 
   let adding = $state(false);
   let editingId = $state<string | null>(null);
@@ -51,12 +55,15 @@
 
   async function refresh(): Promise<void> {
     const [loaded, err] = await optionsServices().mcpServers.listServers();
-    // Card 92 / card 95: no error state on this section yet, so a failed
-    // read leaves the previous list showing and reports the reason.
+    // Card 92 kept the previous list showing rather than blanking it on a
+    // failed read; card 95 says why it may be stale. Blanking would read as
+    // "your servers are gone", which is a worse lie here than anywhere else
+    // on this page — these rows carry stored tokens.
     if (err) {
-      console.warn("[webmcp][mcp] could not list servers", err);
+      failure = storageFailureMessage("Couldn't load your saved MCP servers", err);
       return;
     }
+    failure = undefined;
     servers = loaded;
     await refreshPermissions();
   }
@@ -76,32 +83,39 @@
     });
   });
 
-  /** Card 92 — see ProvidersSection.svelte's twin: a write that failed must not be followed by the UI change that assumed it landed. Card 95 turns these into visible notices. */
+  /** Card 92 — see ProvidersSection.svelte's twin: a write that failed must not be followed by the UI change that assumed it landed. Card 95 turns each one into a line the user can actually read, except the two FORM writes, which report inside the still-open form. */
   function reportWriteFailure(what: string, cause: StorageError): void {
-    console.warn(`[webmcp][mcp] ${what}`, cause);
+    failure = storageFailureMessage(what, cause);
   }
 
-  async function handleAddSubmit(data: Omit<McpServerConfig, "id">): Promise<void> {
+  async function handleAddSubmit(
+    data: Omit<McpServerConfig, "id">,
+  ): Promise<Result<void, StorageError>> {
     const [, err] = await optionsServices().mcpServers.addServer(data);
-    if (err) return reportWriteFailure("could not add the server", err);
+    if (err) return fail(err);
     adding = false;
     await refresh();
+    return ok();
   }
 
-  async function handleEditSubmit(id: string, data: Omit<McpServerConfig, "id">): Promise<void> {
+  async function handleEditSubmit(
+    id: string,
+    data: Omit<McpServerConfig, "id">,
+  ): Promise<Result<void, StorageError>> {
     const [, err] = await optionsServices().mcpServers.updateServer(id, data);
-    if (err) return reportWriteFailure("could not save the server", err);
+    if (err) return fail(err);
     editingId = null;
     await refresh();
+    return ok();
   }
 
   async function handleRemove(server: McpServerConfig): Promise<void> {
-    const ok = confirm(
+    const confirmed = confirm(
       `Remove "${server.name}"? Its tools will no longer be offered to the model, and its stored token and headers will be deleted.`,
     );
-    if (!ok) return;
+    if (!confirmed) return;
     const [, err] = await optionsServices().mcpServers.removeServer(server.id);
-    if (err) return reportWriteFailure("could not remove the server", err);
+    if (err) return reportWriteFailure(`Couldn't remove "${server.name}"`, err);
     delete testOutcomes[server.id];
     delete permissionGranted[server.id];
     await refresh();
@@ -111,7 +125,15 @@
     const [, err] = await optionsServices().mcpServers.updateServer(server.id, {
       enabled: !server.enabled,
     });
-    if (err) return reportWriteFailure("could not change whether the server is enabled", err);
+    // The row's toggle reads from `servers`, which `refresh()` below rewrites
+    // — so a failed write leaves the switch where it was, and this line is
+    // the only thing that distinguishes that from a click that missed.
+    if (err) {
+      return reportWriteFailure(
+        server.enabled ? `Couldn't turn "${server.name}" off` : `Couldn't turn "${server.name}" on`,
+        err,
+      );
+    }
     await refresh();
   }
 
@@ -129,7 +151,7 @@
     const [, err] = await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
     // Same as ProvidersSection's twin: the optimistic swap already happened,
     // so a failure leaves the list ahead of storage until the next refresh.
-    if (err) reportWriteFailure("could not save the new server order", err);
+    if (err) reportWriteFailure("Couldn't save the new server order", err);
   }
 
   /**
@@ -181,6 +203,12 @@
     </Card.Header>
 
     <Card.Content class="flex flex-col gap-4">
+      {#if failure}
+        <Alert.Root variant="destructive">
+          <Alert.Description>{failure}</Alert.Description>
+        </Alert.Root>
+      {/if}
+
       <Alert.Root class="bg-muted/40">
         <Alert.Description>
           The bearer token and custom header values you set below are stored unencrypted on this

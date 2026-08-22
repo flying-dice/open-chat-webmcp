@@ -67,7 +67,6 @@ import {
   resolveCapabilities,
   resolveCapability,
   resolveSelection,
-  type ChatProvider,
   type ModelCapabilities,
   type ProviderConfig,
   type ProviderError,
@@ -75,7 +74,9 @@ import {
   type ProviderSelection,
   type SelectionResolution,
 } from "../../domain/providers";
+import { storageFailureMessage } from "../../ui/storageMessage";
 import { chat, sidePanelServices } from "../app-services";
+import { reportNotice } from "./notices.svelte";
 
 export type { SelectionResolution } from "../../domain/providers";
 
@@ -311,7 +312,13 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
     // path the card is unhappy about — `explicit: false` records that so the
     // composer knows to ask for a one-click confirmation before the first
     // message, rather than treating this silent seed as good enough.
-    const applied = await chat().setSelection(newTabId, defaultSelection, false);
+    // Card 95: `ok(false)` (no chat loaded for this tab yet) and a write that
+    // failed are different answers, and only the first means "carry on
+    // without a selection". A failed seed is NOT reported to the user: the
+    // user did not ask for it — it is the silent convenience card 35 makes
+    // them confirm before sending anyway — so the honest outcome is to leave
+    // the chat with no selection and let the composer ask for one.
+    const [applied] = await chat().setSelection(newTabId, defaultSelection, false);
     if (applied) stored = { selection: defaultSelection, explicit: false };
   }
 
@@ -331,19 +338,24 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
 // Per-provider model loading (decisions/22: parallel, degrading per provider)
 // ---------------------------------------------------------------------------
 
-// TODO: clean-code - 0.3 - DRY: buildClient (try createProviderClient, catch -> undefined) is duplicated verbatim in src/options/components/ProvidersSection.svelte instead of being shared.
-function buildClient(config: ProviderConfig): ChatProvider | undefined {
-  try {
-    return sidePanelServices().createProviderClient(config);
-  } catch {
-    // No factory registered for this provider's type (registry.ts: a
-    // programming-error path, e.g. a self-registering module — see
-    // src/lib/providers/openai.ts — that was never imported for this
-    // entry point). Surface as a plain error rather than throwing through
-    // the picker.
-    return undefined;
-  }
-}
+/*
+ * REMOVED (card 95): `buildClient`, a `try { createProviderClient(config) }
+ * catch { return undefined }` wrapper, and every `if (!client)` branch that
+ * followed it.
+ *
+ * It guarded the OLD runtime service locator, which threw for a provider type
+ * nobody had side-effect-imported. Card 75 replaced that with
+ * `createProviderClientFactory`'s exhaustive `Record<ProviderType, …>`
+ * (src/domain/providers/client-factory.ts): the map is total by construction,
+ * a missing entry is a COMPILE error in the composition root, and there is no
+ * runtime path left for the catch to catch. What it actually did after card 75
+ * was fabricate a `ProviderError` — `{kind:"invalid-response"}`, a wire
+ * failure that had not happened — for a state the type system already ruled
+ * out. decisions/34's audit is exactly the sweep that finds that shape, and
+ * deleting it is the fix: the picker now shows a provider's REAL failures
+ * only. The identical twin in src/options/components/ProvidersSection.svelte
+ * went with it.
+ */
 
 /**
  * Load (or reload) ONE provider's model list, writing only that provider's
@@ -364,22 +376,7 @@ async function loadModelsForProvider(config: ProviderConfig): Promise<void> {
   providerTokens[config.id] = token;
   providerModelsState[config.id] = { status: "loading" };
 
-  const client = buildClient(config);
-  if (!client) {
-    // Programming-error path (registry.ts: no factory registered for this
-    // provider type), not an actual `ProviderError` from a client — there
-    // is no real "kind" to report, so this is the closest honest fit
-    // rather than fabricating a network/auth failure that didn't happen.
-    const message = `No client is registered for provider type "${config.type}".`;
-    if (providerTokens[config.id] !== token) return;
-    providerModelsState[config.id] = {
-      status: "error",
-      message,
-      error: { kind: "invalid-response", message },
-    };
-    return;
-  }
-
+  const client = sidePanelServices().createProviderClient(config);
   const [models, listErr] = await client.listModels();
   if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
 
@@ -425,8 +422,8 @@ export async function enterManualModel(providerId: string, modelId: string): Pro
   if (state?.status !== "not-supported") return;
 
   const config = findProvider(providerId);
-  const client = config ? buildClient(config) : undefined;
-  if (!client) return;
+  if (!config) return;
+  const client = sidePanelServices().createProviderClient(config);
 
   const token = providerTokens[providerId] ?? 0; // manual entry doesn't invalidate an in-flight list load, but a real reload should invalidate a stale manual-entry write
   const model: ProviderModel = { id: trimmed, name: trimmed };
@@ -476,7 +473,15 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   const next: ProviderSelection = { providerId, model };
 
   // Card 35: a click here IS the deliberate choice — explicit: true.
-  await chat().setSelection(tabId, next, true);
+  //
+  // Card 95: unlike the silent seed in `syncToTab`, this one the user just
+  // made, so a failed write gets said out loud. The choice still applies to
+  // this panel session (the service leaves it on the live chat — see
+  // `ChatService.setSelection`), so the notice is about durability, and the
+  // selection below is set either way rather than snapping the picker back to
+  // a model the user did not choose.
+  const [, err] = await chat().setSelection(tabId, next, true);
+  if (err) reportNotice(storageFailureMessage("Couldn't save your model choice", err));
   selectionExplicit = true;
 
   // Seeding the global default is a convenience, not part of committing the

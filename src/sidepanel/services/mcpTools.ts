@@ -106,7 +106,13 @@ async function refreshNow(): Promise<void> {
   const checks = await Promise.all(
     servers.map(async (config) => ({
       config,
-      allowed: await permissions.has(config.url).catch(() => false),
+      // No `.catch` (card 95): `HostPermissions.has` is documented never to
+      // throw — an unrequestable URL, a declined grant and a platform error
+      // all resolve `false` inside the adapter
+      // (src/domain/permissions/host-permissions.ts,
+      // src/infra/chrome-runtime/permissions.ts). A defensive catch on a
+      // never-throws port only hides the day that stops being true.
+      allowed: await permissions.has(config.url),
     })),
   );
   const permitted = checks.filter((c) => c.allowed).map((c) => c.config);
@@ -254,7 +260,7 @@ async function executeServerTool(
   // options tab, or the user reacting mid-conversation) — decisions/19 §4's
   // "specific reason" requirement applies here too, not just to discovery.
   const { mcpTools: gateway, permissions } = sidePanelServices();
-  const allowed = await permissions.has(config.url).catch(() => false);
+  const allowed = await permissions.has(config.url); // never-throws port — see `refreshNow`
   if (!allowed) {
     return {
       ok: false,

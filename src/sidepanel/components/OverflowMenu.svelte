@@ -68,21 +68,32 @@
   const recent = $derived(summaries.slice(0, RECENT_LIMIT));
   const hasMore = $derived(summaries.length > RECENT_LIMIT);
 
+  /**
+   * Card 95: this menu's own one-line error state. A shortcut list that could
+   * not be refreshed is not worth the panel's notice channel — the user is
+   * standing in front of the thing that failed, and "More" (the full History
+   * view, which reports properly) is one row below.
+   */
+  let listFailed = $state(false);
+
   function handleOpenChange(open: boolean): void {
     if (!open) return;
     // Card 92: a failed listing leaves whatever this menu last showed in
-    // place rather than blanking it — the recent list is a convenience, and
-    // card 95 is where the surfaces grow real error states.
+    // place rather than blanking it — the recent list is a convenience.
     void sidePanelServices()
       .chats.listChatSummaries()
       .then(([loaded, err]) => {
-        if (err) console.warn("[webmcp][history] could not list recent chats", err);
-        else summaries = loaded;
+        listFailed = err !== undefined;
+        if (!err) summaries = loaded;
       });
   }
 
   async function handleOpenChat(id: string): Promise<void> {
-    if (await chat().openChat(id)) onOpenChat();
+    // An unreadable store and a chat that no longer exists are different
+    // facts (card 95), but not to this menu: either way it has nothing to
+    // switch to, and the full History view is where the reason is shown.
+    const [opened] = await chat().openChat(id);
+    if (opened) onOpenChat();
   }
 </script>
 
@@ -109,7 +120,13 @@
   >
     <DropdownMenu.Label>Recent chats</DropdownMenu.Label>
 
-    {#if recent.length === 0}
+    {#if listFailed}
+      <p class="px-3 py-2 text-xs text-destructive" role="alert">
+        Couldn't load your recent chats.
+      </p>
+    {/if}
+
+    {#if recent.length === 0 && !listFailed}
       <p class="px-3 py-2 text-xs text-muted-foreground">No chats yet.</p>
     {:else}
       {#each recent as summary (summary.id)}

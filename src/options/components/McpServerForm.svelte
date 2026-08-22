@@ -37,6 +37,10 @@
   // submits. Nothing below names `chrome`.
   import { optionsServices } from "../app-services";
   import { originPatternForUrl } from "../../domain/permissions";
+  import type { Result } from "../../domain/result";
+  import type { StorageError } from "../../domain/storage";
+  import { copyText } from "../../ui/clipboard";
+  import { storageFailureMessage } from "../../ui/storageMessage";
   import {
     firstHeaderError,
     toHeaderRows,
@@ -63,7 +67,8 @@
   interface Props {
     mode: "add" | "edit";
     initial?: McpServerConfig;
-    onSubmit: (data: Omit<McpServerConfig, "id">) => Promise<void>;
+    /** Save the config. Card 95: returns the registry's own failure so this form can keep the user's input on screen with the reason — see ProviderForm.svelte's twin prop. */
+    onSubmit: (data: Omit<McpServerConfig, "id">) => Promise<Result<void, StorageError>>;
     onCancel: () => void;
   }
 
@@ -157,15 +162,13 @@
   }
 
   async function copyRedirectUri(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(redirectUri());
-      redirectUriCopied = true;
-      setTimeout(() => (redirectUriCopied = false), 1500);
-    } catch {
-      // Clipboard access can fail for reasons outside this form's control
-      // (permission, focus) — the field itself is still selectable text, so
-      // this is a convenience, not the only way to get the value.
-    }
+    // Card 95: the platform catch moved into src/ui/clipboard.ts's
+    // never-throws wrapper. A refusal is still silent by design — the field
+    // is selectable text, so copying is a convenience and not the only way to
+    // get the value.
+    if (!(await copyText(redirectUri()))) return;
+    redirectUriCopied = true;
+    setTimeout(() => (redirectUriCopied = false), 1500);
   }
 
   // TODO: clean-code - 0.3 - COUPLING: the "needs reconnect" rule (expiresAt <= Date.now() && !refreshToken) is duplicated inline in McpServerRow.svelte instead of living once in src/domain/tools.
@@ -450,13 +453,9 @@
     }
 
     saving = true;
-    try {
-      await onSubmit(buildData());
-    } catch (err) {
-      formError = err instanceof Error ? err.message : String(err);
-    } finally {
-      saving = false;
-    }
+    const [, err] = await onSubmit(buildData());
+    saving = false;
+    if (err) formError = storageFailureMessage("Couldn't save this MCP server", err);
   }
 </script>
 

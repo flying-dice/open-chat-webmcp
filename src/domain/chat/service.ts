@@ -37,7 +37,7 @@
 // Pure: no `chrome.*`, no `fetch`, no DOM, no Svelte.
 
 import type { ProviderSelection, ToolCall } from "../providers";
-import type { Result } from "../result";
+import { fail, ok, type Result } from "../result";
 import type { StorageError } from "../storage";
 import type { ApprovalPolicyGate } from "../settings";
 import type { ToolOrigin } from "../tools";
@@ -101,6 +101,30 @@ export interface ChatServiceSnapshot {
  * explicit `target` and default to the current chat, so a one-shot caller
  * acting on what is on screen right now reads exactly as it did before card
  * 77, while a turn threads its captured session through every call.
+ *
+ * WHICH METHODS CARRY A `StorageError`, AND WHY (card 95,
+ * decisions/34-errors-as-values.md). Three postures, chosen per method rather
+ * than uniformly — "every signature returns a `Result`" would be ceremony,
+ * and a `Result` nobody can act on is worse than an honest `void`:
+ *
+ *  1. RETURNED — the five methods a USER drives (`openChat`,
+ *     `startNewChat`, `discardIfDeleted`, `renameCurrent`, `setSelection`).
+ *     Each is the direct consequence of something the user just did, so its
+ *     caller has an affordance for the failure: leave History open, show a
+ *     notice, keep the form up. The error member means exactly one thing —
+ *     STORAGE DID NOT TAKE IT — and where the swap could be avoided it was
+ *     (see `openChat`/`startNewChat`: the tab pointer is written BEFORE the
+ *     visible chat changes, so a failed write leaves the screen truthful
+ *     rather than showing a chat the tab does not point at).
+ *  2. ABSORBED AND REPORTED — `syncToTab` and `applyNavigation`. Their only
+ *     driver is a `chrome.tabs` event (src/infra/chrome-runtime/tab-sync.ts):
+ *     nobody asked for the swap, nothing is waiting on its result, and there
+ *     is no surface to tell. The recovery lives INSIDE them (leave the
+ *     service pointed where it was rather than adopt a fabricated empty
+ *     chat), and the reason goes to `ChatServiceDeps.reportStorageFailure`.
+ *  3. NOT ASYNC AT ALL — the transcript mutators, which persist
+ *     fire-and-forget so a token stream never waits on a write. Same sink as
+ *     (2); see `save` in the implementation.
  */
 export interface ChatService extends TurnTranscript {
   /** The chat currently on screen, or `undefined` before the first {@link ChatService.syncToTab}. Never hold this across an `await`: by definition it may have moved on. */
@@ -118,29 +142,36 @@ export interface ChatService extends TurnTranscript {
    * was deleted) and make it the live target for every mutator. Call on
    * initial mount and on every real tab switch — never for a same-tab
    * navigation, see {@link ChatService.applyNavigation}.
+   *
+   * Posture (2) above: a store that does not answer leaves the service
+   * pointed where it was and is reported, not returned.
    */
   syncToTab(tabId: number, origin: string): Promise<void>;
 
-  /** Apply a same-tab navigation (decision 13): a real origin change RETIRES the current chat — it stays exactly as it is in storage, this tab simply stops pointing at it — and starts a fresh one. A no-op if the origin hasn't changed, if no chat is loaded, or if `tabId` is no longer the tab this service is pointed at. */
+  /** Apply a same-tab navigation (decision 13): a real origin change RETIRES the current chat — it stays exactly as it is in storage, this tab simply stops pointing at it — and starts a fresh one. A no-op if the origin hasn't changed, if no chat is loaded, or if `tabId` is no longer the tab this service is pointed at. Posture (2): reported, not returned. */
   applyNavigation(tabId: number, newOrigin: string): Promise<void>;
 
-  /** Retire the current tab's chat and start a fresh one for `origin`, carrying the previous chat's provider/model selection (and card 35's explicit flag) over. Also the seam the "New Chat" button uses. No-op if no tab is loaded. */
-  startNewChat(origin: string): Promise<void>;
+  /** Retire the current tab's chat and start a fresh one for `origin`, carrying the previous chat's provider/model selection (and card 35's explicit flag) over. Also the seam the "New Chat" button uses. `ok()` and a no-op if no tab is loaded; a failed tab-pointer write leaves the CURRENT chat on screen and comes back as the error, so the panel never shows a fresh chat the tab does not point at. */
+  startNewChat(origin: string): Promise<Result<void, StorageError>>;
 
-  /** Resume a past chat (History) as the current tab's chat — allowed even cross-origin (decision 13). `false` if no tab is loaded or `chatId` no longer resolves. */
-  openChat(chatId: string): Promise<boolean>;
+  /** Resume a past chat (History) as the current tab's chat — allowed even cross-origin (decision 13). `ok(false)` if no tab is loaded or `chatId` no longer resolves — the chat is simply not there, which is not a failure; the error member is for a store that could not be READ or could not record the tab's new pointer, in which case nothing was swapped and the caller should stay where it is. */
+  openChat(chatId: string): Promise<Result<boolean, StorageError>>;
 
-  /** If `chatId` is the chat currently open in this tab, replace it with a fresh one, so a later message can't resurrect a chat the user just deleted. A no-op for any other id. */
-  discardIfDeleted(chatId: string): Promise<void>;
+  /** If `chatId` is the chat currently open in this tab, replace it with a fresh one, so a later message can't resurrect a chat the user just deleted. A no-op (and `ok()`) for any other id; otherwise exactly {@link ChatService.startNewChat}'s result. */
+  discardIfDeleted(chatId: string): Promise<Result<void, StorageError>>;
 
-  /** Rename the current chat (decisions/24 §4). An empty result UNSETS the name and reverts to the derived title. Persists immediately but WITHOUT stamping `updatedAt` — renaming is not conversation activity. */
-  renameCurrent(title: string): Promise<void>;
+  /** Rename the current chat (decisions/24 §4). An empty result UNSETS the name and reverts to the derived title. Persists immediately but WITHOUT stamping `updatedAt` — renaming is not conversation activity. The new name is applied to the live session first, so an error means "shown, but not durable" — the caller says so rather than reverting a name the user is looking at. */
+  renameCurrent(title: string): Promise<Result<void, StorageError>>;
 
   /** The current chat's persisted selection for `tabId`, or `undefined` if none is set (or a different tab's chat is loaded). */
   getSelection(tabId: number): StoredSelection | undefined;
 
-  /** Persist `next` as `tabId`'s selection, by mutating the SAME live object every other mutator writes to — never a separately-loaded snapshot (card 27's invariant: no writer may persist a session it did not just read). `false` if no chat is loaded for `tabId`. */
-  setSelection(tabId: number, next: ProviderSelection, explicit: boolean): Promise<boolean>;
+  /** Persist `next` as `tabId`'s selection, by mutating the SAME live object every other mutator writes to — never a separately-loaded snapshot (card 27's invariant: no writer may persist a session it did not just read). `ok(false)` if no chat is loaded for `tabId`; the error member means the choice is live in this panel but did not reach storage. */
+  setSelection(
+    tabId: number,
+    next: ProviderSelection,
+    explicit: boolean,
+  ): Promise<Result<boolean, StorageError>>;
 
   /** Append a user message to the current chat and return its id. `""` if no chat is loaded yet. */
   addUserMessage(content: string): string;
@@ -169,24 +200,26 @@ export interface ChatServiceDeps {
   toolCallTimeoutMs: number;
   /**
    * Where a storage failure this service ABSORBS is reported (card 59 item 3,
-   * widened by card 92).
+   * widened by card 92, narrowed to its final shape by card 95).
    *
-   * Two kinds of call site reach it. The first is every transcript mutator:
-   * they persist fire-and-forget — they must stay synchronous-feeling for
-   * streaming, so this does not block or retry; it only makes a failure
-   * visible instead of a swallowed promise rejection. The second arrived with
-   * decisions/34: `ChatStore` now RETURNS its failures, and the lifecycle
-   * methods below (`syncToTab`, `openChat`, …) still have `Promise<void>` /
-   * `Promise<boolean>` signatures that cannot carry one — card 95 is where
-   * this service's own driving API grows typed results and those call sites
-   * stop absorbing anything. Until then, absorbing is at least explicit and
-   * reported, which is more than the rejections it replaces ever were.
+   * Exactly two kinds of call site reach it, and both are ones with nowhere
+   * to return to (see `ChatService`'s postures (2) and (3)):
+   *
+   *   - every transcript mutator, which persists fire-and-forget: they must
+   *     stay synchronous-feeling for streaming, so this does not block or
+   *     retry; it only makes a failure visible instead of a swallowed promise
+   *     rejection.
+   *   - `syncToTab`/`applyNavigation`, driven by a `chrome.tabs` event rather
+   *     than by a person.
+   *
+   * Every OTHER failure in this file is now in a signature. Nothing reaches
+   * here that a caller could have been told about.
    *
    * Defaults to `console.error`, which is not a platform API and exists in a
    * bare Node test: the default is there so a failure can never be silent by
    * omission, not because the domain has an opinion about sinks.
    */
-  reportStorageFailure?: (message: string, cause: unknown) => void;
+  reportStorageFailure?: (message: string, cause: StorageError) => void;
   /** Optional diagnostic trace for the swap path (card 59 item 1) — the panel gates this on its runtime tracing flag. */
   trace?: (event: string, detail: Record<string, unknown>) => void;
 }
@@ -212,7 +245,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   const presenter = deps.presenter ?? headlessPresenter;
   const reportStorageFailure =
     deps.reportStorageFailure ??
-    ((message: string, cause: unknown) => console.error(message, cause));
+    ((message: string, cause: StorageError) => console.error(message, cause));
   const trace = deps.trace ?? (() => undefined);
 
   let session: ChatSession | undefined;
@@ -261,7 +294,13 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     });
   }
 
-  /** Awaited persistence for the lifecycle methods, which have nowhere to put a `StorageError` until card 95 gives them typed results. Reports and carries on — see `ChatServiceDeps.reportStorageFailure`. */
+  /**
+   * Awaited persistence for the two EVENT-DRIVEN lifecycle methods
+   * (`syncToTab`, `applyNavigation`) — the only ones left with nowhere to put
+   * a `StorageError`, because nobody asked them to run (card 95; see
+   * `ChatService`'s posture (2)). Every user-driven method returns its result
+   * instead of coming through here.
+   */
   async function persist(
     what: string,
     operation: Promise<Result<unknown, StorageError>>,
@@ -332,11 +371,20 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // not be mistaken for "the tab just navigated".
       if (tabOrigin === newOrigin) return;
       tabOrigin = newOrigin;
-      await service.startNewChat(newOrigin);
+      // Posture (2): a navigation is a browser event, not a request from a
+      // person — `startNewChat`'s typed failure is absorbed here rather than
+      // handed to a caller that does not exist.
+      const [, err] = await service.startNewChat(newOrigin);
+      if (err) {
+        reportStorageFailure(
+          `[webmcp][chat] could not start a fresh chat for tab ${forTabId} after it navigated to ${newOrigin}`,
+          err,
+        );
+      }
     },
 
     async startNewChat(origin) {
-      if (tabId === undefined) return;
+      if (tabId === undefined) return ok();
       // Card 35: a choice the user already confirmed stays confirmed in the
       // fresh chat too. Carried in memory only, exactly like the selection
       // itself — persisting the fresh chat immediately would put a
@@ -347,56 +395,63 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       const carriedExplicit = session?.selectionExplicit === true;
       const next = createChat(origin, carried);
       if (next.selection) next.selectionExplicit = carriedExplicit;
+      // POINTER FIRST, SWAP SECOND (card 95). The order was the other way
+      // round while this method returned `void` and absorbed the failure —
+      // harmless then, wrong now: a caller told "that did not save" would be
+      // looking at the empty new chat anyway, with the old one already
+      // retired off screen. Writing first means a failed write leaves the
+      // conversation the user had exactly where it was.
+      const [, err] = await store.setCurrentChatForTab(tabId, next.id, origin);
+      if (err) return fail(err);
       adopt(next);
-      await persist(
-        `tab pointer write failed for tab ${tabId}`,
-        store.setCurrentChatForTab(tabId, next.id, origin),
-      );
+      return ok();
     },
 
     async openChat(chatId) {
-      if (tabId === undefined) return false;
+      if (tabId === undefined) return ok(false);
       const live = liveSessions.get(chatId);
       let chat = live;
       if (!chat) {
         const [stored, err] = await store.getChat(chatId);
-        if (err) {
-          // `false` for an unreadable store as well as for a chat that no
-          // longer resolves: the caller's only affordance either way is to
-          // leave History open, and the reason is in the report.
-          reportStorageFailure(`[webmcp][chat] could not open chat ${chatId}`, err);
-          return false;
-        }
+        // An unreadable store is NOT the same answer as "that chat is gone":
+        // the caller keeps History open and says so either way, but only one
+        // of the two is worth telling the user to try again about.
+        if (err) return fail(err);
         chat = stored;
       }
-      if (!chat) return false;
-      const current = adopt(chat);
+      if (!chat) return ok(false);
+      // Pointer first, swap second — same rule as `startNewChat` above, and
+      // the reason History can report a failed open without the transcript
+      // having already changed underneath it.
+      //
       // Deliberately does NOT touch `tabOrigin`: a real navigation afterwards
       // must still be measured against the tab's actual history, not against
       // the origin of whatever history entry was opened.
-      await persist(
-        `tab pointer write failed for tab ${tabId}`,
-        store.setCurrentChatForTab(tabId, current.id, tabOrigin),
-      );
-      return true;
+      const [, writeErr] = await store.setCurrentChatForTab(tabId, chat.id, tabOrigin);
+      if (writeErr) return fail(writeErr);
+      adopt(chat);
+      return ok(true);
     },
 
     async discardIfDeleted(chatId) {
-      if (session?.id !== chatId || tabId === undefined) return;
-      await service.startNewChat(tabOrigin);
+      if (session?.id !== chatId || tabId === undefined) return ok();
+      return service.startNewChat(tabOrigin);
     },
 
     async renameCurrent(title) {
-      if (!session) return;
+      if (!session) return ok();
       const next = normalizeChatTitle(title, MAX_CHAT_PREVIEW_LENGTH);
       if (next) session.title = next;
       else delete session.title;
       // `touch: false` — History is ordered by `updatedAt`, and relabelling a
       // chat is not conversation activity (decisions/24 §5).
-      await persist(
-        `rename write failed for chat ${session.id}`,
-        store.save(session, { immediate: true, touch: false }),
-      );
+      //
+      // The rename is applied to the live session BEFORE the write, and stays
+      // applied if the write fails: the user typed it and is looking at it,
+      // so silently putting the old name back would be a second surprise on
+      // top of the first. The returned error is how the surface says it is
+      // not durable yet.
+      return store.save(session, { immediate: true, touch: false });
     },
 
     getSelection(forTabId) {
@@ -405,14 +460,17 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     },
 
     async setSelection(forTabId, next, explicit) {
-      if (!session || tabId !== forTabId) return false;
+      if (!session || tabId !== forTabId) return ok(false);
       session.selection = next;
       session.selectionExplicit = explicit;
-      await persist(
-        `selection write failed for chat ${session.id}`,
-        store.save(session, { immediate: true }),
-      );
-      return true;
+      // Applied to the live session first, for card 27's reason (this must be
+      // the SAME object every other mutator writes to, never a snapshot) —
+      // which also means a failed write leaves the choice live for this panel
+      // and merely not durable. The picker reports that; it does not undo a
+      // selection the user is now chatting through.
+      const [, err] = await store.save(session, { immediate: true });
+      if (err) return fail(err);
+      return ok(true);
     },
 
     // -----------------------------------------------------------------------
