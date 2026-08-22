@@ -2,12 +2,16 @@
   /**
    * Top-level "arguments" display for a tool call (card 09) — used by both
    * ApprovalCard.svelte (before the call runs, the one moment a user can
-   * catch a hallucinated or dangerous parameter) and ToolCallRow.svelte's
+   * catch a hallucinated or dangerous parameter) and CallLogEntry.svelte's
    * expanded view (after, for the record). Deliberately NOT a
    * `JSON.stringify`'d blob: every top-level argument gets its own labeled
    * row, formatted by ToolArgValue.svelte, which recurses into nested
    * objects/arrays with indentation rather than flattening them into one
    * hard-to-scan line.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities; no behavioural change, deep structures still
+   * render in full (never truncated).
    */
   import ToolArgValue from "./ToolArgValue.svelte";
 
@@ -21,51 +25,16 @@
 </script>
 
 {#if entries.length === 0}
-  <p class="no-args text-small">This call takes no arguments.</p>
+  <p class="m-0 text-sm text-muted-foreground italic">This call takes no arguments.</p>
 {:else}
-  <dl class="tool-args">
+  <dl class="m-0 flex flex-col gap-2">
     {#each entries as [key, value] (key)}
-      <div class="arg-row">
-        <dt class="arg-key">{key}</dt>
-        <dd class="arg-value"><ToolArgValue {value} /></dd>
+      <div class="min-w-0 rounded-lg bg-muted/50 p-2">
+        <dt class="font-mono text-xs font-semibold text-muted-foreground">{key}</dt>
+        <dd class="mt-1 min-w-0 break-words">
+          <ToolArgValue {value} />
+        </dd>
       </div>
     {/each}
   </dl>
 {/if}
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
-
-  .no-args {
-    margin: 0;
-    font-style: italic;
-  }
-
-  .tool-args {
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .arg-row {
-    min-width: 0;
-    background: var(--color-surface-container);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-2);
-  }
-
-  .arg-key {
-    font-weight: 600;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    font-family: var(--font-family-mono);
-  }
-
-  .arg-value {
-    margin: var(--space-1) 0 0 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-</style>

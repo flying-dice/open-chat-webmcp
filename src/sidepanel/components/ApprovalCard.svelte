@@ -12,9 +12,8 @@
    * rather than acting on a live, possibly logged-in, page — and Approve is
    * exactly one Tab away, never harder to reach than Deny (card 09
    * checklist). Deny is also styled with the same danger colour the
-   * composer's Stop button uses (src/lib/theme.css's `--color-danger`), not
-   * because denying is dangerous but so a scanning eye can tell the two
-   * buttons apart at a glance.
+   * composer's Stop button uses, not because denying is dangerous but so a
+   * scanning eye can tell the two buttons apart at a glance.
    *
    * Per decisions/05 and decisions/17: `annotations` are supplied by the
    * PAGE, not the extension, and are not a security boundary — a hostile
@@ -46,11 +45,20 @@
    * above) and remember approvals in the right scope (see the "don't ask
    * again" label below, and src/sidepanel/stores/approvals.svelte.ts's two
    * separate skip-lists).
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
+   * shadcn's Card + Button + Badge. All behaviour — focus-on-mount, tab
+   * order, approve/deny/skip-for-session semantics — is unchanged; only the
+   * markup and styling moved off hand-written CSS.
    */
   import type { PendingApproval } from "../stores/approvals.svelte";
   import { approve, deny } from "../stores/approvals.svelte";
   import { originLabel } from "../../lib/mcp/merge";
   import ToolArgs from "./ToolArgs.svelte";
+  import * as Card from "$lib/components/ui/card";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { Label } from "$lib/components/ui/label";
 
   interface Props {
     request: PendingApproval;
@@ -59,7 +67,7 @@
   let { request }: Props = $props();
 
   let remember = $state(false);
-  let denyButton: HTMLButtonElement | undefined = $state();
+  let denyButton = $state<HTMLButtonElement | null>(null);
 
   $effect(() => {
     // Runs once when this card mounts (a fresh `request.id` never recurs —
@@ -76,220 +84,81 @@
   const destructive = $derived(tool?.mcpAnnotations?.destructiveHint === true);
 </script>
 
-<div class="approval-card" role="group" aria-label={`Approval needed: ${request.call.name}`}>
-  <div class="approval-heading">
-    <span class="eyebrow text-small">Approval needed</span>
-    <div class="badges">
-      {#if readOnly}
-        <span class="badge badge-readonly">read-only</span>
-      {/if}
-      {#if untrustedContent}
-        <span class="badge badge-untrusted">untrusted content</span>
-      {/if}
-      {#if destructive}
-        <span class="badge badge-untrusted">server: destructive</span>
-      {/if}
-      {#if unannotated}
-        <span class="badge badge-unannotated">unannotated</span>
-      {/if}
+<Card.Root
+  role="group"
+  aria-label={`Approval needed: ${request.call.name}`}
+  class="w-full min-w-0 gap-3 ring-2 ring-primary/30"
+>
+  <Card.Header>
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Approval needed</span>
+      <div class="flex flex-wrap justify-end gap-1">
+        {#if readOnly}
+          <Badge variant="outline">read-only</Badge>
+        {/if}
+        {#if untrustedContent}
+          <Badge variant="destructive">untrusted content</Badge>
+        {/if}
+        {#if destructive}
+          <Badge variant="destructive">server: destructive</Badge>
+        {/if}
+        {#if unannotated}
+          <Badge variant="outline" class="border-dashed text-muted-foreground">unannotated</Badge>
+        {/if}
+      </div>
     </div>
-  </div>
+    <Card.Title class="font-mono text-base font-semibold break-words">{request.call.name}</Card.Title>
+  </Card.Header>
 
-  <p class="tool-name">{request.call.name}</p>
-
-  <p class="origin-line" class:origin-remote={isServerTool}>
-    {#if tool === undefined}
-      Origin unknown — this name isn't in the current tool list.
-    {:else}
-      Runs on <strong>{originLabel(tool.origin)}</strong>{isServerTool ? " (a remote MCP server, not this page)" : ""}.
-    {/if}
-  </p>
-
-  {#if tool === undefined}
-    <p class="warning text-small">
-      This tool isn't in the current tool list — it may be a hallucinated
-      name, or a tool that was unregistered/removed after the model
-      requested it. Review the arguments below carefully before approving.
+  <Card.Content class="flex flex-col gap-3">
+    <p class="text-sm" class:text-primary={isServerTool} class:font-semibold={isServerTool}>
+      {#if tool === undefined}
+        Origin unknown — this name isn't in the current tool list.
+      {:else}
+        Runs on <strong>{originLabel(tool.origin)}</strong>{isServerTool ? " (a remote MCP server, not this page)" : ""}.
+      {/if}
     </p>
-  {:else if tool.description}
-    <p class="description text-small">{tool.description}</p>
-  {/if}
 
-  <p class="disclaimer text-small">
-    These hints are reported by {isServerTool ? "the MCP server" : "the page"} itself, not verified by
-    the extension — treat them as a guide, not a guarantee.
-  </p>
-
-  <div class="args-section">
-    <h3>Arguments</h3>
-    <ToolArgs args={request.call.arguments} />
-  </div>
-
-  <label class="remember text-small">
-    <input type="checkbox" bind:checked={remember} />
-    {#if isServerTool}
-      Don't ask again for this tool on this server (this session)
-    {:else}
-      Don't ask again for this tool on this page (this session)
+    {#if tool === undefined}
+      <p class="text-sm text-destructive">
+        This tool isn't in the current tool list — it may be a hallucinated
+        name, or a tool that was unregistered/removed after the model
+        requested it. Review the arguments below carefully before approving.
+      </p>
+    {:else if tool.description}
+      <p class="text-sm text-muted-foreground">{tool.description}</p>
     {/if}
-  </label>
 
-  <div class="actions">
-    <button type="button" bind:this={denyButton} class="deny-button" onclick={() => deny(request.id)}>
+    <p class="text-sm text-muted-foreground">
+      These hints are reported by {isServerTool ? "the MCP server" : "the page"} itself, not verified by
+      the extension — treat them as a guide, not a guarantee.
+    </p>
+
+    <div>
+      <h3 class="mb-1 text-sm font-medium">Arguments</h3>
+      <ToolArgs args={request.call.arguments} />
+    </div>
+
+    <Label class="items-center gap-2 text-sm font-normal text-muted-foreground">
+      <input
+        type="checkbox"
+        bind:checked={remember}
+        class="size-4 shrink-0 rounded border-input accent-primary"
+      />
+      {#if isServerTool}
+        Don't ask again for this tool on this server (this session)
+      {:else}
+        Don't ask again for this tool on this page (this session)
+      {/if}
+    </Label>
+  </Card.Content>
+
+  <Card.Footer class="flex justify-end gap-2">
+    <Button type="button" variant="destructive" bind:ref={denyButton} onclick={() => deny(request.id)}>
       Deny
-    </button>
-    <button type="button" class="approve-button" onclick={() => approve(request.id, remember)}>
+    </Button>
+    <Button type="button" variant="default" onclick={() => approve(request.id, remember)}>
       Approve
-    </button>
-  </div>
-</div>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  /* The one thing in the transcript that BLOCKS the loop, so it is the one
-     thing tinted rather than merely filled — it has to be distinguishable
-     from an ordinary tool card at a glance, and the 3px accent border it
-     used to rely on reads as decoration now that nothing else has one. */
-  .approval-card {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    border: none;
-    border-radius: var(--radius-lg);
-    background: var(--color-secondary-container);
-    color: var(--color-on-secondary-container);
-    padding: var(--space-4);
-  }
-
-  .approval-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-
-  .eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: var(--color-on-surface-variant);
-  }
-
-  .badges {
-    display: flex;
-    gap: var(--space-1);
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .badge {
-    font-size: var(--font-size-small);
-    line-height: 1;
-    padding: 2px var(--space-1);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-outline);
-    /* The card's own fill is the secondary container, so badges need their
-       own surface to stay legible against it rather than inheriting it. */
-    background: var(--color-surface);
-    white-space: nowrap;
-  }
-
-  .badge-readonly {
-    color: var(--color-on-surface-variant);
-  }
-
-  /* theme.css has no separate "warning" token (decisions/08) — this reuses
-     --color-danger, the only attention colour available, purely to catch
-     the eye; it does not imply the call itself is dangerous to make. */
-  .badge-untrusted {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-
-  .badge-unannotated {
-    color: var(--color-on-surface-variant);
-    border-style: dashed;
-  }
-
-  .tool-name {
-    margin: 0;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-heading);
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .description,
-  .disclaimer {
-    margin: 0;
-    color: var(--color-on-surface-variant);
-  }
-
-  /* Decisions/19 §6: where a call runs is stated plainly, not buried in a
-     badge — neutral for the page (the common case), tinted primary and bold
-     for a remote server so it reads as a distinct fact, not decoration. */
-  .origin-line {
-    margin: 0;
-    color: var(--color-on-surface-variant);
-  }
-
-  .origin-line.origin-remote {
-    color: var(--color-primary);
-    font-weight: 600;
-  }
-
-  .warning {
-    margin: 0;
-    color: var(--color-danger);
-  }
-
-  .args-section h3 {
-    margin-bottom: var(--space-1);
-  }
-
-  .remember {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    color: var(--color-on-surface-variant);
-  }
-
-  .remember input {
-    margin: 0;
-  }
-
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
-
-  .actions button {
-    flex: 0 0 auto;
-  }
-
-  /* Buttons no longer have borders to colour (chat-theme.css), so the
-     approve/deny distinction is carried by fill and weight instead: approve
-     is the filled primary action, deny is a quieter tonal button in the
-     danger colour. Deny stays the autofocused one — see the markup. */
-  .deny-button {
-    background: var(--color-surface-container);
-    color: var(--color-danger);
-  }
-
-  .deny-button:hover {
-    background: var(--color-surface-container-high);
-  }
-
-  .approve-button {
-    background: var(--color-primary);
-    color: var(--color-on-primary);
-  }
-
-  .approve-button:hover {
-    background: color-mix(in srgb, var(--color-on-primary) 8%, var(--color-primary));
-  }
-</style>
+    </Button>
+  </Card.Footer>
+</Card.Root>

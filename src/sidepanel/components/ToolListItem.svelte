@@ -27,11 +27,19 @@
    * A server tool's `mcpAnnotations` (decisions/19 §2), when present, adds
    * its own display-only badges alongside the normalised ones above;
    * `destructiveHint`/`idempotentHint`/`openWorldHint` never affect approval.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
+   * shadcn's Card + Collapsible + Badge. The schema toggle keeps the same
+   * collapsed-by-default behaviour, now driven by Collapsible's own `open`
+   * state instead of a hand-rolled boolean + `{#if}`.
    */
   import type { SerializedTool, ToolAnnotations } from "../../lib/protocol";
   import type { McpToolAnnotations } from "../../lib/mcp/types";
   import { originLabel, type ToolOrigin } from "../../lib/mcp/merge";
   import ToolSchema from "./ToolSchema.svelte";
+  import * as Card from "$lib/components/ui/card";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import { Badge } from "$lib/components/ui/badge";
 
   interface Props {
     tool: Pick<SerializedTool, "name" | "description" | "inputSchema"> & {
@@ -52,157 +60,48 @@
   const destructive = $derived(tool.mcpAnnotations?.destructiveHint === true);
 </script>
 
-<div class="tool-item">
-  <div class="tool-item-head">
-    <span class="tool-name">{tool.name}</span>
-    <span class="badges">
-      <span class="badge" class:badge-server={isServerTool}>{originLabel(tool.origin)}</span>
-      {#if readOnly}
-        <span class="badge badge-readonly">read-only</span>
-      {/if}
-      {#if untrustedContent}
-        <span class="badge badge-untrusted">untrusted content</span>
-      {/if}
-      {#if destructive}
-        <span class="badge badge-destructive">server: destructive</span>
-      {/if}
-      {#if unannotated}
-        <span class="badge badge-unannotated">unannotated</span>
-      {/if}
-    </span>
-  </div>
-
-  {#if tool.description}
-    <p class="tool-desc text-small">{tool.description}</p>
-  {/if}
-
-  <button type="button" class="schema-toggle" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
-    <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
-    Input schema
-  </button>
-
-  {#if expanded}
-    <div class="schema-body">
-      <ToolSchema schema={tool.inputSchema} />
+<Card.Root size="sm" class="w-full min-w-0 gap-2">
+  <Card.Content class="flex min-w-0 flex-col gap-1">
+    <div class="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
+      <span class="min-w-0 font-mono font-semibold break-words">{tool.name}</span>
+      <span class="flex flex-wrap justify-end gap-1">
+        <Badge variant="outline" class={isServerTool ? "border-primary text-primary" : ""}>
+          {originLabel(tool.origin)}
+        </Badge>
+        {#if readOnly}
+          <Badge variant="outline">read-only</Badge>
+        {/if}
+        {#if untrustedContent}
+          <Badge variant="destructive">untrusted content</Badge>
+        {/if}
+        {#if destructive}
+          <Badge variant="destructive">server: destructive</Badge>
+        {/if}
+        {#if unannotated}
+          <Badge variant="outline" class="border-dashed text-muted-foreground">unannotated</Badge>
+        {/if}
+      </span>
     </div>
-  {/if}
-</div>
 
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
+    {#if tool.description}
+      <p class="text-sm break-words text-muted-foreground">{tool.description}</p>
+    {/if}
 
-  .tool-item {
-    width: 100%;
-    min-width: 0;
-    border: 1px solid var(--color-outline);
-    border-radius: var(--radius-card);
-    background: var(--color-surface);
-    padding: var(--space-2);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
+    <Collapsible.Root bind:open={expanded}>
+      <Collapsible.Trigger
+        class="inline-flex w-fit items-center gap-1 text-sm text-primary hover:underline"
+      >
+        <span
+          class="inline-block text-xs transition-transform duration-150"
+          class:rotate-90={expanded}
+          aria-hidden="true">▸</span
+        >
+        Input schema
+      </Collapsible.Trigger>
 
-  .tool-item-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-
-  .tool-name {
-    font-family: var(--font-family-mono);
-    font-weight: 600;
-    overflow-wrap: anywhere;
-    min-width: 0;
-  }
-
-  .badges {
-    display: flex;
-    gap: var(--space-1);
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .badge {
-    font-size: var(--font-size-small);
-    line-height: 1;
-    padding: 2px var(--space-1);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-outline);
-    white-space: nowrap;
-  }
-
-  .badge-readonly {
-    color: var(--color-on-surface-variant);
-  }
-
-  /* theme.css has no separate "warning" token (decisions/08) — this reuses
-     --color-danger, the only attention colour available, purely to catch
-     the eye; it does not imply the call itself is dangerous to make. */
-  .badge-untrusted {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-
-  .badge-unannotated {
-    color: var(--color-on-surface-variant);
-    border-style: dashed;
-  }
-
-  /* The origin badge — decisions/19 §6. Neutral for "this page" (the common
-     case); a server's badge is tinted primary so a remote tool visibly
-     stands out from the page's own list at a glance, not just on close
-     reading of the text. */
-  .badge-server {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-  }
-
-  .badge-destructive {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-
-  .tool-desc {
-    margin: 0;
-    color: var(--color-on-surface-variant);
-    overflow-wrap: anywhere;
-  }
-
-  .schema-toggle {
-    align-self: flex-start;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: transparent;
-    border: none;
-    padding: 0;
-    font-size: var(--font-size-small);
-    color: var(--color-primary);
-  }
-
-  .schema-toggle:hover {
-    background: transparent;
-    text-decoration: underline;
-  }
-
-  .chevron {
-    display: inline-block;
-    transition: transform var(--transition-fast);
-  }
-
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  .schema-body {
-    padding: var(--space-2);
-    background: var(--color-surface-container);
-    border-radius: var(--radius-sm);
-    min-width: 0;
-  }
-</style>
+      <Collapsible.Content class="mt-2 min-w-0 rounded-lg bg-muted/50 p-2">
+        <ToolSchema schema={tool.inputSchema} />
+      </Collapsible.Content>
+    </Collapsible.Root>
+  </Card.Content>
+</Card.Root>

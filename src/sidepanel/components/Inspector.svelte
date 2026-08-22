@@ -8,13 +8,19 @@
    * `toolCalls` are passed in from panel.svelte.ts (the sole session/tool
    * owner, see that module's header comment) rather than read here
    * directly, matching how Header.svelte/Transcript.svelte are wired.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): the inner switch is
+   * now shadcn's Tabs directly (rather than through the SegmentedControl
+   * wrapper) so each section renders as a real `Tabs.Content` tabpanel —
+   * same two values, same labels, same default ("tools").
    */
   import type { SerializedTool } from "../../lib/protocol";
   import type { MergedTool } from "../../lib/mcp/merge";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
-  import SegmentedControl from "./SegmentedControl.svelte";
   import ToolsPanel from "./ToolsPanel.svelte";
   import CallLogPanel from "./CallLogPanel.svelte";
+  import * as Tabs from "$lib/components/ui/tabs";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
 
   interface Props {
     tools: SerializedTool[];
@@ -32,53 +38,32 @@
   let section = $state<"tools" | "log">("tools");
 
   const totalTools = $derived(tools.length + serverTools.length);
-
-  const sectionOptions = $derived([
-    { value: "tools", label: `Tools${totalTools > 0 ? ` (${totalTools})` : ""}` },
-    { value: "log", label: `Call Log${toolCalls.length > 0 ? ` (${toolCalls.length})` : ""}` },
-  ]);
 </script>
 
-<div class="inspector-viewport">
-  <div class="section-switch">
-    <SegmentedControl
-      options={sectionOptions}
-      value={section}
-      ariaLabel="Inspector section"
-      onSelect={(v) => (section = v as "tools" | "log")}
-    />
-  </div>
+<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+  <Tabs.Root
+    value={section}
+    onValueChange={(v) => (section = v as "tools" | "log")}
+    class="flex min-h-0 flex-1 flex-col gap-0"
+  >
+    <div class="px-3 pb-2">
+      <Tabs.List aria-label="Inspector section" class="w-full">
+        <Tabs.Trigger value="tools" class="flex-1">
+          Tools{totalTools > 0 ? ` (${totalTools})` : ""}
+        </Tabs.Trigger>
+        <Tabs.Trigger value="log" class="flex-1">
+          Call Log{toolCalls.length > 0 ? ` (${toolCalls.length})` : ""}
+        </Tabs.Trigger>
+      </Tabs.List>
+    </div>
 
-  <div class="section-body">
-    {#if section === "tools"}
-      <ToolsPanel {tools} {serverTools} {webmcpAvailable} {restricted} />
-    {:else}
-      <CallLogPanel {toolCalls} />
-    {/if}
-  </div>
+    <ScrollArea class="min-h-0 flex-1">
+      <Tabs.Content value="tools" class="px-3 pb-3">
+        <ToolsPanel {tools} {serverTools} {webmcpAvailable} {restricted} />
+      </Tabs.Content>
+      <Tabs.Content value="log" class="px-3 pb-3">
+        <CallLogPanel {toolCalls} />
+      </Tabs.Content>
+    </ScrollArea>
+  </Tabs.Root>
 </div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  .inspector-viewport {
-    flex: 1 1 auto;
-    min-height: 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .section-switch {
-    padding: 0 var(--space-3) var(--space-2);
-  }
-
-  .section-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    min-width: 0;
-    overflow-y: auto;
-    padding: var(--space-3);
-  }
-</style>

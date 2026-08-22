@@ -10,6 +10,10 @@
    *
    * Rendered newest-first: the call someone just made (or just got denied)
    * is the one worth seeing without scrolling.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities. The panel itself no longer owns scrolling —
+   * Inspector.svelte's ScrollArea wraps whichever tab is active.
    */
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
   import CallLogEntry from "./CallLogEntry.svelte";
@@ -23,41 +27,18 @@
   const newestFirst = $derived([...toolCalls].reverse());
 </script>
 
-<div class="call-log">
+<div class="min-w-0">
   {#if toolCalls.length === 0}
-    <p class="empty text-small">
+    <p class="m-0 text-sm text-muted-foreground">
       No tool calls yet in this conversation. Calls the model makes on this
       page's tools will show up here as they happen — including any that get
       denied.
     </p>
   {:else}
-    <ul class="log-list">
+    <ul class="m-0 flex min-w-0 list-none flex-col gap-2 p-0">
       {#each newestFirst as entry (entry.id)}
         <li><CallLogEntry {entry} /></li>
       {/each}
     </ul>
   {/if}
 </div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
-
-  .call-log {
-    min-width: 0;
-  }
-
-  .empty {
-    margin: 0;
-  }
-
-  .log-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-</style>

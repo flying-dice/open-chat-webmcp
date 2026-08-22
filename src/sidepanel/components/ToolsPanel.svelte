@@ -24,10 +24,16 @@
    *   - `webmcpAvailable === true` and `tools.length === 0`: the feature
    *     works here, this particular page just hasn't registered anything —
    *     expected, since most sites don't speak WebMCP yet.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): all four empty
+   * states (the three above, plus the "no MCP server tools" case below)
+   * render through shadcn's Empty component now, same copy as before.
    */
   import type { SerializedTool } from "../../lib/protocol";
   import type { MergedTool } from "../../lib/mcp/merge";
   import ToolListItem from "./ToolListItem.svelte";
+  import Icon from "./Icon.svelte";
+  import * as Empty from "$lib/components/ui/empty";
 
   interface Props {
     tools: SerializedTool[];
@@ -40,60 +46,68 @@
   let { tools, serverTools, webmcpAvailable, restricted }: Props = $props();
 </script>
 
-<div class="tools-panel">
+<div class="flex min-w-0 flex-col gap-4">
   <!-- `restricted` scopes to THIS SECTION only, not the whole panel: a
        chrome:// page can never have page tools, but MCP server tools are
        reached over HTTP from the panel and are unaffected by it (card 31 +
        card 38, decisions/19 §6). -->
-  <section class="tool-section">
-    <h2 class="section-title text-small">This page</h2>
+  <section class="flex min-w-0 flex-col gap-2">
+    <h2 class="m-0 text-xs font-medium tracking-wide text-muted-foreground uppercase">This page</h2>
     {#if restricted}
-      <div class="empty-state">
-        <p><strong>This page can't run extension scripts at all.</strong></p>
-        <p class="text-small">
-          Chrome blocks content scripts on <code>chrome://</code> pages, other
-          extensions' pages, the Chrome Web Store, and its built-in PDF viewer —
-          there is no way for this or any extension to reach in, so this tab
-          will never have page tools, no matter what the page itself supports.
-          Chat and MCP server tools still work here.
-        </p>
-      </div>
+      <Empty.Root class="p-6 text-left md:p-6">
+        <Empty.Header class="max-w-none items-start text-left">
+          <Empty.Media variant="icon"><Icon name="close" size={20} /></Empty.Media>
+          <Empty.Title>This page can't run extension scripts at all.</Empty.Title>
+          <Empty.Description>
+            Chrome blocks content scripts on <code class="font-mono text-xs">chrome://</code> pages, other
+            extensions' pages, the Chrome Web Store, and its built-in PDF viewer —
+            there is no way for this or any extension to reach in, so this tab
+            will never have page tools, no matter what the page itself supports.
+            Chat and MCP server tools still work here.
+          </Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
     {:else if !webmcpAvailable}
-      <div class="empty-state">
-        <p><strong>WebMCP isn't available in this browser (or on this page).</strong></p>
-        <p class="text-small">
-          <code>document.modelContext</code> doesn't exist here — WebMCP is
-          off by default in Chrome and needs
-          <code>--enable-features=WebMCP</code>, the
-          <code>chrome://flags/#enable-webmcp-testing</code> toggle, or a
-          per-origin origin-trial token before a page can use it at all. This
-          is different from a page simply not registering any tools — there
-          was nothing here to even ask.
-        </p>
-      </div>
+      <Empty.Root class="p-6 text-left md:p-6">
+        <Empty.Header class="max-w-none items-start text-left">
+          <Empty.Media variant="icon"><Icon name="info" size={20} /></Empty.Media>
+          <Empty.Title>WebMCP isn't available in this browser (or on this page).</Empty.Title>
+          <Empty.Description>
+            <code class="font-mono text-xs">document.modelContext</code> doesn't exist here — WebMCP is
+            off by default in Chrome and needs
+            <code class="font-mono text-xs">--enable-features=WebMCP</code>, the
+            <code class="font-mono text-xs">chrome://flags/#enable-webmcp-testing</code> toggle, or a
+            per-origin origin-trial token before a page can use it at all. This
+            is different from a page simply not registering any tools — there
+            was nothing here to even ask.
+          </Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
     {:else if tools.length === 0}
-      <div class="empty-state">
-        <p>
-          This page hasn't published any WebMCP tools, which is expected — most
-          sites don't yet.
-        </p>
-        <p class="text-small">
-          WebMCP is a proposed web standard that lets a page expose specific
-          actions and page-state readers — "add a note", "read the cart
-          total" — on <code>document.modelContext</code>, so an AI agent can
-          call them directly instead of a human clicking through the UI. It's
-          the same idea as MCP, but for what a <em>website</em> itself
-          chooses to offer, rather than a separate server.
-        </p>
-        <p class="text-small">
-          A site opts in by calling <code>registerTool()</code> in its own
-          page script. If this page did, its tools would show up here the
-          moment it registers them — nothing to refresh or configure on your
-          end.
-        </p>
-      </div>
+      <Empty.Root class="p-6 text-left md:p-6">
+        <Empty.Header class="max-w-none items-start text-left">
+          <Empty.Media variant="icon"><Icon name="build" size={20} /></Empty.Media>
+          <Empty.Title>
+            This page hasn't published any WebMCP tools, which is expected — most sites don't yet.
+          </Empty.Title>
+          <Empty.Description>
+            WebMCP is a proposed web standard that lets a page expose specific
+            actions and page-state readers — "add a note", "read the cart
+            total" — on <code class="font-mono text-xs">document.modelContext</code>, so an AI agent can
+            call them directly instead of a human clicking through the UI. It's
+            the same idea as MCP, but for what a <em>website</em> itself
+            chooses to offer, rather than a separate server.
+          </Empty.Description>
+          <Empty.Description>
+            A site opts in by calling <code class="font-mono text-xs">registerTool()</code> in its own
+            page script. If this page did, its tools would show up here the
+            moment it registers them — nothing to refresh or configure on your
+            end.
+          </Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
     {:else}
-      <ul class="tool-list">
+      <ul class="m-0 flex min-w-0 list-none flex-col gap-2 p-0">
         {#each tools as tool (tool.name)}
           <li><ToolListItem tool={{ ...tool, origin: { kind: "page" } }} /></li>
         {/each}
@@ -101,19 +115,22 @@
     {/if}
   </section>
 
-  <section class="tool-section">
-    <h2 class="section-title text-small">MCP servers</h2>
+  <section class="flex min-w-0 flex-col gap-2">
+    <h2 class="m-0 text-xs font-medium tracking-wide text-muted-foreground uppercase">MCP servers</h2>
     {#if serverTools.length === 0}
-      <div class="empty-state">
-        <p class="text-small">
-          No MCP server tools are available right now. Add and enable a
-          server from the options page's MCP Servers section — a slow,
-          unreachable, or not-yet-permitted server simply contributes no
-          tools here rather than blocking anything.
-        </p>
-      </div>
+      <Empty.Root class="p-6 text-left md:p-6">
+        <Empty.Header class="max-w-none items-start text-left">
+          <Empty.Media variant="icon"><Icon name="terminal" size={20} /></Empty.Media>
+          <Empty.Description>
+            No MCP server tools are available right now. Add and enable a
+            server from the options page's MCP Servers section — a slow,
+            unreachable, or not-yet-permitted server simply contributes no
+            tools here rather than blocking anything.
+          </Empty.Description>
+        </Empty.Header>
+      </Empty.Root>
     {:else}
-      <ul class="tool-list">
+      <ul class="m-0 flex min-w-0 list-none flex-col gap-2 p-0">
         {#each serverTools as tool (tool.name)}
           <li><ToolListItem {tool} /></li>
         {/each}
@@ -121,57 +138,3 @@
     {/if}
   </section>
 </div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
-
-  .tools-panel {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-
-  .tool-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .section-title {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: var(--color-on-surface-variant);
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .empty-state p {
-    margin: 0;
-  }
-
-  .empty-state code {
-    font-family: var(--font-family-mono);
-    background: var(--color-surface-container);
-    border-radius: var(--radius-sm);
-    padding: 0 3px;
-    overflow-wrap: anywhere;
-  }
-
-  .tool-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-</style>

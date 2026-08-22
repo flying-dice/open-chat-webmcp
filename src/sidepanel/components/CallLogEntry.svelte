@@ -3,8 +3,8 @@
    * One entry in the Call Log (card 11 — the accountability surface,
    * decisions/05-tool-approval-policy.md: "nothing happens invisibly").
    * Reuses ToolArgs.svelte/ToolArgValue.svelte for arguments and results
-   * rather than a third renderer, same as ApprovalCard.svelte/
-   * ToolCallRow.svelte do for the transcript.
+   * rather than a third renderer, same as ApprovalCard.svelte does for the
+   * transcript.
    *
    * Starts expanded for anything a human had to decide on or that didn't
    * simply succeed (`approved`, `denied`, or an error) — the call log is
@@ -20,6 +20,12 @@
    * result by src/lib/session.ts's `logToolCall`, is shown next to the call
    * name — the call log is the accountability surface, so it must say where
    * every logged call ran, not just what it did.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
+   * shadcn's Collapsible + Badge + Button. The denied badge keeps its
+   * solid-fill treatment (overriding Badge's default tonal `destructive`
+   * variant) so it still reads as the most visually prominent state, per
+   * decisions/05.
    */
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../stores/panel.svelte";
@@ -27,6 +33,9 @@
   import { formatDuration } from "../lib/duration";
   import ToolArgs from "./ToolArgs.svelte";
   import ToolArgValue from "./ToolArgValue.svelte";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
 
   interface Props {
     entry: ToolCallLogEntry;
@@ -72,196 +81,66 @@
   }
 </script>
 
-<div class="log-entry" data-mode={entry.mode} data-status={status}>
-  <div class="log-header">
-    <button
-      type="button"
-      class="toggle"
-      aria-expanded={expanded}
-      onclick={() => (expanded = !expanded)}
-    >
-      <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
-      <span class="call-name">{entry.name}</span>
+<Collapsible.Root
+  bind:open={expanded}
+  class={[
+    "w-full min-w-0 overflow-hidden rounded-xl border",
+    (entry.mode === "denied" || status === "error") && "border-destructive",
+  ]
+    .filter(Boolean)
+    .join(" ")}
+>
+  <div class="flex w-full flex-wrap items-center gap-2 bg-muted/50 px-2 py-1">
+    <Collapsible.Trigger class="flex min-w-0 flex-1 items-center gap-1 text-left">
+      <span
+        class="inline-block shrink-0 text-xs text-muted-foreground transition-transform duration-150"
+        class:rotate-90={expanded}
+        aria-hidden="true">▸</span
+      >
+      <span class="min-w-0 truncate font-mono text-sm">{entry.name}</span>
       {#if entry.origin}
-        <span class="badge" class:badge-server={entry.origin.kind === "server"}>
+        <Badge variant="outline" class={entry.origin.kind === "server" ? "border-primary text-primary" : ""}>
           {originLabel(entry.origin)}
-        </span>
+        </Badge>
       {/if}
-    </button>
+    </Collapsible.Trigger>
 
-    <span class="log-meta">
-      <span class="badge badge-{entry.mode}">{modeLabel[entry.mode]}</span>
-      <span class="duration text-small" title={timeLabel}>{durationLabel}</span>
+    <span class="flex shrink-0 items-center gap-1">
+      {#if entry.mode === "denied"}
+        <Badge variant="destructive" class="bg-destructive text-white">{modeLabel[entry.mode]}</Badge>
+      {:else if entry.mode === "approved"}
+        <Badge variant="outline" class="border-primary text-primary">{modeLabel[entry.mode]}</Badge>
+      {:else}
+        <Badge variant="outline" class="text-muted-foreground">{modeLabel[entry.mode]}</Badge>
+      {/if}
+      <span class="text-xs whitespace-nowrap text-muted-foreground" title={timeLabel}>{durationLabel}</span>
     </span>
 
-    <button type="button" class="copy-button text-small" onclick={copyAsJson}>
+    <Button type="button" variant="ghost" size="xs" onclick={copyAsJson}>
       {copied ? "Copied" : "Copy JSON"}
-    </button>
+    </Button>
   </div>
 
-  {#if expanded}
-    <div class="log-body">
-      <div class="args-section">
-        <h3>Arguments</h3>
+  <Collapsible.Content>
+    <div class="flex flex-col gap-2 border-t p-2">
+      <div>
+        <h3 class="mb-1 text-sm font-medium">Arguments</h3>
         <ToolArgs args={entry.arguments} />
       </div>
 
       {#if entry.error !== undefined}
-        <div class="result-section">
-          <h3>Error</h3>
-          <p class="error-text text-small">{entry.error}</p>
+        <div>
+          <h3 class="mb-1 text-sm font-medium">Error</h3>
+          <p class="m-0 text-sm break-words whitespace-pre-wrap text-destructive">{entry.error}</p>
         </div>
       {:else if entry.result !== undefined}
-        <div class="result-section">
-          <h3>Result</h3>
+        <div>
+          <h3 class="mb-1 text-sm font-medium">Result</h3>
           <ToolArgValue value={entry.result} />
         </div>
       {:else}
-        <p class="pending-text text-small">Still running…</p>
+        <p class="m-0 text-sm text-muted-foreground italic">Still running…</p>
       {/if}
     </div>
-  {/if}
-</div>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
-
-  .log-entry {
-    width: 100%;
-    min-width: 0;
-    border: 1px solid var(--color-outline);
-    border-radius: var(--radius-card);
-    background: var(--color-surface);
-    overflow: hidden;
-  }
-
-  .log-entry[data-mode="denied"] {
-    border-color: var(--color-danger);
-  }
-
-  .log-entry[data-status="error"] {
-    border-color: var(--color-danger);
-  }
-
-  .log-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    width: 100%;
-    padding: var(--space-1) var(--space-2);
-    background: var(--color-surface-container);
-  }
-
-  .toggle {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    text-align: left;
-  }
-
-  .toggle:hover {
-    background: transparent;
-  }
-
-  .chevron {
-    flex: 0 0 auto;
-    display: inline-block;
-    transition: transform var(--transition-fast);
-    color: var(--color-on-surface-variant);
-  }
-
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  .call-name {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-small);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-  }
-
-  .log-meta {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-
-  .badge {
-    font-size: var(--font-size-small);
-    line-height: 1;
-    padding: 2px var(--space-1);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-outline);
-    white-space: nowrap;
-  }
-
-  .badge-auto {
-    color: var(--color-on-surface-variant);
-  }
-
-  .badge-approved {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-  }
-
-  .badge-denied {
-    background: var(--color-danger);
-    border-color: var(--color-danger);
-    color: var(--color-on-primary);
-    font-weight: 600;
-  }
-
-  /* Decisions/19 §6 — the origin badge, same tinted-primary treatment as
-     ToolListItem.svelte/ToolCallRow.svelte's so a remote call reads
-     consistently everywhere it's named. */
-  .badge-server {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-  }
-
-  .duration {
-    white-space: nowrap;
-  }
-
-  .copy-button {
-    flex: 0 0 auto;
-    padding: var(--space-1) var(--space-2);
-  }
-
-  .log-body {
-    padding: var(--space-2);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    border-top: 1px solid var(--color-outline-variant);
-  }
-
-  .args-section h3,
-  .result-section h3 {
-    margin-bottom: var(--space-1);
-  }
-
-  .error-text {
-    margin: 0;
-    color: var(--color-danger);
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-
-  .pending-text {
-    margin: 0;
-    font-style: italic;
-  }
-</style>
+  </Collapsible.Content>
+</Collapsible.Root>

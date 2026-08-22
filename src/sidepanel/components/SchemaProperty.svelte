@@ -14,6 +14,9 @@
    * JSON-Schema-shaped in practice, so every field read here is defensive —
    * an unexpected shape degrades to "no further detail" rather than
    * throwing.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities; recursion and field handling unchanged.
    */
   import Self from "./SchemaProperty.svelte";
 
@@ -63,80 +66,33 @@
   });
 </script>
 
-<div class="prop">
-  <div class="prop-head">
-    <span class="prop-name">{name}</span>
-    <span class="prop-type">{typeLabel}</span>
-    {#if required}<span class="prop-required">required</span>{/if}
+<div class="min-w-0">
+  <div class="flex min-w-0 flex-wrap items-baseline gap-1">
+    <span class="font-mono font-semibold break-all">{name}</span>
+    <span class="font-mono text-xs text-muted-foreground">{typeLabel}</span>
+    {#if required}<span class="text-xs font-medium text-destructive">required</span>{/if}
   </div>
 
-  {#if description}<p class="prop-desc text-small">{description}</p>{/if}
-  {#if format}<p class="prop-meta text-small">format: {format}</p>{/if}
+  {#if description}<p class="mt-0.5 text-sm break-words text-muted-foreground">{description}</p>{/if}
+  {#if format}<p class="mt-0.5 text-xs break-words text-muted-foreground">format: {format}</p>{/if}
   {#if enumValues && enumValues.length > 0}
-    <p class="prop-meta text-small">one of: {enumValues.map((v) => String(v)).join(", ")}</p>
+    <p class="mt-0.5 text-xs break-words text-muted-foreground">
+      one of: {enumValues.map((v) => String(v)).join(", ")}
+    </p>
   {/if}
 
   {#if type === "object" && properties}
-    <div class="prop-children">
+    <div class="mt-1 flex flex-col gap-2 border-l-2 border-border pl-2">
       {#each Object.entries(properties) as [childName, childNode] (childName)}
         <Self name={childName} node={childNode} required={requiredList.includes(childName)} />
       {/each}
     </div>
   {:else if type === "array" && itemProperties}
-    <div class="prop-children">
-      <p class="prop-meta text-small">each item:</p>
+    <div class="mt-1 flex flex-col gap-2 border-l-2 border-border pl-2">
+      <p class="text-xs text-muted-foreground">each item:</p>
       {#each Object.entries(itemProperties) as [childName, childNode] (childName)}
         <Self name={childName} node={childNode} required={itemRequiredList.includes(childName)} />
       {/each}
     </div>
   {/if}
 </div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
-
-  .prop {
-    min-width: 0;
-  }
-
-  .prop-head {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-1);
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-
-  .prop-name {
-    font-family: var(--font-family-mono);
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .prop-type {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-  }
-
-  .prop-required {
-    font-size: var(--font-size-small);
-    color: var(--color-danger);
-  }
-
-  .prop-desc,
-  .prop-meta {
-    margin: 2px 0 0 0;
-    overflow-wrap: anywhere;
-  }
-
-  .prop-children {
-    margin: var(--space-1) 0 0 0;
-    padding: var(--space-1) var(--space-2);
-    border-left: 2px solid var(--color-outline-variant);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-</style>

@@ -7,6 +7,9 @@
    * into nested objects/arrays. `inputSchema` is untrusted page-supplied
    * JSON (decisions/02) and only loosely JSON-Schema-shaped, so every read
    * here is defensive.
+   *
+   * Card 69 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities; no behavioural change.
    */
   import SchemaProperty from "./SchemaProperty.svelte";
 
@@ -30,30 +33,13 @@
 </script>
 
 {#if !schema}
-  <p class="no-schema text-small">This tool has no declared input schema.</p>
+  <p class="m-0 text-sm text-muted-foreground italic">This tool has no declared input schema.</p>
 {:else if entries.length === 0}
-  <p class="no-schema text-small">Takes no parameters.</p>
+  <p class="m-0 text-sm text-muted-foreground italic">Takes no parameters.</p>
 {:else}
-  <div class="schema-props">
+  <div class="flex min-w-0 flex-col gap-2">
     {#each entries as [name, node] (name)}
       <SchemaProperty {name} {node} required={required.includes(name)} />
     {/each}
   </div>
 {/if}
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css
-     (decisions/08-native-chrome-design-language.md). */
-
-  .no-schema {
-    margin: 0;
-    font-style: italic;
-  }
-
-  .schema-props {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-</style>
