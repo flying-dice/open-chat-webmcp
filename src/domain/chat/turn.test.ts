@@ -2,10 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { runTurn, buildSystemPrompt, MAX_ITERATIONS, type TurnTranscript } from "./turn";
 import {
   assistantEntry,
+  noteEntry,
   toolEntry,
   UNTRUSTED_CONTENT_START,
   UNTRUSTED_CONTENT_END,
   type NoteAction,
+  type TranscriptNote,
 } from "./message";
 import { createChat, type ChatSession } from "./session";
 import type {
@@ -102,9 +104,13 @@ function makePresenter(): {
  */
 function makeTranscript(defaultTarget: ChatSession): {
   transcript: TurnTranscript;
-  notes: { content: string; actions?: NoteAction[] | undefined }[];
+  notes: { note: TranscriptNote; actions?: NoteAction[] | undefined }[];
 } {
-  const notes: { content: string; actions?: NoteAction[] | undefined }[] = [];
+  // Card 114 (decisions/38): what a note IS, now, is a kind plus its params.
+  // These assertions therefore pin the CODE the turn engine chose, never a
+  // sentence — a copy change in messages/*.json must not be able to fail a
+  // domain test, which is the whole point of the split.
+  const notes: { note: TranscriptNote; actions?: NoteAction[] | undefined }[] = [];
   let counter = 0;
 
   const transcript: TurnTranscript = {
@@ -135,17 +141,14 @@ function makeTranscript(defaultTarget: ChatSession): {
       if (entry) {
         entry.toolStatus = outcome.status;
         entry.content = outcome.content;
+        if (outcome.note) entry.note = outcome.note;
+        else delete entry.note;
       }
     },
-    addAssistantNote(content, actions, target = defaultTarget) {
-      const id = transcript.beginAssistantMessage(target);
-      transcript.appendAssistantDelta(id, content, target);
-      transcript.endAssistantMessage(id, undefined, target);
-      if (actions && actions.length > 0) {
-        const entry = target.messages.find((m) => m.id === id);
-        if (entry) entry.actions = actions;
-      }
-      notes.push({ content, actions });
+    addAssistantNote(note, actions, target = defaultTarget) {
+      const id = `msg-${counter++}`;
+      target.messages.push(noteEntry(id, note, Date.now(), actions));
+      notes.push({ note, actions });
       return id;
     },
   };
@@ -342,10 +345,17 @@ describe("runTurn — denied tool call", () => {
 
     const toolResult = session.messages.find((m) => m.role === "tool");
     expect(toolResult?.toolStatus).toBe("denied");
-    expect(toolResult?.content).toBe("The user denied this tool call.");
+    // Card 114 (decisions/38): the KIND is stored, and NOTHING readable is —
+    // the words are the renderer's, so this chat re-reads in whatever
+    // language the panel is in when it is opened.
+    expect(toolResult?.note).toEqual({ kind: "tool-denied" });
+    expect(toolResult?.content).toBe("");
 
     // A denial is NOT a dead end — the model gets a second round and can
-    // read the denial back as a normal tool result.
+    // read the denial back as a normal tool result. The MODEL still gets a
+    // sentence: `toModelMessage` expands the kind at prompt-assembly time
+    // (the same seam the untrusted-content fence lives on), which is why
+    // storing nothing readable costs the model nothing.
     expect(gateway.requests).toHaveLength(2);
     const secondRoundMessages = gateway.requests[1]!.messages;
     expect(
@@ -454,7 +464,7 @@ describe("runTurn — MAX_ITERATIONS cap", () => {
 
     expect(gateway.requests).toHaveLength(MAX_ITERATIONS);
     expect(notes).toHaveLength(1);
-    expect(notes[0]!.content).toContain(`Stopped after ${MAX_ITERATIONS} tool-call rounds`);
+    expect(notes[0]!.note).toEqual({ kind: "iteration-cap", limit: MAX_ITERATIONS });
   });
 });
 
@@ -497,7 +507,8 @@ describe("runTurn — hanging tool call", () => {
 
     const result = session.messages.find((m) => m.role === "tool");
     expect(result?.toolStatus).toBe("error");
-    expect(result?.content).toBe("Tool call timed out after 0.05s.");
+    expect(result?.note).toEqual({ kind: "tool-timeout", seconds: 0.05 });
+    expect(result?.content).toBe("");
   });
 });
 
@@ -539,7 +550,8 @@ describe("runTurn — hallucinated tool name", () => {
 
     const result = session.messages.find((m) => m.role === "tool");
     expect(result?.toolStatus).toBe("error");
-    expect(result?.content).toContain("\"does_not_exist\" isn't in this turn's tool list");
+    expect(result?.note).toEqual({ kind: "tool-unknown", toolName: "does_not_exist" });
+    expect(result?.content).toBe("");
     expect(gateway.requests).toHaveLength(2);
   });
 });
@@ -572,7 +584,14 @@ describe("runTurn — a ModelGateway that violates its never-throw contract", ()
     ).resolves.toBeUndefined();
 
     expect(notes).toHaveLength(1);
-    expect(notes[0]!.content).toContain("connection reset");
+    // The whole `ProviderError` travels as the note's params — including the
+    // infra client's own message, which is the one English residue card 114
+    // deliberately did not widen its scope to chase (see
+    // src/sidepanel/presentation/transcriptNote.ts's header).
+    expect(notes[0]!.note).toMatchObject({
+      kind: "provider-error",
+      error: { kind: "invalid-response", message: expect.stringContaining("connection reset") },
+    });
     expect(notes[0]!.actions).toEqual([{ kind: "retry" }]);
   });
 });
@@ -737,7 +756,7 @@ describe("runTurn — stop during an approval wait", () => {
 
     const result = session.messages.find((m) => m.role === "tool");
     expect(result?.toolStatus).toBe("denied");
-    expect(result?.content).toBe("The user denied this tool call.");
+    expect(result?.note).toEqual({ kind: "tool-denied" });
     expect(gateway.requests).toHaveLength(1); // no second round after a stop
     expect(mutatingTool.call).not.toHaveBeenCalled();
   });
@@ -907,8 +926,17 @@ describe("runTurn — terminal stream error note wording", () => {
       ...baseOpts(),
     });
 
-    expect(notes[0]!.content).toContain("Could not reach the server.");
-    expect(notes[0]!.content).toContain("OLLAMA_ORIGINS=* ollama serve");
+    // The copyable fix is PARAMS on the stored error, not a fenced code block
+    // baked into a stored sentence — the fence is rebuilt at render time by
+    // src/sidepanel/presentation/transcriptNote.ts.
+    expect(notes[0]!.note).toMatchObject({
+      kind: "provider-error",
+      error: {
+        kind: "unreachable-or-cors",
+        message: expect.stringContaining("Could not reach the server."),
+        fix: { command: "OLLAMA_ORIGINS=* ollama serve" },
+      },
+    });
     expect(notes[0]!.actions).toEqual([{ kind: "retry" }]);
   });
 
@@ -931,9 +959,12 @@ describe("runTurn — terminal stream error note wording", () => {
       ...baseOpts(),
     });
 
+    // A REASON, not a label (card 114): the chip's words are chosen at render
+    // time from the reader's locale, so a note recorded in English offers an
+    // Arabic button to an Arabic reader.
     expect(notes[0]!.actions).toEqual([
       { kind: "retry" },
-      { kind: "open-options", label: "Open options to check the API key" },
+      { kind: "open-options", reason: "check-api-key" },
     ]);
   });
 });
@@ -1347,5 +1378,87 @@ describe("runTurn — the sharing gate", () => {
     const { toolsForTurn } = await runWithGate({ attachTools: false, sharingAllowed: true });
 
     expect(toolsForTurn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Card 114 (decisions/38-transcript-stores-codes-not-prose.md): every outcome
+// THIS FILE decides is stored as a kind. The turn engine composes zero prose,
+// and these cases are what would fail the moment it started again.
+// ---------------------------------------------------------------------------
+
+describe("runTurn — tool outcomes are stored as kinds, never sentences", () => {
+  /**
+   * Runs one auto-approved round against `tool` and returns the tool-result
+   * entry. `abortWhen` is the exact moment Stop lands, which is the whole
+   * distinction between the two stopped kinds: `"deciding"` aborts inside the
+   * policy read, i.e. after the loop's own abort check but before the call is
+   * ever made; `"calling"` aborts once the call is already in flight.
+   */
+  async function runOneCall(tool: MergedTool, abortWhen?: "deciding" | "calling") {
+    const session = createChat("https://example.com");
+    const { transcript } = makeTranscript(session);
+    const { presenter } = makePresenter();
+    const controller = new AbortController();
+    const gateway = scriptedGateway([
+      [{ type: "tool-calls", toolCalls: [{ id: "c1", name: tool.name, arguments: {} }] }],
+      [doneEvent()],
+    ]);
+
+    await runTurn({
+      target: session,
+      transcript,
+      model: gateway,
+      presenter,
+      signal: controller.signal,
+      ...baseOpts({
+        tools: { toolsForTurn: async () => [tool] },
+        policy: {
+          mayAutoRun: async () => {
+            if (abortWhen === "deciding") controller.abort();
+            if (abortWhen === "calling") setTimeout(() => controller.abort(), 5);
+            return true;
+          },
+        },
+        attachTools: true,
+        toolCallTimeoutMs: 5_000,
+      }),
+    });
+
+    return session.messages.find((m) => m.role === "tool");
+  }
+
+  it("Stop pressed BEFORE the call runs is its own kind — a different fact from a stop mid-flight", async () => {
+    const result = await runOneCall(
+      makeTool({ name: "slow", call: () => new Promise(() => undefined) }),
+      "deciding",
+    );
+    expect(result?.note).toEqual({ kind: "tool-stopped-before" });
+    expect(result?.content).toBe("");
+  });
+
+  it("Stop pressed while the call is in flight records the mid-flight kind", async () => {
+    const result = await runOneCall(
+      makeTool({ name: "slow", call: () => new Promise(() => undefined) }),
+      "calling",
+    );
+    expect(result?.note).toEqual({ kind: "tool-stopped" });
+    expect(result?.content).toBe("");
+  });
+
+  it("a rejection carrying an Error keeps the TOOL's own words verbatim — that text is not ours to localize", async () => {
+    const result = await runOneCall(
+      makeTool({ name: "boom", call: () => Promise.reject(new Error("ECONNREFUSED at :7331")) }),
+    );
+    expect(result?.note).toBeUndefined();
+    expect(result?.content).toBe("ECONNREFUSED at :7331");
+  });
+
+  it("a rejection carrying something that is NOT an Error has no message worth showing, so the failure itself is the kind", async () => {
+    const result = await runOneCall(
+      makeTool({ name: "boom", call: () => Promise.reject("just a string") }),
+    );
+    expect(result?.note).toEqual({ kind: "tool-failed" });
+    expect(result?.content).toBe("");
   });
 });

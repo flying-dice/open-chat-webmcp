@@ -260,7 +260,12 @@ function toolSequenceMessages(chatId, at) {
     {
       id: `${chatId}-call-3`,
       role: "tool",
-      content: "The user denied this call.",
+      // Card 114 (decisions/38): an outcome the EXTENSION decided is a KIND
+      // with empty content — the screenshot matrix renders it through
+      // src/sidepanel/presentation/transcriptNote.ts, which is exactly what
+      // makes the locale shots show a denial in each locale's own words.
+      content: "",
+      note: { kind: "tool-denied" },
       createdAt: at + 50,
       toolName: "submit-form",
       toolCallId: `${chatId}-call-3`,
@@ -272,7 +277,8 @@ function toolSequenceMessages(chatId, at) {
     {
       id: `${chatId}-call-4`,
       role: "tool",
-      content: "Error: tool not found in the current page's tool list.",
+      content: "",
+      note: { kind: "tool-unknown", toolName: "purge-stale-cache" },
       createdAt: at + 60,
       toolName: "purge-stale-cache",
       toolCallId: `${chatId}-call-4`,
@@ -291,6 +297,24 @@ function toolSequenceMessages(chatId, at) {
         "- Pricing: Starter $9/mo, Team $29/mo, Enterprise is contact-only\n" +
         "- The contact form submission was denied, so it wasn't sent\n" +
         "- One tool call failed (`purge-stale-cache` isn't a real tool on this page)",
+    },
+    // Card 114 (decisions/38): a plain ASSISTANT NOTE, stored as a kind with
+    // an empty `content` and an action chip that carries a REASON rather than
+    // a label. Seeded deliberately — it is the one transcript shape whose
+    // whole point is that it re-reads in the panel's current language, so the
+    // locale screenshot matrix (verify/checks/localeScreenshots.mjs) has to
+    // have one on screen to prove it. It also puts the Retry / "open options"
+    // chips in every shot at both panel widths.
+    {
+      id: `${chatId}-note`,
+      role: "assistant",
+      content: "",
+      createdAt: at + 80,
+      note: {
+        kind: "provider-error",
+        error: { kind: "auth", status: 401, message: "Invalid API key" },
+      },
+      actions: [{ kind: "retry" }, { kind: "open-options", reason: "check-api-key" }],
     },
   ];
 }
@@ -333,7 +357,11 @@ function toolSequenceLog(chatId, at) {
       arguments: { email: "test@example.com" },
       mode: "denied",
       origin: { kind: "page" },
-      error: "The user denied this call.",
+      // The call log is the SAME call seen from the inspector, so it carries
+      // the same code (card 114) — one failure must not read localized in the
+      // transcript and English in the inspector.
+      error: "",
+      errorNote: { kind: "tool-denied" },
       startedAt: at + 1500,
       endedAt: at + 1500,
     },
@@ -342,7 +370,8 @@ function toolSequenceLog(chatId, at) {
       name: "purge-stale-cache",
       arguments: {},
       mode: "auto",
-      error: "Tool not found in the current page's tool list.",
+      error: "",
+      errorNote: { kind: "tool-unknown", toolName: "purge-stale-cache" },
       startedAt: at + 1600,
       endedAt: at + 1720,
     },

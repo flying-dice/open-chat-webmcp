@@ -63,6 +63,25 @@ describe("groupTranscript", () => {
     }
   });
 
+  it("does NOT drop an empty assistant entry that carries a note — since card 114 its words live in the renderer, not in `content`", () => {
+    // Before decisions/38 a note was prose in `content`, so emptiness alone
+    // was a safe proxy for "nothing to show". A note entry is empty BY
+    // CONSTRUCTION now, and dropping it would erase the terminal-error and
+    // iteration-cap notes from the transcript entirely — with their Retry
+    // chip, which is the only way out of a failed turn.
+    const note: TranscriptEntry = {
+      id: "n1",
+      role: "assistant",
+      content: "",
+      createdAt: 0,
+      note: { kind: "iteration-cap", limit: 8 },
+    };
+    const groups = groupTranscript([user("u1"), tool("t1"), note]);
+    // It also CLOSES the activity group, exactly as visible prose does: the
+    // note is something a reader should see in order, after the calls.
+    expect(groups.map((g) => g.kind)).toEqual(["user", "activity", "prose"]);
+  });
+
   it("a non-empty assistant message BETWEEN tool rounds closes the open activity group and starts a new one after", () => {
     const groups = groupTranscript([
       user("u1"),

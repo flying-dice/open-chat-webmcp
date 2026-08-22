@@ -6,9 +6,12 @@ import {
   userEntry,
   assistantEntry,
   toolEntry,
+  noteEntry,
+  noteForModel,
   UNTRUSTED_CONTENT_START,
   UNTRUSTED_CONTENT_END,
   type TranscriptEntry,
+  type TranscriptNote,
 } from "./message";
 import type { ToolCall } from "../providers";
 
@@ -158,5 +161,96 @@ describe("toModelConversation", () => {
     const convo = toModelConversation("SYSTEM", entries);
     expect(convo[2]!.content.startsWith(UNTRUSTED_CONTENT_START)).toBe(true);
     expect(entries[1]!.content).toBe("attacker-controlled text");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Card 114 (decisions/38-transcript-stores-codes-not-prose.md): a note is a
+// KIND plus params in storage, and a sentence only at the two seams that need
+// one — the reader's screen (src/sidepanel/presentation/transcriptNote.ts) and
+// the model's prompt (`noteForModel` below).
+// ---------------------------------------------------------------------------
+
+describe("noteEntry", () => {
+  it("stores the kind and NOTHING readable", () => {
+    const entry = noteEntry("n1", { kind: "iteration-cap", limit: 8 }, 5);
+    expect(entry).toEqual({
+      id: "n1",
+      role: "assistant",
+      content: "",
+      createdAt: 5,
+      note: { kind: "iteration-cap", limit: 8 },
+    });
+  });
+
+  it("attaches action chips when there are any, and omits the field entirely when there are none", () => {
+    expect(noteEntry("n1", { kind: "no-provider" }, 5, [{ kind: "retry" }]).actions).toEqual([
+      { kind: "retry" },
+    ]);
+    expect("actions" in noteEntry("n2", { kind: "no-provider" }, 5, [])).toBe(false);
+    expect("actions" in noteEntry("n3", { kind: "no-provider" }, 5)).toBe(false);
+  });
+
+  it("copies the actions array rather than aliasing the caller's", () => {
+    const actions = [{ kind: "retry" } as const];
+    const entry = noteEntry("n1", { kind: "no-provider" }, 5, actions);
+    actions.push({ kind: "retry" });
+    expect(entry.actions).toHaveLength(1);
+  });
+});
+
+describe("noteForModel", () => {
+  // One case per kind, so adding a kind without giving the model a sentence
+  // is a compile error (the switch is exhaustive) AND a test gap here.
+  const KINDS: [TranscriptNote, string][] = [
+    [
+      { kind: "provider-error", error: { kind: "auth", status: 401, message: "bad key" } },
+      "Authentication failed (401): bad key",
+    ],
+    [{ kind: "iteration-cap", limit: 8 }, "Stopped after 8 tool-call rounds"],
+    [{ kind: "no-provider" }, "No model provider is configured"],
+    [{ kind: "no-selection" }, "No provider and model are selected"],
+    [{ kind: "tool-denied" }, "The user denied this tool call."],
+    [{ kind: "tool-unknown", toolName: "made_up" }, `"made_up" isn't in this turn's tool list`],
+    [{ kind: "tool-timeout", seconds: 0.05 }, "timed out after 0.05s"],
+    [{ kind: "tool-stopped-before" }, "Stopped by the user before this call ran."],
+    [{ kind: "tool-stopped" }, "Stopped by the user."],
+    [{ kind: "tool-failed" }, "Tool call failed for an unknown reason."],
+  ];
+
+  it.each(KINDS)("gives the model a sentence for %o", (note, expected) => {
+    expect(noteForModel(note)).toContain(expected);
+  });
+});
+
+describe("toModelMessage — notes", () => {
+  it("expands a note's kind into the sentence the model reads, without ever storing it", () => {
+    const entry = noteEntry("n1", { kind: "iteration-cap", limit: 8 }, 0);
+    expect(toModelMessage(entry).content).toContain("Stopped after 8 tool-call rounds");
+    // The seam is one-way: expanding for the prompt must not write back.
+    expect(entry.content).toBe("");
+  });
+
+  it("does NOT fence a note on an untrusted-content tool entry — the fence claims a web page wrote the text, and this text is ours", () => {
+    const entry = toolEntry(
+      "t1",
+      call,
+      { mode: "denied", annotations: { untrustedContentHint: true } },
+      0,
+    );
+    entry.note = { kind: "tool-denied" };
+    const message = toModelMessage(entry);
+    expect(message.content).toBe("The user denied this tool call.");
+    expect(message.content).not.toContain(UNTRUSTED_CONTENT_START);
+  });
+
+  it("LEGACY PASSTHROUGH: an entry with prose and no note is sent exactly as it was recorded", () => {
+    // Pre-release posture (decisions/38): the write path changed, nothing was
+    // converted. A chat recorded before card 114 keeps its embedded English
+    // until it is deleted or evicted.
+    const legacy = assistantEntry("a1", 0);
+    legacy.content = "⚠️ Stopped after 8 tool-call rounds without a final answer.";
+    expect(toModelMessage(legacy).content).toBe(legacy.content);
+    expect(legacy.note).toBeUndefined();
   });
 });

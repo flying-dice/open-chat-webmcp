@@ -45,6 +45,7 @@
   "app_backToChatLabel": "チャットに戻る",
   "app_startChatFailedWhat": "新しいチャットを開始できませんでした",
   "app_renameFailedWhat": "このチャットの名前を変更できませんでした",
+  "app_transcriptSaveFailedWhat": "このチャットを保存できませんでした",
   "header_chatNameAriaLabel": "チャット名",
   "header_renameAriaLabel": "チャットの名前を変更：{title}",
   "header_newChatLabel": "新しいチャット",
@@ -535,5 +536,13 @@
   "toolsPanel_notSharingTitle": "このページは共有していません",
   "toolsPanel_notSharingDescription": "共有をオフにしている間、このページのツールは表示されません。入力欄の上のバーからもう一度オンにできます。",
   "pageContext_contentRestrictedNotice": "Chrome はこのページの読み取りを拡張機能に許可していないため、テキストを共有できません。",
-  "pageContext_contentUnavailableNotice": "このページを読み取れなかったため、ページのテキストなしでメッセージを送信しました。"
+  "pageContext_contentUnavailableNotice": "このページを読み取れなかったため、ページのテキストなしでメッセージを送信しました。",
+  "note_iterationCap": "ツール呼び出しを {limit} 回繰り返しても最終的な回答に至らなかったため、停止しました。もう一度質問するか、内容を絞ってお試しください。",
+  "openOptionsCheckApiKeyAction": "オプションを開いて API キーを確認",
+  "toolOutcome_denied": "この呼び出しを拒否しました。",
+  "toolOutcome_unknownTool": "「{name}」はこのターンのツール一覧にありません。モデルが作り出した名前か、ターン開始後に変更されたツールの可能性があります。",
+  "toolOutcome_timedOut": "呼び出しが {seconds} 秒でタイムアウトしました。",
+  "toolOutcome_stoppedBefore": "この呼び出しが実行される前にターンを停止しました。",
+  "toolOutcome_stopped": "この呼び出しを停止しました。",
+  "toolOutcome_failed": "呼び出しが不明な理由で失敗しました。"
 }

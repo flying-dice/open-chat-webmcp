@@ -32,7 +32,12 @@
 //
 // Pure: no `chrome.*`, no `fetch`, no DOM, no Svelte.
 
-import type { ChatMessage, ToolCall } from "../providers";
+import {
+  describeProviderError,
+  type ChatMessage,
+  type ProviderError,
+  type ToolCall,
+} from "../providers";
 import type { McpToolAnnotations, ToolAnnotations, ToolOrigin } from "../tools";
 
 /** The three roles that ever appear in a stored transcript. A `system` prompt is built fresh per turn (see ./turn.ts's `buildSystemPrompt`) and is never stored. */
@@ -45,24 +50,95 @@ export type ToolCallStatus = "pending" | "success" | "error" | "denied";
 export type ToolCallMode = "auto" | "approved" | "denied";
 
 /**
+ * WHY the options page is worth opening from a note — the params half of an
+ * `"open-options"` {@link NoteAction} (card 114,
+ * decisions/38-transcript-stores-codes-not-prose.md).
+ *
+ * The same action kind genuinely carries different wording depending on what
+ * went wrong ("…to check the API key" after a 401 vs "…to add a provider"
+ * when none is registered), which is why the entry has to say WHICH — but
+ * that is a REASON, not a sentence. Card 14 stored the sentence; a note
+ * recorded then still reads in the language the panel happened to be in.
+ */
+export type OpenOptionsReason = "check-api-key" | "add-provider";
+
+/**
  * An action chip a plain assistant note can offer (card 14: connection
  * diagnostics). A copy-pasteable fix (e.g. the OLLAMA_ORIGINS command) is NOT
- * a kind here — it is embedded in the note's own markdown as a fenced code
- * block instead, so it renders through the existing code-block "Copy" button
- * rather than a second copy-button implementation. These two kinds are for
- * actions that aren't expressible as copyable text:
+ * a kind here — it is embedded in the note's own rendered markdown as a fenced
+ * code block instead, so it renders through the existing code-block "Copy"
+ * button rather than a second copy-button implementation. These two kinds are
+ * for actions that aren't expressible as copyable text:
  *   - `"retry"`: resend the last user turn (a stream that failed
  *     mid-generation keeps its partial reply on screen; this is the offered
  *     retry, never a silent auto-retry).
  *   - `"open-options"`: jump to the options page — used for an auth (401)
- *     failure, which is fixed by checking/re-entering an API key there.
+ *     failure, which is fixed by checking/re-entering an API key there, and
+ *     for a panel with no provider registered at all.
  *
- * `label` stays on the stored entry rather than being derived in the UI
- * because the same kind carries genuinely different wording depending on why
- * the note was written ("…to check the API key" vs "…to add a provider"): it
- * is data about this specific note, not a presentation constant.
+ * LEGACY PASSTHROUGH (card 114, pre-release rules — nothing is converted): an
+ * `"open-options"` chip written before this card carries a `label` string and
+ * no `reason`. Both members are therefore optional and the renderer prefers
+ * `reason`, falling back to the stored `label` — see
+ * src/sidepanel/presentation/transcriptNote.ts's `noteActionLabel`. New chips
+ * only ever set `reason`.
  */
-export type NoteAction = { kind: "retry" } | { kind: "open-options"; label: string };
+export type NoteAction =
+  | { kind: "retry" }
+  | { kind: "open-options"; reason?: OpenOptionsReason; label?: string };
+
+/**
+ * WHY the extension itself wrote an entry into a transcript — a KIND plus its
+ * params, never a sentence (card 114,
+ * decisions/38-transcript-stores-codes-not-prose.md).
+ *
+ * THE PROBLEM THIS DELETES. Until this card the turn engine composed English
+ * prose straight into `TranscriptEntry.content`: "⚠️ Stopped after 8
+ * tool-call rounds…", "The user denied this tool call.", the whole terminal
+ * error sentence. That prose was PERSISTED, so a chat recorded in one
+ * language read as that language forever, in every locale, and a copywriter
+ * could never improve shipped history. Everything here is data ABOUT what
+ * happened; the words are chosen at display time by the reader's own locale
+ * (src/sidepanel/presentation/transcriptNote.ts), exactly as card 119's
+ * {@link SharedContextMarker} already does.
+ *
+ * TWO FAMILIES, ONE VOCABULARY. The `"provider-*"`/`"iteration-cap"`/`"no-*"`
+ * kinds sit on a plain ASSISTANT note ({@link noteEntry}); the `"tool-*"`
+ * kinds sit on a `role:"tool"` entry in place of a result. Keeping them in
+ * one union is deliberate: both are "the extension is telling you something",
+ * both persist the same way, and both render through one function — a second
+ * parallel vocabulary for tool outcomes would be the same mechanism spelled
+ * twice.
+ *
+ * A `"provider-error"` carries the whole {@link ProviderError}, which is
+ * already a code-plus-params value. Its `message`/`fix` members can still
+ * hold English an INFRA client authored (Ollama's wire text, its copyable
+ * `OLLAMA_ORIGINS` command) — that residue is pre-existing, documented debt
+ * (see `describeProviderError` in src/domain/providers/provider.ts and
+ * src/ui/providerMessage.ts), and it is the only English left in a note this
+ * card writes. Everything the DOMAIN itself would have said is now a kind.
+ */
+export type TranscriptNote =
+  /** A terminal stream failure (card 14). The retry/open-options affordances live on `TranscriptEntry.actions`, not here — they are what the user may DO, not what happened. */
+  | { kind: "provider-error"; error: ProviderError }
+  /** The turn gave up after `limit` tool-call rounds without a final answer (./turn.ts's `MAX_ITERATIONS`). The number is a param so the copy never hard-codes a tuning constant. */
+  | { kind: "iteration-cap"; limit: number }
+  /** The panel had no provider registered at all when the user sent (src/sidepanel/App.svelte). */
+  | { kind: "no-provider" }
+  /** A provider exists but nothing usable was selected (card 35). */
+  | { kind: "no-selection" }
+  /** A human denied this tool call. */
+  | { kind: "tool-denied" }
+  /** The model named a tool that wasn't in this turn's merged list — hallucinated, or gone since the turn started. */
+  | { kind: "tool-unknown"; toolName: string }
+  /** The call outlived the turn's outermost timeout rung. `seconds` rather than ms: it is what the sentence says, and rounding is not the renderer's to invent. */
+  | { kind: "tool-timeout"; seconds: number }
+  /** Stop was pressed before this call ever ran. */
+  | { kind: "tool-stopped-before" }
+  /** Stop was pressed while this call was in flight. */
+  | { kind: "tool-stopped" }
+  /** The call rejected with something that wasn't an `Error` — no message worth showing, so the failure itself is the whole fact. */
+  | { kind: "tool-failed" };
 
 /**
  * WHICH kind of page context a user turn carried (card 119,
@@ -164,6 +240,24 @@ export interface TranscriptEntry {
   /** Set on a plain assistant note (never on a live stream) that offers one or more action chips — see {@link NoteAction}. */
   actions?: NoteAction[];
   /**
+   * Set when the EXTENSION wrote this entry rather than the model or the user
+   * (card 114, decisions/38): what happened, as a kind plus params. Present on
+   * an assistant note, and on a `role:"tool"` entry whose outcome we authored
+   * (denied, timed out, stopped, unknown tool) rather than the tool itself.
+   *
+   * WHEN THIS IS SET, `content` IS `""` AND THE WORDS COME FROM THE RENDERER.
+   * The pair is the whole mechanism: nothing readable is stored, so a chat
+   * recorded in English re-reads as Japanese the moment the panel is Japanese.
+   * A tool result the TOOL produced still lives in `content` as it always did
+   * — that text is the tool's own data, not our copy.
+   *
+   * LEGACY PASSTHROUGH, no migration (pre-release posture, decisions/38): an
+   * entry written before this card has prose in `content` and no `note` at
+   * all. That is the `undefined` branch everywhere this is read — the old
+   * sentence renders exactly as it was recorded, and nothing converts it.
+   */
+  note?: TranscriptNote | undefined;
+  /**
    * Set on a `role:"user"` entry that carried page context (card 119,
    * decisions/40): what the user shared with this message, as kinds rather
    * than words. Absent — never an empty array — when the turn shared nothing,
@@ -197,6 +291,28 @@ export function userEntry(
 /** An assistant turn, empty — content is appended delta by delta as it streams. */
 export function assistantEntry(id: string, now: number): TranscriptEntry {
   return { id, role: "assistant", content: "", createdAt: now };
+}
+
+/**
+ * A plain assistant NOTE — something the extension is telling the user, as a
+ * {@link TranscriptNote} kind plus its params and never as a sentence (card
+ * 114, decisions/38).
+ *
+ * `content` is `""` by construction, which is exactly what makes the write
+ * path unable to smuggle prose back in. The two readers that care both branch
+ * on `note` first: `groupTranscript` (./transcript-groups.ts) so an empty
+ * note is not mistaken for a `toolCalls`-only carrier and dropped from
+ * display, and {@link toModelMessage} so the model still reads a sentence.
+ */
+export function noteEntry(
+  id: string,
+  note: TranscriptNote,
+  now: number,
+  actions?: readonly NoteAction[],
+): TranscriptEntry {
+  const entry: TranscriptEntry = { id, role: "assistant", content: "", createdAt: now, note };
+  if (actions && actions.length > 0) entry.actions = [...actions];
+  return entry;
 }
 
 /** Details a {@link toolEntry} snapshots from the matching merged tool at call time — all four `undefined` for a tool the model named that isn't in the turn's list. */
@@ -284,6 +400,53 @@ export function fenceUntrustedContent(toolName: string, content: string): string
 }
 
 /**
+ * MODEL-FACING English for a {@link TranscriptNote} — composed HERE, at
+ * prompt-assembly time, and never stored anywhere (card 114, decisions/38).
+ *
+ * WHY THIS IS NOT THE THING DECISION 38 FORBIDS. Decision 38 is about copy a
+ * PERSON reads: a sentence frozen into storage in whatever language the panel
+ * was in on the day. This is the other audience. The model is not a locale —
+ * it reads the conversation as one English document, and a `role:"tool"` entry
+ * that came back empty because a human denied the call is a fact the next
+ * round genuinely needs (the system prompt in ./turn.ts even instructs the
+ * model to acknowledge a denial plainly). So the note is stored as a code, and
+ * the code is expanded to a sentence on the way OUT, at exactly the seam
+ * {@link fenceUntrustedContent} already occupies: prompt-side, transient,
+ * invisible to the transcript.
+ *
+ * The whole point is that it is transient. Change a word here and every
+ * stored chat's next request says the new word; change a word in the old
+ * design and you changed nothing already written.
+ */
+export function noteForModel(note: TranscriptNote): string {
+  switch (note.kind) {
+    case "provider-error":
+      return describeProviderError(note.error);
+    case "iteration-cap":
+      return `Stopped after ${note.limit} tool-call rounds without a final answer.`;
+    case "no-provider":
+      return "No model provider is configured in this extension yet.";
+    case "no-selection":
+      return "No provider and model are selected in this extension yet.";
+    case "tool-denied":
+      return "The user denied this tool call.";
+    case "tool-unknown":
+      return (
+        `"${note.toolName}" isn't in this turn's tool list — it may be a name the model made up, ` +
+        "or a tool that changed since the turn started."
+      );
+    case "tool-timeout":
+      return `Tool call timed out after ${note.seconds}s.`;
+    case "tool-stopped-before":
+      return "Stopped by the user before this call ran.";
+    case "tool-stopped":
+      return "Stopped by the user.";
+    case "tool-failed":
+      return "Tool call failed for an unknown reason.";
+  }
+}
+
+/**
  * The ONE place the transcript vocabulary meets the provider wire vocabulary:
  * narrows a stored {@link TranscriptEntry} to the `ChatMessage` a provider is
  * sent, dropping every field that is ours rather than the model's (`id`,
@@ -306,9 +469,17 @@ export function toModelMessage(entry: TranscriptEntry): ChatMessage {
     entry.toolAnnotations?.untrustedContentHint === true;
   return {
     role: entry.role,
-    content: untrusted
-      ? fenceUntrustedContent(entry.toolName ?? "unknown tool", entry.content)
-      : entry.content,
+    // Card 114: a `note` entry stores no words at all, so the sentence is
+    // built here. Never fenced — the fence declares "a web page wrote the
+    // following", and this text is the extension's own; wrapping it would be
+    // a lie about its provenance in the one place that exists to state
+    // provenance honestly. The two branches cannot overlap in any case:
+    // `untrusted` requires non-empty content, and a note entry's is `""`.
+    content: entry.note
+      ? noteForModel(entry.note)
+      : untrusted
+        ? fenceUntrustedContent(entry.toolName ?? "unknown tool", entry.content)
+        : entry.content,
     toolCalls: entry.toolCalls,
     toolCallId: entry.toolCallId,
     toolName: entry.toolName,

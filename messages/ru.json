@@ -48,6 +48,7 @@
   "app_backToChatLabel": "Назад к чату",
   "app_startChatFailedWhat": "Не удалось начать новый чат",
   "app_renameFailedWhat": "Не удалось переименовать этот чат",
+  "app_transcriptSaveFailedWhat": "Не удалось сохранить этот чат",
   "header_chatNameAriaLabel": "Название чата",
   "header_renameAriaLabel": "Переименовать чат: {title}",
   "header_newChatLabel": "Новый чат",
@@ -577,5 +578,13 @@
   "toolsPanel_notSharingTitle": "Доступ к странице закрыт",
   "toolsPanel_notSharingDescription": "Пока доступ закрыт, инструменты этой страницы скрыты. Откройте его снова на панели над полем ввода.",
   "pageContext_contentRestrictedNotice": "Chrome не разрешает расширениям читать эту страницу, поэтому её текст передать нельзя.",
-  "pageContext_contentUnavailableNotice": "Страницу не удалось прочитать, поэтому сообщение ушло без её текста."
+  "pageContext_contentUnavailableNotice": "Страницу не удалось прочитать, поэтому сообщение ушло без её текста.",
+  "note_iterationCap": "Остановлено после {limit} раундов вызовов инструментов без окончательного ответа. Спросите ещё раз или сузьте запрос, чтобы продолжить.",
+  "openOptionsCheckApiKeyAction": "Открыть параметры и проверить API-ключ",
+  "toolOutcome_denied": "Вы отклонили этот вызов.",
+  "toolOutcome_unknownTool": "«{name}» нет в списке инструментов этого хода — возможно, модель выдумала название или инструмент изменился после начала хода.",
+  "toolOutcome_timedOut": "Вызов завершился по тайм-ауту через {seconds} с.",
+  "toolOutcome_stoppedBefore": "Вы остановили ход до того, как этот вызов выполнился.",
+  "toolOutcome_stopped": "Вы остановили этот вызов.",
+  "toolOutcome_failed": "Вызов не удался по неизвестной причине."
 }

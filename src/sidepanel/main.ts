@@ -37,7 +37,7 @@ import { mount } from "svelte";
 import "../app.css";
 import App from "./App.svelte";
 
-import { createChatService } from "../domain/chat";
+import { createChatService, type StorageFailureReport } from "../domain/chat";
 import { createProviderClientFactory } from "../domain/providers";
 import { createApprovalPolicyGate } from "../domain/settings";
 import {
@@ -62,6 +62,8 @@ import { getLocale, getTextDirection } from "../paraglide/runtime.js";
 import { initSidePanelServices } from "./app-services";
 import { originLabel } from "./presentation/toolOrigin";
 import { presenter, tabSyncView } from "./stores/panel.svelte";
+import { clearNoticeByKey, reportNotice } from "./stores/notices.svelte";
+import { storageFailureMessage } from "../ui/storageMessage";
 import { m } from "../paraglide/messages.js";
 
 // ---------------------------------------------------------------------------
@@ -99,6 +101,41 @@ const trace = (...args: unknown[]) => {
   if (storage.tracingFlag.isEnabled()) console.log("[webmcp][tab-sync]", ...args);
 };
 
+/**
+ * Card 106's routing for `ChatServiceDeps.reportStorageFailure`: only
+ * `"transcript-write"` — the one absorbed failure a person can act on (card
+ * 96's audit judged the rest half-right: the conversation on screen is not
+ * being saved and will be gone at the next tab switch) — reaches this
+ * panel's notice channel. The other three operations
+ * (`"tab-sync-read"`/`"tab-pointer-write"`/`"navigation-retry"`) are each
+ * driven by a `chrome.tabs` event nobody asked for, with no view left to
+ * tell (the panel the user has already navigated away from), and stay
+ * console-only exactly as every `reportStorageFailure` call did before this
+ * card.
+ *
+ * A single stable key (not the chat id) is used to de-duplicate and clear
+ * the notice: this panel shows one chat at a time, so "the conversation
+ * isn't being saved" never needs to distinguish which chat it is about, and
+ * a stable key is what lets `"recovered"` retract exactly the notice
+ * `"failed"` put up, regardless of whether the wording changed in between.
+ */
+const UNSAVED_CONVERSATION_NOTICE_KEY = "unsaved-conversation";
+
+function reportStorageFailure(report: StorageFailureReport): void {
+  if (report.kind === "recovered") {
+    clearNoticeByKey(UNSAVED_CONVERSATION_NOTICE_KEY);
+    return;
+  }
+  if (report.operation !== "transcript-write") {
+    console.error(`[webmcp][chat] ${report.operation}`, report.error);
+    return;
+  }
+  reportNotice(
+    storageFailureMessage(m.app_transcriptSaveFailedWhat(), report.error),
+    UNSAVED_CONVERSATION_NOTICE_KEY,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 2. Compose, and hand to the UI
 // ---------------------------------------------------------------------------
@@ -117,7 +154,7 @@ const chat = createChatService({
   // learn a number.
   toolCallTimeoutMs: AGENT_LOOP_TOOL_CALL_TIMEOUT_MS,
   trace: (event, detail) => trace(event, detail),
-  reportStorageFailure: (message, cause) => console.error(message, cause),
+  reportStorageFailure,
 });
 
 const toolsForTab = createTabToolsLookup({ trace });

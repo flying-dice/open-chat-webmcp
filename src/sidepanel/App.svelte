@@ -263,11 +263,13 @@
     if (!isSelectionUsable(resolution, selection.needsConfirmation) || tabId === undefined) {
       chat().addUserMessage(text);
       const noProviders = selection.providers.length === 0;
+      // Card 114 (decisions/38): the KIND is stored, not the sentence — this
+      // note is persisted, and a chat recorded while the panel was in one
+      // language must not read in that language forever. The words are
+      // src/sidepanel/presentation/transcriptNote.ts's, chosen at render.
       chat().addAssistantNote(
-        noProviders ? m.app_noProviderNote() : m.app_noSelectionNote(),
-        noProviders
-          ? [{ kind: "open-options", label: m.openOptionsAddProviderAction() }]
-          : undefined,
+        noProviders ? { kind: "no-provider" } : { kind: "no-selection" },
+        noProviders ? [{ kind: "open-options", reason: "add-provider" }] : undefined,
       );
       return;
     }

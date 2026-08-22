@@ -311,4 +311,76 @@ describe("Transcript", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Card 114 (decisions/38-transcript-stores-codes-not-prose.md)
+  // -------------------------------------------------------------------------
+
+  describe("notes render from a stored kind, not from stored prose", () => {
+    it("words an iteration-cap note from its params at render time", () => {
+      render(Transcript, {
+        props: baseProps({
+          messages: [
+            userMsg("u1", "hi"),
+            assistantMsg("n1", "", { note: { kind: "iteration-cap", limit: 8 } }),
+          ],
+        }),
+      });
+
+      // The entry stores `content: ""`. Anything on screen here came from
+      // messages/*.json via src/sidepanel/presentation/transcriptNote.ts,
+      // which is what makes a chat recorded in English re-read in Japanese.
+      expect(
+        screen.getByText(m.note_iterationCap({ limit: 8 }), { exact: false }),
+      ).toBeInTheDocument();
+    });
+
+    it("labels an action chip from its REASON, and fires the same handlers a prose note did", async () => {
+      const onRetry = vi.fn();
+      render(Transcript, {
+        props: baseProps({
+          onRetry,
+          messages: [
+            userMsg("u1", "hi"),
+            assistantMsg("n1", "", {
+              note: {
+                kind: "provider-error",
+                error: { kind: "auth", status: 401, message: "Invalid API key" },
+              },
+              actions: [{ kind: "retry" }, { kind: "open-options", reason: "check-api-key" }],
+            }),
+          ],
+        }),
+      });
+
+      await fireEvent.click(screen.getByRole("button", { name: m.retryAction() }));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+
+      await fireEvent.click(screen.getByRole("button", { name: m.openOptionsCheckApiKeyAction() }));
+      expect(openOptionsPage).toHaveBeenCalled();
+    });
+
+    it("LEGACY PASSTHROUGH: an old note's stored prose and stored label render exactly as recorded", () => {
+      // Pre-release posture: the write path changed, nothing was converted or
+      // migrated. A chat recorded before this card keeps its embedded English
+      // — including an action chip whose LABEL, not reason, was persisted.
+      render(Transcript, {
+        props: baseProps({
+          messages: [
+            userMsg("u1", "hi"),
+            assistantMsg("n1", "\u26a0\ufe0f Something went wrong ages ago.", {
+              actions: [{ kind: "open-options", label: "Open options (stored label)" }],
+            }),
+          ],
+        }),
+      });
+
+      expect(
+        screen.getByText("Something went wrong ages ago.", { exact: false }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Open options (stored label)" }),
+      ).toBeInTheDocument();
+    });
+  });
 });

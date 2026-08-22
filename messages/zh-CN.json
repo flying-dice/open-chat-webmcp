@@ -45,6 +45,7 @@
   "app_backToChatLabel": "返回对话",
   "app_startChatFailedWhat": "无法新建对话",
   "app_renameFailedWhat": "无法重命名此对话",
+  "app_transcriptSaveFailedWhat": "无法保存此对话",
   "header_chatNameAriaLabel": "对话名称",
   "header_renameAriaLabel": "重命名对话：{title}",
   "header_newChatLabel": "新建对话",
@@ -535,5 +536,13 @@
   "toolsPanel_notSharingTitle": "未共享此页面",
   "toolsPanel_notSharingDescription": "共享关闭时，此页面的工具不会显示。可在消息框上方的栏中重新开启。",
   "pageContext_contentRestrictedNotice": "Chrome 禁止扩展读取此页面，因此无法共享其文本。",
-  "pageContext_contentUnavailableNotice": "刚才无法读取此页面，因此消息已在不含页面文本的情况下发送。"
+  "pageContext_contentUnavailableNotice": "刚才无法读取此页面，因此消息已在不含页面文本的情况下发送。",
+  "note_iterationCap": "已进行 {limit} 轮工具调用仍未得到最终答复，因此已停止。可以再问一次，或缩小问题范围以继续。",
+  "openOptionsCheckApiKeyAction": "打开选项页检查 API 密钥",
+  "toolOutcome_denied": "你拒绝了这次调用。",
+  "toolOutcome_unknownTool": "「{name}」不在本轮的工具列表中——可能是模型编造的名称，或该工具在本轮开始后发生了变化。",
+  "toolOutcome_timedOut": "调用在 {seconds} 秒后超时。",
+  "toolOutcome_stoppedBefore": "你在这次调用开始前停止了本轮。",
+  "toolOutcome_stopped": "你停止了这次调用。",
+  "toolOutcome_failed": "调用因未知原因失败。"
 }

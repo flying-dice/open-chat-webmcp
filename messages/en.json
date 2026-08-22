@@ -51,6 +51,7 @@
   "app_backToChatLabel": "Back to chat",
   "app_startChatFailedWhat": "Couldn't start a new chat",
   "app_renameFailedWhat": "Couldn't rename this chat",
+  "app_transcriptSaveFailedWhat": "Couldn't save this chat",
   "header_chatNameAriaLabel": "Chat name",
   "header_renameAriaLabel": "Rename chat: {title}",
   "header_newChatLabel": "New chat",
@@ -618,5 +619,13 @@
   "toolsPanel_notSharingTitle": "Not sharing this page",
   "toolsPanel_notSharingDescription": "This page's tools stay hidden while sharing is off. Turn it back on from the bar above the message box.",
   "pageContext_contentRestrictedNotice": "Chrome blocks extensions from reading this page, so its text can't be shared.",
-  "pageContext_contentUnavailableNotice": "Couldn't read this page just now, so your message was sent without the page text."
+  "pageContext_contentUnavailableNotice": "Couldn't read this page just now, so your message was sent without the page text.",
+  "note_iterationCap": "Stopped after {limit} tool-call rounds without a final answer. Ask again, or narrow the request, to continue.",
+  "openOptionsCheckApiKeyAction": "Open options to check the API key",
+  "toolOutcome_denied": "You denied this call.",
+  "toolOutcome_unknownTool": "“{name}” isn't in this turn's tool list — it may be a name the model made up, or a tool that changed since the turn started.",
+  "toolOutcome_timedOut": "The call timed out after {seconds}s.",
+  "toolOutcome_stoppedBefore": "You stopped the turn before this call ran.",
+  "toolOutcome_stopped": "You stopped this call.",
+  "toolOutcome_failed": "The call failed for an unknown reason."
 }

@@ -33,6 +33,7 @@
   import { formatTimeOfDay } from "../../ui/datetime";
   import { originLabel } from "../presentation/toolOrigin";
   import { formatDuration } from "../presentation/duration";
+  import { noteText } from "../presentation/transcriptNote";
   import ToolArgs from "./ToolArgs.svelte";
   import ToolArgValue from "./ToolArgValue.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
@@ -45,6 +46,19 @@
   }
 
   let { entry }: Props = $props();
+
+  /**
+   * The failure text, card 114 / decisions/38: an outcome the EXTENSION
+   * decided (denied, timed out, stopped, an unknown tool name) is stored as a
+   * KIND on `entry.errorNote` and worded here, so the inspector says the same
+   * thing as the transcript row for the same call — in the reader's language.
+   * `entry.error` alone is either the TOOL's own message, kept verbatim, or
+   * (for a call logged before this card) our old English prose, rendered
+   * as-is: the legacy passthrough, nothing converted.
+   */
+  const errorText = $derived(
+    entry.errorNote ? noteText(entry.errorNote) : (entry.error ?? undefined),
+  );
 
   const status = $derived.by((): "pending" | "success" | "error" => {
     if (entry.endedAt === undefined) return "pending";
@@ -137,12 +151,12 @@
         <ToolArgs args={entry.arguments} />
       </div>
 
-      {#if entry.error !== undefined}
+      {#if errorText !== undefined}
         <div>
           <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
             >{m.errorHeading()}</h3
           >
-          <p class="m-0 text-sm break-words whitespace-pre-wrap text-destructive">{entry.error}</p>
+          <p class="m-0 text-sm break-words whitespace-pre-wrap text-destructive">{errorText}</p>
         </div>
       {:else if entry.result !== undefined}
         <div>

@@ -50,6 +50,7 @@
   "app_backToChatLabel": "العودة إلى المحادثة",
   "app_startChatFailedWhat": "تعذّر بدء محادثة جديدة",
   "app_renameFailedWhat": "تعذّرت إعادة تسمية هذه المحادثة",
+  "app_transcriptSaveFailedWhat": "تعذّر حفظ هذه المحادثة",
   "header_chatNameAriaLabel": "اسم المحادثة",
   "header_renameAriaLabel": "إعادة تسمية المحادثة: {title}",
   "header_newChatLabel": "محادثة جديدة",
@@ -605,5 +606,13 @@
   "toolsPanel_notSharingTitle": "لا تتم مشاركة هذه الصفحة",
   "toolsPanel_notSharingDescription": "تبقى أدوات هذه الصفحة مخفية ما دامت المشاركة متوقفة. أعِد تفعيلها من الشريط أعلى مربع الرسالة.",
   "pageContext_contentRestrictedNotice": "يمنع Chrome الإضافات من قراءة هذه الصفحة، لذا لا يمكن مشاركة نصها.",
-  "pageContext_contentUnavailableNotice": "تعذّرت قراءة هذه الصفحة الآن، لذا أُرسلت رسالتك بدون نص الصفحة."
+  "pageContext_contentUnavailableNotice": "تعذّرت قراءة هذه الصفحة الآن، لذا أُرسلت رسالتك بدون نص الصفحة.",
+  "note_iterationCap": "توقّف بعد {limit} جولات من استدعاءات الأدوات دون إجابة نهائية. اسأل مرة أخرى أو ضيّق الطلب للمتابعة.",
+  "openOptionsCheckApiKeyAction": "فتح الخيارات للتحقق من مفتاح API",
+  "toolOutcome_denied": "لقد رفضت هذا الاستدعاء.",
+  "toolOutcome_unknownTool": "“{name}” ليس ضمن قائمة أدوات هذه الجولة — قد يكون اسمًا اختلقه النموذج، أو أداة تغيّرت بعد بدء الجولة.",
+  "toolOutcome_timedOut": "انتهت مهلة الاستدعاء بعد {seconds} ثانية.",
+  "toolOutcome_stoppedBefore": "أوقفت الجولة قبل تنفيذ هذا الاستدعاء.",
+  "toolOutcome_stopped": "أوقفت هذا الاستدعاء.",
+  "toolOutcome_failed": "فشل الاستدعاء لسبب غير معروف."
 }

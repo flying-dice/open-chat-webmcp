@@ -42,6 +42,7 @@ import type { StorageError } from "../storage";
 import type { ApprovalPolicyGate } from "../settings";
 import type { ToolOrigin } from "../tools";
 import {
+  noteEntry,
   toolEntry,
   userEntry,
   assistantEntry,
@@ -50,6 +51,7 @@ import {
   type ToolCallSnapshot,
   type ToolCallStatus,
   type TranscriptEntry,
+  type TranscriptNote,
 } from "./message";
 import {
   completeToolCall,
@@ -217,6 +219,62 @@ export interface ChatService extends TurnTranscript {
   snapshot(): ChatServiceSnapshot;
 }
 
+/**
+ * Which absorbed call produced a {@link StorageFailureReport} — see
+ * `ChatService`'s postures (2) and (3) for what "absorbed" means. A root
+ * switches on this to decide WHERE a report goes; it never sees an English
+ * fragment to parse.
+ *
+ *   - `"transcript-write"` — posture (3): a transcript mutator's
+ *     fire-and-forget `save`. The one a person can act on (card 106): the
+ *     conversation on screen is not being saved.
+ *   - `"tab-sync-read"` — posture (2): `syncToTab` could not resolve the
+ *     tab's chat. Event-driven, nothing waiting on it.
+ *   - `"tab-pointer-write"` — posture (2): `syncToTab`'s write of the tab's
+ *     resolved pointer.
+ *   - `"navigation-retry"` — posture (2): `applyNavigation`'s call to
+ *     `startNewChat` after a same-tab origin change.
+ */
+export type StorageFailureOperation =
+  | "transcript-write"
+  | "tab-sync-read"
+  | "tab-pointer-write"
+  | "navigation-retry";
+
+/**
+ * What `ChatServiceDeps.reportStorageFailure` is handed instead of a
+ * developer string (card 106, filed by card 96's audit) — enough for a root
+ * to build BOTH a log line and, for the one operation a person can act on,
+ * localized user-facing prose, without this module owning any copy of its
+ * own (decisions/33-shared-ui-layer.md: prose is built from a `kind`/here, an
+ * `operation`, never from a domain-authored sentence).
+ *
+ * Two shapes, because a report can mean two different things to a UI that
+ * keeps a persistent notice up for `"transcript-write"`:
+ *
+ *   - `kind: "failed"` — every absorbed failure, for all four operations.
+ *   - `kind: "recovered"` — fires ONLY for `"transcript-write"`, and only
+ *     once a chat that had a PRIOR failed write saves successfully again.
+ *     This is the retraction signal a persistent notice needs; the other
+ *     three operations are each one absorbed call rather than a stream of
+ *     retries against the same target, so there is nothing to retract.
+ */
+export type StorageFailureReport =
+  | {
+      kind: "failed";
+      operation: StorageFailureOperation;
+      /** The chat this happened to, when the operation is chat-scoped (`"transcript-write"`). `undefined` for a tab-scoped operation. */
+      chatId: string | undefined;
+      /** The tab this happened to, when the operation is tab-scoped. `undefined` for `"transcript-write"`, which is scoped to a chat regardless of which tab is showing it. */
+      tabId: number | undefined;
+      error: StorageError;
+    }
+  | {
+      kind: "recovered";
+      operation: "transcript-write";
+      chatId: string;
+    };
+
 export interface ChatServiceDeps {
   store: ChatStore;
   /** How the surface shows a conversation and its live turn state — and the hand-off that lets a reactive UI own the session object. Defaults to a headless presenter that shows nothing and reports nothing. */
@@ -229,26 +287,27 @@ export interface ChatServiceDeps {
   toolCallTimeoutMs: number;
   /**
    * Where a storage failure this service ABSORBS is reported (card 59 item 3,
-   * widened by card 92, narrowed to its final shape by card 95).
+   * widened by card 92, narrowed to its shape by card 95, widened again to a
+   * typed {@link StorageFailureReport} by card 106).
    *
-   * Exactly two kinds of call site reach it, and both are ones with nowhere
-   * to return to (see `ChatService`'s postures (2) and (3)):
-   *
-   *   - every transcript mutator, which persists fire-and-forget: they must
-   *     stay synchronous-feeling for streaming, so this does not block or
-   *     retry; it only makes a failure visible instead of a swallowed promise
-   *     rejection.
-   *   - `syncToTab`/`applyNavigation`, driven by a `chrome.tabs` event rather
-   *     than by a person.
+   * Exactly four call sites reach it, and all are ones with nowhere to
+   * return to (see `ChatService`'s postures (2) and (3); see
+   * {@link StorageFailureOperation} for which is which). A root is expected
+   * to route ONLY `"transcript-write"` reports to a user-visible surface —
+   * card 96's audit judged that the one absorbed failure a person can act on
+   * (the conversation on screen is not being saved), and the other three are
+   * driven by a `chrome.tabs` event nobody asked for, with no view left to
+   * tell.
    *
    * Every OTHER failure in this file is now in a signature. Nothing reaches
    * here that a caller could have been told about.
    *
-   * Defaults to `console.error`, which is not a platform API and exists in a
-   * bare Node test: the default is there so a failure can never be silent by
-   * omission, not because the domain has an opinion about sinks.
+   * Defaults to a `console` sink, which is not a platform API and exists in
+   * a bare Node test: the default is there so a failure can never be silent
+   * by omission, not because the domain has an opinion about where reports
+   * ultimately go.
    */
-  reportStorageFailure?: (message: string, cause: StorageError) => void;
+  reportStorageFailure?: (report: StorageFailureReport) => void;
   /** Optional diagnostic trace for the swap path (card 59 item 1) — the panel gates this on its runtime tracing flag. */
   trace?: (event: string, detail: Record<string, unknown>) => void;
 }
@@ -289,7 +348,10 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   const presenter = deps.presenter ?? headlessPresenter;
   const reportStorageFailure =
     deps.reportStorageFailure ??
-    ((message: string, cause: StorageError) => console.error(message, cause));
+    ((report: StorageFailureReport) => {
+      if (report.kind === "failed") console.error(`[webmcp][chat] ${report.operation}`, report);
+      else console.info(`[webmcp][chat] ${report.operation} recovered`, report);
+    });
   const trace = deps.trace ?? (() => undefined);
 
   let session: ChatSession | undefined;
@@ -319,6 +381,15 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   /** One stop handler per chat with a turn in flight — a single global here is exactly what let a second turn (or a tab switch mid-turn) silently clobber another chat's Stop. */
   const stopHandlers = new Map<string, () => void>();
 
+  /**
+   * Chat ids whose last reported transcript write FAILED and has not yet been
+   * followed by a success (card 106). What lets `save` tell "still broken" —
+   * report nothing new, a UI's existing notice already says it — apart from
+   * "fixed itself" — report `kind: "recovered"` exactly once, rather than on
+   * every ordinary successful write.
+   */
+  const failingTranscriptWrites = new Set<string>();
+
   /** Takes ownership of `next` (see the module doc comment's proxy hand-off) and makes it the chat on screen. */
   function adopt(next: ChatSession): ChatSession {
     session = presenter.show(next);
@@ -329,28 +400,54 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
    * Fire-and-forget persistence. Every transcript mutator writes through here
    * rather than `void store.save(...)`: a failed write (a quota error, the
    * extension context invalidated mid-write) used to become an unhandled
-   * rejection with no signal and no record of which chat it was, and is now
-   * a returned `StorageError` this reports against its chat id.
+   * rejection with no signal and no record of which chat it was, and is now a
+   * `"transcript-write"` {@link StorageFailureReport} against its chat id —
+   * and, once storage is working again, the `"recovered"` report a
+   * persistent notice needs to retract itself.
    */
   function save(target: ChatSession, opts?: { immediate?: boolean; touch?: boolean }): void {
     void store.save(target, opts).then(([, err]) => {
-      if (err) reportStorageFailure(`[webmcp][chat] save failed for chat ${target.id}`, err);
+      if (err) {
+        failingTranscriptWrites.add(target.id);
+        reportStorageFailure({
+          kind: "failed",
+          operation: "transcript-write",
+          chatId: target.id,
+          tabId: undefined,
+          error: err,
+        });
+      } else if (failingTranscriptWrites.delete(target.id)) {
+        reportStorageFailure({
+          kind: "recovered",
+          operation: "transcript-write",
+          chatId: target.id,
+        });
+      }
     });
   }
 
   /**
-   * Awaited persistence for the two EVENT-DRIVEN lifecycle methods
-   * (`syncToTab`, `applyNavigation`) — the only ones left with nowhere to put
-   * a `StorageError`, because nobody asked them to run (card 95; see
-   * `ChatService`'s posture (2)). Every user-driven method returns its result
-   * instead of coming through here.
+   * Awaited persistence for the two EVENT-DRIVEN lifecycle operations
+   * (`syncToTab`'s tab-pointer write, `applyNavigation`'s retry) — the ones
+   * left with nowhere to put a `StorageError`, because nobody asked them to
+   * run (card 95; see `ChatService`'s posture (2)). Every user-driven method
+   * returns its result instead of coming through here.
    */
   async function persist(
-    what: string,
-    operation: Promise<Result<unknown, StorageError>>,
+    operation: "tab-pointer-write" | "navigation-retry",
+    forTabId: number,
+    outcome: Promise<Result<unknown, StorageError>>,
   ): Promise<void> {
-    const [, err] = await operation;
-    if (err) reportStorageFailure(`[webmcp][chat] ${what}`, err);
+    const [, err] = await outcome;
+    if (err) {
+      reportStorageFailure({
+        kind: "failed",
+        operation,
+        chatId: undefined,
+        tabId: forTabId,
+        error: err,
+      });
+    }
   }
 
   function findEntry(target: ChatSession, id: string): TranscriptEntry | undefined {
@@ -371,7 +468,13 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
         // fabricated empty chat: an unreadable store is not the same fact as
         // "this tab has no chat", and swapping the transcript out on it would
         // show the user a blank conversation their history is still behind.
-        reportStorageFailure(`[webmcp][chat] could not resolve tab ${nextTabId}'s chat`, readErr);
+        reportStorageFailure({
+          kind: "failed",
+          operation: "tab-sync-read",
+          chatId: undefined,
+          tabId: nextTabId,
+          error: readErr,
+        });
         return;
       }
       const { chat, resolved } = resolvedTab;
@@ -388,7 +491,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // wrong, re-stamping a pointer a background turn may need untouched.
       if (!resolved) {
         await persist(
-          `tab pointer write failed for tab ${nextTabId}`,
+          "tab-pointer-write",
+          nextTabId,
           store.setCurrentChatForTab(nextTabId, current.id, origin),
         );
       }
@@ -418,13 +522,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // Posture (2): a navigation is a browser event, not a request from a
       // person — `startNewChat`'s typed failure is absorbed here rather than
       // handed to a caller that does not exist.
-      const [, err] = await service.startNewChat(newOrigin);
-      if (err) {
-        reportStorageFailure(
-          `[webmcp][chat] could not start a fresh chat for tab ${forTabId} after it navigated to ${newOrigin}`,
-          err,
-        );
-      }
+      await persist("navigation-retry", forTabId, service.startNewChat(newOrigin));
     },
 
     async startNewChat(origin) {
@@ -588,7 +686,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
     updateToolCallResult(
       id: string,
-      outcome: { status: ToolCallStatus; content: string },
+      outcome: { status: ToolCallStatus; content: string; note?: TranscriptNote },
       target = session,
     ) {
       if (!target) return;
@@ -596,24 +694,39 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       if (entry && entry.role === "tool") {
         entry.toolStatus = outcome.status;
         entry.content = outcome.content;
+        // Card 114: `note` and `content` are exclusive by contract, but this
+        // deletes rather than leaves a stale kind behind — the same entry is
+        // written twice (pending, then its outcome) and a note from a
+        // previous write would otherwise outlive the fact it described.
+        if (outcome.note) entry.note = outcome.note;
+        else delete entry.note;
       }
+      // The call log is the SAME call seen from the inspector, so the code
+      // travels with it (card 114) — see `ToolCallLogEntry.errorNote`.
       completeToolCall(
         target,
         id,
-        outcome.status === "success" ? { result: outcome.content } : { error: outcome.content },
+        outcome.status === "success"
+          ? { result: outcome.content }
+          : outcome.note
+            ? { error: outcome.content, errorNote: outcome.note }
+            : { error: outcome.content },
       );
       save(target, { immediate: true });
     },
 
-    addAssistantNote(content: string, actions?: NoteAction[], target = session) {
-      const id = service.beginAssistantMessage(target);
-      service.appendAssistantDelta(id, content, target);
-      service.endAssistantMessage(id, undefined, target);
-      if (actions && actions.length > 0 && target) {
-        const entry = findEntry(target, id);
-        if (entry) entry.actions = actions;
-        save(target, { immediate: true });
-      }
+    /**
+     * Card 114 (decisions/38): builds the entry directly rather than through
+     * `beginAssistantMessage`/`appendAssistantDelta`/`endAssistantMessage`.
+     * That three-step dance existed only to push PROSE into `content` one
+     * string at a time; a note has no content to append, so the detour is now
+     * three storage writes to say one thing.
+     */
+    addAssistantNote(note: TranscriptNote, actions?: NoteAction[], target = session) {
+      if (!target) return "";
+      const id = newId();
+      target.messages.push(noteEntry(id, note, Date.now(), actions));
+      save(target, { immediate: true });
       return id;
     },
 

@@ -201,7 +201,13 @@ describe("ChatService.syncToTab", () => {
     // transcript would show the user history their chat isn't actually gone
     // from.
     expect(service.current()).toBe(before);
-    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith({
+      kind: "failed",
+      operation: "tab-sync-read",
+      chatId: undefined,
+      tabId: 2,
+      error: boom,
+    });
   });
 });
 
@@ -369,7 +375,13 @@ describe("ChatService.applyNavigation — storage failure", () => {
     await expect(service.applyNavigation(1, "https://b.example.com")).resolves.toBeUndefined();
 
     expect(service.current()).toBe(before);
-    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith(expect.any(String), boom);
+    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith({
+      kind: "failed",
+      operation: "navigation-retry",
+      chatId: undefined,
+      tabId: 1,
+      error: boom,
+    });
   });
 });
 
@@ -571,13 +583,137 @@ describe("ChatService transcript mutators", () => {
     ]);
   });
 
-  it("addAssistantNote appends a note with optional action chips", async () => {
+  it("addAssistantNote stores the note's KIND and no prose, plus optional action chips", async () => {
     const { service } = makeService();
     await service.syncToTab(1, "https://a.example.com");
-    const id = service.addAssistantNote("Something went wrong", [{ kind: "retry" }]);
+    const id = service.addAssistantNote({ kind: "iteration-cap", limit: 8 }, [{ kind: "retry" }]);
     const entry = service.current()!.messages.find((m) => m.id === id);
-    expect(entry?.content).toBe("Something went wrong");
+    // Card 114 (decisions/38): `content` is empty BY CONSTRUCTION. This is the
+    // assertion that stops prose from creeping back into storage — the words
+    // are the renderer's, so switching the panel's language re-reads history.
+    expect(entry?.content).toBe("");
+    expect(entry?.note).toEqual({ kind: "iteration-cap", limit: 8 });
     expect(entry?.actions).toEqual([{ kind: "retry" }]);
+  });
+
+  it("updateToolCallResult carries an extension-authored outcome as a kind into BOTH the transcript and the call log", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const call = { id: "call-1", name: "submit", arguments: {} };
+    const id = service.addToolCall(call, { mode: "denied" });
+    service.updateToolCallResult(id, {
+      status: "denied",
+      content: "",
+      note: { kind: "tool-denied" },
+    });
+
+    const chat = service.current()!;
+    // The inspector and the transcript are two views of ONE call: converting
+    // only the transcript would have left the same denial reading in the
+    // user's language in one panel and in English in the other.
+    expect(chat.messages.find((m) => m.id === id)).toMatchObject({
+      toolStatus: "denied",
+      content: "",
+      note: { kind: "tool-denied" },
+    });
+    expect(chat.toolCalls).toEqual([
+      expect.objectContaining({ id, error: "", errorNote: { kind: "tool-denied" } }),
+    ]);
+  });
+
+  it("a TOOL's own failure message stays verbatim and earns no kind", async () => {
+    const { service } = makeService();
+    await service.syncToTab(1, "https://a.example.com");
+    const id = service.addToolCall({ id: "call-1", name: "read", arguments: {} }, { mode: "auto" });
+    // Paraphrasing a page's or a server's own diagnostic is how it stops being
+    // one — decisions/38 is about copy WE compose, not text that arrives from
+    // outside the extension.
+    service.updateToolCallResult(id, { status: "error", content: "ECONNREFUSED at :7331" });
+
+    const chat = service.current()!;
+    expect(chat.messages.find((m) => m.id === id)?.note).toBeUndefined();
+    expect(chat.messages.find((m) => m.id === id)?.content).toBe("ECONNREFUSED at :7331");
+    expect(chat.toolCalls[0]?.errorNote).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Card 106 (filed by card 96's audit): the fire-and-forget transcript writes
+// now report a typed StorageFailureReport instead of a developer string, and
+// report a "recovered" counterpart once a chat whose write had been failing
+// saves successfully again — the retraction signal a persistent "this
+// conversation isn't being saved" notice needs.
+// ---------------------------------------------------------------------------
+
+describe("ChatService transcript mutators — storage failure (card 106)", () => {
+  it("reports a typed transcript-write failure for a failing fire-and-forget write", async () => {
+    const reportStorageFailure = vi.fn();
+    const { service, store } = makeService({ reportStorageFailure });
+    await service.syncToTab(1, "https://a.example.com");
+    const chatId = service.current()!.id;
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.save = boom;
+    service.addUserMessage("hello");
+
+    await vi.waitFor(() => expect(reportStorageFailure).toHaveBeenCalled());
+
+    expect(reportStorageFailure).toHaveBeenCalledExactlyOnceWith({
+      kind: "failed",
+      operation: "transcript-write",
+      chatId,
+      tabId: undefined,
+      error: boom,
+    });
+  });
+
+  it("reports recovered exactly once after a run of failures, and stays quiet on ordinary successes afterwards", async () => {
+    const reportStorageFailure = vi.fn();
+    const { service, store } = makeService({ reportStorageFailure });
+    await service.syncToTab(1, "https://a.example.com");
+    const chatId = service.current()!.id;
+
+    const boom = new StorageError("Unavailable", "the store did not answer");
+    store.failures.save = boom;
+    // A run of failing debounced writes — each one reports, since the
+    // panel-side de-duplication (src/sidepanel/stores/notices.svelte.ts) is
+    // what collapses these to one notice, not the domain.
+    service.addUserMessage("first");
+    await vi.waitFor(() => expect(reportStorageFailure).toHaveBeenCalledTimes(1));
+    service.addUserMessage("second");
+    await vi.waitFor(() => expect(reportStorageFailure).toHaveBeenCalledTimes(2));
+
+    // Storage starts working again: the very next write for this chat both
+    // succeeds AND earns the one-time "recovered" report.
+    delete store.failures.save;
+    service.addUserMessage("third");
+    await vi.waitFor(() => expect(reportStorageFailure).toHaveBeenCalledTimes(3));
+
+    // A later ordinary success is NOT a second recovery — there was nothing
+    // outstanding to retract.
+    service.addUserMessage("fourth");
+    await vi.waitFor(() => expect(service.current()!.messages).toHaveLength(4));
+    expect(reportStorageFailure).toHaveBeenCalledTimes(3);
+
+    expect(reportStorageFailure).toHaveBeenNthCalledWith(1, {
+      kind: "failed",
+      operation: "transcript-write",
+      chatId,
+      tabId: undefined,
+      error: boom,
+    });
+    expect(reportStorageFailure).toHaveBeenNthCalledWith(2, {
+      kind: "failed",
+      operation: "transcript-write",
+      chatId,
+      tabId: undefined,
+      error: boom,
+    });
+    expect(reportStorageFailure).toHaveBeenNthCalledWith(3, {
+      kind: "recovered",
+      operation: "transcript-write",
+      chatId,
+    });
   });
 });
 

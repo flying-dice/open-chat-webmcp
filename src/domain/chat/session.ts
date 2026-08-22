@@ -16,7 +16,7 @@
 import type { ProviderSelection } from "../providers";
 import type { ToolOrigin } from "../tools";
 import { newId } from "./id";
-import type { ToolCallMode, TranscriptEntry } from "./message";
+import type { ToolCallMode, TranscriptEntry, TranscriptNote } from "./message";
 import { truncateWithEllipsis } from "./text";
 
 // Re-exported for continuity: `ToolCallMode` is the transcript vocabulary
@@ -45,7 +45,27 @@ export interface ToolCallLogEntry {
    */
   origin?: ToolOrigin | undefined;
   result?: unknown;
+  /**
+   * The TOOL's own failure message, verbatim — a page's or an MCP server's
+   * words, which are shown unparaphrased because paraphrasing someone else's
+   * diagnostic is how it stops being one. `""` when the failure was one THIS
+   * extension decided, in which case {@link ToolCallLogEntry.errorNote}
+   * carries it instead; `undefined` when the call did not fail.
+   */
   error?: string;
+  /**
+   * A failure the EXTENSION decided (denied, timed out, stopped, an unknown
+   * tool name) as a kind plus params rather than a sentence — card 114,
+   * decisions/38-transcript-stores-codes-not-prose.md.
+   *
+   * The call log is the inspector's view of the very same call the transcript
+   * shows, so it has to carry the same code: converting only the transcript
+   * would have left one failure reading in the user's language in one panel
+   * and in English in the other. `undefined` on a log entry written before
+   * this card — the legacy passthrough, whose stored `error` prose renders
+   * as-is.
+   */
+  errorNote?: TranscriptNote | undefined;
   startedAt: number;
   endedAt?: number;
 }
@@ -183,15 +203,19 @@ export function logToolCall(
   return full;
 }
 
-/** Record the outcome of a previously-logged (`"auto"`/`"approved"`) tool call by its `id`. No-op if `id` isn't found. */
+/** Record the outcome of a previously-logged (`"auto"`/`"approved"`) tool call by its `id`. No-op if `id` isn't found. Card 114: a failure the extension itself decided arrives as `errorNote` (a kind) with an empty `error`, so nothing readable is persisted — see {@link ToolCallLogEntry.errorNote}. */
 export function completeToolCall(
   session: ChatSession,
   id: string,
-  outcome: { result: unknown } | { error: string },
+  outcome: { result: unknown } | { error: string; errorNote?: TranscriptNote },
 ): void {
   const entry = session.toolCalls.find((e) => e.id === id);
   if (!entry) return;
-  if ("result" in outcome) entry.result = outcome.result;
-  else entry.error = outcome.error;
+  if ("result" in outcome) {
+    entry.result = outcome.result;
+  } else {
+    entry.error = outcome.error;
+    if (outcome.errorNote) entry.errorNote = outcome.errorNote;
+  }
   entry.endedAt = Date.now();
 }

@@ -44,6 +44,7 @@
   import { originLabel } from "../presentation/toolOrigin";
   import { panel } from "../stores/panel.svelte";
   import { formatDuration } from "../presentation/duration";
+  import { noteText } from "../presentation/transcriptNote";
   import { cn } from "$lib/utils";
   import Icon from "./Icon.svelte";
   import ToolArgs from "./ToolArgs.svelte";
@@ -132,8 +133,24 @@
     return undefined;
   });
 
+  /**
+   * What this row actually shows as the call's outcome (card 114,
+   * decisions/38). An outcome the EXTENSION decided — denied, timed out,
+   * stopped, a name that wasn't in this turn's list — is stored as a KIND on
+   * `message.note` with an empty `content`, and is worded here, in the
+   * reader's current language. An outcome the TOOL produced is its own text
+   * and stays verbatim in `content`: paraphrasing a page's or a server's own
+   * error is how a diagnostic stops being one.
+   *
+   * The `content` branch is also the LEGACY PASSTHROUGH — a call recorded
+   * before this card has our English prose sitting in `content` with no
+   * `note`, and renders exactly as it was written. Nothing converts it
+   * (pre-release: no migration).
+   */
+  const outcomeText = $derived(message.note ? noteText(message.note) : message.content);
+
   const showErrorLine = $derived(
-    (displayStatus === "error" || displayStatus === "denied") && message.content.trim() !== "",
+    (displayStatus === "error" || displayStatus === "denied") && outcomeText.trim() !== "",
   );
 
   const resultIsError = $derived(displayStatus === "error" || displayStatus === "denied");
@@ -229,7 +246,7 @@
     {#if showErrorLine}
       <!-- Never hidden behind the payload toggle — this is precisely why
            the payload below can default closed. -->
-      <p class="m-0 text-sm text-destructive [overflow-wrap:anywhere]">{message.content}</p>
+      <p class="m-0 text-sm text-destructive [overflow-wrap:anywhere]">{outcomeText}</p>
     {/if}
 
     <Collapsible.Content>
@@ -247,7 +264,7 @@
           </p>
         {/if}
 
-        {#if message.content}
+        {#if outcomeText}
           <div>
             <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {resultIsError ? m.errorHeading() : m.resultHeading()}
@@ -265,7 +282,7 @@
                 resultIsError && "text-destructive",
                 untrustedContent && displayStatus === "success" && "border border-dashed border-destructive",
               )}
-            >{message.content}</div>
+            >{outcomeText}</div>
           </div>
         {/if}
       </div>

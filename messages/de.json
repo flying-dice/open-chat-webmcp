@@ -46,6 +46,7 @@
   "app_backToChatLabel": "Zurück zum Chat",
   "app_startChatFailedWhat": "Neuer Chat konnte nicht gestartet werden",
   "app_renameFailedWhat": "Dieser Chat konnte nicht umbenannt werden",
+  "app_transcriptSaveFailedWhat": "Dieser Chat konnte nicht gespeichert werden",
   "header_chatNameAriaLabel": "Chatname",
   "header_renameAriaLabel": "Chat umbenennen: {title}",
   "header_newChatLabel": "Neuer Chat",
@@ -549,5 +550,13 @@
   "toolsPanel_notSharingTitle": "Diese Seite wird nicht geteilt",
   "toolsPanel_notSharingDescription": "Die Tools dieser Seite bleiben verborgen, solange das Teilen aus ist. Schalten Sie es in der Leiste über dem Eingabefeld wieder ein.",
   "pageContext_contentRestrictedNotice": "Chrome lässt Erweiterungen diese Seite nicht lesen, deshalb kann ihr Text nicht geteilt werden.",
-  "pageContext_contentUnavailableNotice": "Diese Seite ließ sich gerade nicht lesen, deshalb wurde Ihre Nachricht ohne den Seitentext gesendet."
+  "pageContext_contentUnavailableNotice": "Diese Seite ließ sich gerade nicht lesen, deshalb wurde Ihre Nachricht ohne den Seitentext gesendet.",
+  "note_iterationCap": "Nach {limit} Runden mit Tool-Aufrufen ohne abschließende Antwort abgebrochen. Fragen Sie erneut oder grenzen Sie die Anfrage ein, um fortzufahren.",
+  "openOptionsCheckApiKeyAction": "Optionen öffnen und API-Schlüssel prüfen",
+  "toolOutcome_denied": "Sie haben diesen Aufruf abgelehnt.",
+  "toolOutcome_unknownTool": "„{name}“ steht nicht in der Tool-Liste dieser Runde – der Name könnte vom Modell erfunden sein, oder das Tool hat sich seit Beginn der Runde geändert.",
+  "toolOutcome_timedOut": "Zeitüberschreitung des Aufrufs nach {seconds} s.",
+  "toolOutcome_stoppedBefore": "Sie haben die Runde gestoppt, bevor dieser Aufruf lief.",
+  "toolOutcome_stopped": "Sie haben diesen Aufruf gestoppt.",
+  "toolOutcome_failed": "Der Aufruf ist aus unbekanntem Grund fehlgeschlagen."
 }

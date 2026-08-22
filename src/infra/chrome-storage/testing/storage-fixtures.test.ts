@@ -107,7 +107,11 @@ describe("chat records round-trip through ChatStore", () => {
     expect(tools[3]!.toolOrigin).toBeUndefined();
     // The `toolCalls`-only carrier must survive the round trip too: it is
     // what keeps the four calls reading as ONE activity group (decisions/26).
-    const carrier = chat?.messages.find((m) => m.role === "assistant" && m.content === "");
+    // `!m.note` disambiguates: since card 114 a NOTE entry is also an
+    // empty-content assistant entry, and chat 0 seeds one of those too.
+    const carrier = chat?.messages.find(
+      (m) => m.role === "assistant" && m.content === "" && !m.note,
+    );
     expect(carrier?.toolCalls).toHaveLength(4);
   });
 

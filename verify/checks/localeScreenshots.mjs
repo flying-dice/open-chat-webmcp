@@ -204,6 +204,14 @@ async function main() {
           if (!ok) process.exitCode = 1;
           await probe(page, locale, "composer_placeholder", "side panel");
           await probe(page, locale, "transcript_disclaimer", "side panel");
+          // Card 114 (decisions/38): the two shapes whose words are NOT in
+          // storage at all. The seeded chat holds a denied tool call and an
+          // assistant note as KINDS with empty content, so finding these
+          // strings on screen proves the transcript is being localized at
+          // render time rather than replaying whatever English it was
+          // recorded with.
+          await probe(page, locale, "toolOutcome_denied", "side panel (tool outcome)");
+          await probe(page, locale, "openOptionsCheckApiKeyAction", "side panel (note action)");
         }
         await shoot(page, `locale-${locale}-sidepanel-${width}`);
         await reportOverflow(page, `side panel @${width}`);

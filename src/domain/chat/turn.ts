@@ -37,12 +37,7 @@
 // section. Generation is not paused by this — deltas and auto-run calls keep
 // flowing regardless of which chat is on screen.
 
-import {
-  describeProviderError,
-  type ChatMessage,
-  type ProviderError,
-  type ToolCall,
-} from "../providers";
+import type { ChatMessage, ProviderError, ToolCall } from "../providers";
 import {
   toSerializedTools,
   type MergedTool,
@@ -60,6 +55,7 @@ import {
   type NoteAction,
   type ToolCallSnapshot,
   type ToolCallStatus,
+  type TranscriptNote,
 } from "./message";
 import type {
   ApprovalDecision,
@@ -103,12 +99,20 @@ export interface TurnTranscript {
   appendAssistantDelta(id: string, delta: string, target?: ChatSession): void;
   endAssistantMessage(id: string, toolCalls?: ToolCall[], target?: ChatSession): void;
   addToolCall(call: ToolCall, snapshot: ToolCallSnapshot, target?: ChatSession): string;
+  /**
+   * Card 114 (decisions/38): `content` carries what the TOOL produced;
+   * `note` carries an outcome THIS FILE authored (denied, timed out, stopped,
+   * a name that wasn't in the list) as a kind rather than a sentence. The two
+   * are exclusive — a note-carrying outcome passes `content: ""`, and the
+   * words are the renderer's.
+   */
   updateToolCallResult(
     id: string,
-    outcome: { status: ToolCallStatus; content: string },
+    outcome: { status: ToolCallStatus; content: string; note?: TranscriptNote },
     target?: ChatSession,
   ): void;
-  addAssistantNote(content: string, actions?: NoteAction[], target?: ChatSession): string;
+  /** Card 114: a note is a KIND plus params. This signature is the enforcement — there is no longer a `string` parameter for prose to arrive through. */
+  addAssistantNote(note: TranscriptNote, actions?: NoteAction[], target?: ChatSession): string;
 }
 
 export interface RunTurnOptions {
@@ -308,7 +312,7 @@ async function runLoop(opts: RunTurnOptions, tools: MergedTool[]): Promise<void>
       // silently reporting failure or auto-retrying.
       if (terminalError.kind !== "aborted") {
         transcript.addAssistantNote(
-          noteForStreamError(terminalError),
+          { kind: "provider-error", error: terminalError },
           actionsForStreamError(terminalError),
           target,
         );
@@ -324,34 +328,16 @@ async function runLoop(opts: RunTurnOptions, tools: MergedTool[]): Promise<void>
     }
   }
 
-  transcript.addAssistantNote(
-    `⚠️ Stopped after ${MAX_ITERATIONS} tool-call rounds without a final answer. ` +
-      "Ask again, or narrow the request, to continue.",
-    undefined,
-    target,
-  );
+  // Card 114: the cap is a PARAM, not a number baked into a sentence — the
+  // copy in ten locales stays right when MAX_ITERATIONS changes.
+  transcript.addAssistantNote({ kind: "iteration-cap", limit: MAX_ITERATIONS }, undefined, target);
 }
 
-/**
- * Card 14's terminal-error note: the plain prose from `describeProviderError`
- * plus — only for an unreachable-or-CORS failure that carries one — the exact
- * fix command as a fenced code block. This text is only ever rendered as
- * markdown in the transcript, so the fence gets the existing code-block "Copy"
- * button for free rather than a second copy-button implementation.
- */
-function noteForStreamError(error: ProviderError): string {
-  const base = `⚠️ ${describeProviderError(error)}`;
-  if (error.kind === "unreachable-or-cors" && error.fix) {
-    return `${base}\n\n${error.fix.label}:\n\n\`\`\`\n${error.fix.command}\n\`\`\``;
-  }
-  return base;
-}
-
-/** Action chips for a terminal stream error (card 14): always offer Retry — the partial reply above stays put, this only adds a way to try again — plus a shortcut to the options page for an auth failure, since that is fixed by checking or re-entering an API key there, not by anything this turn can do. */
+/** Action chips for a terminal stream error (card 14): always offer Retry — the partial reply above stays put, this only adds a way to try again — plus a shortcut to the options page for an auth failure, since that is fixed by checking or re-entering an API key there, not by anything this turn can do. Card 114: the chip carries the REASON it is offered, never its label. */
 function actionsForStreamError(error: ProviderError): NoteAction[] {
   const actions: NoteAction[] = [{ kind: "retry" }];
   if (error.kind === "auth") {
-    actions.push({ kind: "open-options", label: "Open options to check the API key" });
+    actions.push({ kind: "open-options", reason: "check-api-key" });
   }
   return actions;
 }
@@ -467,7 +453,7 @@ async function executeToolCall(
       const deniedId = transcript.addToolCall(call, toolSnapshot("denied", tool), target);
       transcript.updateToolCallResult(
         deniedId,
-        { status: "denied", content: "The user denied this tool call." },
+        { status: "denied", content: "", note: { kind: "tool-denied" } },
         target,
       );
       return;
@@ -491,12 +477,7 @@ async function executeToolCall(
     // it as a clean tool-result error rather than guessing at an executor.
     transcript.updateToolCallResult(
       id,
-      {
-        status: "error",
-        content:
-          `"${call.name}" isn't in this turn's tool list — it may be a name the model made up, ` +
-          "or a tool that changed since the turn started.",
-      },
+      { status: "error", content: "", note: { kind: "tool-unknown", toolName: call.name } },
       target,
     );
     return;
@@ -512,10 +493,28 @@ async function executeToolCall(
     id,
     outcome.ok
       ? { status: "success", content: truncate(stringifyResult(outcome.result)) }
-      : { status: "error", content: outcome.error },
+      : outcome.note
+        ? { status: "error", content: "", note: outcome.note }
+        : { status: "error", content: outcome.error },
     target,
   );
 }
+
+/**
+ * How a merged tool's call ended, as this file needs it (card 114).
+ *
+ * The failure half is split in two ON PURPOSE. `error` is the TOOL's own
+ * message — a page's or an MCP server's words, arriving from outside this
+ * extension entirely — and is stored and shown verbatim, because paraphrasing
+ * someone else's error is how a diagnostic stops being one. `note` is a
+ * failure THIS FILE decided (the timeout rung tripped, Stop was pressed, the
+ * promise rejected with a non-`Error`), and is exactly the prose decisions/38
+ * says must not be persisted, so it travels as a kind instead.
+ */
+type ToolCallOutcome =
+  | { ok: true; result: unknown }
+  | { ok: false; error: string; note?: undefined }
+  | { ok: false; error?: undefined; note: TranscriptNote };
 
 /** The call-time snapshot of a tool's display metadata (see `TranscriptEntry.toolAnnotations`) — all `undefined` for a tool that wasn't in this turn's list. */
 function toolSnapshot(
@@ -562,30 +561,34 @@ function raceToolCall(
   outcome: Promise<MergedToolCallOutcome>,
   signal: AbortSignal,
   timeoutMs: number,
-): Promise<MergedToolCallOutcome> {
+): Promise<ToolCallOutcome> {
   if (signal.aborted) {
-    return Promise.resolve<MergedToolCallOutcome>({
-      ok: false,
-      error: "Stopped by the user before this call ran.",
-    });
+    return Promise.resolve<ToolCallOutcome>({ ok: false, note: { kind: "tool-stopped-before" } });
   }
 
-  const settled = outcome.catch(
-    (err): MergedToolCallOutcome => ({
-      ok: false,
-      error: err instanceof Error ? err.message : "Tool call failed for an unknown reason.",
-    }),
+  const settled: Promise<ToolCallOutcome> = outcome.catch(
+    (err): ToolCallOutcome =>
+      // A rejection carrying an `Error` has the tool's own words in it, and
+      // those are kept verbatim (see `ToolCallOutcome`). A rejection carrying
+      // anything else has no message worth showing, so the fact that it
+      // failed IS the whole message — a kind, per decisions/38.
+      err instanceof Error
+        ? { ok: false, error: err.message }
+        : { ok: false, note: { kind: "tool-failed" } },
   );
 
-  const timeout = new Promise<MergedToolCallOutcome>((resolve) => {
+  const timeout = new Promise<ToolCallOutcome>((resolve) => {
     setTimeout(
-      () => resolve({ ok: false, error: `Tool call timed out after ${timeoutMs / 1000}s.` }),
+      // Seconds, not milliseconds: it is what the sentence says in every
+      // locale, and picking the unit is this file's business — rounding it
+      // per-language is not.
+      () => resolve({ ok: false, note: { kind: "tool-timeout", seconds: timeoutMs / 1000 } }),
       timeoutMs,
     );
   });
 
-  const aborted = new Promise<MergedToolCallOutcome>((resolve) => {
-    signal.addEventListener("abort", () => resolve({ ok: false, error: "Stopped by the user." }), {
+  const aborted = new Promise<ToolCallOutcome>((resolve) => {
+    signal.addEventListener("abort", () => resolve({ ok: false, note: { kind: "tool-stopped" } }), {
       once: true,
     });
   });

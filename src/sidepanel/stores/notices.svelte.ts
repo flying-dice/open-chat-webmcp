@@ -31,6 +31,16 @@ export interface PanelNotice {
   id: string;
   /** A complete sentence — see src/ui/storageMessage.ts's `storageFailureMessage`, which is what builds every one of these today. */
   message: string;
+  /**
+   * Stable identity for a notice a LATER event needs to retract on its own
+   * (card 106's "this conversation isn't being saved", retracted once a save
+   * next succeeds) — text-based de-duplication doesn't fit that: the
+   * retracting event is a SUCCESS, not another identical failure to collapse
+   * against, and the failing writes in between may not even share the exact
+   * same `StorageErrorKind`/wording. Omitted for a notice nothing will ever
+   * proactively clear; see {@link reportNotice} and {@link clearNoticeByKey}.
+   */
+  key?: string;
 }
 
 let notices = $state<PanelNotice[]>([]);
@@ -49,16 +59,45 @@ export const panelNotices = {
  * second time: retrying a failing action (picking the model again, renaming
  * again) is the common case, and three copies of one sentence reads as three
  * different problems.
+ *
+ * `key`, when given, de-duplicates by IDENTITY instead of by text — a run of
+ * failing debounced writes for the SAME reason still collapses to one
+ * notice, but so does a run whose wording changed between attempts (a quota
+ * failure, then an unexpected one), which plain text equality would have
+ * shown as two. The existing notice's text is updated in place rather than
+ * re-added, so it neither moves position nor gets a fresh id a caller might
+ * be holding (see {@link clearNoticeByKey}).
  */
-export function reportNotice(message: string): void {
-  if (notices.some((n) => n.message === message)) return;
+export function reportNotice(message: string, key?: string): void {
+  if (key !== undefined) {
+    const existing = notices.find((n) => n.key === key);
+    if (existing) {
+      if (existing.message !== message) {
+        notices = notices.map((n) => (n.key === key ? { ...n, message } : n));
+      }
+      return;
+    }
+  } else if (notices.some((n) => n.message === message)) {
+    return;
+  }
   nextId += 1;
-  notices = [...notices, { id: `notice-${nextId}`, message }];
+  // `exactOptionalPropertyTypes`: an optional field must be OMITTED, not set
+  // to `undefined`, so the no-key case spreads nothing rather than `{ key:
+  // undefined }`.
+  notices = [
+    ...notices,
+    { id: `notice-${nextId}`, message, ...(key !== undefined ? { key } : {}) },
+  ];
 }
 
 /** Dismiss one notice — the card's close button. */
 export function dismissNotice(id: string): void {
   notices = notices.filter((n) => n.id !== id);
+}
+
+/** Retract the notice reported under `key`, if any is still up — the auto-clear half of card 106: a later event (a save succeeding again) says the earlier failure no longer applies, without waiting for the person to dismiss it themselves. A no-op if nothing is up under that key, including when the person already dismissed it. */
+export function clearNoticeByKey(key: string): void {
+  notices = notices.filter((n) => n.key !== key);
 }
 
 /** Drop every notice. For a test's teardown, and for a caller that has just made the whole batch irrelevant. */

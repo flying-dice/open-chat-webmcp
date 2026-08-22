@@ -46,6 +46,7 @@
   import MessageActions from "./MessageActions.svelte";
   import { Button } from "$lib/components/ui/button";
   import { groupTranscript, type TranscriptEntry, type TurnPhase } from "../../domain/chat";
+  import { noteActionLabel, noteText } from "../presentation/transcriptNote";
   import { approvals } from "../stores/approvals.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
   import type { IconName } from "../../ui/icons";
@@ -213,6 +214,14 @@
         </div>
       {:else if group.kind === "prose"}
         {@const message = group.message}
+        <!-- Card 114 (decisions/38): a note the EXTENSION wrote stores a kind
+             and no words, so its sentence is built here, in the reader's
+             current language — which is why switching locale re-reads old
+             history correctly. The `:` branch is both the model's own streamed
+             prose AND the LEGACY PASSTHROUGH: a note recorded before card 114
+             has its English in `content` and no `note`, and renders exactly as
+             it was written. Nothing converts it (pre-release, no migration). -->
+        {@const body = message.note ? noteText(message.note) : message.content}
         <div class="flex min-w-0 justify-start">
           <!-- No background, no border, no padding: the reply is the page. -->
           <div class="relative min-w-0 flex-1 [overflow-wrap:anywhere]">
@@ -228,7 +237,7 @@
               {/if}
             </div>
 
-            <Markdown source={message.content} />
+            <Markdown source={body} />
 
             {#if message.actions && message.actions.length > 0}
               <!-- Note actions (Retry, Open options) belong to an error note
@@ -243,16 +252,16 @@
                     >
                   {:else if action.kind === "open-options"}
                     <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
-                      {action.label}
+                      {noteActionLabel(action)}
                     </Button>
                   {/if}
                 {/each}
               </div>
             {/if}
 
-            {#if message.content && message.id !== streamingMessageId}
+            {#if body && message.id !== streamingMessageId}
               <MessageActions
-                content={message.content}
+                content={body}
                 onRegenerate={message.id === lastAssistantId ? onRetry : undefined}
               />
             {/if}

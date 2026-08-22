@@ -23,8 +23,12 @@
  *   - `role: "user"` closes any open activity group and starts a `user` group.
  *   - `role: "assistant"` with non-empty content closes any open activity
  *     group and starts a `prose` group.
- *   - `role: "assistant"` with EMPTY content (a toolCalls-only carrier) is
- *     dropped from display and does NOT close an open activity group. This is
+ *   - `role: "assistant"` with EMPTY content AND NO `note` (a toolCalls-only
+ *     carrier) is dropped from display and does NOT close an open activity
+ *     group. The `note` exemption is card 114's: since decisions/38 a note
+ *     entry stores a KIND and no words at all, so emptiness alone no longer
+ *     means "nothing to show" — it means the words are the renderer's to
+ *     supply. This is
  *     what makes several tool rounds of one turn read as a single timeline
  *     instead of a timeline broken up by bare, empty assistant turns. If the
  *     model narrates BETWEEN rounds (a non-empty assistant message), that
@@ -53,7 +57,7 @@ export function groupTranscript(messages: readonly TranscriptEntry[]): Transcrip
     }
 
     if (message.role === "assistant") {
-      if (message.content.trim() === "") {
+      if (message.content.trim() === "" && !message.note) {
         // A toolCalls-only carrier — drop from display, but deliberately do
         // NOT clear `open`: see the module doc comment.
         continue;

@@ -47,6 +47,7 @@
   "app_backToChatLabel": "Voltar ao chat",
   "app_startChatFailedWhat": "Não foi possível iniciar um novo chat",
   "app_renameFailedWhat": "Não foi possível renomear este chat",
+  "app_transcriptSaveFailedWhat": "Não foi possível salvar este chat",
   "header_chatNameAriaLabel": "Nome do chat",
   "header_renameAriaLabel": "Renomear chat: {title}",
   "header_newChatLabel": "Novo chat",
@@ -563,5 +564,13 @@
   "toolsPanel_notSharingTitle": "Esta página não está sendo compartilhada",
   "toolsPanel_notSharingDescription": "As ferramentas desta página ficam ocultas enquanto o compartilhamento está desligado. Ligue de novo na barra acima da caixa de mensagem.",
   "pageContext_contentRestrictedNotice": "O Chrome impede que extensões leiam esta página, então o texto dela não pode ser compartilhado.",
-  "pageContext_contentUnavailableNotice": "Não foi possível ler esta página agora, então sua mensagem foi enviada sem o texto da página."
+  "pageContext_contentUnavailableNotice": "Não foi possível ler esta página agora, então sua mensagem foi enviada sem o texto da página.",
+  "note_iterationCap": "Parou depois de {limit} rodadas de chamadas de ferramentas sem uma resposta final. Pergunte de novo ou restrinja o pedido para continuar.",
+  "openOptionsCheckApiKeyAction": "Abrir as opções para conferir a chave de API",
+  "toolOutcome_denied": "Você negou esta chamada.",
+  "toolOutcome_unknownTool": "“{name}” não está na lista de ferramentas deste turno: pode ser um nome inventado pelo modelo ou uma ferramenta que mudou depois que o turno começou.",
+  "toolOutcome_timedOut": "A chamada expirou após {seconds} s.",
+  "toolOutcome_stoppedBefore": "Você parou o turno antes de esta chamada ser executada.",
+  "toolOutcome_stopped": "Você parou esta chamada.",
+  "toolOutcome_failed": "A chamada falhou por um motivo desconhecido."
 }

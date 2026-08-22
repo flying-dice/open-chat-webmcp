@@ -47,6 +47,7 @@
   "app_backToChatLabel": "Retour à la conversation",
   "app_startChatFailedWhat": "Impossible de démarrer une nouvelle conversation",
   "app_renameFailedWhat": "Impossible de renommer cette conversation",
+  "app_transcriptSaveFailedWhat": "Impossible d'enregistrer cette conversation",
   "header_chatNameAriaLabel": "Nom de la conversation",
   "header_renameAriaLabel": "Renommer la conversation : {title}",
   "header_newChatLabel": "Nouvelle conversation",
@@ -563,5 +564,13 @@
   "toolsPanel_notSharingTitle": "Cette page n’est pas partagée",
   "toolsPanel_notSharingDescription": "Les outils de cette page restent masqués tant que le partage est désactivé. Réactivez-le dans la barre au-dessus de la zone de message.",
   "pageContext_contentRestrictedNotice": "Chrome empêche les extensions de lire cette page : son texte ne peut donc pas être partagé.",
-  "pageContext_contentUnavailableNotice": "Cette page n’a pas pu être lue à l’instant : votre message a été envoyé sans le texte de la page."
+  "pageContext_contentUnavailableNotice": "Cette page n’a pas pu être lue à l’instant : votre message a été envoyé sans le texte de la page.",
+  "note_iterationCap": "Arrêt après {limit} séries d’appels d’outils sans réponse finale. Reposez la question ou restreignez la demande pour continuer.",
+  "openOptionsCheckApiKeyAction": "Ouvrir les options pour vérifier la clé API",
+  "toolOutcome_denied": "Vous avez refusé cet appel.",
+  "toolOutcome_unknownTool": "« {name} » ne figure pas dans la liste d’outils de ce tour : le modèle a peut-être inventé ce nom, ou l’outil a changé depuis le début du tour.",
+  "toolOutcome_timedOut": "L’appel a expiré après {seconds} s.",
+  "toolOutcome_stoppedBefore": "Vous avez arrêté le tour avant l’exécution de cet appel.",
+  "toolOutcome_stopped": "Vous avez arrêté cet appel.",
+  "toolOutcome_failed": "L’appel a échoué pour une raison inconnue."
 }
