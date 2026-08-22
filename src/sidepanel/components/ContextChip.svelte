@@ -39,6 +39,7 @@
    * markup, which stacks the two with no gap so this chip's rounded top and
    * the composer's rounded bottom read as one unit.
    */
+  import { tick } from "svelte";
   import Icon from "./Icon.svelte";
   import { cn } from "$lib/utils";
   import { isolateLtr } from "../../ui/bidi";
@@ -138,6 +139,30 @@
    * hidden.
    */
   const opensTools = $derived(onOpenTools !== undefined && sharing);
+
+  /**
+   * CARD 115 — THE GATE HANDS FOCUS OVER TO ITS OWN REPLACEMENT.
+   *
+   * Dismissing sharing unmounts the ✕ that was just pressed and mounts "Share
+   * this page" in its place; re-enabling does the exact reverse. Either way
+   * the pressed button ceases to exist, and the audit confirmed Chrome then
+   * drops focus to `<body>` — a keyboard user loses their place in the strip
+   * entirely, and a screen-reader user hears nothing about a state they
+   * deliberately changed.
+   *
+   * Moving focus to the button that replaced it fixes both at once: the new
+   * button's own label ("Share this page" / "Stop sharing this page") states
+   * the state that now holds, which is how a toggle is supposed to announce
+   * itself — no live region needed, and none added, because a live region
+   * here would say the same sentence a second time.
+   */
+  let stopButton = $state<HTMLButtonElement | null>(null);
+  let shareAgainButton = $state<HTMLButtonElement | null>(null);
+
+  function toggleSharing(on: boolean): void {
+    onSetSharing(on);
+    void tick().then(() => (on ? stopButton : shareAgainButton)?.focus());
+  }
 </script>
 
 {#snippet body()}
@@ -221,11 +246,12 @@
     </button>
 
     <button
+      bind:this={stopButton}
       type="button"
       aria-label={m.contextChip_stopSharingLabel()}
       title={m.contextChip_stopSharingLabel()}
       class="flex-none rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-      onclick={() => onSetSharing(false)}
+      onclick={() => toggleSharing(false)}
     >
       <Icon name="close" class="size-4" />
     </button>
@@ -235,9 +261,10 @@
          dismiss was, and an unlabelled glyph in a strip that now reads "Not
          sharing this page" would be the least discoverable thing on screen. -->
     <button
+      bind:this={shareAgainButton}
       type="button"
       class="flex-none rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground ring-1 ring-border hover:bg-muted"
-      onclick={() => onSetSharing(true)}
+      onclick={() => toggleSharing(true)}
     >
       {m.contextChip_shareAgainLabel()}
     </button>

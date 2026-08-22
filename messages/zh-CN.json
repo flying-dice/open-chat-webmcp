@@ -43,6 +43,7 @@
   "app_originMismatchViewing": "，而你正在 ",
   "app_originMismatchDetail": " 上查看它。整个对话仍然可以阅读，但页面工具现在来自当前标签页。上面的调用属于原来的页面，无法在这里重新运行。",
   "app_backToChatLabel": "返回对话",
+  "app_turnFinishedAnnouncement": "助手已回复完毕。",
   "app_startChatFailedWhat": "无法新建对话",
   "app_renameFailedWhat": "无法重命名此对话",
   "app_transcriptSaveFailedWhat": "无法保存此对话",
@@ -167,6 +168,7 @@
   "toolCallRow_serverCallsThis": "服务器把它称作“{title}”",
   "toolCallRow_untrustedDataSuffix": "—— 由页面写入，视为不可信数据",
   "toolListItem_inputSchemaLabel": "输入架构",
+  "toolListItem_inputSchemaAriaLabel": "{tool} 的输入架构",
   "toolSchema_noSchema": "此工具没有声明输入架构。",
   "toolSchema_noParameters": "不需要任何参数。",
   "schemaProperty_anyType": "any",
@@ -544,5 +546,14 @@
   "toolOutcome_timedOut": "调用在 {seconds} 秒后超时。",
   "toolOutcome_stoppedBefore": "你在这次调用开始前停止了本轮。",
   "toolOutcome_stopped": "你停止了这次调用。",
-  "toolOutcome_failed": "调用因未知原因失败。"
+  "toolOutcome_failed": "调用因未知原因失败。",
+  "historyPanel_filterPlaceholder": "搜索对话…",
+  "historyPanel_filterAriaLabel": "搜索对话",
+  "historyPanel_noMatchesTitle": "没有匹配结果",
+  "historyPanel_noMatchesDescription": "没有与“{query}”匹配的对话。",
+  "overflowMenu_exportMarkdownLabel": "导出为 Markdown",
+  "chatExport_youLabel": "你",
+  "chatExport_assistantLabel": "助手",
+  "chatExport_originLabel": "来源",
+  "chatExport_exportedLabel": "导出时间"
 }

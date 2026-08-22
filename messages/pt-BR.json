@@ -45,6 +45,7 @@
   "app_originMismatchViewing": ". Você está lendo a partir de ",
   "app_originMismatchDetail": ". Você ainda pode ler o chat inteiro, mas as ferramentas da página agora vêm desta guia. As chamadas acima pertencem à página original e não podem ser executadas de novo aqui.",
   "app_backToChatLabel": "Voltar ao chat",
+  "app_turnFinishedAnnouncement": "O assistente terminou de responder.",
   "app_startChatFailedWhat": "Não foi possível iniciar um novo chat",
   "app_renameFailedWhat": "Não foi possível renomear este chat",
   "app_transcriptSaveFailedWhat": "Não foi possível salvar este chat",
@@ -179,6 +180,7 @@
   "toolCallRow_serverCallsThis": "O servidor chama isto de “{title}”",
   "toolCallRow_untrustedDataSuffix": "— escrito pela página, tratado como dado não confiável",
   "toolListItem_inputSchemaLabel": "Esquema de entrada",
+  "toolListItem_inputSchemaAriaLabel": "Esquema de entrada de {tool}",
   "toolSchema_noSchema": "Esta ferramenta não declara um esquema de entrada.",
   "toolSchema_noParameters": "Não recebe parâmetros.",
   "schemaProperty_anyType": "any",
@@ -572,5 +574,14 @@
   "toolOutcome_timedOut": "A chamada expirou após {seconds} s.",
   "toolOutcome_stoppedBefore": "Você parou o turno antes de esta chamada ser executada.",
   "toolOutcome_stopped": "Você parou esta chamada.",
-  "toolOutcome_failed": "A chamada falhou por um motivo desconhecido."
+  "toolOutcome_failed": "A chamada falhou por um motivo desconhecido.",
+  "historyPanel_filterPlaceholder": "Pesquisar chats…",
+  "historyPanel_filterAriaLabel": "Pesquisar chats",
+  "historyPanel_noMatchesTitle": "Nenhum resultado",
+  "historyPanel_noMatchesDescription": "Nenhum chat corresponde a “{query}”.",
+  "overflowMenu_exportMarkdownLabel": "Exportar como Markdown",
+  "chatExport_youLabel": "Você",
+  "chatExport_assistantLabel": "Assistente",
+  "chatExport_originLabel": "Origem",
+  "chatExport_exportedLabel": "Data de exportação"
 }

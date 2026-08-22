@@ -45,6 +45,7 @@
   "app_originMismatchViewing": ". Se está viendo desde ",
   "app_originMismatchDetail": ". Se puede seguir leyendo el chat entero, pero las herramientas de página vienen ahora de esta pestaña. Las llamadas de arriba pertenecen a la página original y no se pueden repetir aquí.",
   "app_backToChatLabel": "Volver al chat",
+  "app_turnFinishedAnnouncement": "El asistente ha terminado de responder.",
   "app_startChatFailedWhat": "No se pudo iniciar un chat nuevo",
   "app_renameFailedWhat": "No se pudo cambiar el nombre de este chat",
   "app_transcriptSaveFailedWhat": "No se pudo guardar este chat",
@@ -179,6 +180,7 @@
   "toolCallRow_serverCallsThis": "El servidor la llama “{title}”",
   "toolCallRow_untrustedDataSuffix": "— escrito por la página, tratado como datos no fiables",
   "toolListItem_inputSchemaLabel": "Esquema de entrada",
+  "toolListItem_inputSchemaAriaLabel": "Esquema de entrada de {tool}",
   "toolSchema_noSchema": "Esta herramienta no declara ningún esquema de entrada.",
   "toolSchema_noParameters": "No lleva parámetros.",
   "schemaProperty_anyType": "any",
@@ -572,5 +574,14 @@
   "toolOutcome_timedOut": "La llamada superó el tiempo de espera tras {seconds} s.",
   "toolOutcome_stoppedBefore": "Detuviste el turno antes de que se ejecutara esta llamada.",
   "toolOutcome_stopped": "Detuviste esta llamada.",
-  "toolOutcome_failed": "La llamada falló por un motivo desconocido."
+  "toolOutcome_failed": "La llamada falló por un motivo desconocido.",
+  "historyPanel_filterPlaceholder": "Buscar chats…",
+  "historyPanel_filterAriaLabel": "Buscar chats",
+  "historyPanel_noMatchesTitle": "Sin resultados",
+  "historyPanel_noMatchesDescription": "Ningún chat coincide con “{query}”.",
+  "overflowMenu_exportMarkdownLabel": "Exportar como Markdown",
+  "chatExport_youLabel": "Tú",
+  "chatExport_assistantLabel": "Asistente",
+  "chatExport_originLabel": "Origen",
+  "chatExport_exportedLabel": "Fecha de exportación"
 }

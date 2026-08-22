@@ -45,6 +45,7 @@
   "app_originMismatchViewing": ". Vous la consultez depuis ",
   "app_originMismatchDetail": ". Vous pouvez toujours lire toute la conversation, mais les outils de page proviennent désormais de cet onglet. Les appels ci-dessus appartiennent à la page d’origine et ne peuvent pas être relancés ici.",
   "app_backToChatLabel": "Retour à la conversation",
+  "app_turnFinishedAnnouncement": "L’assistant a terminé sa réponse.",
   "app_startChatFailedWhat": "Impossible de démarrer une nouvelle conversation",
   "app_renameFailedWhat": "Impossible de renommer cette conversation",
   "app_transcriptSaveFailedWhat": "Impossible d'enregistrer cette conversation",
@@ -179,6 +180,7 @@
   "toolCallRow_serverCallsThis": "Le serveur appelle cet outil « {title} »",
   "toolCallRow_untrustedDataSuffix": "— écrit par la page, traité comme des données non fiables",
   "toolListItem_inputSchemaLabel": "Schéma d’entrée",
+  "toolListItem_inputSchemaAriaLabel": "Schéma d’entrée de {tool}",
   "toolSchema_noSchema": "Cet outil ne déclare aucun schéma d’entrée.",
   "toolSchema_noParameters": "Ne prend aucun paramètre.",
   "schemaProperty_anyType": "any",
@@ -572,5 +574,14 @@
   "toolOutcome_timedOut": "L’appel a expiré après {seconds} s.",
   "toolOutcome_stoppedBefore": "Vous avez arrêté le tour avant l’exécution de cet appel.",
   "toolOutcome_stopped": "Vous avez arrêté cet appel.",
-  "toolOutcome_failed": "L’appel a échoué pour une raison inconnue."
+  "toolOutcome_failed": "L’appel a échoué pour une raison inconnue.",
+  "historyPanel_filterPlaceholder": "Rechercher des conversations…",
+  "historyPanel_filterAriaLabel": "Rechercher des conversations",
+  "historyPanel_noMatchesTitle": "Aucun résultat",
+  "historyPanel_noMatchesDescription": "Aucune conversation ne correspond à « {query} ».",
+  "overflowMenu_exportMarkdownLabel": "Exporter en Markdown",
+  "chatExport_youLabel": "Vous",
+  "chatExport_assistantLabel": "Assistant",
+  "chatExport_originLabel": "Origine",
+  "chatExport_exportedLabel": "Date d’export"
 }

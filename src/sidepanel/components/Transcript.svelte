@@ -47,6 +47,7 @@
   import { Button } from "$lib/components/ui/button";
   import { groupTranscript, type TranscriptEntry, type TurnPhase } from "../../domain/chat";
   import { noteActionLabel, noteText } from "../presentation/transcriptNote";
+  import { isSpokenPhase } from "../presentation/turnStatus";
   import { approvals } from "../stores/approvals.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
   import type { IconName } from "../../ui/icons";
@@ -105,12 +106,8 @@
 
   const groups = $derived(groupTranscript(messages));
 
-  /** The tail live-status line's phase — `null` (nothing rendered) for `streaming` (arriving text is its own feedback) and `awaiting-approval` (the ApprovalCard loop below is already on screen and already blocking), and whenever no turn is in flight at all. */
-  const tailPhase = $derived(
-    turnPhase && turnPhase.kind !== "streaming" && turnPhase.kind !== "awaiting-approval"
-      ? turnPhase
-      : null,
-  );
+  /** The tail live-status line's phase — `null` (nothing rendered) for `streaming` (arriving text is its own feedback) and `awaiting-approval` (the ApprovalCard loop below is already on screen and already blocking), and whenever no turn is in flight at all. Card 115 moved the "which phases speak" rule into ../presentation/turnStatus.ts, where App.svelte's live region reads the same one. */
+  const tailPhase = $derived(turnPhase && isSpokenPhase(turnPhase) ? turnPhase : null);
 
   /** The key of the LAST group, while a turn is in flight — the one ActivityGroup that should count as "live" (decisions/26: expanded, and its unfinished steps read as "running" rather than "stalled"). `undefined` while no turn is active, so no group is ever mistaken for live between turns. */
   const liveGroupKey = $derived(turnPhase ? groups.at(-1)?.key : undefined);

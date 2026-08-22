@@ -43,6 +43,7 @@
   "app_originMismatchViewing": " です。現在表示しているのは ",
   "app_originMismatchDetail": " です。チャット全体はこのまま読めますが、ページツールは現在のタブのものになります。上の呼び出しは元のページのもので、ここでは再実行できません。",
   "app_backToChatLabel": "チャットに戻る",
+  "app_turnFinishedAnnouncement": "アシスタントの応答が完了しました。",
   "app_startChatFailedWhat": "新しいチャットを開始できませんでした",
   "app_renameFailedWhat": "このチャットの名前を変更できませんでした",
   "app_transcriptSaveFailedWhat": "このチャットを保存できませんでした",
@@ -167,6 +168,7 @@
   "toolCallRow_serverCallsThis": "サーバーでの名称は「{title}」です",
   "toolCallRow_untrustedDataSuffix": "— ページが書き込んだ内容で、信頼できないデータとして扱われます",
   "toolListItem_inputSchemaLabel": "入力スキーマ",
+  "toolListItem_inputSchemaAriaLabel": "{tool} の入力スキーマ",
   "toolSchema_noSchema": "このツールには入力スキーマが宣言されていません。",
   "toolSchema_noParameters": "パラメーターはありません。",
   "schemaProperty_anyType": "any",
@@ -544,5 +546,14 @@
   "toolOutcome_timedOut": "呼び出しが {seconds} 秒でタイムアウトしました。",
   "toolOutcome_stoppedBefore": "この呼び出しが実行される前にターンを停止しました。",
   "toolOutcome_stopped": "この呼び出しを停止しました。",
-  "toolOutcome_failed": "呼び出しが不明な理由で失敗しました。"
+  "toolOutcome_failed": "呼び出しが不明な理由で失敗しました。",
+  "historyPanel_filterPlaceholder": "チャットを検索…",
+  "historyPanel_filterAriaLabel": "チャットを検索",
+  "historyPanel_noMatchesTitle": "一致するチャットがありません",
+  "historyPanel_noMatchesDescription": "「{query}」に一致するチャットはありません。",
+  "overflowMenu_exportMarkdownLabel": "Markdown としてエクスポート",
+  "chatExport_youLabel": "あなた",
+  "chatExport_assistantLabel": "アシスタント",
+  "chatExport_originLabel": "オリジン",
+  "chatExport_exportedLabel": "エクスポート日時"
 }

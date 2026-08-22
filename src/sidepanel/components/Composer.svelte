@@ -133,9 +133,19 @@
     send();
   }
 
-  /** card 36: let App.svelte put focus here after starting a new chat. */
-  export function focusInput(): void {
-    textarea?.focus();
+  /**
+   * Card 36: let App.svelte put focus here after starting a new chat.
+   *
+   * Returns whether focus actually landed — card 115: in the `blocked` state
+   * there IS no textarea (the box renders an explanation and a button
+   * instead), so a caller returning the user to the chat view has to know
+   * whether it still needs a fallback rather than silently leaving focus on
+   * `body`.
+   */
+  export function focusInput(): boolean {
+    if (!textarea) return false;
+    textarea.focus();
+    return true;
   }
 </script>
 

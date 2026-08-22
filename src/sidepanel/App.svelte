@@ -27,7 +27,7 @@
   // non-chat views are entered from the overflow menu and left by a "Back"
   // row, so chat — which is where you are nearly always — gets the whole
   // panel instead of paying a tab strip for the other two.
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import Header from "./components/Header.svelte";
   import Transcript from "./components/Transcript.svelte";
   import Composer from "./components/Composer.svelte";
@@ -58,6 +58,7 @@
   } from "./stores/pageSharing.svelte";
   import { dismissNotice, panelNotices, reportNotice } from "./stores/notices.svelte";
   import { storageFailureMessage } from "../ui/storageMessage";
+  import { isSpokenPhase, turnStatusSentence } from "./presentation/turnStatus";
   import {
     dismissAllPending,
     initApprovalPolicySync,
@@ -65,7 +66,49 @@
   } from "./stores/approvals.svelte";
   import { m } from "../paraglide/messages.js";
 
-  let view = $state<"chat" | "inspector" | "history">("chat");
+  type View = "chat" | "inspector" | "history";
+
+  let view = $state<View>("chat");
+
+  /**
+   * CARD 115 — WHERE FOCUS GOES WHEN THE VIEW CHANGES.
+   *
+   * Every one of these switches replaces the whole panel below the header,
+   * and the control that triggered the switch is usually part of what gets
+   * unmounted: the menu row that opened Tools, the "Back to chat" button that
+   * closed it, the context strip's own chevron. Chrome then drops focus to
+   * `<body>`, which the audit confirmed on all three paths — a keyboard user
+   * has to Tab back in from the top of the document, and a screen-reader user
+   * is told nothing happened at all.
+   *
+   * So the switch is a function, not three inline `view = …` assignments, and
+   * it lands focus deliberately:
+   *
+   *   into a subview → the "Back to chat" row. It is that view's first
+   *     control, and its label states both where you are and how to leave.
+   *   back to chat   → the composer, i.e. the thing "back to chat" is FOR.
+   *     `focusInput` reports whether it landed (the blocked composer has no
+   *     textarea to focus), and the shell itself — `tabindex="-1"` — takes it
+   *     otherwise, so this can never silently fall through to `body`.
+   *
+   * `tick()` first: the target does not exist until Svelte has flushed the
+   * new view.
+   */
+  let backButton = $state<HTMLButtonElement | null>(null);
+  let shellEl = $state<HTMLDivElement | null>(null);
+
+  function switchView(next: View): void {
+    const previous = view;
+    view = next;
+    if (previous === next) return;
+    void tick().then(() => {
+      if (next !== "chat") {
+        backButton?.focus();
+        return;
+      }
+      if (!composerRef?.focusInput()) shellEl?.focus();
+    });
+  }
 
   /**
    * The header's title: the conversation's own name in chat (its explicit
@@ -89,6 +132,43 @@
   const modelIcon = $derived(
     selection.resolution.status === "ok" ? iconForProvider(selection.resolution.config) : "sparkle",
   );
+
+  /**
+   * The panel's ONE polite live region (card 115). A screen-reader user got
+   * nothing at all while a turn ran: the reply streams into the transcript
+   * with no live region on it, and the tail indicator's own `aria-live`
+   * announced unreliably and disappeared with the turn (see
+   * ActivityIndicator.svelte's header).
+   *
+   * What it says, and what it deliberately does not:
+   *   - the waiting/calling sentence, from the same `turnStatusSentence` the
+   *     visible indicator renders — so it changes at most once per tool call,
+   *     never per token. That throttling is structural, not a timer.
+   *   - one line when the turn ends, which is the moment a screen-reader user
+   *     needs to know the reply is there to go and read.
+   *   - NOTHING for `streaming` (the arriving text is its own feedback) or
+   *     `awaiting-approval` (ApprovalCard.svelte moves focus into itself,
+   *     which announces strictly more than a live region could, and saying it
+   *     twice is the spam this card exists to remove).
+   *
+   * `turnWasActive` is a plain `let`, not `$state`: it is this effect's own
+   * bookkeeping and must never make the effect re-run.
+   */
+  let liveStatus = $state("");
+  let turnWasActive = false;
+
+  $effect(() => {
+    const phase = panel.turnPhase;
+    if (phase) {
+      turnWasActive = true;
+      if (isSpokenPhase(phase)) liveStatus = turnStatusSentence(phase, modelLabel);
+      return;
+    }
+    if (turnWasActive) {
+      turnWasActive = false;
+      liveStatus = m.app_turnFinishedAnnouncement();
+    }
+  });
 
   /**
    * Card 34/decisions/13's cross-origin-open honesty notice: set whenever
@@ -343,7 +423,15 @@
   }
 </script>
 
-<div class="flex h-screen min-w-[320px] flex-col">
+<!-- `tabindex="-1"` is the focus fallback `switchView` needs, never a tab
+     stop (a negative tabindex is skipped by Tab); `outline-none` because a
+     shell that has taken focus programmatically should not draw a ring around
+     the entire panel. -->
+<div
+  bind:this={shellEl}
+  tabindex="-1"
+  class="flex h-screen min-w-[320px] flex-col outline-none"
+>
   <Header
     title={headerTitle}
     newChatDisabled={!panel.pageInfo || panel.isTurnActive}
@@ -353,13 +441,28 @@
     {#snippet menu()}
       <OverflowMenu
         connectionStatus={panel.connectionStatus}
-        onOpenHistory={() => (view = "history")}
-        onOpenTools={() => (view = "inspector")}
-        onOpenChat={() => (view = "chat")}
+        onOpenHistory={() => switchView("history")}
+        onOpenTools={() => switchView("inspector")}
+        onOpenChat={() => switchView("chat")}
       />
     {/snippet}
   </Header>
 
+  <!-- Card 115's single polite region. Always mounted (a live region has to
+       exist BEFORE its content changes for a screen reader to speak it) and
+       `aria-atomic` so each sentence is read whole rather than diffed word by
+       word. Drawn nowhere: the sighted equivalent is the tail
+       ActivityIndicator, which says the same thing. -->
+  <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{liveStatus}</div>
+
+  <!-- Card 115: the panel had no landmarks at all, so a screen reader offered
+       no way to jump past the header to the conversation, and axe reported
+       every block of transcript content as orphaned (`region`,
+       `landmark-one-main`). The header above is already a `<header>` at
+       document level, i.e. a banner; this is the other half. It wraps the
+       `{#if}` rather than sitting inside each branch so the landmark survives
+       a view switch instead of being torn down and rebuilt with it. -->
+  <main class="flex min-h-0 flex-1 flex-col">
   {#if view === "chat"}
     <Transcript
       messages={panel.messages}
@@ -421,7 +524,7 @@
       <ContextChip
         pageInfo={panel.pageInfo}
         connectionStatus={panel.connectionStatus}
-        onOpenTools={() => (view = "inspector")}
+        onOpenTools={() => switchView("inspector")}
         sharing={pageSharing.sharing}
         shareContent={pageSharing.shareContent}
         onSetSharing={setSharing}
@@ -444,9 +547,10 @@
          strip that would have to sit there permanently. -->
     <div class="flex flex-none items-center px-2 pb-1">
       <IconButton
+        bind:ref={backButton}
         icon="arrow_back"
         label={m.app_backToChatLabel()}
-        onclick={() => (view = "chat")}
+        onclick={() => switchView("chat")}
         tooltipPlacement="bottom"
       />
     </div>
@@ -461,7 +565,8 @@
         sharing={pageSharing.sharing}
       />
     {:else}
-      <HistoryPanel onOpenChat={() => (view = "chat")} />
+      <HistoryPanel onOpenChat={() => switchView("chat")} />
     {/if}
   {/if}
+  </main>
 </div>

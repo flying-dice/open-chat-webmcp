@@ -108,7 +108,17 @@
     .join(" ")}
 >
   <div class="flex w-full flex-wrap items-center gap-2 bg-muted/50 px-2 py-1">
-    <Collapsible.Trigger class="flex min-w-0 flex-1 items-center gap-1 text-start">
+    <!-- Card 115: the trigger's own name is the tool name and its origin —
+         the approve/deny mode and the duration sit in the SIBLING span below,
+         outside it, so a screen-reader user tabbing the call log heard
+         "read-page-state, collapsed, button" and nothing about whether the
+         call was denied. Pointing `aria-describedby` at that span borrows the
+         wording already on screen rather than composing a second sentence
+         (and a second set of message keys) that could drift from it. -->
+    <Collapsible.Trigger
+      aria-describedby="call-log-status-{entry.id}"
+      class="flex min-w-0 flex-1 items-center gap-1 text-start"
+    >
       <span
         class="inline-block shrink-0 text-xs text-muted-foreground transition-transform duration-150"
         class:rotate-90={expanded}
@@ -126,7 +136,7 @@
       {/if}
     </Collapsible.Trigger>
 
-    <span class="flex shrink-0 items-center gap-1">
+    <span id="call-log-status-{entry.id}" class="flex shrink-0 items-center gap-1">
       {#if entry.mode === "denied"}
         <Badge variant="destructive" class="bg-destructive text-white">{modeLabel[entry.mode]}</Badge>
       {:else if entry.mode === "approved"}

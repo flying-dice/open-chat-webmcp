@@ -44,6 +44,7 @@
   "app_originMismatchViewing": ". Sie lesen ihn gerade auf ",
   "app_originMismatchDetail": ". Sie können den gesamten Chat weiterhin lesen, aber die Seiten-Tools stammen jetzt aus diesem Tab. Die Aufrufe oben gehören zur ursprünglichen Seite und lassen sich hier nicht erneut ausführen.",
   "app_backToChatLabel": "Zurück zum Chat",
+  "app_turnFinishedAnnouncement": "Der Assistent hat seine Antwort abgeschlossen.",
   "app_startChatFailedWhat": "Neuer Chat konnte nicht gestartet werden",
   "app_renameFailedWhat": "Dieser Chat konnte nicht umbenannt werden",
   "app_transcriptSaveFailedWhat": "Dieser Chat konnte nicht gespeichert werden",
@@ -173,6 +174,7 @@
   "toolCallRow_serverCallsThis": "Der Server nennt dies „{title}“",
   "toolCallRow_untrustedDataSuffix": "– von der Seite geschrieben, wird als nicht vertrauenswürdige Daten behandelt",
   "toolListItem_inputSchemaLabel": "Eingabeschema",
+  "toolListItem_inputSchemaAriaLabel": "Eingabeschema für {tool}",
   "toolSchema_noSchema": "Für dieses Tool ist kein Eingabeschema angegeben.",
   "toolSchema_noParameters": "Nimmt keine Parameter entgegen.",
   "schemaProperty_anyType": "beliebig",
@@ -558,5 +560,14 @@
   "toolOutcome_timedOut": "Zeitüberschreitung des Aufrufs nach {seconds} s.",
   "toolOutcome_stoppedBefore": "Sie haben die Runde gestoppt, bevor dieser Aufruf lief.",
   "toolOutcome_stopped": "Sie haben diesen Aufruf gestoppt.",
-  "toolOutcome_failed": "Der Aufruf ist aus unbekanntem Grund fehlgeschlagen."
+  "toolOutcome_failed": "Der Aufruf ist aus unbekanntem Grund fehlgeschlagen.",
+  "historyPanel_filterPlaceholder": "Chats durchsuchen…",
+  "historyPanel_filterAriaLabel": "Chats durchsuchen",
+  "historyPanel_noMatchesTitle": "Keine Treffer",
+  "historyPanel_noMatchesDescription": "Keine Chats passen zu „{query}“.",
+  "overflowMenu_exportMarkdownLabel": "Als Markdown exportieren",
+  "chatExport_youLabel": "Sie",
+  "chatExport_assistantLabel": "Assistent",
+  "chatExport_originLabel": "Herkunft",
+  "chatExport_exportedLabel": "Exportdatum"
 }

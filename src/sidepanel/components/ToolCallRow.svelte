@@ -154,6 +154,28 @@
   );
 
   const resultIsError = $derived(displayStatus === "error" || displayStatus === "denied");
+
+  /**
+   * CARD 115 — WHAT HAPPENED TO THIS CALL, AS PART OF THE ROW'S ACCESSIBLE
+   * DESCRIPTION.
+   *
+   * The row's status is carried visually by a coloured dot, and the dot is
+   * `aria-hidden` (rightly — a colour is not a name). The words that DO say
+   * it, the meta badge ("Denied", "Auto, read-only", "No result recorded")
+   * and the error line, are siblings of the trigger rather than part of it,
+   * so tabbing the timeline announced only the tool name, origin and
+   * duration. `aria-describedby` pulls the existing wording into the row's
+   * description instead of composing a second sentence out of new message
+   * keys that could then disagree with what is on screen.
+   */
+  const metaId = $derived(
+    untrustedContent || metaLabel ? `tool-call-meta-${message.id}` : undefined,
+  );
+  const outcomeId = $derived(showErrorLine ? `tool-call-outcome-${message.id}` : undefined);
+  const describedBy = $derived.by((): string | undefined => {
+    const ids = [metaId, outcomeId].filter((id) => id !== undefined);
+    return ids.length > 0 ? ids.join(" ") : undefined;
+  });
 </script>
 
 <!-- `step`/`row-head` class names carry no styling of their own — kept
@@ -181,7 +203,10 @@
   ></span>
 
   <Collapsible.Root bind:open class="flex min-w-0 flex-col gap-1">
-    <Collapsible.Trigger class="row-head group flex w-full min-w-0 items-center gap-2 py-1 text-start">
+    <Collapsible.Trigger
+      aria-describedby={describedBy}
+      class="row-head group flex w-full min-w-0 items-center gap-2 py-1 text-start"
+    >
       <span
         class="min-w-0 flex-1 truncate font-mono text-code group-hover:underline"
         dir="ltr"
@@ -223,7 +248,7 @@
     </Collapsible.Trigger>
 
     {#if untrustedContent || metaLabel}
-      <div class="flex flex-wrap gap-1">
+      <div id={metaId} class="flex flex-wrap gap-1">
         {#if untrustedContent}
           <!-- The Zinc palette has no separate "warning" token —
                this reuses `destructive`, the only attention colour
@@ -246,7 +271,7 @@
     {#if showErrorLine}
       <!-- Never hidden behind the payload toggle — this is precisely why
            the payload below can default closed. -->
-      <p class="m-0 text-sm text-destructive [overflow-wrap:anywhere]">{outcomeText}</p>
+      <p id={outcomeId} class="m-0 text-sm text-destructive [overflow-wrap:anywhere]">{outcomeText}</p>
     {/if}
 
     <Collapsible.Content>

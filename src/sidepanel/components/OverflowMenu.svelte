@@ -37,8 +37,11 @@
   import { chat, sidePanelServices } from "../app-services";
   import { panel, type ConnectionStatus } from "../stores/panel.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
-  import { titleFromSummary } from "../../domain/chat";
+  import { titleFromMessages, titleFromSummary } from "../../domain/chat";
   import { connectionStatusLabel } from "../presentation/connectionStatus";
+  import { buildChatExportMarkdown, chatExportFilenameFor } from "../presentation/chatExport";
+  import { copyText } from "../../ui/clipboard";
+  import { downloadTextFile } from "../../ui/download";
   import { m } from "../../paraglide/messages.js";
   import { uiTextDirection } from "../../ui/direction";
 
@@ -88,6 +91,22 @@
     // switch to, and the full History view is where the reason is shown.
     const [opened] = await chat().openChat(id);
     if (opened) onOpenChat();
+  }
+
+  /**
+   * Export the ACTIVE chat (card 116) — never a row from the recent list
+   * above, which is a shortcut to OPEN a different chat, not this one.
+   * Clipboard and file are the exact same Markdown string; a clipboard
+   * write that the browser refuses (src/ui/clipboard.ts's documented
+   * failure mode — no user gesture, an unfocused document) is never worth
+   * gating the download on, so both are fired independently rather than
+   * one waiting on the other.
+   */
+  async function handleExportChat(): Promise<void> {
+    const title = titleFromMessages(panel.messages, m.chatTitle_untitled(), panel.activeChatTitle);
+    const markdown = buildChatExportMarkdown(panel.messages, title, panel.activeChatOrigin ?? "");
+    void copyText(markdown);
+    downloadTextFile(chatExportFilenameFor(title), markdown);
   }
 </script>
 
@@ -149,6 +168,11 @@
     {/if}
 
     <DropdownMenu.Separator />
+
+    <DropdownMenu.Item disabled={panel.messages.length === 0} onSelect={() => void handleExportChat()}>
+      <Icon name="download" class="size-4" />
+      <span class="min-w-0 flex-1 truncate">{m.overflowMenu_exportMarkdownLabel()}</span>
+    </DropdownMenu.Item>
 
     <DropdownMenu.Item onSelect={onOpenTools}>
       <Icon name="build" class="size-4" />

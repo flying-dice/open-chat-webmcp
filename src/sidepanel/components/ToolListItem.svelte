@@ -36,6 +36,7 @@
   import type { SerializedTool, ToolAnnotations } from "../../domain/tools";
   import type { McpToolAnnotations, ToolOrigin } from "../../domain/tools";
   import { originLabel } from "../presentation/toolOrigin";
+  import { isolateLtr } from "../../ui/bidi";
   import AnnotationBadges from "./AnnotationBadges.svelte";
   import ToolSchema from "./ToolSchema.svelte";
   import * as Card from "$lib/components/ui/card";
@@ -75,7 +76,15 @@
     {/if}
 
     <Collapsible.Root bind:open={expanded}>
+      <!-- Card 115: every card in this list renders a trigger whose visible
+           text is the identical words "Input schema", so a screen reader's
+           button list read back N indistinguishable entries and there was no
+           way to tell which tool any of them belonged to. The visible label
+           stays short (it sits directly under the tool name, where the
+           context is obvious to a sighted reader); the ACCESSIBLE name names
+           the tool, since that is the one that gets read out of context. -->
       <Collapsible.Trigger
+        aria-label={m.toolListItem_inputSchemaAriaLabel({ tool: isolateLtr(tool.name) })}
         class="inline-flex w-fit items-center gap-1 text-sm text-primary hover:underline"
       >
         <span

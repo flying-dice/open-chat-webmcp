@@ -20,27 +20,33 @@
    * with Tailwind utilities, except the shimmering-text sweep, which is the
    * decision's explicitly carved-out custom-CSS exception — Tailwind has no
    * utility for an animated background-clip:text gradient.
+   *
+   * CARD 115 — THIS LINE IS NO LONGER ITS OWN LIVE REGION. It used to carry
+   * `aria-live="polite"` on the sentence span, which had two problems: the
+   * element is INSERTED already holding its text (a live region has to exist
+   * before its content changes for most screen readers to speak it, so the
+   * first and most important sentence was the one most likely to be missed),
+   * and it vanished with the indicator, so nothing announced the turn ending.
+   * The panel now owns ONE persistent polite region (src/sidepanel/App.svelte)
+   * fed by the same `turnStatusSentence` this line renders — see
+   * ../presentation/turnStatus.ts.
    */
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
-  import { originLabel } from "../presentation/toolOrigin";
-  import type { TurnPhase } from "../../domain/chat";
   import type { IconName } from "../../ui/icons";
   import { formatDuration } from "../presentation/duration";
-  import { isolateLtr } from "../../ui/bidi";
-  import { m } from "../../paraglide/messages.js";
-
-  /**
-   * Narrowed to the two phases this component ever renders — Transcript.svelte's
-   * `tailPhase` already excludes `streaming`/`awaiting-approval` (see that
-   * component's doc comment), so the type itself says so too rather than
-   * leaving the full `TurnPhase` union and having to fall through an
-   * unreachable `else` below.
-   */
-  type RenderablePhase = Extract<TurnPhase, { kind: "waiting" } | { kind: "calling" }>;
+  import { turnStatusSentence, type SpokenPhase } from "../presentation/turnStatus";
 
   interface Props {
-    phase: RenderablePhase;
+    /**
+     * Narrowed to the two phases this component ever renders —
+     * Transcript.svelte's `tailPhase` already excludes
+     * `streaming`/`awaiting-approval` (see ../presentation/turnStatus.ts for
+     * why each is silent), so the type itself says so too rather than leaving
+     * the full `TurnPhase` union and having to fall through an unreachable
+     * `else` below.
+     */
+    phase: SpokenPhase;
     modelLabel?: string | undefined;
     /** Icon for the provider being waited on — same as Transcript.svelte's turn-header icon, so "waiting" and "answered" show the same glyph for the same provider. */
     modelIcon?: IconName | undefined;
@@ -48,23 +54,7 @@
 
   let { phase, modelLabel, modelIcon }: Props = $props();
 
-  // `tool`/`origin`/`model` are identifiers interpolated into a translated
-  // sentence with no element boundary around just that part, so they are
-  // Unicode-isolated rather than `dir="ltr"` (card 104's RTL bidi-isolation
-  // pass).
-  const sentence = $derived.by((): string => {
-    if (phase.kind === "waiting")
-      return m.activityIndicator_waitingFor({
-        model: modelLabel ? isolateLtr(modelLabel) : m.activityIndicator_waitingForModelFallback(),
-      });
-    // phase.kind === "calling"
-    return phase.origin
-      ? m.activityIndicator_callingOn({
-          tool: isolateLtr(phase.toolName),
-          origin: isolateLtr(originLabel(phase.origin)),
-        })
-      : m.activityIndicator_calling({ tool: isolateLtr(phase.toolName) });
-  });
+  const sentence = $derived(turnStatusSentence(phase, modelLabel));
 
   const startedAt = $derived(phase.kind === "calling" ? phase.startedAt : undefined);
 
@@ -99,7 +89,9 @@
   <span class="inline-flex flex-none text-primary" aria-hidden="true">
     <Icon name={phase.kind === "waiting" ? (modelIcon ?? "sparkle") : "build"} class="size-4" />
   </span>
-  <span class="shimmer min-w-0 flex-1 truncate text-sm" aria-live="polite">{sentence}</span>
+  <!-- No `aria-live` here — App.svelte's persistent region announces this
+       exact sentence (see this file's header comment). -->
+  <span class="shimmer min-w-0 flex-1 truncate text-sm">{sentence}</span>
   {#if elapsedLabel}
     <span class="flex-none text-xs whitespace-nowrap text-muted-foreground" aria-hidden="true"
       >{elapsedLabel}</span

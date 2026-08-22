@@ -53,9 +53,18 @@
      */
     size?: "default" | "compact";
     title?: string;
+    /**
+     * The rendered `<button>`, for the rare caller that has to MOVE FOCUS to
+     * it (card 115): App.svelte lands focus on the "Back to chat" row when a
+     * non-chat view opens, because a view switch that leaves focus on `body`
+     * strands a keyboard user with nothing to tab from. Bound through to
+     * shadcn's Button, whose own `ref` prop is `$bindable(null)` — so this
+     * starts `null`, never bare `$state()`.
+     */
+    ref?: HTMLButtonElement | null;
   }
 
-  const {
+  let {
     icon,
     label,
     onclick,
@@ -66,6 +75,7 @@
     variant = "plain",
     size = "default",
     title,
+    ref = $bindable(null),
   }: Props = $props();
 
   const buttonVariant = $derived(
@@ -101,6 +111,7 @@
         {#snippet child({ props })}
           <Button
             {...props}
+            bind:ref
             type="button"
             variant={buttonVariant}
             size={buttonSize}
@@ -121,6 +132,7 @@
   </Tooltip.Provider>
 {:else}
   <Button
+    bind:ref
     type="button"
     variant={buttonVariant}
     size={buttonSize}

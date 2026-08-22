@@ -87,7 +87,18 @@
       <HugeiconsIcon icon={BubbleChatIcon} strokeWidth={2} />
     </ItemMedia>
 
-    <ItemContent>
+    <!-- Card 104's journal, fixed here (card 116): the active row's
+         description overflowed its `line-clamp-1` box and visually
+         overlapped the delete button. Root cause was `item-content.svelte`
+         (vendored) being a flex child (`flex-1 flex-col`, inside this row's
+         own `flex` button) with no `min-w-0` of its own — a flex item's
+         default `min-width: auto` means its content's natural width can
+         push it wider than the row, and a clamped `<p>` inside it clips
+         against THAT overflowed width instead of the row's actual space.
+         Fixed at the call site per the kit rules (decisions/28): the
+         vendored file stays regenerable, this is the one line that needs
+         it. -->
+    <ItemContent class="min-w-0">
       <ItemTitle class="w-full">
         <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary, m.chatTitle_untitled())}</span>
         {#if active}

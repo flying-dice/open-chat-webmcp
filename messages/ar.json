@@ -48,6 +48,7 @@
   "app_originMismatchViewing": ". وأنت تقرؤها من ",
   "app_originMismatchDetail": ". لا يزال بإمكانك قراءة المحادثة كاملة، لكن أدوات الصفحة تأتي الآن من علامة التبويب هذه. أما الاستدعاءات أعلاه فتعود إلى الصفحة الأصلية ولا يمكن إعادة تنفيذها هنا.",
   "app_backToChatLabel": "العودة إلى المحادثة",
+  "app_turnFinishedAnnouncement": "انتهى المساعد من الرد.",
   "app_startChatFailedWhat": "تعذّر بدء محادثة جديدة",
   "app_renameFailedWhat": "تعذّرت إعادة تسمية هذه المحادثة",
   "app_transcriptSaveFailedWhat": "تعذّر حفظ هذه المحادثة",
@@ -197,6 +198,7 @@
   "toolCallRow_serverCallsThis": "يسمّي الخادم هذه الأداة “{title}”",
   "toolCallRow_untrustedDataSuffix": "— كتبتها الصفحة، وتُعامَل كبيانات غير موثوقة",
   "toolListItem_inputSchemaLabel": "مخطط الإدخال",
+  "toolListItem_inputSchemaAriaLabel": "مخطط الإدخال للأداة {tool}",
   "toolSchema_noSchema": "لا يوجد لهذه الأداة مخطط إدخال معلَن.",
   "toolSchema_noParameters": "لا تأخذ أي معاملات.",
   "schemaProperty_anyType": "any",
@@ -614,5 +616,14 @@
   "toolOutcome_timedOut": "انتهت مهلة الاستدعاء بعد {seconds} ثانية.",
   "toolOutcome_stoppedBefore": "أوقفت الجولة قبل تنفيذ هذا الاستدعاء.",
   "toolOutcome_stopped": "أوقفت هذا الاستدعاء.",
-  "toolOutcome_failed": "فشل الاستدعاء لسبب غير معروف."
+  "toolOutcome_failed": "فشل الاستدعاء لسبب غير معروف.",
+  "historyPanel_filterPlaceholder": "البحث في المحادثات…",
+  "historyPanel_filterAriaLabel": "البحث في المحادثات",
+  "historyPanel_noMatchesTitle": "لا توجد نتائج مطابقة",
+  "historyPanel_noMatchesDescription": "لا توجد محادثات تطابق “{query}”.",
+  "overflowMenu_exportMarkdownLabel": "تصدير كـ Markdown",
+  "chatExport_youLabel": "أنت",
+  "chatExport_assistantLabel": "المساعد",
+  "chatExport_originLabel": "المصدر",
+  "chatExport_exportedLabel": "تاريخ التصدير"
 }

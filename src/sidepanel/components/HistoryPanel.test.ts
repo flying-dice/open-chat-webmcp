@@ -272,4 +272,69 @@ describe("HistoryPanel", () => {
       await screen.findByText(new RegExp(m.historyPanel_discardFailedWhat())),
     ).toBeInTheDocument();
   });
+
+  // --------------------------------------------------------------------
+  // Card 116: the history filter — src/domain/chat/search.test.ts already
+  // pins the matching rule with plain fixtures, so what's worth covering
+  // here is that the INPUT actually drives it, and that the two empty
+  // states (no chats at all vs. no chats matching the query) never get
+  // confused for one another.
+  // --------------------------------------------------------------------
+
+  it("has no filter box when there are no chats at all", async () => {
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    await screen.findByText(m.historyPanel_emptyTitle());
+
+    expect(
+      screen.queryByPlaceholderText(m.historyPanel_filterPlaceholder()),
+    ).not.toBeInTheDocument();
+  });
+
+  it("filters the list as the user types, by title/origin/preview", async () => {
+    services.chats.listChatSummaries = async () =>
+      ok([
+        summary({ id: "a", preview: "how do I roast a chicken" }),
+        summary({ id: "b", preview: "what's the capital of France" }),
+      ]);
+    const user = userEvent.setup();
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    await screen.findByText("how do I roast a chicken");
+
+    await user.type(screen.getByPlaceholderText(m.historyPanel_filterPlaceholder()), "chicken");
+
+    expect(screen.getByText("how do I roast a chicken")).toBeInTheDocument();
+    expect(screen.queryByText("what's the capital of France")).not.toBeInTheDocument();
+  });
+
+  it("shows the distinct 'no matches' empty state for a query that matches nothing, not the 'no chats' one", async () => {
+    services.chats.listChatSummaries = async () => ok([summary({ preview: "hi there" })]);
+    const user = userEvent.setup();
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    await screen.findByText("hi there");
+
+    await user.type(
+      screen.getByPlaceholderText(m.historyPanel_filterPlaceholder()),
+      "nothing matches this",
+    );
+
+    expect(await screen.findByText(m.historyPanel_noMatchesTitle())).toBeInTheDocument();
+    expect(screen.queryByText(m.historyPanel_emptyTitle())).not.toBeInTheDocument();
+    expect(screen.queryByText("hi there")).not.toBeInTheDocument();
+  });
+
+  it("clearing the filter shows every chat again", async () => {
+    services.chats.listChatSummaries = async () =>
+      ok([summary({ id: "a", preview: "alpha" }), summary({ id: "b", preview: "beta" })]);
+    const user = userEvent.setup();
+    render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
+    await screen.findByText("alpha");
+
+    const input = screen.getByPlaceholderText(m.historyPanel_filterPlaceholder());
+    await user.type(input, "alpha");
+    expect(screen.queryByText("beta")).not.toBeInTheDocument();
+
+    await user.clear(input);
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
+  });
 });

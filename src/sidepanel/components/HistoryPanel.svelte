@@ -20,6 +20,7 @@
    * decisions/28) — no behaviour change, presentation only.
    */
   import type { ChatSummary } from "../../domain/chat";
+  import { filterChatSummaries } from "../../domain/chat";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { isolateLtr } from "../../ui/bidi";
   import { uiTextDirection } from "../../ui/direction";
@@ -29,6 +30,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { ItemGroup } from "$lib/components/ui/item";
+  import * as InputGroup from "$lib/components/ui/input-group";
   import {
     Empty,
     EmptyDescription,
@@ -37,7 +39,7 @@
     EmptyTitle,
   } from "$lib/components/ui/empty";
   import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+  import { BubbleChatIcon, SearchIcon } from "@hugeicons/core-free-icons";
   import { m } from "../../paraglide/messages.js";
 
   interface Props {
@@ -51,6 +53,17 @@
   let status = $state<"loading" | "loaded">("loading");
   let openingId = $state<string | undefined>(undefined);
   let deletingId = $state<string | undefined>(undefined);
+
+  /**
+   * Card 116: title + origin + preview, case/diacritic-insensitive — see
+   * src/domain/chat/search.ts's `filterChatSummaries` for the matching rule
+   * and why it never reaches past what a `ChatSummary` already carries. No
+   * debounce: that module's header journals why one isn't needed — this is
+   * a handful of substring checks over an in-memory array already on
+   * screen, run again on every keystroke, same cost either way.
+   */
+  let filterQuery = $state("");
+  const filteredSummaries = $derived(filterChatSummaries(summaries, filterQuery));
 
   /**
    * Card 95: this view's OWN error line, not the panel's notice channel
@@ -174,18 +187,52 @@
         </EmptyHeader>
       </Empty>
     {:else}
-      <ItemGroup>
-        {#each summaries as summary (summary.id)}
-          <HistoryListItem
-            {summary}
-            active={panel.activeChatId === summary.id}
-            opening={openingId === summary.id}
-            deleting={deletingId === summary.id}
-            onOpen={() => handleOpen(summary.id)}
-            onDelete={() => handleDelete(summary)}
-          />
-        {/each}
-      </ItemGroup>
+      <!-- Card 116: only shown once there is at least one chat to search —
+           a box for filtering nothing is noise, the same call decisions/22
+           already made for ModelPicker's own filter box. -->
+      <InputGroup.Root class="mb-2">
+        <InputGroup.Addon>
+          <HugeiconsIcon icon={SearchIcon} strokeWidth={2} aria-hidden="true" />
+        </InputGroup.Addon>
+        <InputGroup.Input
+          type="text"
+          bind:value={filterQuery}
+          placeholder={m.historyPanel_filterPlaceholder()}
+          aria-label={m.historyPanel_filterAriaLabel()}
+          class="text-sm"
+        />
+      </InputGroup.Root>
+
+      {#if filteredSummaries.length === 0}
+        <!-- Distinct from the "no chats at all" empty state above (card
+             116's checklist): this one is reachable only once there IS at
+             least one chat, and says so — a user who just typed a query
+             that matched nothing should never read "No chats yet". -->
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={SearchIcon} strokeWidth={2} />
+            </EmptyMedia>
+            <EmptyTitle>{m.historyPanel_noMatchesTitle()}</EmptyTitle>
+            <EmptyDescription>
+              {m.historyPanel_noMatchesDescription({ query: filterQuery })}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      {:else}
+        <ItemGroup>
+          {#each filteredSummaries as summary (summary.id)}
+            <HistoryListItem
+              {summary}
+              active={panel.activeChatId === summary.id}
+              opening={openingId === summary.id}
+              deleting={deletingId === summary.id}
+              onOpen={() => handleOpen(summary.id)}
+              onDelete={() => handleDelete(summary)}
+            />
+          {/each}
+        </ItemGroup>
+      {/if}
     {/if}
   </div>
 </ScrollArea>

@@ -14,6 +14,10 @@
 //   ./session.ts           the `ChatSession` aggregate, its tool-call log,
 //                          the retention cap, the summary/preview derivation
 //   ./title.ts             what a chat is called (explicit name, else derived)
+//   ./search.ts            filtering the History list by title/origin/preview
+//                          (card 116)
+//   ./export.ts            turning a chat into a portable Markdown document
+//                          (card 116)
 //   ./transcript-groups.ts how a flat transcript reads as user turns, prose
 //                          turns and activity groups
 //   ./turn-phase.ts        the four phases a turn passes through
@@ -35,9 +39,11 @@
 // This barrel is the context's public face: other contexts and the outer
 // layers import `src/domain/chat`, never a file inside it.
 
+export * from "./export";
 export * from "./message";
 export * from "./page-context";
 export * from "./ports";
+export * from "./search";
 export * from "./service";
 export * from "./session";
 export * from "./store";

@@ -58,8 +58,21 @@
   }: Props = $props();
 </script>
 
-<!-- `Alert.Root` sets `role="alert"` itself, for every variant. -->
-<Alert.Root variant={variant === "failure" ? "destructive" : "default"}>
+<!-- `Alert.Root` sets `role="alert"` itself, for EVERY variant — i.e. an
+     ASSERTIVE live region, which interrupts whatever a screen reader is
+     currently saying. Card 115: that is right for `"failure"` (something the
+     user just did did not happen — interrupting is the point) and wrong for
+     the calm variant, which is exactly the doc comment above's distinction
+     read back in ARIA terms. The restricted-page notice is rendered AT MOUNT
+     and reflects standing state, so `role="alert"` had it barge in over the
+     panel's own opening announcement every single time the user opened onto
+     a chrome:// tab. `role="status"` is the polite equivalent: same
+     announcement, waits its turn. It overrides Alert.Root's own attribute
+     because `restProps` are spread after it. -->
+<Alert.Root
+  role={variant === "failure" ? "alert" : "status"}
+  variant={variant === "failure" ? "destructive" : "default"}
+>
   <Alert.Description
     class="text-sm [&_p:not(:last-child)]:mb-2 [&_strong]:font-medium [&_strong]:text-foreground {variant ===
     'failure'

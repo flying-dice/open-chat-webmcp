@@ -1,24 +1,70 @@
 // Card 84 (decisions/30-vitest-test-pyramid.md). OverflowMenu.svelte reads
 // `chat()`/`sidePanelServices()` (app-services) directly, plus the
-// read-only `panel` store (never initialised beyond app-services — its
-// `activeChatId` getter reads a private module variable this test cannot
-// drive, so no assertion here depends on it). Driven through
-// src/sidepanel/testing/fake-services.ts's fake bundle, initialised ONCE per
-// file — see that helper's header comment for why never `vi.resetModules()`.
+// read-only `panel` store — MOCKED WHOLESALE here (card 116's export
+// feature is the first thing in this file that needs `panel.messages`/
+// `activeChatTitle`/`activeChatOrigin` to be something other than empty),
+// the same `vi.hoisted` state + `vi.mock` pattern ModelPicker.test.ts
+// already uses for the same store. `state.activeChatId` defaults to
+// `undefined` and `state.messages` to `[]`, matching what the REAL store
+// reports before any chat has ever been opened — every pre-existing test
+// below ran against exactly that before this mock existed, so none of them
+// needed to change.
 import "@testing-library/svelte/vitest";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/svelte";
+import { render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
-import OverflowMenu from "./OverflowMenu.svelte";
 import {
   createFakeSidePanelServices,
   initFakeSidePanelServices,
   storageFailure,
 } from "../testing/fake-services";
 import { fail, ok } from "../../domain/result";
-import type { ChatSummary } from "../../domain/chat";
+import type { ChatSummary, TranscriptEntry } from "../../domain/chat";
 import type { ConnectionStatus } from "../stores/panel.svelte";
 import { m } from "../../paraglide/messages.js";
+
+const panelState = vi.hoisted(() => ({
+  activeChatId: undefined as string | undefined,
+  activeChatTitle: undefined as string | undefined,
+  activeChatOrigin: undefined as string | undefined,
+  messages: [] as TranscriptEntry[],
+}));
+
+vi.mock("../stores/panel.svelte", () => ({
+  panel: {
+    get activeChatId() {
+      return panelState.activeChatId;
+    },
+    get activeChatTitle() {
+      return panelState.activeChatTitle;
+    },
+    get activeChatOrigin() {
+      return panelState.activeChatOrigin;
+    },
+    get messages() {
+      return panelState.messages;
+    },
+  },
+}));
+
+// Card 116: the export handler's two side effects — OverflowMenu.svelte
+// calls these directly (not through app-services), so they're mocked here
+// the same way the panel store is, and asserted on rather than re-verified:
+// src/ui/download.test.ts and the (none needed — a one-liner) clipboard
+// wrapper already cover what each one does on its own.
+vi.mock("../../ui/clipboard", () => ({
+  copyText: vi.fn(async () => true),
+}));
+vi.mock("../../ui/download", () => ({
+  downloadTextFile: vi.fn(),
+}));
+
+// `vi.mock` calls above are hoisted by Vitest above every import in this
+// file (the same behaviour ModelPicker.test.ts relies on), so these ordinary
+// imports already resolve against the mocks.
+import OverflowMenu from "./OverflowMenu.svelte";
+import { copyText } from "../../ui/clipboard";
+import { downloadTextFile } from "../../ui/download";
 
 function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
@@ -49,6 +95,12 @@ describe("OverflowMenu", () => {
     services.chats.listChatSummaries = async () => ok([]);
     services.chat.openChat = async () => ok(false);
     services.shell.openOptionsPage = vi.fn();
+    panelState.activeChatId = undefined;
+    panelState.activeChatTitle = undefined;
+    panelState.activeChatOrigin = undefined;
+    panelState.messages = [];
+    vi.mocked(copyText).mockClear();
+    vi.mocked(downloadTextFile).mockClear();
   });
 
   // bits-ui's DropdownMenu sets `document.body.style.pointerEvents = "none"`
@@ -256,5 +308,60 @@ describe("OverflowMenu", () => {
     await user.click(await screen.findByText("hello world"));
 
     expect(onOpenChat).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------
+  // Card 116: "Export as Markdown" — the ACTIVE chat (`panel`, mocked
+  // above), never a row from the recent-chats list.
+  // --------------------------------------------------------------------
+
+  function exportMenuItem(): HTMLElement {
+    const label = screen.getByText(m.overflowMenu_exportMarkdownLabel());
+    const item = label.closest("[data-dropdown-menu-item]");
+    if (!(item instanceof HTMLElement)) throw new Error("export menu item not found");
+    return item;
+  }
+
+  it("is disabled with no active chat, and clicking it does nothing", async () => {
+    renderMenu();
+    await openMenu();
+
+    expect(exportMenuItem()).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.setup().click(exportMenuItem());
+    expect(copyText).not.toHaveBeenCalled();
+    expect(downloadTextFile).not.toHaveBeenCalled();
+  });
+
+  it("copies and downloads the active chat as Markdown, titled and named from it", async () => {
+    panelState.activeChatTitle = "My ferret questions";
+    panelState.activeChatOrigin = "https://example.com";
+    panelState.messages = [{ id: "u1", role: "user", content: "hello there", createdAt: 0 }];
+    renderMenu();
+    const user = await openMenu();
+
+    await user.click(exportMenuItem());
+
+    await waitFor(() => expect(copyText).toHaveBeenCalledTimes(1));
+    const markdown = vi.mocked(copyText).mock.calls[0]?.[0];
+    expect(markdown).toContain("# My ferret questions");
+    expect(markdown).toContain("https://example.com");
+    expect(markdown).toContain("hello there");
+
+    expect(downloadTextFile).toHaveBeenCalledTimes(1);
+    expect(downloadTextFile).toHaveBeenCalledWith("My-ferret-questions.md", markdown);
+  });
+
+  it("derives the title from the first message when the chat has no explicit title", async () => {
+    panelState.messages = [
+      { id: "u1", role: "user", content: "what do ferrets eat", createdAt: 0 },
+    ];
+    renderMenu();
+    const user = await openMenu();
+
+    await user.click(exportMenuItem());
+
+    await waitFor(() => expect(downloadTextFile).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadTextFile).mock.calls[0]?.[0]).toBe("what-do-ferrets-eat.md");
   });
 });

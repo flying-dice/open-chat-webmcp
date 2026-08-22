@@ -14,11 +14,19 @@
    *
    * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
    * with Tailwind utilities; IconButton/Tooltip are already shadcn-backed.
+   *
+   * CARD 115 — THE CONFIRMATION NO LONGER REPLACES THE BUTTON. It used to
+   * swap the copy button out for a `role="status"` badge for 1.5s, which
+   * meant that copying WITH THE KEYBOARD unmounted the element that had
+   * focus: the audit measured focus landing on `<body>`, so Tab restarted
+   * from the top of the panel and Enter did nothing for a second and a half.
+   * The button now stays mounted and changes its own glyph and accessible
+   * name — which is also the better announcement, since a name change on the
+   * focused element is spoken, where a live region appearing elsewhere in the
+   * transcript competed with whatever else was being read.
    */
   import { copyText } from "../../ui/clipboard";
   import IconButton from "./IconButton.svelte";
-  import Tooltip from "./Tooltip.svelte";
-  import Icon from "./Icon.svelte";
   import { m } from "../../paraglide/messages.js";
 
   interface Props {
@@ -57,19 +65,15 @@
 <!-- -ml-2 pulls the 32px compact targets' own padding back in line with the
      message text above them rather than indenting the row. -->
 <div class="-ml-2 flex items-center">
-  {#if copied}
-    <!-- Swapped rather than restyled: the check IS the confirmation, and
-         its tooltip changes with it so a screen reader hears it too. Sized
-         to match IconButton's compact geometry (size-8 = 32px) so the row
-         doesn't jump when the copy button swaps to this. -->
-    <Tooltip label={m.copiedLabel()}>
-      <span role="status" class="inline-flex size-8 items-center justify-center text-primary">
-        <Icon name="check" class="size-4" />
-      </span>
-    </Tooltip>
-  {:else}
-    <IconButton icon="content_copy" label={m.messageActions_copyResponseLabel()} size="compact" onclick={copy} />
-  {/if}
+  <!-- One button throughout: the check glyph and the "Copied" name ARE the
+       confirmation, and neither costs the user their focus (see the header). -->
+  <IconButton
+    icon={copied ? "check" : "content_copy"}
+    label={copied ? m.copiedLabel() : m.messageActions_copyResponseLabel()}
+    tone={copied ? "primary" : "default"}
+    size="compact"
+    onclick={copy}
+  />
 
   {#if onRegenerate}
     <IconButton icon="refresh" label={m.messageActions_regenerateLabel()} size="compact" onclick={onRegenerate} />

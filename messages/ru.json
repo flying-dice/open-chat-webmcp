@@ -46,6 +46,7 @@
   "app_originMismatchViewing": ". Вы читаете его на ",
   "app_originMismatchDetail": ". Весь чат по-прежнему можно прочитать, но инструменты страницы теперь берутся из этой вкладки. Вызовы выше относятся к исходной странице, и повторить их здесь нельзя.",
   "app_backToChatLabel": "Назад к чату",
+  "app_turnFinishedAnnouncement": "Ассистент завершил ответ.",
   "app_startChatFailedWhat": "Не удалось начать новый чат",
   "app_renameFailedWhat": "Не удалось переименовать этот чат",
   "app_transcriptSaveFailedWhat": "Не удалось сохранить этот чат",
@@ -185,6 +186,7 @@
   "toolCallRow_serverCallsThis": "На сервере он называется «{title}»",
   "toolCallRow_untrustedDataSuffix": "— написано страницей, считается недоверенными данными",
   "toolListItem_inputSchemaLabel": "Схема входных данных",
+  "toolListItem_inputSchemaAriaLabel": "Схема входных данных для {tool}",
   "toolSchema_noSchema": "У этого инструмента нет объявленной схемы входных данных.",
   "toolSchema_noParameters": "Не принимает параметров.",
   "schemaProperty_anyType": "любой",
@@ -586,5 +588,14 @@
   "toolOutcome_timedOut": "Вызов завершился по тайм-ауту через {seconds} с.",
   "toolOutcome_stoppedBefore": "Вы остановили ход до того, как этот вызов выполнился.",
   "toolOutcome_stopped": "Вы остановили этот вызов.",
-  "toolOutcome_failed": "Вызов не удался по неизвестной причине."
+  "toolOutcome_failed": "Вызов не удался по неизвестной причине.",
+  "historyPanel_filterPlaceholder": "Поиск чатов…",
+  "historyPanel_filterAriaLabel": "Поиск чатов",
+  "historyPanel_noMatchesTitle": "Совпадений нет",
+  "historyPanel_noMatchesDescription": "Нет чатов по запросу «{query}».",
+  "overflowMenu_exportMarkdownLabel": "Экспортировать в Markdown",
+  "chatExport_youLabel": "Вы",
+  "chatExport_assistantLabel": "Ассистент",
+  "chatExport_originLabel": "Источник",
+  "chatExport_exportedLabel": "Дата экспорта"
 }

@@ -49,6 +49,7 @@
   "app_originMismatchViewing": ". You're reading it from ",
   "app_originMismatchDetail": ". You can still read the whole chat, but page tools now come from this tab. The calls above belong to the original page and can't be re-run here.",
   "app_backToChatLabel": "Back to chat",
+  "app_turnFinishedAnnouncement": "The assistant has finished responding.",
   "app_startChatFailedWhat": "Couldn't start a new chat",
   "app_renameFailedWhat": "Couldn't rename this chat",
   "app_transcriptSaveFailedWhat": "Couldn't save this chat",
@@ -203,6 +204,7 @@
   "toolCallRow_serverCallsThis": "The server calls this “{title}”",
   "toolCallRow_untrustedDataSuffix": "— written by the page, treated as untrusted data",
   "toolListItem_inputSchemaLabel": "Input schema",
+  "toolListItem_inputSchemaAriaLabel": "Input schema for {tool}",
   "toolSchema_noSchema": "This tool has no declared input schema.",
   "toolSchema_noParameters": "Takes no parameters.",
   "schemaProperty_anyType": "any",
@@ -627,5 +629,14 @@
   "toolOutcome_timedOut": "The call timed out after {seconds}s.",
   "toolOutcome_stoppedBefore": "You stopped the turn before this call ran.",
   "toolOutcome_stopped": "You stopped this call.",
-  "toolOutcome_failed": "The call failed for an unknown reason."
+  "toolOutcome_failed": "The call failed for an unknown reason.",
+  "historyPanel_filterPlaceholder": "Search chats…",
+  "historyPanel_filterAriaLabel": "Search chats",
+  "historyPanel_noMatchesTitle": "No matches",
+  "historyPanel_noMatchesDescription": "No chats match “{query}”.",
+  "overflowMenu_exportMarkdownLabel": "Export as Markdown",
+  "chatExport_youLabel": "You",
+  "chatExport_assistantLabel": "Assistant",
+  "chatExport_originLabel": "Origin",
+  "chatExport_exportedLabel": "Exported"
 }
