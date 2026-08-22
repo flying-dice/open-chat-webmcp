@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The timeline for one activity group (card 61): a summary button plus a
+   * The timeline for one activity group (card 61): a summary trigger plus a
    * rail of `ToolCallRow`s. Deliberately NOT a filled card — it sits on the
    * panel surface exactly like the assistant's bare-text prose turn
    * (decisions/18); the rail is its only structure.
@@ -23,11 +23,20 @@
    * transition that matters here), so the default itself has to stay
    * reactive; only the user's OWN override needs to be sticky, which is
    * what `userToggled`/`userExpanded` capture below without any `$effect`.
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
+   * shadcn's Collapsible. `expanded` stays the single source of truth for
+   * open/closed (passed to `Collapsible.Root` as a plain, non-bound `open`
+   * prop — the same controlled pattern OverflowMenu.svelte's DropdownMenu
+   * already uses); `onOpenChange` is the only thing that ever writes
+   * `userToggled`/`userExpanded`, replacing the old manual `toggle()`.
    */
   import type { PanelMessage } from "../stores/panel.svelte";
   import { summariseActivity } from "../lib/transcriptGroups";
   import ToolCallRow from "./ToolCallRow.svelte";
   import Icon from "./Icon.svelte";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import { cn } from "$lib/utils";
 
   interface Props {
     steps: PanelMessage[];
@@ -43,8 +52,8 @@
   const autoOpen = $derived(live || summary.needsAttention);
   const expanded = $derived(userToggled ? userExpanded : autoOpen);
 
-  function toggle(): void {
-    userExpanded = !expanded;
+  function handleOpenChange(open: boolean): void {
+    userExpanded = open;
     userToggled = true;
   }
 
@@ -66,95 +75,36 @@
   });
 </script>
 
-<div class="activity-group">
-  <button type="button" class="summary" aria-expanded={expanded} onclick={toggle}>
-    <span class="summary-icon" aria-hidden="true"><Icon name="build" size={16} /></span>
-    <span class="summary-text">{summaryText}</span>
-    <span class="chevron" class:open={expanded} aria-hidden="true"
-      ><Icon name="chevron_right" size={16} /></span
+<!-- `activity-group`/`summary` class names carry no styling of their own —
+     kept purely so verify/checks/screenshots.mjs's `.activity-group
+     .summary` locator (its activity-timeline screenshots, predating
+     accessible-name-based lookups) keeps finding this row rather than
+     silently skipping those shots. -->
+<Collapsible.Root open={expanded} onOpenChange={handleOpenChange} class="activity-group w-full min-w-0">
+  <Collapsible.Trigger
+    class="summary group flex w-full min-w-0 items-center gap-2 py-1 text-left text-xs text-muted-foreground"
+  >
+    <span class="inline-flex flex-none" aria-hidden="true"><Icon name="build" size={16} /></span>
+    <span class="min-w-0 flex-1 truncate group-hover:underline">{summaryText}</span>
+    <span
+      class={cn("inline-flex flex-none transition-transform duration-150", expanded && "rotate-90")}
+      aria-hidden="true"
     >
-  </button>
+      <Icon name="chevron_right" size={16} />
+    </span>
+  </Collapsible.Trigger>
 
-  {#if expanded}
-    <ol class="timeline">
+  <Collapsible.Content>
+    <!-- Rail budget: at a 320px panel the transcript content is 288px; this
+         costs roughly 20px (12px dot column + a 0.5rem gap). The connecting
+         line is a `before:` pseudo-element rather than a real element so it
+         costs no extra DOM node, same as the old `.timeline::before`. -->
+    <ol
+      class="relative mt-2 flex flex-col gap-2 before:absolute before:top-2.5 before:bottom-2.5 before:left-[5px] before:w-0.5 before:rounded-full before:bg-border before:content-['']"
+    >
       {#each steps as step (step.id)}
         <ToolCallRow message={step} {live} />
       {/each}
     </ol>
-  {/if}
-</div>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  .activity-group {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .summary {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    min-width: 0;
-    padding: var(--space-1) 0;
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    color: var(--color-on-surface-variant);
-    font-size: var(--font-size-small);
-    text-align: left;
-  }
-
-  .summary:hover .summary-text {
-    text-decoration: underline;
-  }
-
-  .summary-icon {
-    display: inline-flex;
-    flex: none;
-  }
-
-  .summary-text {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .chevron {
-    flex: none;
-    display: inline-flex;
-    transition: transform var(--transition-fast);
-  }
-
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  /* Rail budget: at a 320px panel the transcript content is 288px; this
-     costs roughly 20px (12px dot column + var(--space-2) gap). */
-  .timeline {
-    position: relative;
-    margin: var(--space-2) 0 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .timeline::before {
-    content: "";
-    position: absolute;
-    left: 5px;
-    top: 10px;
-    bottom: 10px;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--color-outline-variant);
-  }
-</style>
+  </Collapsible.Content>
+</Collapsible.Root>

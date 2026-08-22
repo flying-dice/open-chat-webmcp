@@ -15,6 +15,11 @@
    * "Thinking" specifically is a claim Transcript.svelte already refuses to
    * make (see its header comment, ~line 128): no reasoning tokens are
    * captured, so there is nothing to disclose.
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities, except the shimmering-text sweep, which is the
+   * decision's explicitly carved-out custom-CSS exception — Tailwind has no
+   * utility for an animated background-clip:text gradient.
    */
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
@@ -78,63 +83,39 @@
   const elapsedLabel = $derived(elapsedMs >= 1000 ? formatDuration(elapsedMs) : undefined);
 </script>
 
-<div class="activity-indicator">
-  <span class="glyph" aria-hidden="true">
+<div class="flex min-w-0 items-center gap-2">
+  <span class="inline-flex flex-none text-primary" aria-hidden="true">
     <Icon name={phase.kind === "waiting" ? (modelIcon ?? "sparkle") : "build"} size={16} />
   </span>
-  <span class="sentence shimmer" aria-live="polite">{sentence}</span>
+  <span class="shimmer min-w-0 flex-1 truncate" aria-live="polite">{sentence}</span>
   {#if elapsedLabel}
-    <span class="elapsed text-small" aria-hidden="true">{elapsedLabel}</span>
+    <span class="flex-none text-xs whitespace-nowrap text-muted-foreground" aria-hidden="true"
+      >{elapsedLabel}</span
+    >
   {/if}
 </div>
 
 <style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  .activity-indicator {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .glyph {
-    display: inline-flex;
-    flex: none;
-    color: var(--color-accent-sparkle);
-  }
-
-  .sentence {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .elapsed {
-    flex: none;
-    color: var(--color-on-surface-variant);
-  }
-
   /* The shimmering sweep — this repo's first `prefers-reduced-motion`
-     handling (decisions/26), kept scoped to this one component next to the
-     animation it disables rather than a global `* { animation: none }`,
-     which would also defeat Tooltip.svelte's deliberate `transition-delay`
-     anti-strobe mechanism. */
+     handling (decisions/26), kept scoped to this one component. Tailwind
+     has no utility for an animated background-clip:text gradient, so this
+     is decisions/28's explicitly-allowed custom-CSS exception. Colours
+     reference the shadcn Zinc tokens (src/app.css) directly rather than
+     `--color-on-surface(-variant)`, which lived in chat-theme.css — deleted
+     wholesale by card 72. The 1800ms duration is likewise hardcoded rather
+     than reading the doomed `--duration-shimmer` custom property. */
   .shimmer {
     background-image: linear-gradient(
       90deg,
-      var(--color-on-surface-variant) 0%,
-      var(--color-on-surface) 45%,
-      var(--color-on-surface-variant) 90%
+      var(--muted-foreground) 0%,
+      var(--foreground) 45%,
+      var(--muted-foreground) 90%
     );
     background-size: 200% 100%;
     background-clip: text;
     -webkit-background-clip: text;
     color: transparent;
-    animation: shimmer-sweep var(--duration-shimmer) linear infinite;
+    animation: shimmer-sweep 1800ms linear infinite;
   }
 
   @keyframes shimmer-sweep {
@@ -150,7 +131,7 @@
     .shimmer {
       animation: none;
       background-image: none;
-      color: var(--color-on-surface-variant);
+      color: var(--muted-foreground);
     }
   }
 </style>

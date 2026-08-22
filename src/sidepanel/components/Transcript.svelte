@@ -28,6 +28,14 @@
    * (arriving text is its own feedback) and `awaiting-approval` needs none
    * either (the ApprovalCard loop below is already on screen, already
    * blocking).
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities and shadcn's Button (the note-action chips).
+   * All colour/spacing/radius values below are Tailwind's own scale/tokens
+   * (src/app.css) now, not the legacy `--color-*`/`--space-*` custom
+   * properties chat-theme.css/theme.css defined — those sheets stay loaded
+   * until card 72 deletes them (see this card's file-header caveat), but
+   * nothing here reads from them any more.
    */
   import Markdown from "../../lib/components/Markdown.svelte";
   import ActivityGroup from "./ActivityGroup.svelte";
@@ -36,6 +44,7 @@
   import Icon from "./Icon.svelte";
   import IconButton from "./IconButton.svelte";
   import MessageActions from "./MessageActions.svelte";
+  import { Button } from "$lib/components/ui/button";
   import type { PanelMessage, TurnPhase } from "../stores/panel.svelte";
   import { groupTranscript } from "../lib/transcriptGroups";
   import { approvals } from "../stores/approvals.svelte";
@@ -149,19 +158,23 @@
   });
 </script>
 
-<div class="transcript-viewport">
-  <div class="transcript" bind:this={container} onscroll={handleScroll}>
+<div class="relative flex min-h-0 flex-1">
+  <div
+    class="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pt-2 pb-4"
+    bind:this={container}
+    onscroll={handleScroll}
+  >
     {#if notices}
-      <div class="notices">{@render notices()}</div>
+      <div class="flex flex-col gap-2">{@render notices()}</div>
     {/if}
 
     {#if messages.length === 0}
-      <div class="empty-block">
-        <p class="empty text-small">
+      <div class="m-auto flex flex-col gap-2 text-center">
+        <p class="m-0 text-center text-xs text-muted-foreground">
           No messages yet. Ask something about this page, or just say hello.
         </p>
         {#if toolsNotice}
-          <p class="empty text-small">{toolsNotice}</p>
+          <p class="m-0 text-center text-xs text-muted-foreground">{toolsNotice}</p>
         {/if}
       </div>
     {/if}
@@ -181,19 +194,32 @@
          intact, it just can no longer crash on a collision. -->
     {#each groups as group, groupIndex (groupIndex)}
       {#if group.kind === "user"}
-        <div class="message" data-role="user">
-          <div class="user-bubble">{group.message.content}</div>
+        <div class="flex min-w-0 justify-end">
+          <!-- The user's turn is the only boxed one. It is short, it is the
+               thing being answered, and a right-aligned pill is the
+               cheapest way to say "you said this" without a label or an
+               avatar. -->
+          <div
+            class="max-w-[85%] min-w-0 rounded-xl bg-muted px-5 py-3 text-foreground whitespace-pre-wrap [overflow-wrap:anywhere]"
+          >
+            {group.message.content}
+          </div>
         </div>
       {:else if group.kind === "prose"}
         {@const message = group.message}
-        <div class="message" data-role="assistant">
-          <div class="assistant-turn">
+        <div class="flex min-w-0 justify-start">
+          <!-- No background, no border, no padding: the reply is the page. -->
+          <div class="relative min-w-0 flex-1 [overflow-wrap:anywhere]">
             <!-- The reference puts a "Show thinking" disclosure here. We
                  capture no reasoning tokens, so this row says what is
                  actually true instead: which model is answering. -->
-            <div class="turn-header">
-              <span class="sparkle" aria-hidden="true"><Icon name={modelIcon ?? "sparkle"} size={20} /></span>
-              {#if modelLabel}<span class="turn-model">{modelLabel}</span>{/if}
+            <div class="mb-2 flex items-center gap-2">
+              <span class="inline-flex text-primary" aria-hidden="true"
+                ><Icon name={modelIcon ?? "sparkle"} size={20} /></span
+              >
+              {#if modelLabel}
+                <span class="min-w-0 truncate text-xs text-muted-foreground">{modelLabel}</span>
+              {/if}
             </div>
 
             <Markdown source={message.content} />
@@ -203,14 +229,14 @@
                    and are not the same thing as the per-reply icon row
                    below: these are the way OUT of a failed turn, so they
                    stay full labelled buttons. -->
-              <div class="note-actions">
+              <div class="mt-3 flex flex-wrap gap-2">
                 {#each message.actions as action, i (i)}
                   {#if action.kind === "retry"}
-                    <button type="button" class="action-chip" onclick={onRetry}>Retry</button>
+                    <Button type="button" variant="secondary" size="sm" onclick={onRetry}>Retry</Button>
                   {:else if action.kind === "open-options"}
-                    <button type="button" class="action-chip" onclick={openOptionsPage}>
+                    <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
                       {action.label}
-                    </button>
+                    </Button>
                   {/if}
                 {/each}
               </div>
@@ -225,20 +251,20 @@
           </div>
         </div>
       {:else}
-        <div class="message" data-role="tool">
+        <div class="flex min-w-0 justify-start">
           <ActivityGroup steps={group.steps} live={group.key === liveGroupKey} />
         </div>
       {/if}
     {/each}
 
     {#each approvals.pending as request (request.id)}
-      <div class="message" data-role="tool">
+      <div class="flex min-w-0 justify-start">
         <ApprovalCard {request} />
       </div>
     {/each}
 
     {#if tailPhase}
-      <div class="message" data-role="assistant">
+      <div class="flex min-w-0 justify-start">
         <ActivityIndicator phase={tailPhase} {modelLabel} {modelIcon} />
       </div>
     {/if}
@@ -248,7 +274,7 @@
            composer: it is a standing caveat, not a warning about the
            message you are typing, and pinning it would cost a row of a
            320px panel forever. -->
-      <p class="disclaimer">
+      <p class="m-0 text-xs text-muted-foreground">
         Replies come from the provider you configured and can be wrong — check anything that
         matters. Tool calls act on the page in front of you.
       </p>
@@ -256,7 +282,10 @@
   </div>
 
   {#if !atBottom}
-    <div class="jump-to-latest">
+    <!-- The one thing in the transcript that genuinely floats over content,
+         so it is the one thing that gets a shadow. IconButton's own
+         `rounded-full` already makes the button itself circular. -->
+    <div class="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg">
       <IconButton
         icon="arrow_downward"
         label="Jump to latest"
@@ -266,144 +295,3 @@
     </div>
   {/if}
 </div>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  .transcript-viewport {
-    position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-  }
-
-  .transcript {
-    flex: 1 1 auto;
-    min-height: 0;
-    min-width: 0;
-    overflow-y: auto;
-    padding: var(--space-2) var(--space-4) var(--space-4);
-    display: flex;
-    flex-direction: column;
-    /* Wider than the old 12px: turns need to read as separate blocks now
-       that the assistant's half has no border to separate it. */
-    gap: var(--space-5);
-  }
-
-  .notices {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .empty-block {
-    margin: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    text-align: center;
-  }
-
-  .empty {
-    margin: 0;
-    text-align: center;
-  }
-
-  .message {
-    display: flex;
-    min-width: 0;
-  }
-
-  .message[data-role="user"] {
-    justify-content: flex-end;
-  }
-
-  .message[data-role="assistant"],
-  .message[data-role="tool"] {
-    justify-content: flex-start;
-  }
-
-  /* The user's turn is the only boxed one. It is short, it is the thing
-     being answered, and a right-aligned pill is the cheapest way to say
-     "you said this" without a label or an avatar. */
-  .user-bubble {
-    max-width: 85%;
-    min-width: 0;
-    border-radius: var(--radius-xl);
-    padding: var(--space-3) var(--space-5);
-    background: var(--color-surface-container);
-    color: var(--color-on-surface);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  /* No background, no border, no padding: the reply is the page. */
-  .assistant-turn {
-    position: relative;
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .turn-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
-  }
-
-  .sparkle {
-    display: inline-flex;
-    color: var(--color-accent-sparkle);
-  }
-
-  .turn-model {
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-  }
-
-  .disclaimer {
-    margin: 0;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-  }
-
-  .note-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-  }
-
-  .action-chip {
-    font-size: var(--font-size-small);
-    border-radius: var(--radius-pill);
-    padding: var(--space-1) var(--space-2);
-  }
-
-  /* Tool-call rendering — the timeline (ActivityGroup.svelte /
-     ToolCallRow.svelte, card 61), the approve/deny card, and the
-     "arguments" formatting shared by both — lives in ActivityGroup.svelte /
-     ToolCallRow.svelte / ApprovalCard.svelte / ToolArgs.svelte. Card 09,
-     decisions/05-tool-approval-policy.md, decisions/26. */
-
-  .jump-to-latest {
-    position: absolute;
-    bottom: var(--space-3);
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: var(--radius-full);
-    /* The one thing in the transcript that genuinely floats over content,
-       so it is the one thing that gets a shadow. */
-    box-shadow: var(--elevation-2);
-  }
-
-  .jump-to-latest :global(.icon-button) {
-    border-radius: var(--radius-full);
-  }
-</style>

@@ -32,13 +32,23 @@
    * "Read page (safe)" in the one place a user scans. ApprovalCard.svelte
    * renders the raw `call.name` for exactly this reason — this row does
    * the same, always showing `message.toolName`.
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
+   * shadcn's Collapsible (payload disclosure) and Badge (origin/meta
+   * pills); the pulsing "running" dot now uses Tailwind's own
+   * `animate-pulse` rather than a hand-rolled keyframe — close enough to
+   * the old scale+fade that it doesn't need decisions/28's custom-CSS
+   * carve-out.
    */
   import type { PanelMessage } from "../stores/panel.svelte";
   import { originLabel } from "../../lib/mcp/merge";
   import { panel } from "../stores/panel.svelte";
   import { formatDuration } from "../lib/duration";
+  import { cn } from "$lib/utils";
   import Icon from "./Icon.svelte";
   import ToolArgs from "./ToolArgs.svelte";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import { Badge } from "$lib/components/ui/badge";
 
   interface Props {
     message: PanelMessage;
@@ -67,10 +77,32 @@
     message.toolStatus !== "pending" ? (message.toolStatus ?? "pending") : live ? "running" : "stalled",
   );
 
-  // The dot's `data-status` reuses "pending" for "running" (see the rail
-  // CSS below, shared verbatim with ContextChip.svelte's status-dot
-  // colour mapping) — "running" is only distinguished by `data-pulse`.
+  // The dot's colour reuses "pending"'s for "running" (see `dotClass`
+  // below) — "running" is only distinguished by the pulse animation.
   const dotStatus = $derived(displayStatus === "running" ? "pending" : displayStatus);
+
+  /**
+   * Tailwind classes for the status dot — mirrors ContextChip.svelte's
+   * favicon status-dot colour mapping so a coloured dot means the same
+   * thing everywhere in the panel. "success" has no token of its own in
+   * the Zinc palette (base colours are neutral by design), so this reaches
+   * for Tailwind's stock emerald swatch — the one place in this migration
+   * that needs an unambiguous "this succeeded" green.
+   */
+  const dotClass = $derived.by((): string => {
+    switch (dotStatus) {
+      case "success":
+        return "bg-emerald-500 dark:bg-emerald-400";
+      case "error":
+      case "denied":
+        return "bg-destructive";
+      case "stalled":
+        return "bg-transparent ring-1 ring-inset ring-border";
+      default:
+        // "pending" (including the "running" alias above).
+        return "bg-primary";
+    }
+  });
 
   /** The matching call-log entry (src/lib/session.ts's `ToolCallLogEntry`), looked up by id — `addToolCall`/`logToolCall` (panel.svelte.ts) both key it as `call.id`, the same value used for this message's own `id`. */
   const logEntry = $derived(panel.toolCalls.find((entry) => entry.id === message.id));
@@ -96,45 +128,77 @@
   const showErrorLine = $derived(
     (displayStatus === "error" || displayStatus === "denied") && message.content.trim() !== "",
   );
+
+  const resultIsError = $derived(displayStatus === "error" || displayStatus === "denied");
 </script>
 
-<li class="step">
-  <span class="dot" data-status={dotStatus} data-pulse={displayStatus === "running"} aria-hidden="true"
+<!-- `step`/`row-head` class names carry no styling of their own — kept
+     purely so verify/checks/screenshots.mjs's `.step .row-head` locator
+     (its activity-payload screenshot, predating accessible-name-based
+     lookups) keeps finding this row rather than silently skipping that
+     shot. -->
+<li class="step grid grid-cols-[12px_minmax(0,1fr)] gap-x-2">
+  <span
+    class={cn(
+      "mt-1.5 ml-0.5 size-2 shrink-0 rounded-full shadow-[0_0_0_2px_var(--background)]",
+      dotClass,
+      displayStatus === "running" && "animate-pulse",
+    )}
+    aria-hidden="true"
   ></span>
 
-  <div class="row-body">
-    <button type="button" class="row-head" aria-expanded={open} onclick={() => (open = !open)}>
-      <span class="tool-name" title={message.toolName}>{message.toolName}</span>
+  <Collapsible.Root bind:open class="flex min-w-0 flex-col gap-1">
+    <Collapsible.Trigger class="row-head group flex w-full min-w-0 items-center gap-2 py-1 text-left">
+      <span
+        class="min-w-0 flex-1 truncate font-mono text-xs group-hover:underline"
+        title={message.toolName}>{message.toolName}</span
+      >
 
       {#if message.toolOrigin === undefined}
-        <span class="origin origin-unknown">origin unknown</span>
+        <!-- A hallucinated tool name — never defaulted to "this page". -->
+        <Badge variant="outline" class="flex-none border-dashed text-muted-foreground"
+          >origin unknown</Badge
+        >
       {:else if isServerTool}
-        <span class="origin origin-server">{originLabel(message.toolOrigin)}</span>
+        <!-- Decisions/19 §6 — same tinted-primary badge treatment as
+             ToolListItem.svelte/CallLogEntry.svelte so a remote call reads
+             consistently everywhere in the panel. -->
+        <Badge variant="outline" class="flex-none border-primary text-primary"
+          >{originLabel(message.toolOrigin)}</Badge
+        >
       {:else}
-        <span class="origin origin-page text-small">this page</span>
+        <span class="flex-none text-xs whitespace-nowrap text-muted-foreground">this page</span>
       {/if}
 
       {#if durationLabel}
-        <span class="duration text-small">{durationLabel}</span>
+        <span class="flex-none text-xs whitespace-nowrap text-muted-foreground">{durationLabel}</span>
       {/if}
 
-      <span class="chevron" class:open aria-hidden="true"><Icon name="chevron_right" size={16} /></span>
-    </button>
+      <span
+        class={cn(
+          "flex-none text-muted-foreground transition-transform duration-150",
+          open && "rotate-90",
+        )}
+        aria-hidden="true"><Icon name="chevron_right" size={16} /></span
+      >
+    </Collapsible.Trigger>
 
     {#if untrustedContent || metaLabel}
-      <div class="meta-line text-small">
+      <div class="flex flex-wrap gap-1">
         {#if untrustedContent}
-          <span class="meta-badge meta-untrusted">untrusted content</span>
+          <!-- theme.css had no separate "warning" token (decisions/08) —
+               this reuses `destructive`, the only attention colour
+               available, purely to catch the eye; it does not imply the
+               call itself is dangerous to make. -->
+          <Badge variant="outline" class="border-destructive text-destructive">untrusted content</Badge>
         {/if}
         {#if metaLabel}
-          <span
-            class="meta-badge"
+          <Badge
+            variant="outline"
             title={displayStatus === "stalled"
               ? "The side panel closed, or the turn ended, before this call reported back — it may still have run on the other end."
-              : undefined}
+              : undefined}>{metaLabel}</Badge
           >
-            {metaLabel}
-          </span>
         {/if}
       </div>
     {/if}
@@ -142,255 +206,46 @@
     {#if showErrorLine}
       <!-- Never hidden behind the payload toggle — this is precisely why
            the payload below can default closed. -->
-      <p class="step-error text-small">{message.content}</p>
+      <p class="m-0 text-xs text-destructive [overflow-wrap:anywhere]">{message.content}</p>
     {/if}
 
-    {#if open}
-      <div class="payload">
-        <div class="args-section">
-          <h3>Arguments</h3>
+    <Collapsible.Content>
+      <div class="mt-1 flex flex-col gap-2 rounded-lg bg-muted p-2">
+        <div>
+          <h3 class="mb-1 text-xs font-semibold text-foreground">Arguments</h3>
           <ToolArgs args={message.toolArgs} />
         </div>
 
         {#if message.toolMcpAnnotations?.title}
-          <p class="server-title text-small">
+          <p class="m-0 text-xs text-muted-foreground italic [overflow-wrap:anywhere]">
             The server calls this: "{message.toolMcpAnnotations.title}"
           </p>
         {/if}
 
         {#if message.content}
-          <div class="result-section" data-status={displayStatus}>
-            <h3>
-              {displayStatus === "error" || displayStatus === "denied" ? "Error" : "Result"}
+          <div>
+            <h3 class={cn("mb-1 text-xs font-semibold", resultIsError ? "text-destructive" : "text-foreground")}>
+              {resultIsError ? "Error" : "Result"}
               {#if untrustedContent && displayStatus === "success"}
-                <span class="untrusted-note">— page-authored, treated as untrusted data</span>
+                <span class="font-normal text-destructive"
+                  >— page-authored, treated as untrusted data</span
+                >
               {/if}
             </h3>
+            <!-- Marks the exact block of text that came back from an
+                 `untrustedContentHint` tool (decisions/17) — the same
+                 fenced text sent to the model, minus the delimiters
+                 themselves (see agentLoop.ts's `fenceUntrustedContent`). -->
             <div
-              class="tool-content text-small"
-              data-untrusted={untrustedContent && displayStatus === "success"}
+              class={cn(
+                "rounded-lg bg-background p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]",
+                resultIsError && "text-destructive",
+                untrustedContent && displayStatus === "success" && "border border-dashed border-destructive",
+              )}
             >{message.content}</div>
           </div>
         {/if}
       </div>
-    {/if}
-  </div>
+    </Collapsible.Content>
+  </Collapsible.Root>
 </li>
-
-<style>
-  /* All colour/spacing/radius/motion values come from src/lib/theme.css
-     and src/sidepanel/chat-theme.css (decisions/18). */
-
-  .step {
-    display: grid;
-    grid-template-columns: 12px minmax(0, 1fr);
-    column-gap: var(--space-2);
-  }
-
-  /* Colour mapping deliberately mirrors ContextChip.svelte's existing
-     status dot (~:155-183) so a coloured dot means the same thing
-     everywhere in the panel. */
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-full);
-    margin: 6px 0 0 2px;
-    /* Punches the rail line through cleanly rather than overlapping it. */
-    box-shadow: 0 0 0 2px var(--color-surface);
-  }
-
-  .dot[data-status="success"] {
-    background: var(--color-success);
-  }
-
-  .dot[data-status="error"],
-  .dot[data-status="denied"] {
-    background: var(--color-danger);
-  }
-
-  .dot[data-status="pending"] {
-    background: var(--color-primary);
-  }
-
-  .dot[data-status="stalled"] {
-    background: transparent;
-    box-shadow: 0 0 0 2px var(--color-surface), inset 0 0 0 1px var(--color-outline);
-  }
-
-  .dot[data-pulse="true"] {
-    animation: dot-pulse var(--duration-pulse) ease-in-out infinite;
-  }
-
-  @keyframes dot-pulse {
-    50% {
-      opacity: 0.35;
-      transform: scale(0.8);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .dot[data-pulse="true"] {
-      animation: none;
-    }
-  }
-
-  .row-body {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .row-head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    min-width: 0;
-    padding: var(--space-1) 0;
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    text-align: left;
-  }
-
-  .row-head:hover .tool-name {
-    text-decoration: underline;
-  }
-
-  .tool-name {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-small);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .origin {
-    flex: none;
-    font-size: var(--font-size-small);
-    white-space: nowrap;
-  }
-
-  .origin-page {
-    color: var(--color-on-surface-variant);
-  }
-
-  /* Decisions/19 §6 — same tinted-primary badge treatment as
-     ToolListItem.svelte/CallLogEntry.svelte so a remote call reads
-     consistently everywhere in the panel. */
-  .origin-server {
-    color: var(--color-primary);
-    border: 1px solid var(--color-primary);
-    border-radius: var(--radius-sm);
-    padding: 1px var(--space-1);
-    line-height: 1;
-  }
-
-  /* A hallucinated tool name — never defaulted to "this page". */
-  .origin-unknown {
-    color: var(--color-on-surface-variant);
-    border: 1px dashed var(--color-outline);
-    border-radius: var(--radius-sm);
-    padding: 1px var(--space-1);
-    line-height: 1;
-  }
-
-  .duration {
-    flex: none;
-    color: var(--color-on-surface-variant);
-    white-space: nowrap;
-  }
-
-  .chevron {
-    flex: none;
-    display: inline-flex;
-    transition: transform var(--transition-fast);
-    color: var(--color-on-surface-variant);
-  }
-
-  .chevron.open {
-    transform: rotate(90deg);
-  }
-
-  .meta-line {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-  }
-
-  .meta-badge {
-    font-size: var(--font-size-small);
-    line-height: 1;
-    padding: 2px var(--space-1);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-outline);
-    color: var(--color-on-surface-variant);
-    white-space: nowrap;
-  }
-
-  /* theme.css has no separate "warning" token (decisions/08) — this reuses
-     --color-danger, the only attention colour available, purely to catch
-     the eye; it does not imply the call itself is dangerous to make. */
-  .meta-untrusted {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-  }
-
-  .step-error {
-    margin: 0;
-    color: var(--color-danger);
-    overflow-wrap: anywhere;
-  }
-
-  .payload {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    margin-top: var(--space-1);
-    background: var(--color-surface-container);
-    border-radius: var(--radius-sm);
-  }
-
-  .args-section h3,
-  .result-section h3 {
-    margin-bottom: var(--space-1);
-  }
-
-  .server-title {
-    margin: 0;
-    color: var(--color-on-surface-variant);
-    font-style: italic;
-    overflow-wrap: anywhere;
-  }
-
-  .untrusted-note {
-    font-size: var(--font-size-small);
-    font-weight: 400;
-    color: var(--color-danger);
-  }
-
-  .tool-content {
-    padding: var(--space-2);
-    background: var(--color-surface);
-    border-radius: var(--radius-sm);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  /* Marks the exact block of text that came back from an
-     `untrustedContentHint` tool (decisions/17) — the same fenced text sent
-     to the model, minus the delimiters themselves (see
-     src/sidepanel/services/agentLoop.ts's `fenceUntrustedContent`). */
-  .tool-content[data-untrusted="true"] {
-    border: 1px dashed var(--color-danger);
-  }
-
-  .result-section[data-status="error"] .tool-content,
-  .result-section[data-status="denied"] .tool-content {
-    color: var(--color-danger);
-  }
-</style>

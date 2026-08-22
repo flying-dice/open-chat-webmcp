@@ -29,6 +29,18 @@
    * button, links forced to target="_blank" rel="noopener noreferrer",
    * and JSON code blocks (``` json or bare `{...}`/`[...]`) pretty-printed
    * when they parse.
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): restyled with
+   * Tailwind. The root element's own layout is plain utility classes; the
+   * element styling below it stays a small scoped style block — the
+   * decision's explicitly-allowed exception for this component, since
+   * content arrives via the @html directive and Tailwind utility classes
+   * can't reach into sanitised innerHTML the compiler never sees. Every
+   * rule below reads shadcn's own Zinc tokens (src/app.css: --foreground,
+   * --muted-foreground, --primary, --border, --muted, --background,
+   * --radius-*) rather than the legacy chat-theme.css/theme.css custom
+   * properties, which stay loaded (see this card's file-header caveat) but
+   * are no longer read here.
    */
   interface Props {
     source: string;
@@ -76,44 +88,36 @@
      wrapper to expose. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="markdown-body {extraClass}" onclick={handleClick}>
+<div
+  class="markdown-body min-w-0 text-sm [overflow-wrap:anywhere] [word-break:break-word] {extraClass}"
+  onclick={handleClick}
+>
   {@html html}
 </div>
 
 <style>
   /*
-   * All colour/spacing/radius/motion values come from src/lib/theme.css —
-   * see decisions/08-native-chrome-design-language.md. This block only
-   * adds the element styling theme.css doesn't already cover (it styles
-   * p/h1-h3/hr globally, which already apply to this component's {@html}
-   * output for free). Both src/sidepanel/main.ts and src/options/main.ts
-   * import theme.css, so its tokens are available wherever this component
-   * is mounted.
-   *
    * Content is injected via {@html}, so descendant rules below must use
    * :global() — Svelte's scoping class isn't attached to dynamically
-   * injected markup, only to elements the compiler sees statically.
+   * injected markup, only to elements the compiler sees statically. Every
+   * value is one of shadcn's own Zinc tokens (src/app.css) or Tailwind's
+   * rem spacing scale, kept as plain CSS only because these selectors have
+   * nowhere else to live (see the doc comment above).
    */
 
-  .markdown-body {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    min-width: 0;
-  }
-
   .markdown-body :global(a) {
-    color: var(--color-primary);
+    color: var(--primary);
     text-decoration: underline;
   }
 
   .markdown-body :global(ul),
   .markdown-body :global(ol) {
-    margin: 0 0 var(--space-2) 0;
-    padding-left: var(--space-4);
+    margin: 0 0 0.5rem 0;
+    padding-left: 1rem;
   }
 
   .markdown-body :global(li) {
-    margin: 0 0 var(--space-1) 0;
+    margin: 0 0 0.25rem 0;
   }
 
   .markdown-body :global(li:last-child) {
@@ -121,20 +125,20 @@
   }
 
   .markdown-body :global(blockquote) {
-    margin: 0 0 var(--space-2) 0;
-    padding: var(--space-1) var(--space-3);
-    border-left: 3px solid var(--color-outline);
-    color: var(--color-on-surface-variant);
+    margin: 0 0 0.5rem 0;
+    padding: 0.25rem 0.75rem;
+    border-left: 3px solid var(--border);
+    color: var(--muted-foreground);
   }
 
   .markdown-body :global(h4),
   .markdown-body :global(h5),
   .markdown-body :global(h6) {
-    margin: 0 0 var(--space-2) 0;
-    font-size: var(--font-size-heading);
-    line-height: var(--line-height-heading);
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9375rem;
+    line-height: 1.3;
     font-weight: 600;
-    color: var(--color-on-surface);
+    color: var(--foreground);
   }
 
   .markdown-body :global(p:last-child) {
@@ -143,32 +147,32 @@
 
   /* Inline code */
   .markdown-body :global(code) {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-small);
-    background: var(--color-surface-container);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: var(--muted);
     border-radius: var(--radius-sm);
-    padding: 1px var(--space-1);
+    padding: 1px 0.25rem;
     overflow-wrap: anywhere;
   }
 
   /* Fenced code block wrapper (built in src/lib/markdown.ts renderCodeBlock) */
   .markdown-body :global(.md-code) {
-    margin: 0 0 var(--space-2) 0;
-    border: 1px solid var(--color-outline);
-    border-radius: var(--radius-card);
+    margin: 0 0 0.5rem 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    background: var(--color-surface-container);
+    background: var(--muted);
   }
 
   .markdown-body :global(.md-code-header) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--color-outline-variant);
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
   }
 
   .markdown-body :global(.md-code-lang) {
@@ -182,25 +186,25 @@
 
   .markdown-body :global(.md-copy-btn) {
     flex: 0 0 auto;
-    font-size: var(--font-size-small);
+    font-size: 0.8125rem;
     line-height: 1.6;
-    padding: 0 var(--space-2);
-    border-radius: var(--radius-pill);
-    background: var(--color-surface);
-    border: 1px solid var(--color-outline);
+    padding: 0 0.5rem;
+    border-radius: 9999px;
+    background: var(--background);
+    border: 1px solid var(--border);
     cursor: pointer;
     transition:
-      background-color var(--transition-fast),
-      border-color var(--transition-fast);
+      background-color 150ms ease,
+      border-color 150ms ease;
   }
 
   .markdown-body :global(.md-copy-btn:hover) {
-    background: var(--color-surface-container-high);
+    background: var(--accent);
   }
 
   .markdown-body :global(.md-code pre) {
     margin: 0;
-    padding: var(--space-2);
+    padding: 0.5rem;
     overflow-x: auto;
     background: transparent;
   }
@@ -219,25 +223,25 @@
     max-width: 100%;
     overflow-x: auto;
     border-collapse: collapse;
-    margin: 0 0 var(--space-2) 0;
-    font-size: var(--font-size-small);
+    margin: 0 0 0.5rem 0;
+    font-size: 0.8125rem;
   }
 
   .markdown-body :global(th),
   .markdown-body :global(td) {
-    border: 1px solid var(--color-outline);
-    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    padding: 0.25rem 0.5rem;
     text-align: left;
   }
 
   .markdown-body :global(th) {
-    background: var(--color-surface-container);
+    background: var(--muted);
     font-weight: 600;
   }
 
   .markdown-body :global(hr) {
     border: none;
-    border-top: 1px solid var(--color-outline);
-    margin: var(--space-2) 0;
+    border-top: 1px solid var(--border);
+    margin: 0.5rem 0;
   }
 </style>

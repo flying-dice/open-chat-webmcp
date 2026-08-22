@@ -11,6 +11,9 @@
    * the model wrote is what a user pasting into a document or an issue
    * almost always wants, and Markdown.svelte's per-code-block copy button
    * already covers "just the code".
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): scoped CSS replaced
+   * with Tailwind utilities; IconButton/Tooltip are already shadcn-backed.
    */
   import IconButton from "./IconButton.svelte";
   import Tooltip from "./Tooltip.svelte";
@@ -52,12 +55,16 @@
   $effect(() => () => clearTimeout(resetTimer));
 </script>
 
-<div class="message-actions-row">
+<!-- -ml-2 pulls the 32px compact targets' own padding back in line with the
+     message text above them rather than indenting the row. -->
+<div class="-ml-2 flex items-center">
   {#if copied}
     <!-- Swapped rather than restyled: the check IS the confirmation, and
-         its tooltip changes with it so a screen reader hears it too. -->
+         its tooltip changes with it so a screen reader hears it too. Sized
+         to match IconButton's compact geometry (size-8 = 32px) so the row
+         doesn't jump when the copy button swaps to this. -->
     <Tooltip label="Copied">
-      <span class="copied-badge" role="status">
+      <span role="status" class="inline-flex size-8 items-center justify-center text-primary">
         <Icon name="check" size={18} />
       </span>
     </Tooltip>
@@ -69,27 +76,3 @@
     <IconButton icon="refresh" label="Regenerate" size="compact" onclick={onRegenerate} />
   {/if}
 </div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  .message-actions-row {
-    display: flex;
-    align-items: center;
-    /* Pulled left so the 40px targets' own padding lines the glyphs up with
-       the message text above them rather than indenting them. */
-    margin-left: calc(var(--space-2) * -1);
-  }
-
-  /* Matches IconButton's compact geometry so the row doesn't jump when the
-     copy button swaps to its confirmation. */
-  .copied-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--icon-button-size-compact);
-    height: var(--icon-button-size-compact);
-    color: var(--color-primary);
-  }
-</style>

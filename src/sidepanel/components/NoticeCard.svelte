@@ -1,21 +1,29 @@
 <script lang="ts">
   /**
-   * The transcript's notice card (decisions/18): a filled, rounded block of
-   * secondary text, optionally dismissible — the shape Chrome's Gemini panel
-   * uses for its "conversations aren't used to train models" notice.
+   * The transcript's notice card (decisions/18): a calm, dismissible-or-not
+   * block of secondary text — the shape Chrome's Gemini panel uses for its
+   * "conversations aren't used to train models" notice.
    *
    * These replace the full-width banner strips that used to sit under the
    * header. A notice about the page or the chat belongs IN the conversation,
    * where it is read once and scrolls away, rather than permanently eating a
    * row of a 320px-wide panel.
    *
-   * Deliberately calm: container background, secondary text, no danger
-   * colour. Every notice we show is an expected configuration state (a
-   * restricted page, a chat opened against a different origin), not an
+   * Deliberately calm: the default (non-destructive) Alert variant, no
+   * danger colour. Every notice we show is an expected configuration state
+   * (a restricted page, a chat opened against a different origin), not an
    * error, and colouring it red would teach the user to ignore red.
+   *
+   * Card 67 (decisions/28-shadcn-svelte-maia-zinc.md): re-skinned onto
+   * shadcn's Alert — `Alert.Action` is the primitive's own slot for exactly
+   * this "optional trailing control" shape, and reserves its own padding
+   * automatically (`has-data-[slot=alert-action]:pr-18`) so the tighter
+   * right padding when a dismiss button is present needs no extra rule
+   * here, unlike the old hand-written `:not(:has(button))` selector.
    */
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
+  import * as Alert from "$lib/components/ui/alert";
 
   interface Props {
     children: Snippet;
@@ -33,51 +41,15 @@
   const { children, onDismiss, dismissLabel = "Dismiss" }: Props = $props();
 </script>
 
-<div class="notice">
-  <div class="notice-body">{@render children()}</div>
+<Alert.Root>
+  <Alert.Description
+    class="text-sm text-muted-foreground [&_p:not(:last-child)]:mb-2 [&_strong]:font-medium [&_strong]:text-foreground"
+  >
+    {@render children()}
+  </Alert.Description>
   {#if onDismiss}
-    <IconButton icon="close" label={dismissLabel} onclick={onDismiss} tooltipPlacement="bottom" />
+    <Alert.Action>
+      <IconButton icon="close" label={dismissLabel} tooltipPlacement="bottom" onclick={onDismiss} />
+    </Alert.Action>
   {/if}
-</div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  .notice {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-2);
-    padding: var(--space-4);
-    /* Trailing padding is tighter when a close button sits there — the
-       40px target supplies its own optical margin. */
-    padding-right: var(--space-2);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-container);
-    color: var(--color-on-surface-variant);
-    font-size: var(--font-size-small);
-  }
-
-  .notice:not(:has(:global(button))) {
-    padding-right: var(--space-4);
-  }
-
-  .notice-body {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-
-  .notice-body :global(p) {
-    margin: 0;
-  }
-
-  .notice-body :global(p + p) {
-    margin-top: var(--space-2);
-  }
-
-  .notice-body :global(strong) {
-    color: var(--color-on-surface);
-    font-weight: 500;
-  }
-</style>
+</Alert.Root>
