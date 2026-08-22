@@ -25,10 +25,13 @@ import { createProviderClientFactory } from "../domain/providers";
 import { createMcpSignIn } from "../domain/tools";
 import { createChromeHostPermissions } from "../infra/chrome-runtime";
 import { createChromeStoragePorts } from "../infra/chrome-storage";
-import { startDarkModeSync } from "../infra/dom";
+import { applyDocumentLocale, startDarkModeSync } from "../infra/dom";
 import { createMcpOAuthClient, createMcpToolGateway } from "../infra/mcp";
 import { createOllamaProvider } from "../infra/ollama";
 import { createOpenAiProvider } from "../infra/openai";
+// Generated i18n runtime (card 100, decisions/37-i18n-paraglide.md) — see the
+// side panel root for why a root is where `getLocale()` is read.
+import { getLocale, getTextDirection } from "../paraglide/runtime.js";
 
 import { initOptionsServices } from "./app-services";
 
@@ -65,8 +68,15 @@ initOptionsServices({
   permissions,
 });
 
-// Must run before mount so the first paint is already in the right theme.
+// Must run before mount so the first paint is already in the right theme…
 startDarkModeSync();
+
+// …and in the right language and writing direction (card 100,
+// decisions/37-i18n-paraglide.md). This surface is also the one that WRITES
+// the locale — SettingsSection.svelte's language picker calls `setLocale()`,
+// which persists to localStorage and reloads the document, re-running this
+// line with the new value.
+applyDocumentLocale(getLocale(), getTextDirection());
 
 // `#app` is in this surface's own index.html, so its absence is a packaging
 // bug, not a runtime condition — decisions/34-errors-as-values.md's "throw

@@ -29,6 +29,14 @@ verify/output
 # here so repeat runs don't re-download it.
 .chrome-for-testing
 
+# Paraglide i18n codegen (boards/project-backlog/100-paraglide-i18n-toolchain.md,
+# decisions/37-i18n-paraglide.md): generated from messages/{locale}.json by the
+# Vite plugin on every build and by `npm run compile:i18n` from `postinstall`,
+# so a fresh clone type-checks before it builds. Paraglide emits its own
+# `.gitignore` into that folder — this entry is here so the tree is DISCOVERABLE
+# as generated without opening it, not because it is load-bearing.
+src/paraglide
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

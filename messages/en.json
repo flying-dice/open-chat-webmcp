@@ -1,0 +1,23 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+
+  "optionsPageTitle": "OpenChat (WebMCP) — Options",
+  "optionsPageSubtitle": "Manage the chat providers the side panel connects through.",
+
+  "settingsLanguageHeading": "Language",
+  "settingsLanguageDescription": "The language this extension's own interface is shown in. Changing it reloads this page.",
+  "settingsLanguageLabel": "Interface language",
+
+  "historyClearAllButton": "Clear all history ({count})",
+
+  "historyClearConfirmTitle": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Delete the 1 stored chat?",
+        "countPlural=other": "Delete all {count} stored chats?"
+      }
+    }
+  ]
+}

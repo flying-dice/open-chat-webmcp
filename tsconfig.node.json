@@ -13,6 +13,14 @@
     "moduleDetection": "force",
     "resolveJsonModule": true,
     "noEmit": true,
+    // Card 100: `vite.config.ts` imports `paraglide.options.mjs` — the one
+    // definition of the Paraglide compiler options, shared with
+    // `scripts/compile-i18n.mjs` (`postinstall`). It is `.mjs` because
+    // postinstall runs on a bare `npm ci` with no TypeScript loader
+    // guaranteed; `allowJs` is what lets this program see it. `checkJs` stays
+    // off (it is not set anywhere in this file), so the module is TYPED by
+    // its JSDoc annotation without being type-checked as if it were TS.
+    "allowJs": true,
 
     /* Linting */
     "noUnusedLocals": true,
@@ -29,5 +37,11 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true
   },
-  "include": ["vite.config.ts", "manifest.config.ts", "vitest.config.ts", "vitest.setup.ts"]
+  "include": [
+    "vite.config.ts",
+    "manifest.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts",
+    "paraglide.options.mjs"
+  ]
 }

@@ -287,11 +287,81 @@ module.exports = {
       comment:
         "src/ui is the shared UI layer: presentation both Svelte surfaces " +
         "render through, plus the vendored shadcn-svelte kit. It may see " +
-        "src/domain (types and rules) and itself, and nothing else. A shared " +
+        "src/domain (types and rules), src/paraglide (its own copy — the " +
+        "compiled message functions) and itself, and nothing else. A shared " +
         "UI module that needs an adapter wants a prop; one that needs a " +
         "surface's own module is not shared code and belongs in that surface.",
       from: { path: "^src/ui/" },
-      to: { path: "^src/(?!ui/|domain/)" },
+      // `|paraglide/` added by card 100: a shared component's own copy is
+      // still copy, and `m.someKey()` is how copy is written from now on
+      // (decisions/37). See `paraglide-is-not-for-the-domain` below for the
+      // layer this tree sits in and the one place it may NOT be reached from.
+      to: { path: "^src/(?!ui/|domain/|paraglide/)" },
+    },
+
+    // =====================================================================
+    // Generated i18n (card 100, decisions/37-i18n-paraglide.md)
+    // =====================================================================
+
+    {
+      // WHERE src/paraglide SITS IN THE LAYERING — the question card 100 had
+      // to answer before a single `m.someKey()` could be written.
+      //
+      // It is not a fifth layer. It is GENERATED PRESENTATION: the compiler
+      // turns `messages/{locale}.json` into one typed function per message,
+      // and a message is copy — the same kind of thing a `<p>` holds. So it
+      // belongs beside src/ui in the direction of the arrows (everything that
+      // renders may reach it; it reaches nothing) rather than beside
+      // src/domain or src/infra, and it is EXCLUDED from every guard the way
+      // the vendored shadcn kit is (biome.jsonc's `linter.includes`, the
+      // `VENDORED` list in scripts/lib/source-scan.mjs, tsconfig.app.json's
+      // `exclude`), because no human writes it and every `npm ci` overwrites
+      // it.
+      //
+      // The one edge that matters is this one. src/domain is the layer that
+      // must run in a bare Node test with no platform mocks (decisions/29),
+      // and `m.someKey()` is not platform-free: the generated runtime reads
+      // `localStorage` and `navigator.languages` to resolve a locale. Beyond
+      // the mechanics, decisions/34 and decisions/37 both say the same thing
+      // about copy — the domain carries CODES, the UI maps codes to words.
+      // A domain module that formats its own English sentence has taken a
+      // presentation decision, and a domain module that formats a LOCALIZED
+      // one has taken a presentation decision AND grown a global.
+      //
+      // `domain-is-pure` already forbids this edge (src/paraglide is outside
+      // src/domain), and both rules fire on it. That is deliberate and is the
+      // same pattern `ui-does-not-import-infra` uses next to
+      // `only-roots-construct-infra`: a domain module reaching for `m` gets
+      // told about the error-code convention, not just about purity.
+      name: "paraglide-is-not-for-the-domain",
+      severity: "error",
+      comment:
+        "The domain carries error CODES and identifiers, never user-visible " +
+        "words — the UI maps a code to a message (decisions/34, decisions/37). " +
+        "Components, stores and the shared UI layer call `m.someKey()` freely; " +
+        "src/domain never does. Beyond the convention it would also break " +
+        "domain purity: Paraglide's runtime resolves the active locale from " +
+        "`localStorage` and `navigator.languages`.",
+      from: { path: "^src/domain/" },
+      to: { path: "^src/paraglide/" },
+    },
+    {
+      // The other direction, and the reason the generated tree can be excluded
+      // from the guards without a hole opening up: it is a LEAF. Paraglide's
+      // output imports only its own sibling modules, so nothing our guards no
+      // longer read can reach back into code they do. If this ever fails, the
+      // codegen has grown a dependency on this repo's source and the exclusion
+      // above stops being safe.
+      name: "paraglide-is-a-leaf",
+      severity: "error",
+      comment:
+        "src/paraglide is compiler output and imports nothing of ours. It is " +
+        "excluded from biome, the clean-code/return-type/throw guards and the " +
+        "type program on the grounds that it is generated and self-contained; " +
+        "an edge out of it would make that exclusion a blind spot rather than " +
+        "a convenience.",
+      from: { path: "^src/paraglide/" },
+      to: { path: "^src/(?!paraglide/)" },
     },
     {
       name: "no-cross-surface-imports",

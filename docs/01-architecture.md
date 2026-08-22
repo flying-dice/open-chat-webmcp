@@ -443,7 +443,22 @@ newly discovered *expected* failure is a `Result` in the signature, never a
 new allowlist entry. The list went 15 → 11 → 10 → 7 across cards 91-95 and
 its `$doc` carries that history.
 
-**Maximal strictness** backs all five from the compiler side.
+**`npm run guard:i18n`** (`scripts/guard-i18n.mjs`) — the sixth gate, added by
+card 100 for [decisions/37](../decisions/37-i18n-paraglide.md). Paraglide makes
+keys type-safe in one direction only: `m.noSuchKey()` is a compile error, but a
+locale file MISSING a key falls back to the base locale silently, at compile
+time, and inlang's own lint rule for that is deprecated in the 2.x line. So
+this diffs every `messages/<locale>.json` against the base locale declared in
+`project.inlang/settings.json` and fails on missing keys, orphan keys, a plural
+downgraded to a flat string, and a declared locale with no file at all — each
+printed with its file and key. The generated output under `src/paraglide/` is
+excluded from every other guard (`biome.jsonc`'s `linter.includes`, the
+`VENDORED` list in `scripts/lib/source-scan.mjs`, `tsconfig.app.json`'s
+`exclude`) on the same grounds as the vendored shadcn kit; who may *import* it
+is still policed, by `paraglide-is-not-for-the-domain` and
+`paraglide-is-a-leaf` in `.dependency-cruiser.cjs`.
+
+**Maximal strictness** backs all six from the compiler side.
 `tsconfig.app.json` adds `noUncheckedIndexedAccess`,
 `exactOptionalPropertyTypes`, `noImplicitOverride` and
 `noFallthroughCasesInSwitch` on top of the inherited `strict`.

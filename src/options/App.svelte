@@ -5,6 +5,13 @@
   // (decisions/28-shadcn-svelte-maia-zinc.md): the page-level layout that
   // used to live in options.css's `.page`/`.page-header` is now the utility
   // classes below, and every section renders inside a shadcn `Card`.
+  //
+  // Card 100 (decisions/37-i18n-paraglide.md): this header is the first copy
+  // in the repo to go through Paraglide. `m` is the compiled message set —
+  // one typed function per key in messages/en.json, tree-shaken per message,
+  // no runtime dictionary and no `eval` (MV3 CSP). Card 100 deliberately
+  // extracts only a handful of strings; the sweep is cards 101-103.
+  import { m } from "../paraglide/messages.js";
   import ProvidersSection from "./components/ProvidersSection.svelte";
   import SettingsSection from "./components/SettingsSection.svelte";
   import McpServersSection from "./components/McpServersSection.svelte";
@@ -15,10 +22,10 @@
 <main class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-6 pb-10">
   <header class="flex flex-col gap-1">
     <h1 class="text-2xl leading-tight font-semibold tracking-tight">
-      OpenChat (WebMCP) — Options
+      {m.optionsPageTitle()}
     </h1>
     <p class="text-sm text-muted-foreground">
-      Manage the chat providers the side panel connects through.
+      {m.optionsPageSubtitle()}
     </p>
   </header>
 

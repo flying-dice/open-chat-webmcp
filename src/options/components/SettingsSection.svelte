@@ -31,13 +31,22 @@
   // write below has to be able to revert the selection when the storage write
   // throws — a two-way binding would leave the UI showing a policy that was
   // never saved.
+  //
+  // Card 100 (decisions/37-i18n-paraglide.md) adds a THIRD section, first in
+  // the card: the interface language. It is a display preference rather than
+  // a security policy, and unlike the two below it is not stored through the
+  // `SettingsStore` port at all — see the language block further down for why
+  // that is deliberate and not an oversight.
   import { onDestroy, onMount } from "svelte";
   import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
+  import { m } from "../../paraglide/messages.js";
+  import { getLocale, locales, setLocale, type Locale } from "../../paraglide/runtime.js";
   import * as Alert from "$lib/components/ui/alert";
   import * as Card from "$lib/components/ui/card";
   import * as Field from "$lib/components/ui/field";
+  import * as Select from "$lib/components/ui/select";
   import { Badge } from "$lib/components/ui/badge";
   import { RadioGroup, RadioGroupItem } from "$lib/components/ui/radio-group";
 
@@ -100,6 +109,71 @@
       danger: true,
     },
   ];
+
+  // -------------------------------------------------------------------------
+  // Interface language (card 100, decisions/37-i18n-paraglide.md)
+  //
+  // NOT stored through `SettingsStore` like the two policies below, and that
+  // asymmetry is the point. Paraglide resolves the active locale itself, from
+  // the strategy chain in paraglide.options.mjs (localStorage →
+  // preferredLanguage → baseLocale), and `setLocale()` is what writes the
+  // localStorage half of it. Mirroring the value into `chrome.storage` as
+  // well would give the page two sources of truth for one setting, and the
+  // one the compiled message functions actually read would be the one we did
+  // not control.
+  //
+  // The two surfaces share that value for free: the side panel and this page
+  // are both documents on the same `chrome-extension://<id>` origin, so they
+  // see one localStorage. Card 100 verified that in a real Chrome rather than
+  // assuming it (see the card's journal) — had it been false, decision 37's
+  // fallback was a custom `chrome.storage.local` strategy.
+  //
+  // `setLocale()` reloads the document by default and this component leans on
+  // that: with the page gone there is no stale copy to keep reactive, and
+  // src/options/main.ts re-runs `applyDocumentLocale()` on the way back up,
+  // so `<html lang>`/`<html dir>` follow the switch with no extra wiring.
+  // decisions/37 chose this over Paraglide's `{ reload: false }` escape hatch,
+  // which needs a hand-rolled reactivity layer around every `m.someKey()`.
+  //
+  // ONE locale ships today (`en`), so this Select currently offers a single
+  // option — card 105 is what fills the list out. It renders anyway rather
+  // than hiding until there are two: an empty-looking control is honest about
+  // where the feature is, and it is the thing card 105 will exercise.
+  const currentLocale = getLocale();
+
+  /**
+   * A locale's name IN ITS OWN LANGUAGE — "Deutsch", not "German". That is the
+   * convention a language picker is read by: someone who has landed in the
+   * wrong locale needs to recognise their own language in the list, which they
+   * cannot do if the list is written in the language they are trying to leave.
+   *
+   * `Intl.DisplayNames` throws a RangeError on a tag it cannot parse. That
+   * cannot happen here — the input is one of the compiled `locales`, a
+   * `readonly ["en"]` tuple the compiler produced from
+   * project.inlang/settings.json — but the tag is still echoed as a fallback
+   * rather than left to take the page down over a label
+   * (decisions/34-errors-as-values.md).
+   */
+  function localeLabel(locale: Locale): string {
+    try {
+      return new Intl.DisplayNames([locale], { type: "language" }).of(locale) ?? locale;
+    } catch {
+      return locale;
+    }
+  }
+
+  const LOCALE_OPTIONS: { value: Locale; label: string }[] = locales.map((locale) => ({
+    value: locale,
+    label: localeLabel(locale),
+  }));
+
+  function handleLocaleChange(next: string): void {
+    if (next === currentLocale) return;
+    // Full-document reload (Paraglide's default) — nothing after this line in
+    // this component runs, which is why there is no local `locale` state to
+    // roll back the way the two policies below have.
+    setLocale(next as Locale);
+  }
 
   let policy = $state<ApprovalPolicy>("default");
   let policyLoading = $state(true);
@@ -210,6 +284,39 @@
     mcpPolicyFailure = undefined;
   }
 </script>
+
+<!-- Interface language — first, because it changes how every other section on
+     this page reads. Card 100; card 105 adds the other nine locales. -->
+<section aria-labelledby="language-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="language-heading" class="text-base font-medium tracking-tight">
+        {m.settingsLanguageHeading()}
+      </h2>
+      <Card.Description>{m.settingsLanguageDescription()}</Card.Description>
+    </Card.Header>
+
+    <Card.Content>
+      <Field.Field>
+        <Field.Label for="interface-locale">{m.settingsLanguageLabel()}</Field.Label>
+        <Select.Root
+          type="single"
+          value={currentLocale}
+          onValueChange={handleLocaleChange}
+        >
+          <Select.Trigger id="interface-locale" class="w-full">
+            {localeLabel(currentLocale)}
+          </Select.Trigger>
+          <Select.Content>
+            {#each LOCALE_OPTIONS as option (option.value)}
+              <Select.Item value={option.value} label={option.label} />
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      </Field.Field>
+    </Card.Content>
+  </Card.Root>
+</section>
 
 <section aria-labelledby="approval-heading">
   <Card.Root>

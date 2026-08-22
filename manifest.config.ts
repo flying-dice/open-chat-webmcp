@@ -7,8 +7,34 @@ import pkg from "./package.json" with { type: "json" };
 // content script; only the ISOLATED-world relay remains).
 export default defineManifest({
   manifest_version: 3,
-  name: "OpenChat (WebMCP)",
-  description: pkg.description,
+
+  // ── Two localization mechanisms, and why (card 100, decisions/37) ────────
+  //
+  // Everything the extension RENDERS goes through Paraglide: typed
+  // `m.someKey()` functions compiled from messages/{locale}.json, switchable
+  // at runtime, with a completeness guard behind it (`npm run guard:i18n`).
+  //
+  // Everything in THIS FILE cannot. Chrome reads manifest.json before any of
+  // our code exists, so the only mechanism it accepts here is its own:
+  // `_locales/<locale>/messages.json` plus `__MSG_key__` placeholders, keyed
+  // off `default_locale`. No typing, no runtime switching — Chrome picks the
+  // locale from the BROWSER's UI language and that is that. Decision 37
+  // accepts the duplication as the cost of Chrome's constraint and keeps the
+  // two locale sets aligned deliberately (note Chrome spells regional tags
+  // with an underscore — `pt_BR`, `zh_CN` — where Paraglide uses the BCP-47
+  // hyphen; card 105 owns that translation when the other nine land).
+  //
+  // The catalogue lives at public/_locales/en/messages.json, so Vite's own
+  // `publicDir` copy puts it at the packaged root where Chrome looks for it.
+  // `name`/`description` are the two strings that show in the toolbar
+  // tooltip, chrome://extensions and a Web Store listing.
+  //
+  // `description` used to be `pkg.description` — the string now lives in the
+  // `_locales` catalogue instead, because a `__MSG_` placeholder is the only
+  // form Chrome will localize, and package.json is not a translatable file.
+  default_locale: "en",
+  name: "__MSG_extName__",
+  description: "__MSG_extDescription__",
   version: pkg.version,
   // 149, not 116: native WebMCP (document.modelContext) is a hard
   // requirement as of decisions/16-native-webmcp-client.md, and it only

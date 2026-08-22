@@ -123,12 +123,12 @@ service worker aren't hot-reloadable.
 | `npm test` | Vitest — the domain/infra/component pyramid, ~6s. `npm run test:watch`, `npm run test:coverage` |
 | `npm run lint` | Biome lint, `--error-on-warnings`, no writes. `npm run lint:fix` applies the safe fixes |
 | `npm run format` | Biome formatter, in place. `npm run format:check` reports without writing |
-| `npm run guard` | all five architecture guards, below |
+| `npm run guard` | all six architecture guards, below |
 | `npm run verify` | the end-to-end harness: real Chrome for Testing, the built extension, a real WebMCP page. Needs a display |
 | `npm run demo` | serves the WebMCP fixture page on `:5175` |
 | `npm run launch` | rebuilds and opens `dist/` in your real installed Chrome |
 
-`npm run guard` is five gates, each runnable on its own:
+`npm run guard` is six gates, each runnable on its own:
 
 | Gate | Fails when |
 | --- | --- |
@@ -137,6 +137,7 @@ service worker aren't hot-reloadable.
 | `guard:clean-code` | a `TODO: clean-code` marker scores **> 0.5**, or its score can't be parsed |
 | `guard:return-types` | an exported function under `src/` has no declared return type |
 | `guard:throws` | a `throw`/`Promise.reject` under `src/` isn't on `scripts/throw-allowlist.json` with its invariant named |
+| `guard:i18n` | a locale under `messages/` is missing a key the base locale has, carries one it doesn't, declares a plural as a flat string, or has no file at all |
 
 **The release gate is all five of** `check`, `test`, `build`, `guard`,
 `verify` **green** — see [docs/05-testing.md](docs/05-testing.md).

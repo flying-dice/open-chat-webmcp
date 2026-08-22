@@ -2,8 +2,13 @@
 // root wires up before it mounts anything, as distinct from the `chrome.*`
 // extension APIs that fill the other src/infra folders.
 //
-// One thing today: mirroring `prefers-color-scheme` onto `<html class="dark">`
-// (./dark-mode.ts). It was `src/lib/dark-mode.ts`, and it left with the rest
+// Two things: mirroring `prefers-color-scheme` onto `<html class="dark">`
+// (./dark-mode.ts), and stamping the active locale onto `<html lang>`/`<html
+// dir>` (./document-locale.ts, card 100). Both are attributes on the document
+// element that must be right before the first paint, and both are wired by a
+// composition root — the same shape, for the same reason.
+//
+// dark-mode.ts was `src/lib/dark-mode.ts`, and it left with the rest
 // of the pre-DDD grab bag — not because it violated the layering (the UI may
 // touch the DOM; that is what UI is), but because its two callers are the two
 // composition roots and nothing else. It is a surface's runtime concern
@@ -12,3 +17,4 @@
 // now enforces that only a root may reach for it.
 
 export { startDarkModeSync } from "./dark-mode";
+export { applyDocumentLocale } from "./document-locale";

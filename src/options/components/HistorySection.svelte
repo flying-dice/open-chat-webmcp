@@ -20,8 +20,19 @@
   // action button already confirmed. Everything the old prompt spelled out
   // (chat count, message count, "cannot be undone") is in the dialog's
   // description instead, so nothing is deleted with less warning than before.
+  //
+  // Card 100 (decisions/37-i18n-paraglide.md): the "clear all history" button
+  // and its confirmation title are this card's PROOF that the pipeline carries
+  // more than flat strings — the button takes an interpolated `{count}`, and
+  // the title is a plural VARIANT (`countPlural=one` / `=other` in
+  // messages/en.json) rather than the `s`-if-not-one ternary it replaces. That
+  // ternary is correct English and wrong in most of the ten locales decision
+  // 37 names — Russian has three plural forms, Arabic six — which is exactly
+  // the class of bug an ICU plural exists to remove. The rest of this
+  // component's copy is card 101's.
   import { onMount } from "svelte";
   import type { ChatSummary } from "../../domain/chat";
+  import { m } from "../../paraglide/messages.js";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
@@ -152,12 +163,14 @@
               class={buttonVariants({ variant: "destructive" })}
               disabled={clearingHistory}
             >
-              {clearingHistory ? "Clearing…" : `Clear all history (${sessions.length})`}
+              {clearingHistory
+                ? "Clearing…"
+                : m.historyClearAllButton({ count: sessions.length })}
             </AlertDialog.Trigger>
             <AlertDialog.Content>
               <AlertDialog.Header>
                 <AlertDialog.Title>
-                  Delete all {sessions.length} stored chat{sessions.length === 1 ? "" : "s"}?
+                  {m.historyClearConfirmTitle({ count: sessions.length })}
                 </AlertDialog.Title>
                 <AlertDialog.Description>
                   That's {totalMessages} message{totalMessages === 1 ? "" : "s"} in total. This

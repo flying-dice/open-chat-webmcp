@@ -3,7 +3,9 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { crx } from "@crxjs/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import manifest from "./manifest.config.ts";
+import { paraglideOptions } from "./paraglide.options.mjs";
 import pkg from "./package.json" with { type: "json" };
 
 // https://vite.dev/config/
@@ -36,6 +38,23 @@ export default defineConfig({
     },
   },
   plugins: [
+    // i18n codegen (decisions/37-i18n-paraglide.md, card 100). FIRST in the
+    // list because it WRITES SOURCE: it compiles messages/{locale}.json into
+    // src/paraglide/ on `buildStart` and re-runs whenever a message file
+    // changes in `npm run dev`, so the typed `m.someKey()` functions every
+    // component imports exist before svelte() transforms anything.
+    //
+    // The options live in paraglide.options.mjs — one object, shared with
+    // scripts/compile-i18n.mjs (`postinstall`); see that file for why the
+    // strategy chain is what it is and why the output is TS-declared.
+    //
+    // The generated tree is not ours to hold to our rules and is excluded
+    // from every guard: biome.jsonc's `linter.includes`, the `VENDORED` list
+    // in scripts/lib/source-scan.mjs (clean-code, return-types, throws,
+    // boundaries) and tsconfig.app.json's `exclude`. Who may IMPORT it is
+    // still policed — see `paraglide-is-not-for-the-domain` in
+    // .dependency-cruiser.cjs.
+    paraglideVitePlugin(paraglideOptions),
     // Tailwind v4 has no config file: `@import "tailwindcss"` in src/app.css
     // plus this plugin is the whole setup. It must run before svelte() so the
     // generated stylesheet exists by the time components are transformed.

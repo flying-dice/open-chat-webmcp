@@ -58,6 +58,11 @@
       "vitest.config.ts",
       "vitest.setup.ts",
       "manifest.config.ts",
+      // Card 100 — the one definition of the Paraglide compiler options,
+      // imported by both vite.config.ts and scripts/compile-i18n.mjs. It sits
+      // at the root next to the other build-config files, so it is named here
+      // the same way they are.
+      "paraglide.options.mjs",
       "svelte.config.js",
       "components.json",
       "package.json",

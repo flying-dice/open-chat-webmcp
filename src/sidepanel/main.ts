@@ -48,11 +48,15 @@ import {
   startTabSync,
 } from "../infra/chrome-runtime";
 import { createChromeStoragePorts } from "../infra/chrome-storage";
-import { startDarkModeSync } from "../infra/dom";
+import { applyDocumentLocale, startDarkModeSync } from "../infra/dom";
 import { createMcpOAuthClient, createMcpToolGateway } from "../infra/mcp";
 import { createOllamaProvider } from "../infra/ollama";
 import { createOpenAiProvider } from "../infra/openai";
 import { AGENT_LOOP_TOOL_CALL_TIMEOUT_MS } from "../infra/webmcp";
+// Generated i18n runtime (card 100, decisions/37-i18n-paraglide.md) — a
+// composition root is one of the few non-component places that reads it, and
+// it reads exactly one thing: which locale the strategy chain resolved to.
+import { getLocale, getTextDirection } from "../paraglide/runtime.js";
 
 import { initSidePanelServices } from "./app-services";
 import { originLabel } from "./presentation/toolOrigin";
@@ -136,6 +140,17 @@ initSidePanelServices({
 
 // Must run before mount so the first paint is already in the right theme.
 startDarkModeSync();
+
+// …and in the right language and writing direction (card 100,
+// decisions/37-i18n-paraglide.md). `getLocale()` resolves the strategy chain
+// in paraglide.options.mjs — localStorage (what the options page's language
+// picker writes; the two surfaces are documents on the same
+// `chrome-extension://` origin, so they share it), then
+// `navigator.languages`, then `en`. Reading it HERE rather than inside the
+// adapter is the composition root doing its job: src/infra/dom knows about
+// the document, not about where a locale comes from — nor which scripts are
+// written right to left, which is `getTextDirection()`'s answer to give.
+applyDocumentLocale(getLocale(), getTextDirection());
 
 // Keeps the panel's page identity — and, on a tab switch or a cross-origin
 // navigation, the visible conversation — in step with the active tab

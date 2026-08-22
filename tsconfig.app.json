@@ -56,5 +56,24 @@
     // dynamically.
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+  // Card 100 / decisions/37-i18n-paraglide.md. `src/paraglide/` is Paraglide's
+  // codegen output — the typed `m.someKey()` functions, one JS module per
+  // message. `allowJs` + `checkJs` above mean the `src/**/*.js` glob would
+  // otherwise pull every generated module in as a ROOT file and TYPE-CHECK it
+  // under this project's maximal strictness, which is the wrong bar for code
+  // no human writes and every `npm ci` overwrites.
+  //
+  // Excluding it does NOT untype the call sites: `emitTsDeclarations` (see
+  // paraglide.options.mjs) puts a `.d.ts` next to every generated `.js`, and
+  // TS resolves the declaration in preference to the source. So
+  // `m.optionsPageTitle()` is fully typed — a misspelt key or a missing
+  // interpolation argument is a `npm run check` error — while the generated
+  // tree itself is treated as an opaque, already-typed dependency. Same
+  // posture the vendored shadcn kit gets from biome.jsonc and
+  // scripts/lib/source-scan.mjs's `VENDORED` list.
+  //
+  // The default excludes are restated because declaring `exclude` at all
+  // replaces them.
+  "exclude": ["node_modules", "src/paraglide"]
 }
