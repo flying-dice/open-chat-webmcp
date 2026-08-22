@@ -1,0 +1,172 @@
+# CI — decisions/39-ci-pipeline.md, boards/project-backlog/109-ci-pipeline.md
+#
+# Two independent jobs, both triggered by the same push/PR event and run in
+# PARALLEL (neither `needs:` the other) because neither depends on the
+# other's output: the gate job builds into dist/, the verify job builds its
+# own dist-verify/ (verify/lib/build.mjs) — running them side by side gets a
+# PR its full signal in one wall-clock pass instead of two.
+#
+#   - gate:   npm ci -> check -> test -> guard -> build. Fast, always
+#             required — this is "the hard wall" decision 39 names. Nothing
+#             here needs a display or downloads a browser, so it's the
+#             quickest possible red/green signal on every push.
+#   - verify: npm run verify (the Chrome-for-Testing harness — README's
+#             "Verification harness" section) under xvfb, since MV3
+#             extensions require a HEADED launch
+#             (verify/lib/browser.mjs:45-51) and this runner has no display
+#             of its own. Chrome for Testing specifically, not Playwright's
+#             bundled Chromium or branded Chrome — see
+#             verify/lib/chromeForTesting.mjs's header comment.
+#
+# Flake posture (decision 39): the verify job is NOT marked
+# `continue-on-error` here. Decision 39 allows that only once CfT-under-xvfb
+# is OBSERVED to be flaky, with the flake documented at the point it's
+# introduced — weakening the job pre-emptively, before any real runner has
+# ever exercised it, would just be guessing. If a real run shows xvfb-under-CI
+# flakiness that local Chrome-for-Testing runs don't reproduce, that's the
+# moment to add `continue-on-error: true` to the `verify` job below with a
+# comment recording what was observed — the gate job stays the hard wall
+# either way, so doing so never removes CI's only required signal.
+#
+# Node version: pinned from .nvmrc (matches the version this workflow was
+# authored and dry-run against locally — see that card's journal for the
+# fresh-clone timings that shaped the timeout-minutes below).
+#
+# npm cache: actions/setup-node's built-in `cache: npm` keys on
+# package-lock.json — no separate cache step needed.
+#
+# .chrome-for-testing cache: unlike Node, there is nothing to pin here.
+# verify/lib/chromeForTesting.mjs resolves whatever Chrome for Testing's
+# "stable" channel currently publishes at call time — no build id is
+# hardcoded anywhere in this repo. So the verify job resolves that same
+# build id itself FIRST, via .github/scripts/resolve-cft-build-id.mjs (a
+# read-only, install-free call to the identical @puppeteer/browsers resolve
+# step), and keys the cache on the result (`cft-<platform>-<buildId>`).
+# A cache hit means `npm run verify`'s own resolveChromeForTesting() finds
+# the executable already in place and skips the download entirely; a cache
+# miss (CfT shipped a new stable build since the last run) downloads once
+# and the next run's key hits again. No restore-keys fallback: a cache
+# entry for a stale build id would never satisfy the `existsSync` check
+# resolveChromeForTesting() does, so restoring one would only waste time.
+#
+# docs: this file's comments (plus the README mention below) are the whole
+# of card 109's documentation — docs/07-development.md is card 110's file,
+# worked concurrently; that card owns wiring "run CI" instructions into the
+# doc tree, not this one.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate (check, test, guard, build)
+    runs-on: ubuntu-latest
+    # Local fresh-clone dry run (card 109 journal): npm ci ~7s, check ~4s,
+    # test ~8s, guard ~3s, build ~3s — ~25s total on a warm-ish local
+    # machine with no npm cache. 10 minutes gives generous headroom for a
+    # cold GitHub-hosted runner (checkout + setup-node + a fully cold
+    # npm/postinstall network fetch) without masking a real hang.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # postinstall (scripts/compile-i18n.mjs) compiles src/paraglide/ from
+      # messages/*.json — required before `check` can resolve any `m.*()`
+      # import (card 100's journal). Its message-format plugin is fetched
+      # from jsDelivr on a cold cache and is NOT covered by the npm cache
+      # above (project.inlang/cache/ is a separate, gitignored directory) —
+      # if this step ever flakes on the network fetch specifically, the
+      # documented fix is the local-module plugin path noted in card 100's
+      # journal, not a retry loop here.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Unit / component tests
+        run: npm test
+
+      - name: Guards (biome, boundaries, clean-code, return-types, throws, i18n)
+        run: npm run guard
+
+      - name: Build
+        run: npm run build
+
+  verify:
+    name: Verify (Chrome for Testing under xvfb)
+    runs-on: ubuntu-latest
+    # Local timing has no equivalent here — npm run verify was never run
+    # under xvfb locally (this machine has a real display), so this bound
+    # is a judgment call, not a measurement: a cold CfT download (~150-250MB)
+    # plus the 9 required checks plus the best-effort screenshot matrix.
+    # Revisit once a real runner has produced an actual duration.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ubuntu-latest runners ship Google Chrome preinstalled (pulling in
+      # most of the shared-library dependencies Chrome-family binaries
+      # need) but not an X server — xvfb is the one thing this harness
+      # needs that the runner image doesn't already have, since MV3
+      # extensions require a headed launch (verify/lib/browser.mjs:45-51).
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Resolve current Chrome for Testing build id
+        id: cft
+        run: node .github/scripts/resolve-cft-build-id.mjs >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chrome for Testing
+        uses: actions/cache@v4
+        with:
+          path: .chrome-for-testing
+          key: cft-${{ steps.cft.outputs.platform }}-${{ steps.cft.outputs.build_id }}
+
+      # xvfb-run owns its own virtual :99-style display and DISPLAY export;
+      # npm run verify (verify/run.mjs) builds dist-verify/, starts its own
+      # demo server, launches Chrome for Testing headed with the extension
+      # loaded, and writes screenshots to verify/output/screenshots/ — no
+      # other CI-specific setup needed.
+      - name: Run verify harness under xvfb
+        run: xvfb-run --auto-servernum -- npm run verify
+
+      # Uploaded on every outcome (not just success) so a failing run is
+      # just as reviewable as a passing one — this is the "no local run
+      # needed" visual diff decision 39 promises.
+      - name: Upload verify screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-screenshots
+          path: verify/output/screenshots
+          if-no-files-found: ignore
+          retention-days: 14

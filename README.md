@@ -146,7 +146,12 @@ service worker aren't hot-reloadable.
 | `guard:i18n` | a locale under `messages/` is missing a key the base locale has, carries one it doesn't, declares a plural as a flat string, renames or drops a `{placeholder}`, loses a `<code>`/`<a>` tag, matches on English's plural categories instead of its own, or has no file at all |
 
 **The release gate is all five of** `check`, `test`, `build`, `guard`,
-`verify` **green** — see [docs/05-testing.md](docs/05-testing.md).
+`verify` **green** — see [docs/05-testing.md](docs/05-testing.md). CI
+(`.github/workflows/ci.yml`) runs `check`/`test`/`guard`/`build` as a
+required gate on every push and pull request, plus `verify` under `xvfb` on
+its own job with the screenshot matrix uploaded as a build artifact — see
+that file's header comments for the cache/artifact design
+(decisions/39-ci-pipeline.md).
 
 `npm run guard:clean-code` deserves a note, because it will fail a build on a
 comment. Code review leaves markers in place rather than in a tracker:
