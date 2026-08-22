@@ -34,6 +34,13 @@ export default defineConfig({
       $lib: path.resolve(root, "./src/ui"),
     },
   },
+  // Mirrors vite.config.ts's `define` (typed in src/build-globals.d.ts):
+  // src/infra/mcp/protocol.ts reads these at module scope, so without them
+  // any test importing that chain dies with a ReferenceError before running.
+  define: {
+    __APP_NAME__: JSON.stringify("webmcp-test"),
+    __APP_VERSION__: JSON.stringify("0.0.0-test"),
+  },
   plugins: [svelte()],
   test: {
     coverage: {
