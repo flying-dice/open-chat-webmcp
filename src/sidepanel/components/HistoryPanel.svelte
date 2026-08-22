@@ -11,7 +11,7 @@
    *
    * Opening a chat started against a different origin than the current tab
    * is allowed (decision 13) — this view doesn't gate that at all, it just
-   * hands off to `openChatInTab`; the honesty notice about tools/origin
+   * hands off to `chat.openChat`; the honesty notice about tools/origin
    * mismatch lives in App.svelte, next to the transcript itself, since it
    * applies for as long as that chat stays open, not just at the moment of
    * opening it from here.
@@ -21,7 +21,7 @@
    */
   import type { ChatSummary } from "../../domain/chat";
   import { chatStore } from "../../infra/chrome-storage";
-  import { discardActiveChatIfDeleted, openChatInTab, panel } from "../stores/panel.svelte";
+  import { chat, panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { ItemGroup } from "$lib/components/ui/item";
@@ -66,7 +66,7 @@
     if (openingId || deletingId) return;
     openingId = chatId;
     try {
-      if (await openChatInTab(chatId)) onOpenChat();
+      if (await chat.openChat(chatId)) onOpenChat();
     } finally {
       openingId = undefined;
     }
@@ -87,7 +87,7 @@
       // a fresh one — otherwise the next message sent would silently
       // recreate the chat we just deleted (see that function's doc
       // comment).
-      await discardActiveChatIfDeleted(summary.id);
+      await chat.discardIfDeleted(summary.id);
       await refresh();
     } finally {
       deletingId = undefined;

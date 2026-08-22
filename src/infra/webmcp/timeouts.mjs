@@ -3,7 +3,7 @@
 // card 79: boards/project-backlog/79-protocol-and-timeout-ladder-cleanup.md).
 //
 // This is the SINGLE source for every rung — src/content/relay.ts,
-// src/background/sw.ts, src/sidepanel/services/agentLoop.ts, and
+// src/background/sw.ts, src/sidepanel/services/chatTurn.ts, and
 // verify/run.mjs all import from here instead of declaring their own copy.
 // Plain `.mjs` (not `.ts`) on purpose: verify/run.mjs is a real Node ESM
 // script with no build step, so it cannot import TypeScript, but it CAN
@@ -14,7 +14,7 @@
 //
 // Call chain for a side-panel-initiated tool call:
 //
-//   side panel (agentLoop.ts) -> worker (sw.ts) -> relay (relay.ts) -> document.modelContext
+//   side panel (chatTurn.ts) -> worker (sw.ts) -> relay (relay.ts) -> document.modelContext
 //
 // ORDERING INVARIANT: each layer's budget must exceed the one it wraps, with
 // a comfortable margin, so the innermost, most specific timeout error wins
@@ -51,7 +51,8 @@ export const SW_CALL_TIMEOUT_MS = 30_000;
 export const SW_PULL_TIMEOUT_MS = 3_000;
 
 /**
- * src/sidepanel/services/agentLoop.ts — OUTERMOST rung. Budget for a full
+ * src/domain/chat/turn.ts (injected via src/sidepanel/services/chatTurn.ts)
+ * — OUTERMOST rung. Budget for a full
  * side-panel-initiated tool call, the worker round trip (and everything it
  * wraps) included. Must exceed {@link SW_CALL_TIMEOUT_MS} with margin, for
  * the same reason {@link SW_CALL_TIMEOUT_MS} must exceed the relay's.

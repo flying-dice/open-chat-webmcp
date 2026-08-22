@@ -3,9 +3,10 @@
 // their validators, plus `SettingsStore` — the driven port that reads,
 // writes and watches them.
 //
-// Card 74 landed the policies and the port; the "does this tool call need a
-// human?" rule still to come from src/sidepanel/services/agentLoop.ts is
-// card 77's (see ./README.md).
+// Card 74 landed the policies and the port; card 77 added the "does this tool
+// call need a human?" rule — `pageToolAutoRuns`/`serverToolAutoRuns` and the
+// `ApprovalPolicyGate` over them, moved out of the agent loop (see
+// ./README.md).
 //
 // Pure TypeScript — no `chrome.*`, no `fetch`, no DOM, no Svelte. The
 // `chrome.storage.sync` implementation of `SettingsStore` is an adapter and

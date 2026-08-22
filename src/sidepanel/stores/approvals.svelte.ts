@@ -1,15 +1,22 @@
 // The real approval UI seam (card 09, boards/project-backlog/09-tool-approval-ux.md;
-// decisions/05-tool-approval-policy.md, decisions/17), plumbed into
-// src/sidepanel/services/agentLoop.ts's `ApprovalRequester` type from
-// src/sidepanel/App.svelte.
+// decisions/05-tool-approval-policy.md, decisions/17): the implementation of
+// `ApprovalRequester`, plumbed into the domain turn from
+// src/sidepanel/App.svelte via src/sidepanel/services/chatTurn.ts.
 //
-// By the time `runAgentTurn` calls the function this module exports as
-// `requestApproval`, `agentLoop.ts`'s `executeToolCall` has ALREADY decided
-// (via its own two separate policy units, `shouldAutoRunPageTool`/
-// `shouldAutoRunServerTool`) that a human decision is required for this
-// specific call — an auto-run outcome under either policy never reaches
-// here at all. This module's only remaining job before it has to show UI is
-// the session-scoped "don't ask again" skip-list.
+// CARD 77: that contract used to be declared in
+// src/sidepanel/services/agentLoop.ts and imported back out of it by THIS
+// file — its own consumer — so the seam between the loop and the UI lived
+// inside one of the two things it was meant to hold apart. `ApprovalRequest`,
+// `ApprovalDecision`, `ApprovalRequester` and `denyByDefaultApprovalRequester`
+// are now src/domain/chat's, and the auto-run policy units they pair with are
+// src/domain/settings's (`pageToolAutoRuns`/`serverToolAutoRuns`, behind
+// `ApprovalPolicyGate`).
+//
+// By the time the turn calls the function this module exports as
+// `requestApproval`, that gate has ALREADY decided a human decision is
+// required for this specific call — an auto-run outcome under either policy
+// never reaches here at all. This module's only remaining job before it has to
+// show UI is the session-scoped "don't ask again" skip-list.
 //
 // Card 38, decisions/20-approval-policy-is-per-tool-source.md: that skip
 // list is now TWO independent skip-lists, not one — a page tool's is keyed
@@ -30,11 +37,7 @@
 // agent loop. `approve`/`deny` are the only way that promise ever settles
 // for a UI-shown request.
 
-import type {
-  ApprovalDecision,
-  ApprovalRequest,
-  ApprovalRequester,
-} from "../services/agentLoop";
+import type { ApprovalDecision, ApprovalRequest, ApprovalRequester } from "../../domain/chat";
 import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
 import { settingsStore } from "../../infra/chrome-storage";
 import { panel } from "./panel.svelte";
@@ -74,7 +77,7 @@ const pageSkipList = new Set<string>();
 const serverSkipList = new Set<string>();
 
 export const approvals = {
-  /** Pending approval requests, oldest first — src/sidepanel/components/Transcript.svelte renders one ApprovalCard per entry, after the current message list (these calls haven't been added to `panel.messages` yet; agentLoop.ts only does that once a decision comes back). */
+  /** Pending approval requests, oldest first — src/sidepanel/components/Transcript.svelte renders one ApprovalCard per entry, after the current message list (these calls haven't been added to `panel.messages` yet; the turn only does that once a decision comes back). */
   get pending(): PendingApproval[] {
     return pendingList;
   },
@@ -185,7 +188,7 @@ function requestServerApproval(request: ApprovalRequest, tool: MergedTool): Prom
 
 /**
  * The real `ApprovalRequester`, passed as `requestApproval` to
- * `runAgentTurn` from App.svelte. Only ever called for a call agentLoop.ts
+ * the domain turn, via src/sidepanel/services/chatTurn.ts. Only ever called for a call the policy gate
  * has already determined needs a human decision under that tool's OWN
  * policy (see module doc comment) — this never re-derives either
  * auto-run rule itself.
@@ -230,7 +233,7 @@ export function deny(id: string): void {
 /**
  * Resolve every still-pending request as "denied" without touching either
  * skip-list, and clear them from the UI. Call this the instant the user
- * hits Stop (App.svelte's stop handler): `agentLoop.ts`'s `raceApproval`
+ * hits Stop (App.svelte's stop handler): src/domain/chat/turn.ts's `raceApproval`
  * already treats an aborted turn's outstanding approval as "denied" so the
  * loop itself unblocks immediately, but it has no way to reach back into
  * THIS module's promise — without this, a card the loop has already moved

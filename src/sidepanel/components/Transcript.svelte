@@ -44,15 +44,14 @@
   import IconButton from "./IconButton.svelte";
   import MessageActions from "./MessageActions.svelte";
   import { Button } from "$lib/components/ui/button";
-  import type { PanelMessage, TurnPhase } from "../stores/panel.svelte";
-  import { groupTranscript } from "../lib/transcriptGroups";
+  import { groupTranscript, type TranscriptEntry, type TurnPhase } from "../../domain/chat";
   import { approvals } from "../stores/approvals.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
   import type { IconName } from "../../lib/icons";
   import type { Snippet } from "svelte";
 
   interface Props {
-    messages: PanelMessage[];
+    messages: TranscriptEntry[];
     streamingMessageId: string | null;
     /** The active chat's current turn phase (decisions/26, card 60) — `null` when no turn is in flight. Drives the tail `ActivityIndicator` and which activity group counts as "live" for ActivityGroup/ToolCallRow's expand/collapse and running/stalled distinction. */
     turnPhase: TurnPhase | null;
@@ -179,14 +178,14 @@
     {/if}
 
     <!-- Keyed by index, not `group.key`: `group.key` is derived from a
-         message id (transcriptGroups.ts) and is normally unique, but a real
+         message id (src/domain/chat's `groupTranscript`) and is normally unique, but a real
          session with heavy tool use (confirmed: a turn against GitHub's MCP
          server producing many tool-call messages) hit a Svelte
          `each_key_duplicate` crash here, meaning two groups' keys collided —
          evidence of a message-identity/duplication issue upstream (likely
          related to the open tab-sync/session-restore cards) worth its own
          investigation, not something to chase down inside this fix. Index is
-         safe here regardless: `messages` is append-only (transcriptGroups.ts's
+         safe here regardless: `messages` is append-only (`groupTranscript`'s
          own doc comment), so an existing group's POSITION in `groups` never
          shifts as later messages stream in — the same component-identity
          stability the original `group.key` choice was protecting stays

@@ -40,7 +40,7 @@
    * own, stricter, independent `McpApprovalPolicy` (default
    * "always-confirm": every server call asks regardless of
    * `readOnlyHint`). This component itself doesn't decide which — that
-   * happens in src/sidepanel/services/agentLoop.ts before this card is ever
+   * happens in src/domain/chat/turn.ts before this card is ever
    * shown — it only has to make the difference visible (the origin line
    * above) and remember approvals in the right scope (see the "don't ask
    * again" label below, and src/sidepanel/stores/approvals.svelte.ts's two

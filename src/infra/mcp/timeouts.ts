@@ -5,7 +5,7 @@
 // A deliberate, separate ladder from the extension's existing
 // bridge(20s) < relay(25s) < worker(30s) < panel(35s) cross-context chain
 // (src/content/relay.ts, src/background/sw.ts,
-// src/sidepanel/services/agentLoop.ts). That chain times a same-machine
+// src/domain/chat/turn.ts). That chain times a same-machine
 // message relay across JS worlds; these time a network round trip to a
 // third-party server the extension does not control, so they get their own
 // numbers rather than being squeezed into it:

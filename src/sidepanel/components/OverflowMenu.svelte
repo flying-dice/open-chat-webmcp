@@ -35,9 +35,9 @@
   import { cn } from "$lib/utils";
   import type { ChatSummary } from "../../domain/chat";
   import { chatStore } from "../../infra/chrome-storage";
-  import { openChatInTab, panel, type ConnectionStatus } from "../stores/panel.svelte";
+  import { chat, panel, type ConnectionStatus } from "../stores/panel.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
-  import { titleFromSummary } from "../lib/chatTitle";
+  import { titleFromSummary } from "../../domain/chat";
 
   interface Props {
     /** Open the full history view. */
@@ -72,7 +72,7 @@
   }
 
   async function handleOpenChat(id: string): Promise<void> {
-    if (await openChatInTab(id)) onOpenChat();
+    if (await chat.openChat(id)) onOpenChat();
   }
 </script>
 

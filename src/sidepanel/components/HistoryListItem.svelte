@@ -2,7 +2,7 @@
   /**
    * One entry in the History view (card 34, decisions/13-global-tab-aware-
    * chat-history.md): enough to recognise a past chat without opening it —
-   * its title (derived from the first message, see lib/chatTitle.ts), the
+   * its title (derived from the first message, see src/domain/chat/title.ts), the
    * origin it was started against, and when it was last active — plus
    * open/delete actions. The whole row is a button (opens the chat); delete
    * is a second, smaller button inside it that stops the click from
@@ -17,7 +17,7 @@
    * HistoryPanel; the open button and delete button are its two children.
    */
   import type { ChatSummary } from "../../domain/chat";
-  import { titleFromSummary } from "../lib/chatTitle";
+  import { titleFromSummary } from "../../domain/chat";
   import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "$lib/components/ui/item";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";

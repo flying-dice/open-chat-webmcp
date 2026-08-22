@@ -57,3 +57,4 @@ export const mcpAuthTokenStore = ports.mcpAuthTokenStore;
 export const settingsStore = ports.settingsStore;
 export const providerDefaults = ports.providerDefaults;
 export const modelCapabilityCache = ports.modelCapabilityCache;
+export const tracingFlag = ports.tracingFlag;

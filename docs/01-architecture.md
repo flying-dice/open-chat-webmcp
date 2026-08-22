@@ -216,7 +216,8 @@ matrix loudly rather than silently capturing fewer shots.
 
 ## A tool call, end to end
 
-1. User sends a message. `src/sidepanel/services/agentLoop.ts` builds ONE
+1. User sends a message. `src/domain/chat`'s turn (assembled by
+   `src/sidepanel/services/chatTurn.ts`) builds ONE
    merged tool list — the active tab's page tools plus every enabled MCP
    server's currently-cached tools, namespaced `<serverSlug>__<toolName>`
    so a server tool can never collide with a page tool or another server's
@@ -276,7 +277,7 @@ ordered **innermost-shortest**:
 |---|---|---|---|
 | Relay (innermost) | `EXECUTE_TIMEOUT_MS` | 20s | `src/content/relay.ts` |
 | Service worker | `CALL_TIMEOUT_MS` | 30s | `src/background/sw.ts` |
-| Side panel (outermost) | `TOOL_CALL_TIMEOUT_MS` | 35s | `src/sidepanel/services/agentLoop.ts` |
+| Side panel (outermost) | `AGENT_LOOP_TOOL_CALL_TIMEOUT_MS` | 35s | injected into `src/domain/chat/turn.ts` |
 
 [decisions/16](../decisions/16-native-webmcp-client.md) deleted the ladder's
 former innermost rung: the MAIN-world bridge used to own execution and set

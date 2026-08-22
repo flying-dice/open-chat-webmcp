@@ -28,7 +28,7 @@
    * decisions/05.
    */
   import { untrack } from "svelte";
-  import type { ToolCallLogEntry } from "../stores/panel.svelte";
+  import type { ToolCallLogEntry } from "../../domain/chat";
   import { originLabel } from "../lib/toolOrigin";
   import { formatDuration } from "../lib/duration";
   import ToolArgs from "./ToolArgs.svelte";

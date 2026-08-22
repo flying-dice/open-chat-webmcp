@@ -14,7 +14,7 @@
    * `ToolAnnotations` is exactly `{ readOnlyHint, untrustedContentHint }` —
    * there is no `destructiveHint` (decisions/17). When `toolAnnotations`
    * carries `untrustedContentHint: true`, the result below is the same
-   * fenced text sent to the model (src/sidepanel/services/agentLoop.ts's
+   * fenced text sent to the model (src/domain/chat/message.ts's
    * `fenceUntrustedContent`) — the badge just calls out why it reads that
    * way, so a human scanning the transcript can tell an untrusted-source
    * result apart from an ordinary one.
@@ -40,7 +40,7 @@
    * the old scale+fade that it doesn't need decisions/28's custom-CSS
    * carve-out.
    */
-  import type { PanelMessage } from "../stores/panel.svelte";
+  import type { TranscriptEntry } from "../../domain/chat";
   import { originLabel } from "../lib/toolOrigin";
   import { panel } from "../stores/panel.svelte";
   import { formatDuration } from "../lib/duration";
@@ -51,7 +51,7 @@
   import { Badge } from "$lib/components/ui/badge";
 
   interface Props {
-    message: PanelMessage;
+    message: TranscriptEntry;
     /** Whether this step belongs to the transcript's currently-live activity group (see ActivityGroup.svelte) — governs the "running"/"stalled" distinction and whether an unfinished call's elapsed duration is shown at all. */
     live: boolean;
   }
@@ -244,7 +244,7 @@
             <!-- Marks the exact block of text that came back from an
                  `untrustedContentHint` tool (decisions/17) — the same
                  fenced text sent to the model, minus the delimiters
-                 themselves (see agentLoop.ts's `fenceUntrustedContent`). -->
+                 themselves (see src/domain/chat/message.ts's `fenceUntrustedContent`). -->
             <div
               class={cn(
                 "rounded-lg bg-background p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]",

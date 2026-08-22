@@ -5,14 +5,14 @@
 // module keeps the page's own tool list in step with the worker's registry;
 // this one keeps every enabled server's tool list in step with reality,
 // off the critical path of any one turn (decisions/19 §4), and exposes the
-// per-turn combine step src/sidepanel/services/agentLoop.ts calls.
+// per-turn combine step src/sidepanel/services/chatTurn.ts's `ToolExecutor` calls.
 //
 // CACHING (decisions/19 §4: "Discovery must never block the page"): a
 // single module-level cache, refreshed in the background and read
 // synchronously by every caller. A turn — or the Tools view — always sees
 // "whatever is currently known", never a live network round trip. The cache
 // lives only as long as this script context (the side panel's own page),
-// same lifetime as src/sidepanel/stores/panel.svelte.ts's in-memory state —
+// same lifetime as src/sidepanel/stores/panel.svelte.ts's view state —
 // there is nothing to persist here, a fresh panel just discovers again.
 //
 // PERMISSION (decisions/19 §4: "reported as unavailable with that specific
@@ -63,7 +63,7 @@ const DISCOVERY_REFRESH_INTERVAL_MS = 60_000;
 
 /** The gateway's own `DEFAULT_CALL_TOOL_TIMEOUT_MS` budget (src/infra/mcp/timeouts.ts) already bounds one `callServerTool` — this module adds no second timeout on top of it, matching the page-tool call path's own single-timeout-per-hop discipline. */
 
-/** The one `McpToolGateway` this service talks through. A local alias so every call site below reads as a port call, and so card 77/78 has one line to change when this arrives as an argument instead. */
+/** The one `McpToolGateway` this service talks through. A local alias so every call site below reads as a port call, and so card 78 has one line to change when this arrives as an argument instead. */
 const gateway: McpToolGateway = mcpToolGateway;
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export function initMcpToolsSync(): () => void {
 }
 
 // ---------------------------------------------------------------------------
-// Per-turn combine (decisions/19 §5) — the one thing agentLoop.ts calls.
+// Per-turn combine (decisions/19 §5) — the one thing chatTurn.ts calls.
 // ---------------------------------------------------------------------------
 
 /**
@@ -180,7 +180,7 @@ export function getMergedToolsForTab(
 // MergedTool by buildServerMergedTools above.
 // ---------------------------------------------------------------------------
 
-/** Joins every text-bearing content part of an MCP tool result into one display/model-readable string — mirrors agentLoop.ts's own `stringifyResult`'s "always produce plain text/JSON, never anything evaluated" discipline, extended to MCP's richer content-part shape. Non-text parts (image/audio/resource) are summarized by kind + mimeType rather than dropped silently, so nothing about what the tool returned disappears without a trace. */
+/** Joins every text-bearing content part of an MCP tool result into one display/model-readable string — mirrors src/domain/chat/turn.ts's own `stringifyResult`'s "always produce plain text/JSON, never anything evaluated" discipline, extended to MCP's richer content-part shape. Non-text parts (image/audio/resource) are summarized by kind + mimeType rather than dropped silently, so nothing about what the tool returned disappears without a trace. */
 function contentToText(content: McpToolContent[]): string {
   const parts = content.map((part) => {
     switch (part.type) {
@@ -208,7 +208,7 @@ function successResult(result: McpToolCallResult): unknown {
 /**
  * The {@link ServerToolExecutor} every server `MergedTool.call` closes over
  * (config, toolName) for. Never throws; always resolves the same
- * `{ok,result}`/`{ok,error}` shape src/sidepanel/services/agentLoop.ts
+ * `{ok,result}`/`{ok,error}` shape src/domain/chat/turn.ts
  * already speaks for page tools, so `executeToolCall` there needs no
  * per-kind branching (decisions/19 §5).
  *

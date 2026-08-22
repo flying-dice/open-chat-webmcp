@@ -10,8 +10,9 @@
 // Every surface that names an origin goes through here so none of them can
 // drift on the phrasing: ApprovalCard, ToolCallRow, ToolListItem,
 // CallLogEntry and ActivityIndicator all render it, and
-// services/agentLoop.ts puts the same words in the system prompt so what the
-// model is told matches what the approval card shows.
+// src/domain/chat's turn puts the same words in the system prompt so what the
+// model is told matches what the approval card shows — it takes this function
+// as an injected `originLabel`, since the wording is the UI's to own.
 
 import type { ToolOrigin } from "../../domain/tools";
 

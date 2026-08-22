@@ -4,6 +4,12 @@
 // talks `chrome.tabs`/`chrome.runtime` directly — components read the
 // result off src/sidepanel/stores/panel.svelte.ts instead.
 //
+// The SESSION SWAP it drives is `ChatService`'s (src/domain/chat): this module
+// decides only WHEN a tab switch or a real navigation happened; what that
+// means for the conversation (resolve the tab's pointer, or retire the current
+// chat and start a fresh one) is a rule about a conversation and lives with
+// one. Before card 77 both halves were in the panel store.
+//
 // Tool counts (and, for card 11's inspector, the full descriptors — name,
 // description, annotations, inputSchema) come from the background
 // service worker's registry (src/background/sw.ts) via the shared
@@ -15,15 +21,8 @@
 
 import type { RuntimeGetToolsResponse, SerializedTool } from "../../infra/chrome-runtime";
 import { isRuntimeMessage } from "../../infra/chrome-runtime";
-import {
-  applyPanelNavigation,
-  isTracingEnabled,
-  panel,
-  setPageInfo,
-  setToolCount,
-  setTools,
-  syncSessionToTab,
-} from "../stores/panel.svelte";
+import { tracingFlag } from "../../infra/chrome-storage";
+import { chat, panel, setPageInfo, setToolCount, setTools } from "../stores/panel.svelte";
 
 /**
  * Sync-path tracing (decisions/25, card 59, boards/project-backlog/59-sync-path-diagnostics-and-durability.md).
@@ -34,7 +33,9 @@ import {
  * still wrong. This makes the branch actually taken visible in the console
  * the next time it happens.
  *
- * Gated on `panel.svelte.ts`'s {@link isTracingEnabled}, NOT a bare
+ * Gated on the stored `tracingFlag` (src/infra/chrome-storage/debug-flags.ts —
+ * card 77 moved it there out of the panel store, which was the last
+ * `chrome.storage` call site outside that folder), NOT a bare
  * `import.meta.env.DEV` check — an earlier version of this card used DEV
  * alone and that was wrong: Vite ties `import.meta.env.DEV` to the
  * serve-vs-build COMMAND, never to `--mode`, so it is `false` in every
@@ -43,7 +44,7 @@ import {
  * (scripts/launch-chrome.mjs) builds and opens in Jonathan's real, everyday
  * Chrome. A DEV-only gate would make this tracing permanently dead in the
  * one browser "make the next occurrence self-explaining" actually has to
- * work in. `isTracingEnabled` still DEFAULTS to `import.meta.env.DEV` (on
+ * work in. The flag still DEFAULTS to `import.meta.env.DEV` (on
  * while developing, off in a shipped build, so this doesn't spam the
  * console of every ordinary install by default — it fires on every tab
  * event and would otherwise be far chattier than the existing unconditional
@@ -55,12 +56,12 @@ import {
  *
  *   window.__webmcpPanelDebug.enableTracing()
  *
- * See {@link isTracingEnabled}'s doc comment (panel.svelte.ts) for the full
- * story, and scripts/dump-chat-storage.js's header for the same one-liner
- * repeated where it's actually needed.
+ * See src/infra/chrome-storage/debug-flags.ts for the full story, and
+ * scripts/dump-chat-storage.js's header for the same one-liner repeated where
+ * it's actually needed.
  */
 function trace(...args: unknown[]): void {
-  if (isTracingEnabled()) console.log("[webmcp][tab-sync]", ...args);
+  if (tracingFlag.isEnabled()) console.log("[webmcp][tab-sync]", ...args);
 }
 
 /** Best-effort origin for a tab URL. `chrome://`, `about:blank`, and a still-loading tab (no URL yet) all fall back to an empty string rather than throwing. */
@@ -78,7 +79,7 @@ async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
   return tab;
 }
 
-/** Exported for src/sidepanel/services/agentLoop.ts, which needs the same tab-tools lookup to attach page tools to a provider call. */
+/** Exported for src/sidepanel/services/chatTurn.ts, whose `ToolExecutor` needs the same tab-tools lookup to attach page tools to a turn. */
 export async function getToolsForTab(tabId: number): Promise<SerializedTool[]> {
   return (await getToolsAndAvailabilityForTab(tabId)).tools;
 }
@@ -142,8 +143,8 @@ async function getToolsAndAvailabilityForTab(
 }
 
 /**
- * Refresh `pageInfo` for `tabId`, and keep the panel's session (card 12,
- * src/lib/session.ts) pointed at the right history (decision 07):
+ * Refresh `pageInfo` for `tabId`, and keep the visible chat pointed at the
+ * right history (decision 07):
  *   - a real tab switch (`isNewTab`) loads-or-creates *that tab's own*
  *     persisted session — it may already have history, and switching tabs
  *     must swap to it rather than resetting ("switching tabs swaps the
@@ -190,19 +191,19 @@ async function refreshActiveTab(
   }
 
   const origin = originOf(tab.url);
-  // Sourced from `panel.activeTabOrigin` (the tab's REAL current origin, set
+  // Sourced from `chat.activeTabOrigin()` (the tab's REAL current origin, set
   // only by a prior swap), never `panel.pageInfo?.origin` — `pageInfo` is
   // display state written AFTER a swap already applied, so it lags by one
   // microtask. An `onUpdated` racing an in-flight `onActivated` for the same
   // tab could otherwise read a not-yet-updated `pageInfo.origin`, wrongly
   // conclude the tab navigated, and fabricate a spurious empty chat
   // (decisions/25 §2).
-  const previousOrigin = opts.isNewTab ? undefined : panel.activeTabOrigin;
+  const previousOrigin = opts.isNewTab ? undefined : chat.activeTabOrigin();
 
   if (opts.isNewTab) {
-    await syncSessionToTab(tabId, origin);
+    await chat.syncToTab(tabId, origin);
   } else if (previousOrigin !== origin) {
-    await applyPanelNavigation(tabId, origin);
+    await chat.applyNavigation(tabId, origin);
   }
   if (!isStillActive()) {
     trace("refreshActiveTab exit", { tabId, reason: "stale-before-apply" });
@@ -232,8 +233,9 @@ async function refreshActiveTab(
 /**
  * Serializes every `refreshActiveTab` call through one module-level promise
  * chain (decisions/25 §2, card 57) — the exact `indexQueue`/`withIndexLock`
- * shape already used in src/lib/session.ts:339-357, reused rather than
- * reinvented. `isStillActive` (card 54) is an identity check: it can tell a
+ * shape already used by the chat store's index queue
+ * (src/infra/chrome-storage/chat-store.ts's `withIndexLock`), reused rather
+ * than reinvented. `isStillActive` (card 54) is an identity check: it can tell a
  * stale call "you're no longer for the active tab", but it structurally
  * cannot separate an `onActivated` and an `onUpdated` that both target the
  * SAME (still-active) tab and happen to overlap — both would pass the

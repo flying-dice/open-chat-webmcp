@@ -56,7 +56,7 @@ import type { ModelContextToolInfo } from "@mcp-b/webmcp-types";
 // `document.modelContext.executeTool()` — the ladder lost its old
 // MAIN-world-bridge rung (decisions/16) and is three layers today: this
 // constant, src/background/sw.ts's SW_CALL_TIMEOUT_MS, and
-// src/sidepanel/services/agentLoop.ts's AGENT_LOOP_TOOL_CALL_TIMEOUT_MS. See
+// AGENT_LOOP_TOOL_CALL_TIMEOUT_MS, injected into src/domain/chat's turn. See
 // timeouts.mjs's doc comment for the full ordering invariant and why each
 // layer must exceed the one it wraps.
 

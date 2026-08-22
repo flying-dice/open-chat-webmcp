@@ -17,6 +17,7 @@ import type { SettingsStore } from "../../domain/settings";
 import type { McpAuthTokenStore, McpServerRegistry } from "../../domain/tools";
 import { createStorageAreaGateway } from "./area";
 import { createChromeStorageChatStore } from "./chat-store";
+import { createTracingFlag, type DebugFlag } from "./debug-flags";
 import { createChromeStorageMcpAuthTokenStore } from "./mcp-auth-token-store";
 import { createChromeStorageMcpServerRegistry } from "./mcp-server-registry";
 import {
@@ -35,6 +36,14 @@ export interface ChromeStoragePorts {
   settingsStore: SettingsStore;
   providerDefaults: ProviderDefaultsStore;
   modelCapabilityCache: ModelCapabilityCache;
+  /**
+   * Card 77: NOT a domain port — the sync-path tracing switch (see
+   * ./debug-flags.ts). It is here because `chrome.storage` may only be called
+   * from this folder, and it was the one named exception in that scan until
+   * this card; bundling it with the ports is what let the exception be deleted
+   * rather than renewed.
+   */
+  tracingFlag: DebugFlag;
 }
 
 /**
@@ -59,5 +68,9 @@ export function createChromeStoragePorts(): ChromeStoragePorts {
     settingsStore: createChromeStorageSettingsStore(sync),
     providerDefaults: createChromeStorageProviderDefaultsStore(local),
     modelCapabilityCache: createChromeStorageModelCapabilityCache(local),
+    // Defaults to on while developing, off in a shipped build — but see
+    // ./debug-flags.ts for why that default alone was never enough for this
+    // particular feature.
+    tracingFlag: createTracingFlag(local, import.meta.env.DEV),
   };
 }

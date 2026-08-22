@@ -31,15 +31,14 @@
    * already uses); `onOpenChange` is the only thing that ever writes
    * `userToggled`/`userExpanded`, replacing the old manual `toggle()`.
    */
-  import type { PanelMessage } from "../stores/panel.svelte";
-  import { summariseActivity } from "../lib/transcriptGroups";
+  import { summariseActivity, type TranscriptEntry } from "../../domain/chat";
   import ToolCallRow from "./ToolCallRow.svelte";
   import Icon from "./Icon.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { cn } from "$lib/utils";
 
   interface Props {
-    steps: PanelMessage[];
+    steps: TranscriptEntry[];
     live: boolean;
   }
 

@@ -10,7 +10,7 @@
    * `busy` (renamed from `streaming` by card 60): true whenever a turn is in
    * flight — streaming tokens, running a tool call, or waiting on approval —
    * not just while tokens are landing. Before card 60 this prop was
-   * `panel.isStreaming`, which `runLoop` (agentLoop.ts) makes false for the
+   * `panel.isStreaming`, which `runLoop` (src/domain/chat/turn.ts) made false for the
    * ENTIRE tool-execution round (it closes the assistant message before
    * running any tool calls) — so the Stop button vanished for exactly the
    * part of a turn most likely to hang (a slow/misbehaving tool, up to the

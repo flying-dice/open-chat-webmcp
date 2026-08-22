@@ -24,7 +24,7 @@
  * `chrome.storage.local`, not an in-memory flag), so reproduce the bug,
  * THEN come back here and paste this script. Turn it back off afterward
  * with `window.__webmcpPanelDebug.disableTracing()` so it doesn't keep
- * logging. See src/sidepanel/stores/panel.svelte.ts's `isTracingEnabled`
+ * logging. See src/infra/chrome-storage/debug-flags.ts's `createTracingFlag`
  * doc comment for the full story.
  *
  * PRIVACY: deliberately reports ids, origins, roles and counts only. No

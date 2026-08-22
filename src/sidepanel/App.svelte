@@ -6,9 +6,9 @@
   // active provider+model from src/sidepanel/stores/selection.svelte.ts,
   // decides whether to attach page tools (only when
   // `selection.activeCapability?.status === "tool-capable"`, decisions/11),
-  // and hands off to src/sidepanel/services/agentLoop.ts's `runAgentTurn`,
-  // which streams the reply and drives tool-call execution/approval from
-  // there. `requestApproval` is card 09's real approve/deny UI
+  // and hands off to src/sidepanel/services/chatTurn.ts's `sendTurn`, the
+  // thin assembler in front of src/domain/chat's `runTurn`, which streams the
+  // reply and drives tool-call execution/approval from there. `requestApproval` is card 09's real approve/deny UI
   // (src/sidepanel/stores/approvals.svelte.ts) — Transcript.svelte renders
   // its pending requests as inline ApprovalCards, and its `policy` state is
   // kept in sync with settings.ts's global override for the lifetime of
@@ -32,22 +32,15 @@
   import IconButton from "./components/IconButton.svelte";
   import Inspector from "./components/Inspector.svelte";
   import HistoryPanel from "./components/HistoryPanel.svelte";
-  import { titleFromMessages } from "./lib/chatTitle";
+  import { titleFromMessages } from "../domain/chat";
   import { initActiveTabSync } from "./services/activeTab";
   import { initMcpToolsSync } from "./services/mcpTools";
-  import { runAgentTurn } from "./services/agentLoop";
+  import { sendTurn } from "./services/chatTurn";
   import { createProviderClient } from "./lib/providerClients";
   import { iconForProvider } from "../lib/providerIcon";
   import { chatStore } from "../infra/chrome-storage";
   import { selection } from "./stores/selection.svelte";
-  import {
-    addAssistantNote,
-    addUserMessage,
-    panel,
-    renameActiveChat,
-    requestStop,
-    startNewChat,
-  } from "./stores/panel.svelte";
+  import { chat, panel, requestStop } from "./stores/panel.svelte";
   import { dismissAllPending, initApprovalPolicySync, requestApproval } from "./stores/approvals.svelte";
 
   let view = $state<"chat" | "inspector" | "history">("chat");
@@ -139,8 +132,8 @@
     const teardownPolicySync = initApprovalPolicySync();
     // Card 38 (decisions/19 §4): kicks the first MCP server discovery
     // immediately and keeps it refreshed in the background for the panel's
-    // lifetime, so runAgentTurn's per-turn merge (agentLoop.ts) almost
-    // always finds something already cached rather than starting cold.
+    // lifetime, so a turn's per-turn merge (src/sidepanel/services/chatTurn.ts)
+    // almost always finds something already cached rather than starting cold.
     const teardownMcpToolsSync = initMcpToolsSync();
 
     // Card 59 item 2: `chrome.storage.local` writes are debounced per chat
@@ -168,7 +161,7 @@
   });
 
   /**
-   * Stop must also clear any approve/deny card still showing: agentLoop.ts's
+   * Stop must also clear any approve/deny card still showing: the turn's
    * `raceApproval` already treats an aborted turn's outstanding approval as
    * "denied" so the loop itself unblocks immediately, but it has no way to
    * settle THIS module's promise or remove the card — without this call, a
@@ -183,11 +176,11 @@
    * Card 36 (boards/project-backlog/36-new-chat-action.md): retire the
    * current chat to history and start a fresh one for the page currently in
    * front of the user, carrying the provider/model selection over
-   * (`startNewChat`'s job — see panel.svelte.ts's doc comment) and landing
+   * (`ChatService.startNewChat`'s job — see src/domain/chat/service.ts) and landing
    * focus in the composer.
    *
    * Sensible-empty-chat behaviour: if the current chat has no messages yet,
-   * there is nothing to retire — calling `startNewChat` anyway would just
+   * there is nothing to retire — calling it anyway would just
    * create a second, indistinguishable empty chat sitting next to this one
    * (never visible in History either, since HistoryPanel only lists a chat
    * once it has a message). So this only actually swaps chats when there's
@@ -195,7 +188,7 @@
    * in the composer, since "start typing" is the point of the action.
    *
    * Also refuses while a turn is in flight — swapping the live session out
-   * from under `panel.svelte.ts`'s in-flight mutators would silently orphan
+   * from under a running turn's in-flight mutators would silently orphan
    * it (its deltas/tool calls would keep looking up state in the OLD
    * session's messages, but nothing reads that session anymore). Reads
    * `panel.isTurnActive` (decisions/26, card 60), not `panel.isStreaming` —
@@ -208,7 +201,7 @@
     const info = panel.pageInfo;
     if (!info || panel.isTurnActive) return;
     if (panel.messages.length > 0) {
-      await startNewChat(info.origin);
+      await chat.startNewChat(info.origin);
     }
     composerRef?.focusInput();
   }
@@ -224,9 +217,9 @@
     // `selection.needsConfirmation`), so this is defence-in-depth against a
     // send reaching here some other way — not the primary UI.
     if (resolution.status !== "ok" || tabId === undefined || selection.needsConfirmation) {
-      addUserMessage(text);
+      chat.addUserMessage(text);
       const noProviders = selection.providers.length === 0;
-      addAssistantNote(
+      chat.addAssistantNote(
         noProviders
           ? "No provider is registered yet — add one on the options page, then pick it from the picker in the header."
           : "No provider/model selected yet — pick one from the picker in the header before sending a message.",
@@ -241,7 +234,7 @@
     // this no longer needs a try/catch around client construction.
     const provider = createProviderClient(resolution.config);
 
-    void runAgentTurn(text, {
+    void sendTurn(text, {
       provider,
       model: resolution.model,
       tabId,
@@ -274,13 +267,13 @@
   /**
    * Card 56 (decisions/24-explicit-chat-titles.md): the header's inline
    * rename. Passed to `Header` ONLY in chat view (see the template below) so
-   * the inspector/history titles stay non-editable — `renameActiveChat`
-   * itself already no-ops without a loaded session, but the header must
+   * the inspector/history titles stay non-editable — `renameCurrent`
+   * itself already no-ops without a loaded chat, but the header must
    * never even offer the affordance outside chat, per the "opt-in per
    * render, never inferred" rule.
    */
   function handleRename(title: string): void {
-    void renameActiveChat(title);
+    void chat.renameCurrent(title);
   }
 </script>
 

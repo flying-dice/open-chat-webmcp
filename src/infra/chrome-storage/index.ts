@@ -1,7 +1,9 @@
 // `chrome-storage` adapter — the `chrome.storage` side of every driven
-// storage port (cards 74 and 76; see ./README.md). Nothing outside this
-// folder touches `chrome.storage` any more, with one exception card 77 owns
-// (src/sidepanel/stores/panel.svelte.ts's debug flag).
+// storage port (cards 74, 76 and 77; see ./README.md). Nothing outside this
+// folder touches `chrome.storage` any more, with NO exceptions: card 77 took
+// the last one (the panel store's `debug:tab-sync-tracing` flag, now
+// ./debug-flags.ts) and deleted its entry from the containment scan in
+// scripts/guard-boundaries.mjs.
 //
 // What is here:
 //   ./area.ts                  the only place `chrome.storage` is called,
@@ -17,6 +19,8 @@
 //   ./chat-store.ts            `ChatStore`             (src/domain/chat)
 //   ./settings-store.ts        `SettingsStore`         (src/domain/settings)
 //   ./provider-config-store.ts `ProviderDefaultsStore` + `ModelCapabilityCache`
+//   ./debug-flags.ts           the sync-path tracing switch — not a port, but
+//                              `chrome.storage`, so it lives here
 //   ./ports.ts                 the bundle a composition root builds
 //
 // A composition root builds the bundle (`createChromeStoragePorts`) and the
@@ -33,6 +37,7 @@ export {
   createChromeStorageModelCapabilityCache,
   createChromeStorageProviderDefaultsStore,
 } from "./provider-config-store";
+export { createTracingFlag, type DebugFlag } from "./debug-flags";
 export { createChromeStoragePorts, type ChromeStoragePorts } from "./ports";
 export {
   chatStore,
@@ -43,4 +48,5 @@ export {
   providerDefaults,
   providerRegistry,
   settingsStore,
+  tracingFlag,
 } from "./wiring";

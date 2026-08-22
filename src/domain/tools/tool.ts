@@ -27,7 +27,7 @@ export interface ToolAnnotations {
    * (e.g. text authored by another user of the page) that gets fed straight
    * back into the model's context. Consumers must fence such results rather
    * than trusting them as instructions — see
-   * src/sidepanel/services/agentLoop.ts's `fenceUntrustedContent` and
+   * src/domain/chat's `fenceUntrustedContent` and
    * decisions/17. Like `readOnlyHint`, this is page-supplied and not a
    * security guarantee: a hostile page can omit it.
    */

@@ -5,8 +5,10 @@ provider registry, the MCP server registry, the settings store, and the two
 small provider-config stores — including the sync/local **credential split**
 (secrets and header values never enter `chrome.storage.sync`).
 
-Landed by card 74. `grep -rn "chrome.storage" src/` returns hits only here,
-plus the two sites cards 76/77 own.
+Landed by card 74. `grep -rn "chrome.storage" src/` returns hits ONLY here —
+card 77 took the last site outside this folder (the panel store's tracing
+flag) and the containment scan in `scripts/guard-boundaries.mjs` now runs with
+an empty exception list.
 
 | Module | Port it implements | Keys |
 | --- | --- | --- |
@@ -15,6 +17,14 @@ plus the two sites cards 76/77 own.
 | `mcp-server-registry.ts` | `McpServerRegistry` (`src/domain/tools`) | `mcp:servers:list` — **sync**; `mcp:auth:<id>`, `mcp:headers:<id>` — **local** |
 | `settings-store.ts` | `SettingsStore` (`src/domain/settings`) | `settings:approvalPolicy`, `settings:mcpApprovalPolicy` — sync |
 | `provider-config-store.ts` | `ProviderDefaultsStore`, `ModelCapabilityCache` (`src/domain/providers`) | `<type>:baseUrl`, `<type>:cap:<fingerprint>` — local (`ollama:baseUrl`, `ollama:cap:<digest>` in practice) |
+| `debug-flags.ts` | none — not a port (card 77) | `debug:tab-sync-tracing` — local |
+
+`debug-flags.ts` is the one module here that models nothing: it is a runtime
+switch for sync-path tracing, and it lives here for the single reason that it
+touches `chrome.storage`. It was the panel store's until card 77, and the only
+named exception in the containment scan; moving fifteen lines here was cheaper
+than keeping an asterisk on the rule. Its header explains why the flag is
+stored at all rather than being an `import.meta.env.DEV` constant.
 
 Three modules exist to stop the above being five copies of the same code:
 
@@ -30,7 +40,10 @@ Three modules exist to stop the above being five copies of the same code:
 - **`ports.ts` / `wiring.ts`** — `createChromeStoragePorts()` builds the
   bundle a composition root holds. `wiring.ts` is the **interim** shared
   bundle every surface imports today; read its header before adding to it —
-  cards 77/78 delete it once the UI takes its ports as arguments.
+  card 78 deletes it once the UI takes its ports as arguments. Card 77's
+  `ChatService` is built from two of these bindings in
+  `src/sidepanel/stores/panel.svelte.ts`, and takes every dependency as an
+  argument precisely so that construction can move to `main.ts` unchanged.
 
 ## What did NOT come here
 

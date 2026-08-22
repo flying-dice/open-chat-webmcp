@@ -226,7 +226,7 @@ function isCallToolResponse(v: unknown): v is RuntimeCallToolResponse {
 //
 //   src/content/relay.ts                RELAY_EXECUTE_TIMEOUT_MS        = 20_000  (innermost)
 //   src/background/sw.ts                SW_CALL_TIMEOUT_MS              = 30_000  (this rung)
-//   src/sidepanel/services/agentLoop.ts AGENT_LOOP_TOOL_CALL_TIMEOUT_MS = 35_000  (outermost)
+//   src/domain/chat/turn.ts (injected)      AGENT_LOOP_TOOL_CALL_TIMEOUT_MS = 35_000  (outermost)
 //
 // Each layer must exceed the one it wraps with a comfortable margin so the
 // innermost, most specific timeout error wins the race under real scheduling

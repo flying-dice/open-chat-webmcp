@@ -4,9 +4,10 @@ The `chrome.runtime` / `chrome.tabs` / `chrome.permissions` side: the cross-cont
 
 | Status | What | From |
 | --- | --- | --- |
-| landed (card 79) | the six-message protocol, `isRuntimeMessage`, and typed send/receive helpers | `src/lib/protocol.ts` — deleted outright by card 76 once its last re-export importer was gone (the tool DESCRIPTOR types it used to own moved to `src/domain/tools` in card 73) |
+| landed (card 73) | the six-message protocol, `isRuntimeMessage`, and typed send/receive helpers | `src/lib/protocol.ts` — deleted outright by card 76 once its last re-export importer was gone (the tool DESCRIPTOR types it used to own moved to `src/domain/tools` in card 73) |
+| landed (card 77) | `createPageToolExecutor` — the `runtime:call-tool` round trip (panel → worker → relay) behind `src/domain/tools`'s `PageToolExecutor` port | `src/sidepanel/services/agentLoop.ts`'s `callPageTool`, the last `chrome.*` call inside the agent loop. The timeout race did NOT come with it: the ladder's outermost rung is applied by the domain turn, uniformly to page and server tools alike |
 | pending (card 78) | `originPatternForUrl`, `hasHostPermission`, `requestHostPermission` — and the deletion of the surviving re-export shim `src/options/lib/permissions.ts` (the MCP-side twin `src/lib/mcp/permissions.ts` is already gone, card 76) | `src/lib/permissions.ts` |
-| pending (card 77) | active-tab tracking, tab-switch vs. same-tab cross-origin-nav discrimination | `src/sidepanel/services/activeTab.ts` (~17 `chrome.*` sites) |
+| pending (card 78) | active-tab tracking, tab-switch vs. same-tab cross-origin-nav discrimination, and the `runtime:get-tools` lookup | `src/sidepanel/services/activeTab.ts` (~17 `chrome.*` sites). Card 77 moved the CONSEQUENCE of a tab switch into `src/domain/chat`'s `ChatService`; what is left in that file is the `chrome.tabs`/`chrome.runtime` listening itself, which is what belongs here |
 
 ## `chrome.identity` does NOT land here
 

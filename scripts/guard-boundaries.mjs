@@ -199,12 +199,15 @@ const containmentViolations =
     {
       api: "chrome.storage",
       home: "src/infra/chrome-storage/",
-      exceptions: [
-        {
-          file: "src/sidepanel/stores/panel.svelte.ts",
-          why: "the `debug:tab-sync-tracing` runtime flag — card 77 moves it with the rest of the panel store's storage",
-        },
-      ],
+      // EMPTY as of card 77, and meant to stay that way. Card 74 stood this
+      // scan up with one exception — the panel store's
+      // `debug:tab-sync-tracing` flag, which owned a key, a read and an
+      // `onChanged` listener of its own. Card 77 moved those fifteen lines to
+      // src/infra/chrome-storage/debug-flags.ts and deleted the entry rather
+      // than renewing it, so `chrome.storage` now has exactly one home with no
+      // asterisk. Adding an entry here again requires a board card that takes
+      // it back out.
+      exceptions: [],
       // `.svelte` markup prose mentions `chrome.storage.local` to tell the
       // user where their API key is kept — that is copy, not a call site.
       detect: (line) =>

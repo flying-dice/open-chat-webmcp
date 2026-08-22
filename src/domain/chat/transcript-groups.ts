@@ -1,41 +1,47 @@
 /**
- * Folds the flat transcript (`PanelMessage[]`, which IS the persisted
- * `ChatSession.messages` array — see panel.svelte.ts's module doc comment)
- * into display groups: a user turn, an assistant prose turn, or a run of
- * consecutive tool-call steps (an "activity group"). Card 61,
- * decisions/26-transcript-activity-groups-and-turn-phase.md.
+ * Folds the flat transcript (`TranscriptEntry[]`, which IS the persisted
+ * `ChatSession.messages` array) into DISPLAY GROUPS: a user turn, an
+ * assistant prose turn, or a run of consecutive tool-call steps (an "activity
+ * group"). Card 61, decisions/26-transcript-activity-groups-and-turn-phase.md.
  *
- * PURE, and must never mutate its input. Every loop iteration of the agent
- * loop (src/sidepanel/services/agentLoop.ts's `runLoop`) pushes an assistant
- * message with `content: ""` purely to carry that round's `toolCalls` — the
- * next provider request needs it. This function drops that carrier FROM
- * DISPLAY ONLY; it stays exactly where it is in `ChatSession.messages`,
- * which `runLoop` replays to the provider on the next round. Nothing here
- * may rewrite, reorder, or filter that underlying array — only derive a
- * different view over it, once, per render.
+ * Card 77 moved this out of src/sidepanel/lib/transcriptGroups.ts. It was
+ * already pure; what it could not do from there was type itself against the
+ * persisted shape — it imported the panel store's `PanelMessage`, so the rule
+ * for reading a transcript depended on the store that displayed one. It now
+ * takes `TranscriptEntry` from this context and the store depends on it
+ * instead.
+ *
+ * PURE, and must never mutate its input. Every iteration of the agent turn
+ * (./turn.ts's `runLoop`) pushes an assistant entry with `content: ""` purely
+ * to carry that round's `toolCalls` — the next provider request needs it.
+ * This function drops that carrier FROM DISPLAY ONLY; it stays exactly where
+ * it is in `ChatSession.messages`, which the loop replays on the next round.
+ * Nothing here may rewrite, reorder or filter that underlying array — only
+ * derive a different view over it, once, per render.
  *
  * Grouping rule (one pass, one mutable "open" activity group):
  *   - `role: "user"` closes any open activity group and starts a `user` group.
  *   - `role: "assistant"` with non-empty content closes any open activity
  *     group and starts a `prose` group.
  *   - `role: "assistant"` with EMPTY content (a toolCalls-only carrier) is
- *     dropped from display and does NOT close an open activity group. This
- *     is what makes several tool rounds of one turn read as a single
- *     timeline instead of a timeline broken up by bare, empty assistant
- *     turns. If the model narrates BETWEEN rounds (a non-empty assistant
- *     message), that prose message DOES close the group — honestly, since
- *     the model said something a reader should see in order.
+ *     dropped from display and does NOT close an open activity group. This is
+ *     what makes several tool rounds of one turn read as a single timeline
+ *     instead of a timeline broken up by bare, empty assistant turns. If the
+ *     model narrates BETWEEN rounds (a non-empty assistant message), that
+ *     prose message DOES close the group — honestly, since the model said
+ *     something a reader should see in order.
  *   - `role: "tool"` appends to the open activity group, creating one first
  *     if none is open.
  */
-import type { PanelMessage } from "../stores/panel.svelte";
+
+import type { TranscriptEntry } from "./message";
 
 export type TranscriptGroup =
-  | { kind: "user"; key: string; message: PanelMessage }
-  | { kind: "prose"; key: string; message: PanelMessage }
-  | { kind: "activity"; key: string; steps: PanelMessage[] };
+  | { kind: "user"; key: string; message: TranscriptEntry }
+  | { kind: "prose"; key: string; message: TranscriptEntry }
+  | { kind: "activity"; key: string; steps: TranscriptEntry[] };
 
-export function groupTranscript(messages: readonly PanelMessage[]): TranscriptGroup[] {
+export function groupTranscript(messages: readonly TranscriptEntry[]): TranscriptGroup[] {
   const groups: TranscriptGroup[] = [];
   let open: Extract<TranscriptGroup, { kind: "activity" }> | undefined;
 
@@ -63,7 +69,7 @@ export function groupTranscript(messages: readonly PanelMessage[]): TranscriptGr
       // recomputed from `steps.length` or a joined id list as more steps
       // append — doing so would change the key on every new tool row,
       // remounting the group and silently resetting the user's
-      // expand/collapse toggle mid-turn (see ActivityGroup.svelte).
+      // expand/collapse toggle mid-turn.
       open = { kind: "activity", key: `act:${message.id}`, steps: [] };
       groups.push(open);
     }
@@ -75,10 +81,9 @@ export function groupTranscript(messages: readonly PanelMessage[]): TranscriptGr
 
 /**
  * Summary facts about one activity group's steps, for the group's collapsed
- * row (ActivityGroup.svelte) and the live indicator's needsAttention check.
- * Every field is a plain fact — a count, a name, a server name — never an
- * invented verb describing what the tools did (decisions/26: "no verb
- * dictionary").
+ * row and the live indicator's needsAttention check. Every field is a plain
+ * fact — a count, a name, a server name — never an invented verb describing
+ * what the tools did (decisions/26: "no verb dictionary").
  */
 export interface ActivitySummary {
   /** e.g. "3 tool calls" / "1 tool call" — always a count, never a summary of what happened. */
@@ -94,7 +99,7 @@ export interface ActivitySummary {
   needsAttention: boolean;
 }
 
-export function summariseActivity(steps: readonly PanelMessage[]): ActivitySummary {
+export function summariseActivity(steps: readonly TranscriptEntry[]): ActivitySummary {
   const distinctNames: string[] = [];
   const serverNameSet = new Set<string>();
   let errorCount = 0;

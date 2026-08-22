@@ -16,7 +16,7 @@
    */
   import type { SerializedTool } from "../../infra/chrome-runtime";
   import type { MergedTool } from "../../domain/tools";
-  import type { ToolCallLogEntry } from "../stores/panel.svelte";
+  import type { ToolCallLogEntry } from "../../domain/chat";
   import ToolsPanel from "./ToolsPanel.svelte";
   import CallLogPanel from "./CallLogPanel.svelte";
   import * as Tabs from "$lib/components/ui/tabs";

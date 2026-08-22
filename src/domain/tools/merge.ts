@@ -17,7 +17,7 @@
 //      what (if anything) the server said — MCP has no equivalent hint, so
 //      there is nothing to read and absence is not treated as "trusted".
 //      This is enough on its own to make
-//      src/sidepanel/services/agentLoop.ts's EXISTING
+//      src/domain/chat/message.ts's EXISTING
 //      `fenceUntrustedContent`/`toModelMessage` fence every remote result:
 //      that code already fences on `toolAnnotations.untrustedContentHint`,
 //      unchanged by this card.
@@ -189,7 +189,7 @@ export type MergedToolExecutor = (
   opts: { signal?: AbortSignal },
 ) => Promise<MergedToolCallOutcome>;
 
-/** One entry in the per-turn tool list (decisions/19 §5): a `ToolDescriptor` plus the one function that invokes it. `executeToolCall` in agentLoop.ts resolves a model-requested name to one of these and calls `.call` — it never branches on `origin.kind` itself. */
+/** One entry in the per-turn tool list (decisions/19 §5): a `ToolDescriptor` plus the one function that invokes it. `executeToolCall` in src/domain/chat/turn.ts resolves a model-requested name to one of these and calls `.call` — it never branches on `origin.kind` itself. */
 export interface MergedTool extends ToolDescriptor {
   call: MergedToolExecutor;
 }
@@ -198,7 +198,7 @@ export interface MergedTool extends ToolDescriptor {
 // Building the merged list
 // ---------------------------------------------------------------------------
 
-/** Invokes one page tool by name — bound to a tab and (by the caller) an abort signal in src/sidepanel/services/agentLoop.ts. Never throws. */
+/** Invokes one page tool by name — bound to a tab by src/infra/chrome-runtime's `createPageToolExecutor` and to an abort signal by its caller. Never throws. */
 export type PageToolExecutor = (
   toolName: string,
   args: Record<string, unknown>,

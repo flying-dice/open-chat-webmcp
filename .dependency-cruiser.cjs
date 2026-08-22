@@ -26,9 +26,10 @@
  * Card 73 stood up `src/domain` and `src/infra` and moved only the modules
  * that were ALREADY infrastructure-free. Cards 74-76 then took the four
  * `chrome.storage` repositories, the provider wire clients, and the MCP
- * client with its OAuth flow, leaving `src/lib` holding permissions.ts
- * (card 78's) and the UI odds and ends. So the full Decision 29 direction
- * rule —
+ * client with its OAuth flow; card 77 took the chat model, the agent turn and
+ * the panel god-store's non-view half — leaving `src/lib` holding
+ * permissions.ts (card 78's) and the UI odds and ends. So the full Decision 29
+ * direction rule —
  * "composition root → infra → domain, and nothing else" — is not satisfiable
  * by today's tree and would fail on the first run, which would make the guard
  * something people skip rather than something that holds.
@@ -94,6 +95,33 @@ module.exports = {
       to: {
         path: "^src/domain/",
         pathNot: ["^src/domain/$1/", "^src/domain/[^/]+/index\\.[cm]?[jt]s$"],
+      },
+    },
+    {
+      // Card 77. The OUTWARD-FACING half of `domain-contexts-meet-at-barrels`
+      // above, which only ever constrained one context importing another.
+      //
+      // Nothing outside src/domain deep-imports a context file today — verified
+      // before enabling this, and verified to FAIL on a planted
+      // `src/sidepanel/stores/panel.svelte.ts → src/domain/chat/turn.ts`
+      // import. What makes the rule worth having now rather than earlier is
+      // that card 77 took src/domain/chat from two files to nine: `turn.ts`,
+      // `service.ts`, `message.ts`, `ports.ts` and the rest are internal
+      // structure, and a UI file reaching past `index.ts` for one of them
+      // would re-establish exactly the coupling this card spent its length
+      // removing — a store typed against a specific file of the domain rather
+      // than against what the context promises to keep stable.
+      name: "contexts-are-imported-through-their-barrel",
+      severity: "error",
+      comment:
+        "A bounded context's index barrel is the only thing it promises to " +
+        "keep stable. Import `src/domain/chat`, never `src/domain/chat/turn`. " +
+        "If the barrel does not export what you need, that is a question about " +
+        "the context's public surface, not a reason to reach around it.",
+      from: { path: "^src/(?!domain/)" },
+      to: {
+        path: "^src/domain/[^/]+/",
+        pathNot: "^src/domain/[^/]+/index\\.[cm]?[jt]s$",
       },
     },
     {
@@ -245,10 +273,21 @@ module.exports = {
     // bundle whose own header describes exactly what deleting it takes.
     // Cards 75 and 76 added four more per-surface wiring files on the same
     // pattern (src/{sidepanel,options}/lib/{providerClients,mcpClients}.ts),
-    // each a two-line factory call carrying the same delete-me header. Those
-    // five files are the complete list of what this rule will report on the
-    // day it is uncommented — no component or store constructs an adapter
-    // itself. Turning it on is what proves they are gone.
+    // each a two-line factory call carrying the same delete-me header.
+    //
+    // CARD 77 correction: those five wiring files are the whole of the
+    // *deliberate interim wiring*, but they were never the whole of what this
+    // rule reports. A UI module also reaches for an adapter directly wherever
+    // it needs a TYPE or a message helper rather than a port instance —
+    // src/sidepanel/services/activeTab.ts and src/background/sw.ts speak
+    // src/infra/chrome-runtime's protocol, src/sidepanel/services/chatTurn.ts
+    // builds a `PageToolExecutor` from it, and the panel store reads the
+    // timeout ladder's outermost rung out of src/infra/webmcp to inject it
+    // into the domain turn. Card 78 has to answer both halves: pass the port
+    // bundle down, AND decide where a surface's own protocol/ladder constants
+    // are allowed to come from. Card 77 did not reduce this debt, but it did
+    // stop adding to it: everything it moved into src/domain/chat takes its
+    // adapters as arguments.
     // {
     //   name: "ui-does-not-import-infra",
     //   severity: "error",

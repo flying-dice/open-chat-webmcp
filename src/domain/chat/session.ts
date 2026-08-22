@@ -8,17 +8,19 @@
 // `id`, is listed globally, and records the origin it was started against. A
 // tab no longer OWNS a session — it holds a soft POINTER to whichever chat
 // it currently shows (`ChatStore.setCurrentChatForTab`). This module does
-// NOT own *when* a navigation or tab switch happened, or the decision to
-// retire the current chat and start a fresh one on cross-origin navigation:
-// that policy lives with the in-memory session owner, today
-// src/sidepanel/stores/panel.svelte.ts.
+// NOT own *when* a navigation or tab switch happened — but as of card 77 the
+// decision that follows from one (retire the current chat, start a fresh one)
+// IS domain business and lives next door in ./service.ts, no longer in a
+// Svelte store.
 
-import type { ChatMessage } from "../providers";
 import type { ProviderSelection } from "../providers";
 import type { ToolOrigin } from "../tools";
+import type { ToolCallMode, TranscriptEntry } from "./message";
 
-/** Whether a logged tool call ran without asking, was explicitly approved, or was denied — what the inspector (card 11) branches on. */
-export type ToolCallMode = "auto" | "approved" | "denied";
+// Re-exported for continuity: `ToolCallMode` is the transcript vocabulary
+// (./message.ts) AND the tool-call log's, and every existing importer takes
+// it from this context's barrel either way.
+export type { ToolCallMode };
 
 /**
  * One entry in a chat's tool-call log: name, arguments, result or error,
@@ -59,19 +61,44 @@ export interface ChatSession {
   id: string;
   /** The origin this chat was STARTED against. */
   origin: string;
-  messages: ChatMessage[];
+  /**
+   * The transcript, in the shape it is actually persisted in
+   * (./message.ts). Before card 77 this was typed `ChatMessage[]` — the
+   * PROVIDER wire shape — while every entry stored in it was really a
+   * `PanelMessage` from a UI store, smuggled in by structural subtyping and
+   * read back out with a cast. The aggregate declared less than it stored;
+   * now it declares exactly what it stores, and {@link toModelMessage} is
+   * the one place a stored entry becomes a provider message.
+   */
+  messages: TranscriptEntry[];
   /** `{providerId, model}` — same shape as the global default (decisions/10). Absent until the user picks one. */
   selection?: ProviderSelection;
+  /**
+   * Whether {@link ChatSession.selection} was set by a DELIBERATE user action
+   * rather than silently seeded from the stored global default (card 35).
+   * Both round-trip as the identical `{providerId, model}` shape, so nothing
+   * else can tell them apart, and the composer has to: an implicitly-seeded
+   * selection asks for a one-click confirmation before the first message.
+   *
+   * Card 77 promoted this to a declared field. It was previously written onto
+   * the session by the panel store through a
+   * `ChatSession & {selectionExplicit?: boolean}` cast — the same
+   * "store more than the type admits" trick `messages` used, on the same
+   * object, for the same reason (the type lived where the writer could not
+   * change it). Absent reads as "not explicit", the safer reading when the
+   * data genuinely cannot say (an already-blocked composer once, rather than
+   * silently trusting an old implicit default forever).
+   */
+  selectionExplicit?: boolean;
   toolCalls: ToolCallLogEntry[];
   createdAt: number;
   updatedAt: number;
   /**
    * An explicit, user-set name (decisions/24-explicit-chat-titles.md).
-   * Absent means "derived" — `src/sidepanel/lib/chatTitle.ts` takes over
-   * exactly as it always has. Set via `renameActiveChat`
-   * (src/sidepanel/stores/panel.svelte.ts); an empty/whitespace-only rename
-   * UNSETS this field rather than storing `""`, so clearing the name reverts
-   * to the derived title.
+   * Absent means "derived" — ./title.ts takes over exactly as it always has.
+   * Set via `ChatService.renameActiveChat` (./service.ts); an
+   * empty/whitespace-only rename UNSETS this field rather than storing `""`,
+   * so clearing the name reverts to the derived title.
    */
   title?: string;
 }
@@ -128,7 +155,7 @@ export function createChat(origin: string, selection?: ProviderSelection): ChatS
 }
 
 /** Trims and shortens the first user message into a history-list preview. `undefined` if there is no user message with any content yet. */
-export function chatPreview(messages: readonly ChatMessage[]): string | undefined {
+export function chatPreview(messages: readonly TranscriptEntry[]): string | undefined {
   const firstUser = messages.find((m) => m.role === "user");
   const trimmed = firstUser?.content.trim();
   if (!trimmed) return undefined;

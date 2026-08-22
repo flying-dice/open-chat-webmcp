@@ -15,7 +15,7 @@
    * with Tailwind utilities. The panel itself no longer owns scrolling —
    * Inspector.svelte's ScrollArea wraps whichever tab is active.
    */
-  import type { ToolCallLogEntry } from "../stores/panel.svelte";
+  import type { ToolCallLogEntry } from "../../domain/chat";
   import CallLogEntry from "./CallLogEntry.svelte";
 
   interface Props {

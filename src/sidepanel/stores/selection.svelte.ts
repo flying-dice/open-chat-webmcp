@@ -37,22 +37,28 @@
 //
 // SINGLE OWNER (card 27, boards/project-backlog/27-selection-store-stale-session-write.md):
 // this module used to hold its own private `ChatSession` copy just to
-// read/write the `selection` field, loaded independently of
-// `src/sidepanel/stores/panel.svelte.ts`'s live copy (the one the agent
-// loop appends messages to). That second copy going stale — it never saw
-// messages appended through panel's copy — is exactly what let
+// read/write the `selection` field, loaded independently of the live copy the
+// agent loop appends messages to. That second copy going stale — it never saw
+// messages appended through the other one — is exactly what let
 // `selectModel()` silently overwrite history with an emptier snapshot the
 // moment the user changed provider/model mid-conversation.
 //
 // The fix: this module no longer loads or holds a `ChatSession` at all. It
-// reads/writes only the `selection` field, and does so through
-// `panel.svelte.ts`'s `getSessionSelection`/`setSessionSelection`, which
-// operate on the SAME live object every other session mutator writes to.
-// `resolveSelection` (src/domain/providers — a domain rule over the
-// `ProviderRegistry` port, no longer wrapped by a second
-// `resolveSessionSelection` in the session module, which card 74 deleted) is
-// called directly against that plain `{providerId, model} | undefined`
-// value — no `ChatSession` needed for that either.
+// reads and writes only the `selection` field, through `ChatService`'s
+// `getSelection`/`setSelection` (src/domain/chat), which operate on the SAME
+// live object every other mutator writes to.
+//
+// ONE CONCEPT, ONE STORE (card 77). Until this card those two functions lived
+// in src/sidepanel/stores/panel.svelte.ts — so the selection concept was split
+// across two stores, and the store that displayed a chat also owned the rule
+// for persisting the OTHER store's field. The persistence itself belongs on
+// the chat's own record (it IS `ChatSession.selection`, read back on every tab
+// switch and carried across a new chat), so it stayed on the aggregate and
+// moved behind the `ChatStore` port with everything else; what moved HERE is
+// the only part that was ever selection's: knowing when to read it, when to
+// seed it, and whether the user actually chose it. Card 35's explicit flag
+// (`selectionExplicit`) is now a declared field on `ChatSession` rather than a
+// cast-on boolean, and this module holds the reactive copy the composer reads.
 
 import {
   describeProviderError,
@@ -70,7 +76,7 @@ import {
 } from "../../domain/providers";
 import { providerRegistry } from "../../infra/chrome-storage";
 import { createProviderClient } from "../lib/providerClients";
-import { getSessionSelection, panel, setSessionSelection } from "./panel.svelte";
+import { chat } from "./panel.svelte";
 
 export type { SelectionResolution } from "../../domain/providers";
 
@@ -126,6 +132,18 @@ let providers = $state<ProviderConfig[]>([]);
 let providersStatus = $state<"loading" | "loaded" | "error">("loading");
 
 let resolution = $state<SelectionResolution>({ status: "none" });
+
+/**
+ * Card 35: whether the resolved selection was set by a DELIBERATE user action
+ * rather than silently seeded from the stored global default. Mirrored here
+ * from `ChatSession.selectionExplicit` on every {@link syncToTab} and set by
+ * {@link selectModel}, so the composer's gate is a plain reactive read rather
+ * than a second store's getter. A `startNewChat` carries the flag over with
+ * the selection itself (src/domain/chat/service.ts), which is why this does
+ * NOT reset when a fresh chat starts — a choice the user already confirmed
+ * stays confirmed.
+ */
+let selectionExplicit = $state(false);
 
 /** Every registered provider's model list, keyed by provider id — loaded in parallel, degrading per provider (see this module's header comment). Absent key = never (yet) requested. */
 let providerModelsState = $state<Record<string, ModelsState>>({});
@@ -191,13 +209,13 @@ export const selection = {
   /**
    * Card 35: there IS a resolved provider+model (`resolution.status ===
    * "ok"`), but it was silently seeded from the stored default rather than
-   * deliberately chosen for this chat (`panel.selectionExplicit` is
-   * `false`) — the "one-click confirm" state. Composer.svelte gates
+   * deliberately chosen for this chat (`selectionExplicit` is `false`) — the
+   * "one-click confirm" state. Composer.svelte gates
    * sending on `resolution.status === "ok" && !needsConfirmation`, not on
    * `resolution.status === "ok"` alone.
    */
   get needsConfirmation(): boolean {
-    return resolution.status === "ok" && !panel.selectionExplicit;
+    return resolution.status === "ok" && !selectionExplicit;
   },
   /** Card 35/36's shared picker popover open state — see `pickerOpen`'s doc comment. */
   get pickerOpen(): boolean {
@@ -239,7 +257,7 @@ async function loadProviders(): Promise<void> {
 
 /**
  * Point the store at a tab: resolves its persisted selection (reading it
- * off `panel.svelte.ts`'s live session for `newTabId` — see this module's
+ * off the chat service's live session for `newTabId` — see this module's
  * header comment). Call whenever the panel's active tab changes (including
  * the initial mount) — safe to call repeatedly for the same `tabId`.
  *
@@ -249,12 +267,12 @@ async function loadProviders(): Promise<void> {
  * switches; only `resolution` (which model is highlighted as active) is
  * per-tab.
  *
- * Relies on `panel.svelte.ts` having already loaded (or created) `newTabId`'s
- * session by the time this runs — true for this store's one caller
+ * Relies on the chat service having already loaded (or created) `newTabId`'s
+ * chat by the time this runs — true for this store's one caller
  * (`ProviderPicker.svelte`'s effect on `panel.pageInfo`), since
- * `activeTab.ts`'s `refreshActiveTab` always awaits `syncSessionToTab`
+ * `activeTab.ts`'s `refreshActiveTab` always awaits `chat.syncToTab`
  * before setting `pageInfo`. If that ever isn't true yet (session not
- * loaded for this tab), `getSessionSelection` returns `undefined` and this
+ * loaded for this tab), `chat.getSelection` returns `undefined` and this
  * resolves to `"none"` rather than guessing — a transient display gap, not
  * a lost write, and it self-corrects on the next sync.
  */
@@ -271,22 +289,23 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
 
   const defaultSelection = await providerRegistry.getDefaultSelection();
 
-  // Seed a brand-new session with the global default the first time this
-  // tab is seen — but write it through panel's live session (never a
-  // private copy): setSessionSelection no-ops harmlessly if that session
-  // isn't loaded yet, and is idempotent once it is (a later run sees the
+  // Seed a brand-new chat with the global default the first time this tab is
+  // seen — but write it through the chat service's live session (never a
+  // private copy): `setSelection` no-ops harmlessly if no chat is loaded for
+  // this tab yet, and is idempotent once one is (a later run sees the
   // selection already set and skips the write).
-  let persisted = getSessionSelection(newTabId);
-  if (persisted === undefined && defaultSelection) {
+  let stored = chat.getSelection(newTabId);
+  if (stored === undefined && defaultSelection) {
     // Card 35: this is the exact "resolve implicitly from a stored default"
-    // path the card is unhappy about — `explicit: false` records that so
-    // the composer knows to ask for a one-click confirmation before the
-    // first message, rather than treating this silent seed as good enough.
-    const applied = await setSessionSelection(newTabId, defaultSelection, false);
-    if (applied) persisted = defaultSelection;
+    // path the card is unhappy about — `explicit: false` records that so the
+    // composer knows to ask for a one-click confirmation before the first
+    // message, rather than treating this silent seed as good enough.
+    const applied = await chat.setSelection(newTabId, defaultSelection, false);
+    if (applied) stored = { selection: defaultSelection, explicit: false };
   }
 
-  resolution = await resolveSelection(providerRegistry, persisted);
+  selectionExplicit = stored?.explicit === true;
+  resolution = await resolveSelection(providerRegistry, stored?.selection);
 }
 
 // ---------------------------------------------------------------------------
@@ -420,10 +439,9 @@ export async function enterManualModel(providerId: string, modelId: string): Pro
  * replacement — so it inherits the single-owner write below with no
  * separate code path to re-audit.
  *
- * Persists via `setSessionSelection` (`panel.svelte.ts`), which mutates the
- * SAME live session object the agent loop appends messages to — never a
- * stale copy this module loaded earlier — so this can never clobber
- * history (card 27).
+ * Persists via `ChatService.setSelection` (src/domain/chat), which mutates the
+ * SAME live session object the turn appends messages to — never a stale copy
+ * this module loaded earlier — so this can never clobber history (card 27).
  */
 export async function selectModel(providerId: string, model: string): Promise<void> {
   if (tabId === undefined) return;
@@ -436,7 +454,8 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   const next: ProviderSelection = { providerId, model };
 
   // Card 35: a click here IS the deliberate choice — explicit: true.
-  await setSessionSelection(tabId, next, true);
+  await chat.setSelection(tabId, next, true);
+  selectionExplicit = true;
 
   const currentDefault = await providerRegistry.getDefaultSelection();
   if (!currentDefault) await providerRegistry.setDefaultSelection(next);
