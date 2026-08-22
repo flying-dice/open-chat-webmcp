@@ -14,6 +14,7 @@
    */
   import { isRecord } from "../presentation/untrustedJson";
   import Self from "./ToolArgValue.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     value: unknown;
@@ -23,10 +24,12 @@
 </script>
 
 {#if value === null || value === undefined}
-  <span class="text-muted-foreground italic">{value === null ? "null" : "(not provided)"}</span>
+  <span class="text-muted-foreground italic"
+    >{value === null ? m.toolArgValue_null() : m.toolArgValue_notProvided()}</span
+  >
 {:else if Array.isArray(value)}
   {#if value.length === 0}
-    <span class="text-muted-foreground italic">[ ] (empty list)</span>
+    <span class="text-muted-foreground italic">{m.toolArgValue_emptyList()}</span>
   {:else}
     <ol class="mt-1 flex list-decimal flex-col gap-1 pl-5">
       {#each value as item, i (i)}
@@ -36,7 +39,7 @@
   {/if}
 {:else if isRecord(value)}
   {#if Object.keys(value).length === 0}
-    <span class="text-muted-foreground italic">{"{ } (empty object)"}</span>
+    <span class="text-muted-foreground italic">{m.toolArgValue_emptyObject()}</span>
   {:else}
     <dl class="mt-1 flex flex-col gap-1 border-l-2 border-border pl-2">
       {#each Object.entries(value) as [key, entryValue] (key)}
@@ -48,9 +51,11 @@
     </dl>
   {/if}
 {:else if typeof value === "string"}
-  <span class="font-mono text-code break-words whitespace-pre-wrap">{value === "" ? '""  (empty string)' : value}</span>
+  <span class="font-mono text-code break-words whitespace-pre-wrap"
+    >{value === "" ? m.toolArgValue_emptyString() : value}</span
+  >
 {:else if typeof value === "boolean"}
-  <span class="font-mono text-code">{value ? "true" : "false"}</span>
+  <span class="font-mono text-code">{value ? m.toolArgValue_true() : m.toolArgValue_false()}</span>
 {:else}
   <span class="font-mono text-code">{String(value)}</span>
 {/if}

@@ -61,6 +61,7 @@ import { getLocale, getTextDirection } from "../paraglide/runtime.js";
 import { initSidePanelServices } from "./app-services";
 import { originLabel } from "./presentation/toolOrigin";
 import { presenter, tabSyncView } from "./stores/panel.svelte";
+import { m } from "../paraglide/messages.js";
 
 // ---------------------------------------------------------------------------
 // 1. Adapters
@@ -151,6 +152,11 @@ startDarkModeSync();
 // the document, not about where a locale comes from — nor which scripts are
 // written right to left, which is `getTextDirection()`'s answer to give.
 applyDocumentLocale(getLocale(), getTextDirection());
+
+// index.html's static <title> is the pre-JS fallback (and what shows before
+// this module runs); this brings it into the same locale the rest of the
+// document just adopted, same reasoning as the lang/dir bootstrap above.
+document.title = m.app_documentTitle();
 
 // Keeps the panel's page identity — and, on a tab switch or a cross-origin
 // navigation, the visible conversation — in step with the active tab

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { renderMarkdown } from "../markdown";
   import { copyText } from "../clipboard";
+  import { m } from "../../paraglide/messages.js";
 
   /**
    * Renders a markdown string as sanitised HTML.
@@ -73,7 +74,7 @@
     void copyText(text).then((copied) => {
       if (!copied) return;
       const original = button.textContent;
-      button.textContent = "Copied";
+      button.textContent = m.copiedLabel();
       button.disabled = true;
       clearTimeout(copyResetTimer);
       copyResetTimer = setTimeout(() => {

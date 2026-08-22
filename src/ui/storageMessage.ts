@@ -17,19 +17,19 @@
 //     imply a write landed when it did not.
 
 import type { StorageError, StorageErrorKind } from "../domain/storage";
+import { m } from "../paraglide/messages.js";
 
 /**
  * Why the store said no, in a clause that reads after an em dash. Deliberately
  * one clause per kind and nothing about WHAT was being saved — the caller
  * supplies that half, since only it knows.
  */
-const REASON: Record<StorageErrorKind, string> = {
-  Unavailable:
-    "the browser's extension storage didn't accept it — it may be full, or the extension may have just been updated or reloaded",
-  NotFound: "the record it needed is no longer there",
-  Conflict: "something else changed it at the same time",
-  Corrupt: "what's stored isn't in a shape this version of the extension understands",
-  Unexpected: "the browser's extension storage failed in a way the extension didn't expect",
+const REASON: Record<StorageErrorKind, () => string> = {
+  Unavailable: m.storageMessage_reasonUnavailable,
+  NotFound: m.storageMessage_reasonNotFound,
+  Conflict: m.storageMessage_reasonConflict,
+  Corrupt: m.storageMessage_reasonCorrupt,
+  Unexpected: m.storageMessage_reasonUnexpected,
 };
 
 /** Whether it is worth telling the user to try the same thing again. `Corrupt` is not — the same read will decode to the same nothing. */
@@ -50,6 +50,6 @@ const RETRYABLE: Record<StorageErrorKind, boolean> = {
  * can actually behave differently.
  */
 export function storageFailureMessage(what: string, err: StorageError): string {
-  const suffix = RETRYABLE[err.kind] ? " Try again in a moment." : "";
-  return `${what} — ${REASON[err.kind]}.${suffix}`;
+  const suffix = RETRYABLE[err.kind] ? m.storageMessage_retrySuffix() : "";
+  return m.storageMessage_sentence({ what, reason: REASON[err.kind](), suffix });
 }

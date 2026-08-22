@@ -49,6 +49,7 @@
   import { openOptionsPage } from "../stores/selection.svelte";
   import type { IconName } from "../../ui/icons";
   import type { Snippet } from "svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     messages: TranscriptEntry[];
@@ -169,7 +170,7 @@
     {#if messages.length === 0}
       <div class="m-auto flex flex-col gap-2 text-center">
         <p class="m-0 text-center text-sm text-muted-foreground">
-          No messages yet. Ask something about this page, or just say hello.
+          {m.transcript_emptyMessage()}
         </p>
         {#if toolsNotice}
           <p class="m-0 text-center text-sm text-muted-foreground">{toolsNotice}</p>
@@ -230,7 +231,9 @@
               <div class="mt-3 flex flex-wrap gap-2">
                 {#each message.actions as action, i (i)}
                   {#if action.kind === "retry"}
-                    <Button type="button" variant="secondary" size="sm" onclick={onRetry}>Retry</Button>
+                    <Button type="button" variant="secondary" size="sm" onclick={onRetry}
+                      >{m.retryAction()}</Button
+                    >
                   {:else if action.kind === "open-options"}
                     <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
                       {action.label}
@@ -273,8 +276,7 @@
            message you are typing, and pinning it would cost a row of a
            320px panel forever. -->
       <p class="m-0 text-xs text-muted-foreground">
-        Replies come from the provider you configured and can be wrong — check anything that
-        matters. Tool calls act on the page in front of you.
+        {m.transcript_disclaimer()}
       </p>
     {/if}
   </div>
@@ -286,7 +288,7 @@
     <div class="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg">
       <IconButton
         icon="arrow_downward"
-        label="Jump to latest"
+        label={m.transcript_jumpToLatestLabel()}
         variant="filled"
         onclick={() => scrollToBottom("smooth")}
       />

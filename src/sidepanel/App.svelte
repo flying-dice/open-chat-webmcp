@@ -53,6 +53,7 @@
     initApprovalPolicySync,
     requestApproval,
   } from "./stores/approvals.svelte";
+  import { m } from "../paraglide/messages.js";
 
   let view = $state<"chat" | "inspector" | "history">("chat");
 
@@ -63,9 +64,9 @@
    */
   const headerTitle = $derived(
     view === "inspector"
-      ? "Tools & call log"
+      ? m.app_inspectorTitle()
       : view === "history"
-        ? "Chat history"
+        ? m.app_historyTitle()
         : titleFromMessages(panel.messages, panel.activeChatTitle),
   );
 
@@ -133,7 +134,7 @@
     const info = panel.pageInfo;
     if (!info || info.restricted) return undefined;
     if (info.toolCount === 0) {
-      return "This page hasn't published any WebMCP tools, so there's nothing extra to call here — plain chat works exactly the same.";
+      return m.app_toolsNotice();
     }
     return undefined;
   });
@@ -198,7 +199,7 @@
       // nothing changed — the conversation the user had is still on screen,
       // and the notice is the whole of what they need to know.
       const [, err] = await chat().startNewChat(info.origin);
-      if (err) reportNotice(storageFailureMessage("Couldn't start a new chat", err));
+      if (err) reportNotice(storageFailureMessage(m.app_startChatFailedWhat(), err));
     }
     composerRef?.focusInput();
   }
@@ -218,11 +219,9 @@
       chat().addUserMessage(text);
       const noProviders = selection.providers.length === 0;
       chat().addAssistantNote(
+        noProviders ? m.app_noProviderNote() : m.app_noSelectionNote(),
         noProviders
-          ? "No provider is registered yet — add one on the options page, then pick it from the picker in the header."
-          : "No provider/model selected yet — pick one from the picker in the header before sending a message.",
-        noProviders
-          ? [{ kind: "open-options", label: "Open options to add a provider" }]
+          ? [{ kind: "open-options", label: m.openOptionsAddProviderAction() }]
           : undefined,
       );
       return;
@@ -279,7 +278,7 @@
     // the live session before writing), so the notice says it is not durable
     // rather than yanking the name back out from under the user.
     const [, err] = await chat().renameCurrent(title);
-    if (err) reportNotice(storageFailureMessage("Couldn't save this chat's new name", err));
+    if (err) reportNotice(storageFailureMessage(m.app_renameFailedWhat(), err));
   }
 </script>
 
@@ -321,7 +320,7 @@
         {#each panelNotices.all as notice (notice.id)}
           <NoticeCard
             variant="failure"
-            dismissLabel="Dismiss message"
+            dismissLabel={m.app_dismissMessageLabel()}
             onDismiss={() => dismissNotice(notice.id)}
           >
             <p>{notice.message}</p>
@@ -330,21 +329,19 @@
         {#if panel.pageInfo?.restricted}
           <NoticeCard>
             <p>
-              This page doesn't allow browser extensions to run scripts on it, so nothing here
-              will ever have page tools — chat still works exactly the same.
+              {m.app_restrictedPageNotice()}
             </p>
           </NoticeCard>
         {/if}
         {#if showMismatchNotice && chatOriginMismatch}
           <NoticeCard
-            dismissLabel="Dismiss origin notice"
+            dismissLabel={m.app_dismissOriginNoticeLabel()}
             onDismiss={() => (dismissedMismatchFor = panel.activeChatId)}
           >
             <p>
-              This chat was started on <strong>{chatOriginMismatch.chatOrigin}</strong>. You're
-              viewing it from <strong>{chatOriginMismatch.pageOrigin}</strong> — the transcript
-              stays readable, but page tools come from THIS tab only, and any tool calls above
-              belong to the original page and can't be re-run here.
+              {m.app_originMismatchIntro()}<strong>{chatOriginMismatch.chatOrigin}</strong>{m.app_originMismatchViewing()}<strong
+                >{chatOriginMismatch.pageOrigin}</strong
+              >{m.app_originMismatchDetail()}
             </p>
           </NoticeCard>
         {/if}
@@ -375,7 +372,7 @@
     <div class="flex flex-none items-center px-2 pb-1">
       <IconButton
         icon="arrow_back"
-        label="Back to chat"
+        label={m.app_backToChatLabel()}
         onclick={() => (view = "chat")}
         tooltipPlacement="bottom"
       />

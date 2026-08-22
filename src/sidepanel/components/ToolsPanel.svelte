@@ -34,6 +34,7 @@
   import ToolListItem from "./ToolListItem.svelte";
   import Icon from "./Icon.svelte";
   import * as Empty from "$lib/components/ui/empty";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     tools: SerializedTool[];
@@ -52,20 +53,20 @@
        reached over HTTP from the panel and are unaffected by it (card 31 +
        card 38, decisions/19 §6). -->
   <section class="flex min-w-0 flex-col gap-2">
-    <h2 class="m-0 text-xs font-medium tracking-wide text-muted-foreground uppercase">This page</h2>
+    <h2 class="m-0 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+      >{m.toolsPanel_thisPageHeading()}</h2
+    >
     {#if restricted}
       <Empty.Root class="p-6 text-left md:p-6">
         <Empty.Header class="max-w-none items-start text-left">
           <Empty.Media variant="icon" class="size-9">
             <Icon name="close" class="size-5" />
           </Empty.Media>
-          <Empty.Title class="text-base font-medium tracking-tight">Extensions can't reach this page</Empty.Title>
+          <Empty.Title class="text-base font-medium tracking-tight"
+            >{m.toolsPanel_restrictedTitle()}</Empty.Title
+          >
           <Empty.Description>
-            Chrome blocks content scripts on <code class="font-mono text-xs">chrome://</code> pages, other
-            extensions' pages, the Chrome Web Store, and its built-in PDF viewer —
-            there is no way for this or any extension to reach in, so this tab
-            will never have page tools, no matter what the page itself supports.
-            Chat and MCP server tools still work here.
+            {@html m.toolsPanel_restrictedDescription()}
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>
@@ -75,15 +76,11 @@
           <Empty.Media variant="icon" class="size-9">
             <Icon name="info" class="size-5" />
           </Empty.Media>
-          <Empty.Title class="text-base font-medium tracking-tight">WebMCP is off in this browser</Empty.Title>
+          <Empty.Title class="text-base font-medium tracking-tight"
+            >{m.toolsPanel_webmcpOffTitle()}</Empty.Title
+          >
           <Empty.Description>
-            <code class="font-mono text-xs">document.modelContext</code> doesn't exist here — WebMCP is
-            off by default in Chrome and needs
-            <code class="font-mono text-xs">--enable-features=WebMCP</code>, the
-            <code class="font-mono text-xs">chrome://flags/#enable-webmcp-testing</code> toggle, or a
-            per-origin origin-trial token before a page can use it at all. This
-            is different from a page simply not registering any tools — there
-            was nothing here to even ask.
+            {@html m.toolsPanel_webmcpOffDescription()}
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>
@@ -93,21 +90,14 @@
           <Empty.Media variant="icon" class="size-9">
             <Icon name="build" class="size-5" />
           </Empty.Media>
-          <Empty.Title class="text-base font-medium tracking-tight">No page tools here</Empty.Title>
+          <Empty.Title class="text-base font-medium tracking-tight"
+            >{m.toolsPanel_noPageToolsTitle()}</Empty.Title
+          >
           <Empty.Description>
-            This is expected — most sites don't speak WebMCP yet. It's a
-            proposed web standard that lets a page expose specific actions and
-            page-state readers — "add a note", "read the cart total" — on
-            <code class="font-mono text-xs">document.modelContext</code>, so an AI agent can call them
-            directly instead of a human clicking through the UI. It's the same
-            idea as MCP, but for what a <em>website</em> itself chooses to
-            offer, rather than a separate server.
+            {@html m.toolsPanel_noPageToolsDescription1()}
           </Empty.Description>
           <Empty.Description>
-            A site opts in by calling <code class="font-mono text-xs">registerTool()</code> in its own
-            page script. If this page did, its tools would show up here the
-            moment it registers them — nothing to refresh or configure on your
-            end.
+            {@html m.toolsPanel_noPageToolsDescription2()}
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>
@@ -121,18 +111,20 @@
   </section>
 
   <section class="flex min-w-0 flex-col gap-2">
-    <h2 class="m-0 text-xs font-medium tracking-wide text-muted-foreground uppercase">MCP servers</h2>
+    <h2 class="m-0 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+      >{m.toolsPanel_mcpServersHeading()}</h2
+    >
     {#if serverTools.length === 0}
       <Empty.Root class="p-6 text-left md:p-6">
         <Empty.Header class="max-w-none items-start text-left">
           <Empty.Media variant="icon" class="size-9">
             <Icon name="terminal" class="size-5" />
           </Empty.Media>
-          <Empty.Title class="text-base font-medium tracking-tight">No server tools connected</Empty.Title>
+          <Empty.Title class="text-base font-medium tracking-tight"
+            >{m.toolsPanel_noServerToolsTitle()}</Empty.Title
+          >
           <Empty.Description>
-            Add and enable a server from the options page's MCP Servers
-            section — a slow, unreachable, or not-yet-permitted server simply
-            contributes no tools here rather than blocking anything.
+            {m.toolsPanel_noServerToolsDescription()}
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>

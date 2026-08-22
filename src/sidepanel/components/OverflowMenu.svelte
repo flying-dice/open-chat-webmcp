@@ -38,6 +38,8 @@
   import { panel, type ConnectionStatus } from "../stores/panel.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
   import { titleFromSummary } from "../../domain/chat";
+  import { connectionStatusLabel } from "../presentation/connectionStatus";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     /** Open the full history view. */
@@ -55,15 +57,6 @@
   const RECENT_LIMIT = 5;
 
   let summaries = $state<ChatSummary[]>([]);
-
-  // TODO: clean-code - 0.4 - DRY: identical statusLabel lookup table declared independently in ContextChip.svelte instead of exported once from src/sidepanel/presentation/, the pattern capabilityBadge.ts/toolOrigin.ts already establish for exactly this kind of shared wording.
-  const statusLabel: Record<ConnectionStatus, string> = {
-    unknown: "Not connected",
-    connecting: "Connecting…",
-    connected: "Connected",
-    disconnected: "Disconnected",
-    error: "Connection error",
-  };
 
   const recent = $derived(summaries.slice(0, RECENT_LIMIT));
   const hasMore = $derived(summaries.length > RECENT_LIMIT);
@@ -106,7 +99,7 @@
         variant="ghost"
         size="icon-sm"
         class="rounded-full"
-        aria-label="More options"
+        aria-label={m.overflowMenu_moreOptionsLabel()}
       >
         <Icon name="more_vert" class="size-4" />
       </Button>
@@ -115,19 +108,19 @@
 
   <DropdownMenu.Content
     align="end"
-    aria-label="Panel menu"
+    aria-label={m.overflowMenu_panelMenuLabel()}
     class="w-[335px] max-w-[calc(100vw-1rem)]"
   >
-    <DropdownMenu.Label>Recent chats</DropdownMenu.Label>
+    <DropdownMenu.Label>{m.overflowMenu_recentChatsLabel()}</DropdownMenu.Label>
 
     {#if listFailed}
       <p class="px-3 py-2 text-xs text-destructive" role="alert">
-        Couldn't load your recent chats.
+        {m.overflowMenu_loadFailedMessage()}
       </p>
     {/if}
 
     {#if recent.length === 0 && !listFailed}
-      <p class="px-3 py-2 text-xs text-muted-foreground">No chats yet.</p>
+      <p class="px-3 py-2 text-xs text-muted-foreground">{m.overflowMenu_noChatsMessage()}</p>
     {:else}
       {#each recent as summary (summary.id)}
         <DropdownMenu.Item
@@ -143,7 +136,7 @@
     {#if hasMore || recent.length > 0}
       <DropdownMenu.Item onSelect={onOpenHistory}>
         <Icon name="more_horiz" class="size-4" />
-        <span class="min-w-0 flex-1 truncate">More</span>
+        <span class="min-w-0 flex-1 truncate">{m.overflowMenu_moreLabel()}</span>
         <Icon name="chevron_right" class="size-4" />
       </DropdownMenu.Item>
     {/if}
@@ -152,12 +145,12 @@
 
     <DropdownMenu.Item onSelect={onOpenTools}>
       <Icon name="build" class="size-4" />
-      <span class="min-w-0 flex-1 truncate">Tools &amp; call log</span>
+      <span class="min-w-0 flex-1 truncate">{m.overflowMenu_toolsCallLogLabel()}</span>
     </DropdownMenu.Item>
 
     <DropdownMenu.Item onSelect={openOptionsPage}>
       <Icon name="settings" class="size-4" />
-      <span class="min-w-0 flex-1 truncate">Open options</span>
+      <span class="min-w-0 flex-1 truncate">{m.openOptionsAction()}</span>
       <Icon name="open_in_new" class="size-4" />
     </DropdownMenu.Item>
 
@@ -166,7 +159,7 @@
     <DropdownMenu.Label>
       <span class="flex items-center gap-2.5">
         <Icon name="info" class="size-4" />
-        {statusLabel[connectionStatus]}
+        {connectionStatusLabel(connectionStatus)}
       </span>
     </DropdownMenu.Label>
   </DropdownMenu.Content>

@@ -22,6 +22,7 @@ import type { ChatSummary } from "../../domain/chat";
 // show a scrollbar — irrelevant to anything this file asserts, but its
 // `$effect` throws immediately on mount without this stub.
 import "../../ui/testing/resize-observer";
+import { m } from "../../paraglide/messages.js";
 
 function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
@@ -52,7 +53,7 @@ describe("HistoryPanel", () => {
 
   it("shows an empty state when there are no chats", async () => {
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
-    expect(await screen.findByText("No chats yet")).toBeInTheDocument();
+    expect(await screen.findByText(m.historyPanel_emptyTitle())).toBeInTheDocument();
   });
 
   it("shows 'Loading…' before the list resolves, then the loaded list", async () => {
@@ -63,11 +64,11 @@ describe("HistoryPanel", () => {
       });
 
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getByText(m.historyPanel_loading())).toBeInTheDocument();
 
     resolveList(ok([summary({ preview: "hi there" })]));
     expect(await screen.findByText("hi there")).toBeInTheDocument();
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(screen.queryByText(m.historyPanel_loading())).not.toBeInTheDocument();
   });
 
   it("renders a row per chat summary", async () => {
@@ -123,7 +124,11 @@ describe("HistoryPanel", () => {
     const user = userEvent.setup();
 
     render(HistoryPanel, { props: { onOpenChat } });
-    await user.click(await screen.findByRole("button", { name: /Delete chat from/ }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: new RegExp(m.historyListItem_deleteLabel({ origin: "" })),
+      }),
+    );
 
     await waitFor(() => expect(deleteChat).toHaveBeenCalledWith("chat-1"));
     expect(discardIfDeleted).toHaveBeenCalledWith("chat-1");
@@ -139,7 +144,11 @@ describe("HistoryPanel", () => {
     const user = userEvent.setup();
 
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
-    await user.click(await screen.findByRole("button", { name: /Delete chat from/ }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: new RegExp(m.historyListItem_deleteLabel({ origin: "" })),
+      }),
+    );
 
     // Give any (incorrect) async delete a tick to happen before asserting it didn't.
     await new Promise((r) => setTimeout(r, 0));
@@ -180,7 +189,9 @@ describe("HistoryPanel", () => {
     services.chats.listChatSummaries = async () => fail(err);
 
     await user.click(
-      await screen.findByRole("button", { name: "Delete chat from https://a.example.com" }),
+      await screen.findByRole("button", {
+        name: m.historyListItem_deleteLabel({ origin: "https://a.example.com" }),
+      }),
     );
     await waitFor(() => expect(deleteChat).toHaveBeenCalledWith("a"));
 
@@ -189,7 +200,9 @@ describe("HistoryPanel", () => {
     expect(screen.getByText("first chat")).toBeInTheDocument();
     expect(screen.getByText("second chat")).toBeInTheDocument();
     expect(screen.queryByText("No chats yet")).not.toBeInTheDocument();
-    expect(await screen.findByText(/Couldn't load your chats/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(m.historyPanel_loadFailedWhat())),
+    ).toBeInTheDocument();
   });
 
   // --------------------------------------------------------------------
@@ -205,7 +218,9 @@ describe("HistoryPanel", () => {
     render(HistoryPanel, { props: { onOpenChat } });
     await user.click(await screen.findByRole("button", { name: /hi there/ }));
 
-    expect(await screen.findByText(/Couldn't open that chat/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(m.historyPanel_openFailedWhat())),
+    ).toBeInTheDocument();
     // The view does not switch: the service writes the tab pointer before it
     // swaps the visible chat, so nothing changed and there is nothing to
     // switch to.
@@ -223,9 +238,15 @@ describe("HistoryPanel", () => {
     const user = userEvent.setup();
 
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
-    await user.click(await screen.findByRole("button", { name: /Delete chat from/ }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: new RegExp(m.historyListItem_deleteLabel({ origin: "" })),
+      }),
+    );
 
-    expect(await screen.findByText(/Couldn't delete that chat/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(m.historyPanel_deleteFailedWhat())),
+    ).toBeInTheDocument();
     // Card 92's rule, still pinned: no fresh-chat swap follows a delete that
     // did not land.
     expect(discardIfDeleted).not.toHaveBeenCalled();
@@ -240,10 +261,14 @@ describe("HistoryPanel", () => {
     const user = userEvent.setup();
 
     render(HistoryPanel, { props: { onOpenChat: vi.fn() } });
-    await user.click(await screen.findByRole("button", { name: /Delete chat from/ }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: new RegExp(m.historyListItem_deleteLabel({ origin: "" })),
+      }),
+    );
 
     expect(
-      await screen.findByText(/Deleted that chat, but couldn't start a fresh one/),
+      await screen.findByText(new RegExp(m.historyPanel_discardFailedWhat())),
     ).toBeInTheDocument();
   });
 });

@@ -34,6 +34,7 @@ vi.mock("../stores/selection.svelte", () => ({
 }));
 
 import Transcript from "./Transcript.svelte";
+import { m } from "../../paraglide/messages.js";
 
 // jsdom does not implement Element.scrollTo at all (not even as a no-op) —
 // Transcript's own autoscroll effect calls it unconditionally on mount, so
@@ -122,7 +123,9 @@ describe("Transcript", () => {
       });
 
       // ActivityGroup's collapsed summary line: "<count> tool calls · <names>".
-      expect(screen.getByText(/2 tool calls/)).toBeInTheDocument();
+      expect(
+        screen.getByText(new RegExp(m.activityGroup_stepCount({ count: 2 }))),
+      ).toBeInTheDocument();
       expect(screen.getByText(/read_page, click_button/)).toBeInTheDocument();
     });
 
@@ -131,18 +134,14 @@ describe("Transcript", () => {
         props: baseProps({ messages: [], toolsNotice: "This page publishes no WebMCP tools." }),
       });
 
-      expect(
-        screen.getByText("No messages yet. Ask something about this page, or just say hello."),
-      ).toBeInTheDocument();
+      expect(screen.getByText(m.transcript_emptyMessage())).toBeInTheDocument();
       expect(screen.getByText("This page publishes no WebMCP tools.")).toBeInTheDocument();
     });
 
     it("omits toolsNotice when unset", () => {
       render(Transcript, { props: baseProps({ messages: [] }) });
 
-      expect(
-        screen.getByText("No messages yet. Ask something about this page, or just say hello."),
-      ).toBeInTheDocument();
+      expect(screen.getByText(m.transcript_emptyMessage())).toBeInTheDocument();
     });
   });
 
@@ -174,7 +173,9 @@ describe("Transcript", () => {
 
       // jsdom's default scrollHeight/clientHeight are both 0, so the
       // component's `atBottom` derivation starts (and stays) true.
-      expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: m.transcript_jumpToLatestLabel() }),
+      ).not.toBeInTheDocument();
     });
 
     it("appears once a scroll event reports the container is scrolled away from the bottom, and clears on click", async () => {
@@ -193,13 +194,15 @@ describe("Transcript", () => {
       Object.defineProperty(el, "scrollTop", { value: 0, configurable: true, writable: true });
       await fireEvent.scroll(el);
 
-      const jumpButton = screen.getByRole("button", { name: "Jump to latest" });
+      const jumpButton = screen.getByRole("button", { name: m.transcript_jumpToLatestLabel() });
       expect(jumpButton).toBeInTheDocument();
 
       // Clicking calls scrollTo (a jsdom no-op) and sets atBottom = true
       // synchronously right after, regardless of that no-op.
       await fireEvent.click(jumpButton);
-      expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: m.transcript_jumpToLatestLabel() }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -228,7 +231,7 @@ describe("Transcript", () => {
         }),
       });
 
-      await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await fireEvent.click(screen.getByRole("button", { name: m.retryAction() }));
       expect(onRetry).toHaveBeenCalledTimes(1);
     });
 
@@ -260,7 +263,7 @@ describe("Transcript", () => {
         }),
       });
 
-      const regenerate = screen.getByRole("button", { name: "Regenerate" });
+      const regenerate = screen.getByRole("button", { name: m.messageActions_regenerateLabel() });
       await fireEvent.click(regenerate);
       expect(onRetry).toHaveBeenCalledTimes(1);
     });
@@ -273,7 +276,9 @@ describe("Transcript", () => {
         }),
       });
 
-      expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: m.messageActions_regenerateLabel() }),
+      ).not.toBeInTheDocument();
     });
   });
 });

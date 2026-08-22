@@ -14,6 +14,7 @@
    * render in full (never truncated).
    */
   import ToolArgValue from "./ToolArgValue.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     args: Record<string, unknown> | undefined;
@@ -25,7 +26,7 @@
 </script>
 
 {#if entries.length === 0}
-  <p class="m-0 text-sm text-muted-foreground italic">This call takes no arguments.</p>
+  <p class="m-0 text-sm text-muted-foreground italic">{m.toolArgs_noArguments()}</p>
 {:else}
   <dl class="m-0 flex flex-col gap-2">
     {#each entries as [key, value] (key)}

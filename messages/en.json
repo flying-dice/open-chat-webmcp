@@ -1,23 +1,330 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-
   "optionsPageTitle": "OpenChat (WebMCP) — Options",
   "optionsPageSubtitle": "Manage the chat providers the side panel connects through.",
-
   "settingsLanguageHeading": "Language",
   "settingsLanguageDescription": "The language this extension's own interface is shown in. Changing it reloads this page.",
   "settingsLanguageLabel": "Interface language",
-
   "historyClearAllButton": "Clear all history ({count})",
-
   "historyClearConfirmTitle": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "Delete the 1 stored chat?",
         "countPlural=other": "Delete all {count} stored chats?"
       }
     }
-  ]
+  ],
+  "loadingProvidersLabel": "Loading providers…",
+  "openOptionsAction": "Open options",
+  "openOptionsAddProviderAction": "Open options to add a provider",
+  "retryAction": "Retry",
+  "copiedLabel": "Copied",
+  "argumentsHeading": "Arguments",
+  "errorHeading": "Error",
+  "resultHeading": "Result",
+  "thisPageLabel": "this page",
+  "runningLabel": "running…",
+  "connectionStatus_unknown": "Not connected",
+  "connectionStatus_connecting": "Connecting…",
+  "connectionStatus_connected": "Connected",
+  "connectionStatus_disconnected": "Disconnected",
+  "connectionStatus_error": "Connection error",
+  "app_documentTitle": "OpenChat (WebMCP)",
+  "app_inspectorTitle": "Tools & call log",
+  "app_historyTitle": "Chat history",
+  "app_toolsNotice": "This page hasn't published any WebMCP tools, so there's nothing extra to call here — plain chat works exactly the same.",
+  "app_noProviderNote": "No provider is registered yet — add one on the options page, then pick it from the picker in the header.",
+  "app_noSelectionNote": "No provider/model selected yet — pick one from the picker in the header before sending a message.",
+  "app_dismissMessageLabel": "Dismiss message",
+  "app_restrictedPageNotice": "This page doesn't allow browser extensions to run scripts on it, so nothing here will ever have page tools — chat still works exactly the same.",
+  "app_dismissOriginNoticeLabel": "Dismiss origin notice",
+  "app_originMismatchIntro": "This chat was started on ",
+  "app_originMismatchViewing": ". You're viewing it from ",
+  "app_originMismatchDetail": " — the transcript stays readable, but page tools come from THIS tab only, and any tool calls above belong to the original page and can't be re-run here.",
+  "app_backToChatLabel": "Back to chat",
+  "app_startChatFailedWhat": "Couldn't start a new chat",
+  "app_renameFailedWhat": "Couldn't save this chat's new name",
+  "header_chatNameAriaLabel": "Chat name",
+  "header_renameAriaLabel": "{title} (click to rename)",
+  "header_newChatLabel": "New chat",
+  "composer_providersError": "Couldn't load your providers.",
+  "composer_noProvidersMessage": "No provider is registered yet — add one on the options page to start chatting.",
+  "composer_danglingProviderMessage": "The provider this chat was using has been removed. Choose a replacement to continue — your conversation is kept.",
+  "composer_unselectedMessage": "Choose a provider and model before sending your first message.",
+  "composer_chooseProviderModelAction": "Choose provider & model",
+  "composer_needsConfirmationPrefix": "This chat will use ",
+  "composer_needsConfirmationSuffix": " — confirm it below to start.",
+  "composer_placeholder": "Ask about this page…",
+  "composer_messageAriaLabel": "Message",
+  "composer_hintText": "Press Enter to send, Shift and Enter for a new line.",
+  "composer_stopLabel": "Stop generating",
+  "composer_sendLabel": "Send",
+  "overflowMenu_moreOptionsLabel": "More options",
+  "overflowMenu_panelMenuLabel": "Panel menu",
+  "overflowMenu_recentChatsLabel": "Recent chats",
+  "overflowMenu_loadFailedMessage": "Couldn't load your recent chats.",
+  "overflowMenu_noChatsMessage": "No chats yet.",
+  "overflowMenu_moreLabel": "More",
+  "overflowMenu_toolsCallLogLabel": "Tools & call log",
+  "contextChip_noActiveTab": "No active tab",
+  "contextChip_cantReadOrigin": "Can't read {origin}",
+  "contextChip_sharing": "Sharing '{title}'",
+  "contextChip_toolCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} tool",
+        "countPlural=other": "{count} tools"
+      }
+    }
+  ],
+  "contextChip_restrictedDetail": "This page doesn't allow extension scripts to run, so there's nothing to call here — chat still works, just without page tools.",
+  "contextChip_openToolsAriaLabel": "{detail}. Open tools and call log",
+  "transcript_emptyMessage": "No messages yet. Ask something about this page, or just say hello.",
+  "transcript_disclaimer": "Replies come from the provider you configured and can be wrong — check anything that matters. Tool calls act on the page in front of you.",
+  "transcript_jumpToLatestLabel": "Jump to latest",
+  "noticeCard_dismissDefaultLabel": "Dismiss",
+  "messageActions_copyResponseLabel": "Copy response",
+  "messageActions_regenerateLabel": "Regenerate",
+  "activityGroup_stepCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "1 tool call",
+        "countPlural=other": "{count} tool calls"
+      }
+    }
+  ],
+  "activityGroup_viaServers": "via {servers}",
+  "activityGroup_failedCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "1 failed",
+        "countPlural=other": "{count} failed"
+      }
+    }
+  ],
+  "activityGroup_deniedCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "1 denied",
+        "countPlural=other": "{count} denied"
+      }
+    }
+  ],
+  "activityGroup_approvedCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "1 approved",
+        "countPlural=other": "{count} approved"
+      }
+    }
+  ],
+  "activityIndicator_waitingForModelFallback": "the model",
+  "activityIndicator_waitingFor": "Waiting for {model}…",
+  "activityIndicator_callingOn": "Calling {tool} on {origin}…",
+  "activityIndicator_calling": "Calling {tool}…",
+  "approvalCard_ariaLabel": "Approval needed: {name}",
+  "approvalCard_heading": "Approval needed",
+  "approvalCard_originUnknown": "Origin unknown — this name isn't in the current tool list.",
+  "approvalCard_runsOnPrefix": "Runs on ",
+  "approvalCard_runsOnServerSuffix": " (a remote MCP server, not this page).",
+  "approvalCard_runsOnPageSuffix": ".",
+  "approvalCard_unknownToolWarning": "This tool isn't in the current tool list — it may be a hallucinated name, or a tool that was unregistered/removed after the model requested it. Review the arguments below carefully before approving.",
+  "approvalCard_hintsDisclaimerServer": "These hints are reported by the MCP server itself, not verified by the extension — treat them as a guide, not a guarantee.",
+  "approvalCard_hintsDisclaimerPage": "These hints are reported by the page itself, not verified by the extension — treat them as a guide, not a guarantee.",
+  "approvalCard_skipServerLabel": "Don't ask again for this tool on this server (this session)",
+  "approvalCard_skipPageLabel": "Don't ask again for this tool on this page (this session)",
+  "approvalCard_denyAction": "Deny",
+  "approvalCard_approveAction": "Approve",
+  "annotationBadges_readOnly": "read-only",
+  "annotationBadges_untrustedContent": "untrusted content",
+  "annotationBadges_serverDestructive": "server: destructive",
+  "annotationBadges_unannotated": "unannotated",
+  "toolArgs_noArguments": "This call takes no arguments.",
+  "toolArgValue_null": "null",
+  "toolArgValue_notProvided": "(not provided)",
+  "toolArgValue_emptyList": "[ ] (empty list)",
+  "toolArgValue_emptyObject": "(empty object)",
+  "toolArgValue_emptyString": "\"\"  (empty string)",
+  "toolArgValue_true": "true",
+  "toolArgValue_false": "false",
+  "callLogEntry_modeAuto": "auto-run",
+  "callLogEntry_modeApproved": "approved",
+  "callLogEntry_modeDenied": "denied",
+  "callLogEntry_copyJsonLabel": "Copy JSON",
+  "callLogEntry_stillRunning": "Still running…",
+  "callLogPanel_emptyMessage": "No tool calls yet in this conversation. Calls the model makes on this page's tools will show up here as they happen — including any that get denied.",
+  "toolCallRow_noResultRecorded": "no result recorded",
+  "toolCallRow_autoReadOnly": "auto · read-only",
+  "toolCallRow_originUnknownBadge": "origin unknown",
+  "toolCallRow_stalledTooltip": "The side panel closed, or the turn ended, before this call reported back — it may still have run on the other end.",
+  "toolCallRow_serverCallsThis": "The server calls this: \"{title}\"",
+  "toolCallRow_untrustedDataSuffix": "— page-authored, treated as untrusted data",
+  "toolListItem_inputSchemaLabel": "Input schema",
+  "toolSchema_noSchema": "This tool has no declared input schema.",
+  "toolSchema_noParameters": "Takes no parameters.",
+  "schemaProperty_anyType": "any",
+  "schemaProperty_arrayOfType": "array<{itemType}>",
+  "schemaProperty_arrayType": "array",
+  "schemaProperty_requiredLabel": "required",
+  "schemaProperty_formatLabel": "format: {format}",
+  "schemaProperty_oneOfLabel": "one of: {values}",
+  "schemaProperty_eachItemLabel": "each item:",
+  "inspector_sectionAriaLabel": "Inspector section",
+  "inspector_toolsTab": "Tools",
+  "inspector_toolsTabCount": "Tools ({count})",
+  "inspector_callLogTab": "Call Log",
+  "inspector_callLogTabCount": "Call Log ({count})",
+  "toolsPanel_thisPageHeading": "This page",
+  "toolsPanel_restrictedTitle": "Extensions can't reach this page",
+  "toolsPanel_restrictedDescription": "Chrome blocks content scripts on <code class=\"font-mono text-xs\">chrome://</code> pages, other extensions' pages, the Chrome Web Store, and its built-in PDF viewer — there is no way for this or any extension to reach in, so this tab will never have page tools, no matter what the page itself supports. Chat and MCP server tools still work here.",
+  "toolsPanel_webmcpOffTitle": "WebMCP is off in this browser",
+  "toolsPanel_webmcpOffDescription": "<code class=\"font-mono text-xs\">document.modelContext</code> doesn't exist here — WebMCP is off by default in Chrome and needs <code class=\"font-mono text-xs\">--enable-features=WebMCP</code>, the <code class=\"font-mono text-xs\">chrome://flags/#enable-webmcp-testing</code> toggle, or a per-origin origin-trial token before a page can use it at all. This is different from a page simply not registering any tools — there was nothing here to even ask.",
+  "toolsPanel_noPageToolsTitle": "No page tools here",
+  "toolsPanel_noPageToolsDescription1": "This is expected — most sites don't speak WebMCP yet. It's a proposed web standard that lets a page expose specific actions and page-state readers — \"add a note\", \"read the cart total\" — on <code class=\"font-mono text-xs\">document.modelContext</code>, so an AI agent can call them directly instead of a human clicking through the UI. It's the same idea as MCP, but for what a <em>website</em> itself chooses to offer, rather than a separate server.",
+  "toolsPanel_noPageToolsDescription2": "A site opts in by calling <code class=\"font-mono text-xs\">registerTool()</code> in its own page script. If this page did, its tools would show up here the moment it registers them — nothing to refresh or configure on your end.",
+  "toolsPanel_mcpServersHeading": "MCP servers",
+  "toolsPanel_noServerToolsTitle": "No server tools connected",
+  "toolsPanel_noServerToolsDescription": "Add and enable a server from the options page's MCP Servers section — a slow, unreachable, or not-yet-permitted server simply contributes no tools here rather than blocking anything.",
+  "historyPanel_unnamedChatFallback": "this chat",
+  "historyPanel_loadFailedWhat": "Couldn't load your chats",
+  "historyPanel_openFailedWhat": "Couldn't open that chat",
+  "historyPanel_deleteFailedWhat": "Couldn't delete that chat",
+  "historyPanel_discardFailedWhat": "Deleted that chat, but couldn't start a fresh one for this tab",
+  "historyPanel_deleteConfirm": [
+    {
+      "declarations": [
+        "input origin",
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "Delete the chat from {origin} (1 message)? This cannot be undone.",
+        "countPlural=other": "Delete the chat from {origin} ({count} messages)? This cannot be undone."
+      }
+    }
+  ],
+  "historyPanel_loading": "Loading…",
+  "historyPanel_emptyTitle": "No chats yet",
+  "historyPanel_emptyDescription": "Every conversation you have — on any site, in any tab — is listed here, newest first, once it has at least one message. Nothing is deleted automatically; use the delete button on an entry, or \"Clear all history\" on the options page, when you're done with one.",
+  "historyListItem_unknownOrigin": "(unknown origin)",
+  "historyListItem_deletingLabel": "Deleting…",
+  "historyListItem_deleteLabel": "Delete chat from {origin}",
+  "historyListItem_currentBadge": "current",
+  "historyListItem_messageCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} message",
+        "countPlural=other": "{count} messages"
+      }
+    }
+  ],
+  "historyListItem_toolCallCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} tool call",
+        "countPlural=other": "{count} tool calls"
+      }
+    }
+  ],
+  "providerPicker_noProviderLabel": "No provider — set up in options",
+  "providerPicker_providerRemovedLabel": "Provider removed — choose one",
+  "providerPicker_chooseModelLabel": "Choose a model",
+  "providerPicker_confirmLabel": "Confirm {label}",
+  "providerPicker_choosePopoverAriaLabel": "Choose a model",
+  "providerPicker_heading": "Choose your model",
+  "providerPicker_noProvidersMessage": "No providers are registered yet.",
+  "providerPicker_openOptionsAddOneAction": "Open options to add one",
+  "providerPicker_danglingMessage": "The provider this chat was using has been removed. Pick a replacement below — your conversation is kept.",
+  "providerPicker_checkingModels": "Checking models…",
+  "providerPicker_openOptionsCheckApiKeyAction": "Open options to check the API key",
+  "providerPicker_modelIdPlaceholder": "Model id, e.g. gpt-4o-mini",
+  "providerPicker_modelIdAriaLabel": "Model id for {provider}",
+  "providerPicker_checkAction": "Check",
+  "providerPicker_noModelsMessage": "This provider has no models installed yet.",
+  "providerPicker_pullModelHintPrefix": "Pull one to get started, e.g. ",
+  "providerPicker_pullModelHintSuffix": ".",
+  "providerPicker_unverifiedHeading": "Unverified",
+  "providerPicker_noToolSupportHeading": "No tool support",
+  "providerPicker_pullToolCapableHintPrefix": "Pull a tool-capable model to use it here, e.g. ",
+  "providerPicker_pullToolCapableHintSuffix": ".",
+  "providerPicker_noMatchMessage": "No models match \"{query}\".",
+  "providerPicker_refreshAction": "Refresh",
+  "providerPicker_manageProvidersAction": "Manage providers…",
+  "providerPicker_filterPlaceholder": "Filter models…",
+  "providerPicker_filterAriaLabel": "Filter models",
+  "selection_saveModelFailedWhat": "Couldn't save your model choice",
+  "mcpTools_permissionDeniedError": "This extension hasn't been granted permission to reach \"{name}\" ({url}) yet — grant it from the options page's MCP Servers section, then try again.",
+  "mcpTools_permissionRevokedError": "This extension no longer has permission to reach \"{name}\" ({url}) — grant it from the options page's MCP Servers section and try again.",
+  "mcpTools_serverErrorFallback": "The server reported an error for this call.",
+  "capabilityBadge_noTools": "No tools",
+  "capabilityBadge_unverified": "Unverified",
+  "capabilityBadge_toolCapable": "Tool-capable",
+  "markdown_copyButtonLabel": "Copy",
+  "markdown_codeLangFallback": "text",
+  "storageMessage_sentence": "{what} — {reason}.{suffix}",
+  "storageMessage_reasonUnavailable": "the browser's extension storage didn't accept it — it may be full, or the extension may have just been updated or reloaded",
+  "storageMessage_reasonNotFound": "the record it needed is no longer there",
+  "storageMessage_reasonConflict": "something else changed it at the same time",
+  "storageMessage_reasonCorrupt": "what's stored isn't in a shape this version of the extension understands",
+  "storageMessage_reasonUnexpected": "the browser's extension storage failed in a way the extension didn't expect",
+  "storageMessage_retrySuffix": " Try again in a moment."
 }

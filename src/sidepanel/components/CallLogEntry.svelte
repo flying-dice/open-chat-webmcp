@@ -37,6 +37,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     entry: ToolCallLogEntry;
@@ -56,13 +57,13 @@
   );
 
   const modeLabel: Record<ToolCallLogEntry["mode"], string> = {
-    auto: "auto-run",
-    approved: "approved",
-    denied: "denied",
+    auto: m.callLogEntry_modeAuto(),
+    approved: m.callLogEntry_modeApproved(),
+    denied: m.callLogEntry_modeDenied(),
   };
 
   const durationLabel = $derived.by(() => {
-    if (entry.endedAt === undefined) return "running…";
+    if (entry.endedAt === undefined) return m.runningLabel();
     return formatDuration(entry.endedAt - entry.startedAt);
   });
 
@@ -118,29 +119,35 @@
     </span>
 
     <Button type="button" variant="ghost" size="xs" onclick={copyAsJson}>
-      {copied ? "Copied" : "Copy JSON"}
+      {copied ? m.copiedLabel() : m.callLogEntry_copyJsonLabel()}
     </Button>
   </div>
 
   <Collapsible.Content>
     <div class="flex flex-col gap-2 border-t p-2">
       <div>
-        <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Arguments</h3>
+        <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+          >{m.argumentsHeading()}</h3
+        >
         <ToolArgs args={entry.arguments} />
       </div>
 
       {#if entry.error !== undefined}
         <div>
-          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Error</h3>
+          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+            >{m.errorHeading()}</h3
+          >
           <p class="m-0 text-sm break-words whitespace-pre-wrap text-destructive">{entry.error}</p>
         </div>
       {:else if entry.result !== undefined}
         <div>
-          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Result</h3>
+          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+            >{m.resultHeading()}</h3
+          >
           <ToolArgValue value={entry.result} />
         </div>
       {:else}
-        <p class="m-0 text-sm text-muted-foreground italic">Still running…</p>
+        <p class="m-0 text-sm text-muted-foreground italic">{m.callLogEntry_stillRunning()}</p>
       {/if}
     </div>
   </Collapsible.Content>

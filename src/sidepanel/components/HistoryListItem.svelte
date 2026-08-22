@@ -34,6 +34,7 @@
   import * as Tooltip from "$lib/components/ui/tooltip";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { BubbleChatIcon, Delete02Icon } from "@hugeicons/core-free-icons";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     summary: ChatSummary;
@@ -47,7 +48,7 @@
   let { summary, active, opening, deleting, onOpen, onDelete }: Props = $props();
 
   function formatOrigin(origin: string): string {
-    return origin || "(unknown origin)";
+    return origin || m.historyListItem_unknownOrigin();
   }
 
   function formatTime(ms: number): string {
@@ -60,7 +61,9 @@
   }
 
   const deleteLabel = $derived(
-    deleting ? "Deleting…" : `Delete chat from ${formatOrigin(summary.origin)}`,
+    deleting
+      ? m.historyListItem_deletingLabel()
+      : m.historyListItem_deleteLabel({ origin: formatOrigin(summary.origin) }),
   );
 </script>
 
@@ -84,15 +87,15 @@
       <ItemTitle class="w-full">
         <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary)}</span>
         {#if active}
-          <Badge variant="secondary" class="shrink-0">current</Badge>
+          <Badge variant="secondary" class="shrink-0">{m.historyListItem_currentBadge()}</Badge>
         {/if}
       </ItemTitle>
 
       <ItemDescription class="line-clamp-1">
         {formatOrigin(summary.origin)} · {formatTime(summary.updatedAt)} ·
-        {summary.messageCount} message{summary.messageCount === 1 ? "" : "s"}
+        {m.historyListItem_messageCount({ count: summary.messageCount })}
         {#if summary.toolCallCount > 0}
-          · {summary.toolCallCount} tool call{summary.toolCallCount === 1 ? "" : "s"}
+          · {m.historyListItem_toolCallCount({ count: summary.toolCallCount })}
         {/if}
       </ItemDescription>
     </ItemContent>

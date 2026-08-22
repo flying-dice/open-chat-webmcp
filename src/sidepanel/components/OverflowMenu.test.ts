@@ -18,6 +18,7 @@ import {
 import { fail, ok } from "../../domain/result";
 import type { ChatSummary } from "../../domain/chat";
 import type { ConnectionStatus } from "../stores/panel.svelte";
+import { m } from "../../paraglide/messages.js";
 
 function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
@@ -34,7 +35,7 @@ function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
 
 async function openMenu(): Promise<ReturnType<typeof userEvent.setup>> {
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "More options" }));
+  await user.click(screen.getByRole("button", { name: m.overflowMenu_moreOptionsLabel() }));
   return user;
 }
 
@@ -85,7 +86,7 @@ describe("OverflowMenu", () => {
     renderMenu();
     await openMenu();
 
-    expect(await screen.findByText("No chats yet.")).toBeInTheDocument();
+    expect(await screen.findByText(m.overflowMenu_noChatsMessage())).toBeInTheDocument();
   });
 
   it("only lists the first 5 chats, with a More row for the rest", async () => {
@@ -97,7 +98,7 @@ describe("OverflowMenu", () => {
     expect(await screen.findByText("chat 0")).toBeInTheDocument();
     expect(screen.getByText("chat 4")).toBeInTheDocument();
     expect(screen.queryByText("chat 5")).not.toBeInTheDocument();
-    expect(screen.getByText("More")).toBeInTheDocument();
+    expect(screen.getByText(m.overflowMenu_moreLabel())).toBeInTheDocument();
   });
 
   it("opens a recent chat and calls onOpenChat only when openChat succeeds", async () => {
@@ -154,7 +155,7 @@ describe("OverflowMenu", () => {
     });
     const user = await openMenu();
 
-    await user.click(await screen.findByText("More"));
+    await user.click(await screen.findByText(m.overflowMenu_moreLabel()));
     expect(onOpenHistory).toHaveBeenCalledTimes(1);
   });
 
@@ -170,7 +171,7 @@ describe("OverflowMenu", () => {
     });
     const user = await openMenu();
 
-    await user.click(await screen.findByText("Tools & call log"));
+    await user.click(await screen.findByText(m.overflowMenu_toolsCallLogLabel()));
     expect(onOpenTools).toHaveBeenCalledTimes(1);
   });
 
@@ -178,7 +179,7 @@ describe("OverflowMenu", () => {
     renderMenu();
     const user = await openMenu();
 
-    await user.click(await screen.findByText("Open options"));
+    await user.click(await screen.findByText(m.openOptionsAction()));
 
     expect(services.shell.openOptionsPage).toHaveBeenCalledTimes(1);
   });
@@ -187,14 +188,14 @@ describe("OverflowMenu", () => {
     renderMenu("error");
     await openMenu();
 
-    expect(await screen.findByText("Connection error")).toBeInTheDocument();
+    expect(await screen.findByText(m.connectionStatus_error())).toBeInTheDocument();
   });
 
   it("renders 'Connected' for connectionStatus 'connected'", async () => {
     renderMenu("connected");
     await openMenu();
 
-    expect(await screen.findByText("Connected")).toBeInTheDocument();
+    expect(await screen.findByText(m.connectionStatus_connected())).toBeInTheDocument();
   });
 
   // Card 92: `handleOpenChange` (OverflowMenu.svelte) gets a `Result` back
@@ -213,7 +214,7 @@ describe("OverflowMenu", () => {
     const user = userEvent.setup();
 
     renderMenu();
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByRole("button", { name: m.overflowMenu_moreOptionsLabel() }));
     expect(await screen.findByText("hello world")).toBeInTheDocument();
 
     // Close, then swap the fake to a failing read before opening again. As
@@ -226,13 +227,13 @@ describe("OverflowMenu", () => {
     const err = storageFailure();
     services.chats.listChatSummaries = async () => fail(err);
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByRole("button", { name: m.overflowMenu_moreOptionsLabel() }));
 
     // The recent list from the first, successful open is still showing —
     // the failed re-fetch did not blank it.
     expect(await screen.findByText("hello world")).toBeInTheDocument();
-    expect(screen.queryByText("No chats yet.")).not.toBeInTheDocument();
-    expect(await screen.findByText("Couldn't load your recent chats.")).toBeInTheDocument();
+    expect(screen.queryByText(m.overflowMenu_noChatsMessage())).not.toBeInTheDocument();
+    expect(await screen.findByText(m.overflowMenu_loadFailedMessage())).toBeInTheDocument();
   });
 
   // Card 95: an unreadable store and a chat that is simply gone are

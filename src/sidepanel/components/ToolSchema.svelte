@@ -13,6 +13,7 @@
    */
   import { readRecord, readStringArray } from "../presentation/untrustedJson";
   import SchemaProperty from "./SchemaProperty.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     schema: Record<string, unknown> | undefined;
@@ -26,9 +27,9 @@
 </script>
 
 {#if !schema}
-  <p class="m-0 text-sm text-muted-foreground italic">This tool has no declared input schema.</p>
+  <p class="m-0 text-sm text-muted-foreground italic">{m.toolSchema_noSchema()}</p>
 {:else if entries.length === 0}
-  <p class="m-0 text-sm text-muted-foreground italic">Takes no parameters.</p>
+  <p class="m-0 text-sm text-muted-foreground italic">{m.toolSchema_noParameters()}</p>
 {:else}
   <div class="flex min-w-0 flex-col gap-2">
     {#each entries as [name, node] (name)}

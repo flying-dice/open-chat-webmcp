@@ -15,8 +15,9 @@
 // as an injected `originLabel`, since the wording is the UI's to own.
 
 import type { ToolOrigin } from "../../domain/tools";
+import { m } from "../../paraglide/messages.js";
 
 /** Short label for `origin`, safe to render anywhere a tool is named — "this page" or the server's own display name. Never abbreviates or hides the server name: decisions/19 §6 is a correctness requirement, not decoration. */
 export function originLabel(origin: ToolOrigin): string {
-  return origin.kind === "page" ? "this page" : origin.serverName;
+  return origin.kind === "page" ? m.thisPageLabel() : origin.serverName;
 }

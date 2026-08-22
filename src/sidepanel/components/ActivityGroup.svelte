@@ -36,6 +36,7 @@
   import Icon from "./Icon.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { cn } from "$lib/utils";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     steps: TranscriptEntry[];
@@ -64,12 +65,16 @@
    * part of the collapsed row itself, not only visible once expanded.
    */
   const summaryText = $derived.by((): string => {
-    const parts = [summary.countLabel];
+    const parts: string[] = [m.activityGroup_stepCount({ count: summary.stepCount })];
     if (summary.namesLabel) parts.push(summary.namesLabel);
-    if (summary.serverNames.length > 0) parts.push(`via ${summary.serverNames.join(", ")}`);
-    if (summary.errorCount > 0) parts.push(`${summary.errorCount} failed`);
-    if (summary.deniedCount > 0) parts.push(`${summary.deniedCount} denied`);
-    if (summary.approvedCount > 0) parts.push(`${summary.approvedCount} approved`);
+    if (summary.serverNames.length > 0)
+      parts.push(m.activityGroup_viaServers({ servers: summary.serverNames.join(", ") }));
+    if (summary.errorCount > 0)
+      parts.push(m.activityGroup_failedCount({ count: summary.errorCount }));
+    if (summary.deniedCount > 0)
+      parts.push(m.activityGroup_deniedCount({ count: summary.deniedCount }));
+    if (summary.approvedCount > 0)
+      parts.push(m.activityGroup_approvedCount({ count: summary.approvedCount }));
     return parts.join(" · ");
   });
 </script>

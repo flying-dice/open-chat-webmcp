@@ -21,6 +21,7 @@
   import CallLogPanel from "./CallLogPanel.svelte";
   import * as Tabs from "$lib/components/ui/tabs";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     tools: SerializedTool[];
@@ -47,12 +48,14 @@
     class="flex min-h-0 flex-1 flex-col gap-0"
   >
     <div class="px-3 pb-2">
-      <Tabs.List aria-label="Inspector section" class="w-full">
+      <Tabs.List aria-label={m.inspector_sectionAriaLabel()} class="w-full">
         <Tabs.Trigger value="tools" class="flex-1">
-          Tools{totalTools > 0 ? ` (${totalTools})` : ""}
+          {totalTools > 0 ? m.inspector_toolsTabCount({ count: totalTools }) : m.inspector_toolsTab()}
         </Tabs.Trigger>
         <Tabs.Trigger value="log" class="flex-1">
-          Call Log{toolCalls.length > 0 ? ` (${toolCalls.length})` : ""}
+          {toolCalls.length > 0
+            ? m.inspector_callLogTabCount({ count: toolCalls.length })
+            : m.inspector_callLogTab()}
         </Tabs.Trigger>
       </Tabs.List>
     </div>

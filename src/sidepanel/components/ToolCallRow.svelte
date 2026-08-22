@@ -49,6 +49,7 @@
   import ToolArgs from "./ToolArgs.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Badge } from "$lib/components/ui/badge";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     message: TranscriptEntry;
@@ -119,14 +120,15 @@
     // Unfinished: only say anything while this group is still live — once
     // it isn't, the stalled dot + "no result recorded" badge already carry
     // that fact, and a duration counting up forever would be misleading.
-    return live ? "running…" : undefined;
+    return live ? m.runningLabel() : undefined;
   });
 
   const metaLabel = $derived.by((): string | undefined => {
-    if (displayStatus === "stalled") return "no result recorded";
-    if (message.toolMode === "auto") return readOnly ? "auto · read-only" : "auto-run";
-    if (message.toolMode === "approved") return "approved";
-    if (message.toolMode === "denied") return "denied";
+    if (displayStatus === "stalled") return m.toolCallRow_noResultRecorded();
+    if (message.toolMode === "auto")
+      return readOnly ? m.toolCallRow_autoReadOnly() : m.callLogEntry_modeAuto();
+    if (message.toolMode === "approved") return m.callLogEntry_modeApproved();
+    if (message.toolMode === "denied") return m.callLogEntry_modeDenied();
     return undefined;
   });
 
@@ -171,7 +173,7 @@
       {#if message.toolOrigin === undefined}
         <!-- A hallucinated tool name — never defaulted to "this page". -->
         <Badge variant="outline" class="flex-none border-dashed text-muted-foreground"
-          >origin unknown</Badge
+          >{m.toolCallRow_originUnknownBadge()}</Badge
         >
       {:else if isServerTool}
         <!-- Decisions/19 §6 — same tinted-primary badge treatment as
@@ -181,7 +183,7 @@
           >{originLabel(message.toolOrigin)}</Badge
         >
       {:else}
-        <span class="flex-none text-xs whitespace-nowrap text-muted-foreground">this page</span>
+        <span class="flex-none text-xs whitespace-nowrap text-muted-foreground">{m.thisPageLabel()}</span>
       {/if}
 
       {#if durationLabel}
@@ -204,14 +206,15 @@
                this reuses `destructive`, the only attention colour
                available, purely to catch the eye; it does not imply the
                call itself is dangerous to make. -->
-          <Badge variant="outline" class="border-destructive text-destructive">untrusted content</Badge>
+          <Badge variant="outline" class="border-destructive text-destructive"
+            >{m.annotationBadges_untrustedContent()}</Badge
+          >
         {/if}
         {#if metaLabel}
           <Badge
             variant="outline"
-            title={displayStatus === "stalled"
-              ? "The side panel closed, or the turn ended, before this call reported back — it may still have run on the other end."
-              : undefined}>{metaLabel}</Badge
+            title={displayStatus === "stalled" ? m.toolCallRow_stalledTooltip() : undefined}
+            >{metaLabel}</Badge
           >
         {/if}
       </div>
@@ -226,24 +229,24 @@
     <Collapsible.Content>
       <div class="mt-1 flex flex-col gap-2 rounded-lg bg-muted p-2">
         <div>
-          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Arguments</h3>
+          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+            >{m.argumentsHeading()}</h3
+          >
           <ToolArgs args={message.toolArgs} />
         </div>
 
         {#if message.toolMcpAnnotations?.title}
           <p class="m-0 text-xs text-muted-foreground italic [overflow-wrap:anywhere]">
-            The server calls this: "{message.toolMcpAnnotations.title}"
+            {m.toolCallRow_serverCallsThis({ title: message.toolMcpAnnotations.title })}
           </p>
         {/if}
 
         {#if message.content}
           <div>
             <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {resultIsError ? "Error" : "Result"}
+              {resultIsError ? m.errorHeading() : m.resultHeading()}
               {#if untrustedContent && displayStatus === "success"}
-                <span class="font-normal text-destructive"
-                  >— page-authored, treated as untrusted data</span
-                >
+                <span class="font-normal text-destructive">{m.toolCallRow_untrustedDataSuffix()}</span>
               {/if}
             </h3>
             <!-- Marks the exact block of text that came back from an

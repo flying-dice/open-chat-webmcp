@@ -20,6 +20,7 @@
    */
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     /** The conversation title, or the name of the view currently open. */
@@ -99,7 +100,7 @@
         bind:value={draft}
         class="block w-full min-w-0 rounded-md border border-input bg-background px-1 py-px font-sans text-sm text-foreground"
         type="text"
-        aria-label="Chat name"
+        aria-label={m.header_chatNameAriaLabel()}
         maxlength="120"
         onkeydown={handleKeydown}
         onblur={commit}
@@ -110,7 +111,7 @@
         class="block w-full min-w-0 truncate rounded-md border border-transparent px-1 py-px text-left hover:bg-accent hover:text-accent-foreground"
         onclick={startEditing}
         title={title}
-        aria-label={`${title} (click to rename)`}
+        aria-label={m.header_renameAriaLabel({ title })}
       >
         {title}
       </button>
@@ -123,7 +124,7 @@
     {#if onNewChat}
       <IconButton
         icon="edit_square"
-        label="New chat"
+        label={m.header_newChatLabel()}
         size="compact"
         onclick={onNewChat}
         disabled={newChatDisabled}

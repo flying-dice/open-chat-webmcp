@@ -19,6 +19,7 @@
   import IconButton from "./IconButton.svelte";
   import Tooltip from "./Tooltip.svelte";
   import Icon from "./Icon.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     /** The raw markdown of the reply this row belongs to. */
@@ -61,16 +62,16 @@
          its tooltip changes with it so a screen reader hears it too. Sized
          to match IconButton's compact geometry (size-8 = 32px) so the row
          doesn't jump when the copy button swaps to this. -->
-    <Tooltip label="Copied">
+    <Tooltip label={m.copiedLabel()}>
       <span role="status" class="inline-flex size-8 items-center justify-center text-primary">
         <Icon name="check" class="size-4" />
       </span>
     </Tooltip>
   {:else}
-    <IconButton icon="content_copy" label="Copy response" size="compact" onclick={copy} />
+    <IconButton icon="content_copy" label={m.messageActions_copyResponseLabel()} size="compact" onclick={copy} />
   {/if}
 
   {#if onRegenerate}
-    <IconButton icon="refresh" label="Regenerate" size="compact" onclick={onRegenerate} />
+    <IconButton icon="refresh" label={m.messageActions_regenerateLabel()} size="compact" onclick={onRegenerate} />
   {/if}
 </div>

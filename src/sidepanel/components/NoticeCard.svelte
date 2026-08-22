@@ -24,6 +24,7 @@
   import type { Snippet } from "svelte";
   import IconButton from "./IconButton.svelte";
   import * as Alert from "$lib/components/ui/alert";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     children: Snippet;
@@ -48,7 +49,12 @@
     variant?: "notice" | "failure";
   }
 
-  const { children, onDismiss, dismissLabel = "Dismiss", variant = "notice" }: Props = $props();
+  const {
+    children,
+    onDismiss,
+    dismissLabel = m.noticeCard_dismissDefaultLabel(),
+    variant = "notice",
+  }: Props = $props();
 </script>
 
 <!-- `Alert.Root` sets `role="alert"` itself, for every variant. -->

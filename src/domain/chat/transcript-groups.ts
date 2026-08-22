@@ -86,8 +86,14 @@ export function groupTranscript(messages: readonly TranscriptEntry[]): Transcrip
  * what the tools did (decisions/26: "no verb dictionary").
  */
 export interface ActivitySummary {
-  /** e.g. "3 tool calls" / "1 tool call" — always a count, never a summary of what happened. */
-  countLabel: string;
+  /**
+   * The number of steps in this group — always a count, never a summary of
+   * what happened. Card 101 moved the pluralised wording ("3 tool calls" /
+   * "1 tool call") UI-side (src/sidepanel/components/ActivityGroup.svelte,
+   * via a Paraglide plural message): the domain layer cannot pluralise
+   * per-locale, so it has no business producing the sentence, only the fact.
+   */
+  stepCount: number;
   /** Up to 2 distinct tool names, joined, then "+N" for the rest; "" if there are no steps. */
   namesLabel: string;
   /** Distinct server display names touched by any step in this group (decisions/19 §6 — a collapsed group must never hide that a remote server was called). */
@@ -122,7 +128,7 @@ export function summariseActivity(steps: readonly TranscriptEntry[]): ActivitySu
         : `${distinctNames.slice(0, 2).join(", ")} +${distinctNames.length - 2}`;
 
   return {
-    countLabel: `${steps.length} tool ${steps.length === 1 ? "call" : "calls"}`,
+    stepCount: steps.length,
     namesLabel,
     serverNames: [...serverNameSet],
     errorCount,

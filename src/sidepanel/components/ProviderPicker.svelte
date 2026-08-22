@@ -72,6 +72,7 @@
   } from "../../domain/providers";
   import { capabilityBadge } from "../presentation/capabilityBadge";
   import type { ProviderConfig } from "../../domain/providers";
+  import { m } from "../../paraglide/messages.js";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
@@ -143,17 +144,21 @@
   const triggerInfo = $derived.by(
     (): { label: string; variant: "normal" | "muted" | "warning" } => {
       if (selection.providersStatus === "loading")
-        return { label: "Loading providers…", variant: "muted" };
+        return { label: m.loadingProvidersLabel(), variant: "muted" };
       if (selection.providers.length === 0)
-        return { label: "No provider — set up in options", variant: "warning" };
+        return { label: m.providerPicker_noProviderLabel(), variant: "warning" };
       const r = selection.resolution;
       if (r.status === "dangling")
-        return { label: "Provider removed — choose one", variant: "warning" };
-      if (r.status === "none") return { label: "Choose a model", variant: "muted" };
+        return { label: m.providerPicker_providerRemovedLabel(), variant: "warning" };
+      if (r.status === "none")
+        return { label: m.providerPicker_chooseModelLabel(), variant: "muted" };
       // Card 35: still needs a one-click confirmation before it can send —
       // flag that on the trigger chip too, not just in the composer.
       if (selection.needsConfirmation) {
-        return { label: `Confirm ${r.config.name} · ${r.model}`, variant: "warning" };
+        return {
+          label: m.providerPicker_confirmLabel({ label: `${r.config.name} · ${r.model}` }),
+          variant: "warning",
+        };
       }
       return { label: `${r.config.name} · ${r.model}`, variant: "normal" };
     },
@@ -379,25 +384,24 @@
       side="top"
       align="end"
       sideOffset={8}
-      aria-label="Choose a model"
+      aria-label={m.providerPicker_choosePopoverAriaLabel()}
       class="flex max-h-[60vh] w-80 max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-hidden"
       onOpenAutoFocus={handleOpenAutoFocus}
     >
-      <p class="px-1 text-base font-medium tracking-tight text-foreground">Choose your model</p>
+      <p class="px-1 text-base font-medium tracking-tight text-foreground">{m.providerPicker_heading()}</p>
       {#if selection.providersStatus === "loading"}
-        <p class="px-1 text-sm text-muted-foreground">Loading providers…</p>
+        <p class="px-1 text-sm text-muted-foreground">{m.loadingProvidersLabel()}</p>
       {:else if selection.providers.length === 0}
         <div class="flex flex-col items-start gap-2 px-1">
-          <p class="text-sm text-muted-foreground">No providers are registered yet.</p>
+          <p class="text-sm text-muted-foreground">{m.providerPicker_noProvidersMessage()}</p>
           <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
-            Open options to add one
+            {m.providerPicker_openOptionsAddOneAction()}
           </Button>
         </div>
       {:else}
         {#if selection.resolution.status === "dangling"}
           <p class="rounded-xl border border-destructive px-2 py-2 text-sm text-destructive">
-            The provider this chat was using has been removed. Pick a replacement below —
-            your conversation is kept.
+            {m.providerPicker_danglingMessage()}
           </p>
         {/if}
 
@@ -406,8 +410,8 @@
             <Command.Input
               bind:value={filterQuery}
               bind:ref={filterInputEl}
-              placeholder="Filter models…"
-              aria-label="Filter models"
+              placeholder={m.providerPicker_filterPlaceholder()}
+              aria-label={m.providerPicker_filterAriaLabel()}
               class="p-0"
             />
           {/if}
@@ -429,7 +433,7 @@
                 {/if}
 
                 {#if !group.state || group.state.status === "loading"}
-                  <p class="px-2 text-sm text-muted-foreground">Checking models…</p>
+                  <p class="px-2 text-sm text-muted-foreground">{m.providerPicker_checkingModels()}</p>
                 {:else if group.state.status === "error"}
                   <p class="rounded-xl border border-destructive px-2 py-2 text-sm text-destructive">
                     {group.state.message}
@@ -440,7 +444,7 @@
                     <Markdown source={fenceOf(fix.command)} />
                   {:else if group.state.error.kind === "auth"}
                     <Button type="button" variant="link" size="sm" class="h-auto px-2" onclick={openOptionsPage}>
-                      Open options to check the API key
+                      {m.providerPicker_openOptionsCheckApiKeyAction()}
                     </Button>
                   {/if}
                   <Button
@@ -450,21 +454,21 @@
                     class="h-auto self-start px-2"
                     onclick={() => reloadModels(group.provider.id)}
                   >
-                    Retry
+                    {m.retryAction()}
                   </Button>
                 {:else if group.state.status === "not-supported"}
                   <p class="px-2 text-sm text-muted-foreground">{group.state.message}</p>
                   <form class="flex gap-1 px-2" onsubmit={(e) => handleManualSubmit(group.provider.id, e)}>
                     <Input
                       type="text"
-                      placeholder="Model id, e.g. gpt-4o-mini"
-                      aria-label={`Model id for ${group.provider.name}`}
+                      placeholder={m.providerPicker_modelIdPlaceholder()}
+                      aria-label={m.providerPicker_modelIdAriaLabel({ provider: group.provider.name })}
                       class="min-w-0 flex-1 text-sm"
                       value={manualModelInputs[group.provider.id] ?? ""}
                       oninput={(e) =>
                         (manualModelInputs[group.provider.id] = (e.currentTarget as HTMLInputElement).value)}
                     />
-                    <Button type="submit" variant="secondary" size="sm">Check</Button>
+                    <Button type="submit" variant="secondary" size="sm">{m.providerPicker_checkAction()}</Button>
                   </form>
                   {#if group.state.manualEntry && !isSelectable(group.state.manualEntry.capability)}
                     <!-- A SELECTABLE manual entry already rendered above, in
@@ -475,9 +479,11 @@
                   {/if}
                 {:else if group.state.status === "loaded" && group.state.entries.length === 0}
                   <p class="px-2 text-sm text-muted-foreground">
-                    This provider has no models installed yet.
+                    {m.providerPicker_noModelsMessage()}
                     {#if group.provider.type === "ollama"}
-                      Pull one to get started, e.g. <code>ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code>.
+                      {m.providerPicker_pullModelHintPrefix()}<code
+                        >ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code
+                      >{m.providerPicker_pullModelHintSuffix()}
                     {/if}
                   </p>
                   {#if group.provider.type === "ollama"}
@@ -490,14 +496,18 @@
                     class="h-auto self-start px-2"
                     onclick={() => reloadModels(group.provider.id)}
                   >
-                    Retry
+                    {m.retryAction()}
                   </Button>
                 {/if}
               </Command.Group>
             {/each}
 
             {#if unverifiedRows.length > 0}
-              <Command.Group value="unverified" heading="Unverified" class="flex flex-col gap-1 p-0">
+              <Command.Group
+                value="unverified"
+                heading={m.providerPicker_unverifiedHeading()}
+                class="flex flex-col gap-1 p-0"
+              >
                 {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
                   {@render modelRow(row, true)}
                 {/each}
@@ -505,11 +515,16 @@
             {/if}
 
             {#if noToolsRows.length > 0}
-              <Command.Group value="no-tools" heading="No tool support" class="flex flex-col gap-1 p-0">
+              <Command.Group
+                value="no-tools"
+                heading={m.providerPicker_noToolSupportHeading()}
+                class="flex flex-col gap-1 p-0"
+              >
                 {#if noToolsHasOllama}
                   <p class="px-2 text-sm text-muted-foreground">
-                    Pull a tool-capable model to use it here, e.g.
-                    <code>ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code>.
+                    {m.providerPicker_pullToolCapableHintPrefix()}<code
+                      >ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code
+                    >{m.providerPicker_pullToolCapableHintSuffix()}
                   </p>
                 {/if}
                 {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
@@ -519,7 +534,9 @@
             {/if}
 
             {#if visibleGroups.length === 0 && unverifiedRows.length === 0 && noToolsRows.length === 0}
-              <p class="px-2 py-4 text-sm text-muted-foreground">No models match "{filterQuery}".</p>
+              <p class="px-2 py-4 text-sm text-muted-foreground"
+                >{m.providerPicker_noMatchMessage({ query: filterQuery })}</p
+              >
             {/if}
           </Command.List>
         </Command.Root>
@@ -530,9 +547,11 @@
         <Separator />
 
         <div class="flex justify-between gap-2 pt-2">
-          <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={refresh}>Refresh</Button>
+          <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={refresh}
+            >{m.providerPicker_refreshAction()}</Button
+          >
           <Button type="button" variant="link" size="sm" class="h-auto px-0" onclick={openOptionsPage}>
-            Manage providers…
+            {m.providerPicker_manageProvidersAction()}
           </Button>
         </div>
       {/if}

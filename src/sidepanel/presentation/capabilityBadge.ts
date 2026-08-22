@@ -14,15 +14,16 @@
 // once private to ProviderPicker.svelte.
 
 import type { ToolCapabilityStatus } from "../../domain/providers";
+import { m } from "../../paraglide/messages.js";
 
 /** Compact badge (icon glyph + label) for a capability status — shared verbatim so no surface built on this drifts on wording. */
 export function capabilityBadge(status: ToolCapabilityStatus): { icon: string; label: string } {
   switch (status) {
     case "no-tools":
-      return { icon: "⊘", label: "No tools" };
+      return { icon: "⊘", label: m.capabilityBadge_noTools() };
     case "unknown":
-      return { icon: "?", label: "Unverified" };
+      return { icon: "?", label: m.capabilityBadge_unverified() };
     case "tool-capable":
-      return { icon: "✓", label: "Tool-capable" };
+      return { icon: "✓", label: m.capabilityBadge_toolCapable() };
   }
 }

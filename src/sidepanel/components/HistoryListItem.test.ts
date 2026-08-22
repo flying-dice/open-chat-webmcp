@@ -18,6 +18,7 @@ import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import HistoryListItem from "./HistoryListItem.svelte";
 import type { ChatSummary } from "../../domain/chat";
+import { m } from "../../paraglide/messages.js";
 
 function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
@@ -47,8 +48,12 @@ describe("HistoryListItem", () => {
 
     expect(screen.getByText("hello there")).toBeInTheDocument();
     expect(screen.getByText(/example\.com/)).toBeInTheDocument();
-    expect(screen.getByText(/3 messages/)).toBeInTheDocument();
-    expect(screen.getByText(/1 tool call/)).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(m.historyListItem_messageCount({ count: 3 }))),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(m.historyListItem_toolCallCount({ count: 1 }))),
+    ).toBeInTheDocument();
   });
 
   it("calls onOpen when the row body is clicked", async () => {
@@ -85,7 +90,9 @@ describe("HistoryListItem", () => {
     });
 
     await user.click(
-      screen.getByRole("button", { name: /Delete chat from https:\/\/example\.com/ }),
+      screen.getByRole("button", {
+        name: m.historyListItem_deleteLabel({ origin: "https://example.com" }),
+      }),
     );
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onOpen).not.toHaveBeenCalled();
@@ -102,7 +109,7 @@ describe("HistoryListItem", () => {
         onDelete: vi.fn(),
       },
     });
-    expect(screen.getByText("current")).toBeInTheDocument();
+    expect(screen.getByText(m.historyListItem_currentBadge())).toBeInTheDocument();
     unmount();
 
     render(HistoryListItem, {
@@ -115,7 +122,7 @@ describe("HistoryListItem", () => {
         onDelete: vi.fn(),
       },
     });
-    expect(screen.queryByText("current")).not.toBeInTheDocument();
+    expect(screen.queryByText(m.historyListItem_currentBadge())).not.toBeInTheDocument();
   });
 
   it("disables the row and delete button while opening or deleting", () => {
@@ -131,7 +138,9 @@ describe("HistoryListItem", () => {
     });
     expect(screen.getByRole("button", { name: /hello there/ })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /Delete chat from https:\/\/example\.com/ }),
+      screen.getByRole("button", {
+        name: m.historyListItem_deleteLabel({ origin: "https://example.com" }),
+      }),
     ).toBeDisabled();
     unmount();
 
@@ -146,6 +155,6 @@ describe("HistoryListItem", () => {
       },
     });
     expect(screen.getByRole("button", { name: /hello there/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Deleting…/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: m.historyListItem_deletingLabel() })).toBeDisabled();
   });
 });

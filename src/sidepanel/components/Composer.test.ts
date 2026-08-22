@@ -63,6 +63,7 @@ vi.mock("../stores/selection.svelte", () => ({
 import "../../ui/testing/resize-observer";
 import Composer from "./Composer.svelte";
 import { openPicker, openOptionsPage } from "../stores/selection.svelte";
+import { m } from "../../paraglide/messages.js";
 
 function resetToBaseline(): void {
   state.providersStatus = "loaded";
@@ -98,7 +99,7 @@ describe("Composer", () => {
       const onSend = vi.fn();
       render(Composer, { busy: false, onSend, onStop: vi.fn() });
 
-      const textbox = screen.getByRole("textbox", { name: "Message" });
+      const textbox = screen.getByRole("textbox", { name: m.composer_messageAriaLabel() });
       await user.type(textbox, "  hello there  {Enter}");
 
       expect(onSend).toHaveBeenCalledTimes(1);
@@ -111,7 +112,7 @@ describe("Composer", () => {
       const onSend = vi.fn();
       render(Composer, { busy: false, onSend, onStop: vi.fn() });
 
-      const textbox = screen.getByRole("textbox", { name: "Message" });
+      const textbox = screen.getByRole("textbox", { name: m.composer_messageAriaLabel() });
       await user.type(textbox, "line1{Shift>}{Enter}{/Shift}line2");
 
       expect(onSend).not.toHaveBeenCalled();
@@ -125,7 +126,7 @@ describe("Composer", () => {
       const onSend = vi.fn();
       render(Composer, { busy: false, onSend, onStop: vi.fn() });
 
-      const textbox = screen.getByRole("textbox", { name: "Message" });
+      const textbox = screen.getByRole("textbox", { name: m.composer_messageAriaLabel() });
       // user-event doesn't model isComposing well, so this one case uses
       // fireEvent.keyDown directly rather than userEvent.type/keyboard.
       await fireEvent.keyDown(textbox, { key: "Enter", isComposing: true });
@@ -135,17 +136,17 @@ describe("Composer", () => {
 
     it("keeps Send disabled with an empty textarea", () => {
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
-      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: m.composer_sendLabel() })).toBeDisabled();
     });
 
     it("keeps Send disabled when the textarea holds only whitespace", async () => {
       const user = userEvent.setup();
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
-      const textbox = screen.getByRole("textbox", { name: "Message" });
+      const textbox = screen.getByRole("textbox", { name: m.composer_messageAriaLabel() });
       await user.type(textbox, "   ");
 
-      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: m.composer_sendLabel() })).toBeDisabled();
     });
 
     it("never sends on Enter when the textarea is empty or whitespace-only", async () => {
@@ -153,7 +154,7 @@ describe("Composer", () => {
       const onSend = vi.fn();
       render(Composer, { busy: false, onSend, onStop: vi.fn() });
 
-      const textbox = screen.getByRole("textbox", { name: "Message" });
+      const textbox = screen.getByRole("textbox", { name: m.composer_messageAriaLabel() });
       await user.type(textbox, "{Enter}");
       await user.type(textbox, "   {Enter}");
 
@@ -164,8 +165,10 @@ describe("Composer", () => {
   describe("send/stop swap by turn state", () => {
     it("renders a Send button when not busy", () => {
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
-      expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Stop generating" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: m.composer_sendLabel() })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: m.composer_stopLabel() }),
+      ).not.toBeInTheDocument();
     });
 
     it("renders a disabled Stop generating button when busy, calling onStop, and disables the textarea", async () => {
@@ -174,13 +177,13 @@ describe("Composer", () => {
       render(Composer, { busy: true, onSend: vi.fn(), onStop });
 
       expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
-      const stopButton = screen.getByRole("button", { name: "Stop generating" });
+      const stopButton = screen.getByRole("button", { name: m.composer_stopLabel() });
       expect(stopButton).toBeInTheDocument();
 
       await user.click(stopButton);
       expect(onStop).toHaveBeenCalledTimes(1);
 
-      expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
+      expect(screen.getByRole("textbox", { name: m.composer_messageAriaLabel() })).toBeDisabled();
     });
   });
 
@@ -189,7 +192,7 @@ describe("Composer", () => {
       state.providersStatus = "loading";
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
-      expect(screen.getByText("Loading providers…")).toBeInTheDocument();
+      expect(screen.getByText(m.loadingProvidersLabel())).toBeInTheDocument();
       expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
     });
 
@@ -198,8 +201,8 @@ describe("Composer", () => {
       state.providersStatus = "error";
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
-      expect(screen.getByText("Couldn't load your providers.")).toBeInTheDocument();
-      const button = screen.getByRole("button", { name: "Open options" });
+      expect(screen.getByText(m.composer_providersError())).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: m.openOptionsAction() });
       await user.click(button);
       expect(openOptionsPage).toHaveBeenCalledTimes(1);
     });
@@ -210,12 +213,8 @@ describe("Composer", () => {
       state.providers = [];
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
-      expect(
-        screen.getByText(
-          "No provider is registered yet — add one on the options page to start chatting.",
-        ),
-      ).toBeInTheDocument();
-      const button = screen.getByRole("button", { name: "Open options to add a provider" });
+      expect(screen.getByText(m.composer_noProvidersMessage())).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: m.openOptionsAddProviderAction() });
       await user.click(button);
       expect(openOptionsPage).toHaveBeenCalledTimes(1);
     });
@@ -225,10 +224,8 @@ describe("Composer", () => {
       state.resolution = { status: "none" };
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
-      expect(
-        screen.getByText("Choose a provider and model before sending your first message."),
-      ).toBeInTheDocument();
-      const button = screen.getByRole("button", { name: "Choose provider & model" });
+      expect(screen.getByText(m.composer_unselectedMessage())).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: m.composer_chooseProviderModelAction() });
       await user.click(button);
       expect(openPicker).toHaveBeenCalledTimes(1);
     });
@@ -241,12 +238,8 @@ describe("Composer", () => {
       // getByText's default matcher normalizes whitespace, so the source's
       // multi-line template text (indentation and all) matches this plain
       // single-line string with no custom matcher needed.
-      expect(
-        screen.getByText(
-          "The provider this chat was using has been removed. Choose a replacement to continue — your conversation is kept.",
-        ),
-      ).toBeInTheDocument();
-      const button = screen.getByRole("button", { name: "Choose provider & model" });
+      expect(screen.getByText(m.composer_danglingProviderMessage())).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: m.composer_chooseProviderModelAction() });
       await user.click(button);
       expect(openPicker).toHaveBeenCalledTimes(1);
     });
@@ -268,11 +261,10 @@ describe("Composer", () => {
       // scoped to `selector: "p"` so the ancestor <div>/<form>, whose
       // recursive textContent is identical since the <p> is their only
       // child, don't also match and trip a multiple-elements error.
+      const expected = `${m.composer_needsConfirmationPrefix()}Local · llama3.1${m.composer_needsConfirmationSuffix()}`;
       expect(
         screen.getByText(
-          (_, element) =>
-            element?.textContent?.replace(/\s+/g, " ").trim() ===
-            "This chat will use Local · llama3.1 — confirm it below to start.",
+          (_, element) => element?.textContent?.replace(/\s+/g, " ").trim() === expected,
           { selector: "p" },
         ),
       ).toBeInTheDocument();
@@ -281,17 +273,19 @@ describe("Composer", () => {
     it("renders the normal textarea + Send button in the not-blocked baseline", () => {
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
-      expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
-      expect(screen.queryByText("Loading providers…")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("textbox", { name: m.composer_messageAriaLabel() }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: m.composer_sendLabel() })).toBeInTheDocument();
+      expect(screen.queryByText(m.loadingProvidersLabel())).not.toBeInTheDocument();
     });
 
     it("never blocks mid-turn, even when the selection state would otherwise block", () => {
       state.providersStatus = "error";
       render(Composer, { busy: true, onSend: vi.fn(), onStop: vi.fn() });
 
-      expect(screen.queryByText("Couldn't load your providers.")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Stop generating" })).toBeInTheDocument();
+      expect(screen.queryByText(m.composer_providersError())).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: m.composer_stopLabel() })).toBeInTheDocument();
     });
   });
 });

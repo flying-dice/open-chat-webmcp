@@ -27,6 +27,7 @@
   import type { TurnPhase } from "../../domain/chat";
   import type { IconName } from "../../ui/icons";
   import { formatDuration } from "../presentation/duration";
+  import { m } from "../../paraglide/messages.js";
 
   /**
    * Narrowed to the two phases this component ever renders — Transcript.svelte's
@@ -47,11 +48,14 @@
   let { phase, modelLabel, modelIcon }: Props = $props();
 
   const sentence = $derived.by((): string => {
-    if (phase.kind === "waiting") return `Waiting for ${modelLabel ?? "the model"}…`;
+    if (phase.kind === "waiting")
+      return m.activityIndicator_waitingFor({
+        model: modelLabel ?? m.activityIndicator_waitingForModelFallback(),
+      });
     // phase.kind === "calling"
     return phase.origin
-      ? `Calling ${phase.toolName} on ${originLabel(phase.origin)}…`
-      : `Calling ${phase.toolName}…`;
+      ? m.activityIndicator_callingOn({ tool: phase.toolName, origin: originLabel(phase.origin) })
+      : m.activityIndicator_calling({ tool: phase.toolName });
   });
 
   const startedAt = $derived(phase.kind === "calling" ? phase.startedAt : undefined);

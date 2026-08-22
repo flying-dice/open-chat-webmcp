@@ -17,6 +17,7 @@
    */
   import type { ToolCallLogEntry } from "../../domain/chat";
   import CallLogEntry from "./CallLogEntry.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     toolCalls: ToolCallLogEntry[];
@@ -30,9 +31,7 @@
 <div class="min-w-0">
   {#if toolCalls.length === 0}
     <p class="m-0 text-sm text-muted-foreground">
-      No tool calls yet in this conversation. Calls the model makes on this
-      page's tools will show up here as they happen — including any that get
-      denied.
+      {m.callLogPanel_emptyMessage()}
     </p>
   {:else}
     <ul class="m-0 flex min-w-0 list-none flex-col gap-2 p-0">

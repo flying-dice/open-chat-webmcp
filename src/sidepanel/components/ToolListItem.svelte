@@ -41,6 +41,7 @@
   import * as Card from "$lib/components/ui/card";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Badge } from "$lib/components/ui/badge";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     tool: Pick<SerializedTool, "name" | "description" | "inputSchema"> & {
@@ -82,7 +83,7 @@
           class:rotate-90={expanded}
           aria-hidden="true">▸</span
         >
-        Input schema
+        {m.toolListItem_inputSchemaLabel()}
       </Collapsible.Trigger>
 
       <Collapsible.Content class="mt-2 min-w-0 rounded-lg bg-muted/50 p-2">

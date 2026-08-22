@@ -26,6 +26,7 @@
     readStringArray,
   } from "../presentation/untrustedJson";
   import Self from "./SchemaProperty.svelte";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     name: string;
@@ -48,10 +49,10 @@
   const itemRequiredList = $derived(readStringArray(itemsRecord, "required"));
 
   const typeLabel = $derived.by(() => {
-    if (!type) return "any";
+    if (!type) return m.schemaProperty_anyType();
     if (type === "array") {
       const itemType = readString(itemsRecord, "type");
-      return itemType ? `array<${itemType}>` : "array";
+      return itemType ? m.schemaProperty_arrayOfType({ itemType }) : m.schemaProperty_arrayType();
     }
     return type;
   });
@@ -61,14 +62,17 @@
   <div class="flex min-w-0 flex-wrap items-baseline gap-1">
     <span class="font-mono text-code font-semibold break-all">{name}</span>
     <span class="font-mono text-xs text-muted-foreground">{typeLabel}</span>
-    {#if required}<span class="text-xs font-medium text-destructive">required</span>{/if}
+    {#if required}<span class="text-xs font-medium text-destructive">{m.schemaProperty_requiredLabel()}</span
+      >{/if}
   </div>
 
   {#if description}<p class="mt-0.5 text-sm break-words text-muted-foreground">{description}</p>{/if}
-  {#if format}<p class="mt-0.5 text-xs break-words text-muted-foreground">format: {format}</p>{/if}
+  {#if format}<p class="mt-0.5 text-xs break-words text-muted-foreground"
+      >{m.schemaProperty_formatLabel({ format })}</p
+    >{/if}
   {#if enumValues && enumValues.length > 0}
     <p class="mt-0.5 text-xs break-words text-muted-foreground">
-      one of: {enumValues.map((v) => String(v)).join(", ")}
+      {m.schemaProperty_oneOfLabel({ values: enumValues.map((v) => String(v)).join(", ") })}
     </p>
   {/if}
 
@@ -80,7 +84,7 @@
     </div>
   {:else if type === "array" && itemProperties}
     <div class="mt-1 flex flex-col gap-2 border-l-2 border-border pl-2">
-      <p class="text-xs text-muted-foreground">each item:</p>
+      <p class="text-xs text-muted-foreground">{m.schemaProperty_eachItemLabel()}</p>
       {#each Object.entries(itemProperties) as [childName, childNode] (childName)}
         <Self name={childName} node={childNode} required={itemRequiredList.includes(childName)} />
       {/each}

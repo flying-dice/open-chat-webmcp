@@ -17,6 +17,7 @@
 
 import { Marked } from "marked";
 import DOMPurify from "dompurify";
+import { m } from "../paraglide/messages.js";
 
 // ---------------------------------------------------------------------------
 // Streaming tolerance
@@ -161,13 +162,13 @@ function renderCodeBlock({ text, lang }: { text: string; lang?: string }): strin
   const displayCode = prettyPrintIfJson(langToken, text);
   const escapedCode = escapeHtml(displayCode);
   const classAttr = langToken ? ` class="language-${escapeHtml(langToken.toLowerCase())}"` : "";
-  const label = langToken ? escapeHtml(langToken) : "text";
+  const label = langToken ? escapeHtml(langToken) : m.markdown_codeLangFallback();
 
   return (
     `<div class="md-code" data-code-block>` +
     `<div class="md-code-header">` +
     `<span class="md-code-lang">${label}</span>` +
-    `<button type="button" class="md-copy-btn" data-copy-button>Copy</button>` +
+    `<button type="button" class="md-copy-btn" data-copy-button>${escapeHtml(m.markdown_copyButtonLabel())}</button>` +
     `</div>` +
     `<pre><code${classAttr}>${escapedCode}</code></pre>` +
     `</div>`

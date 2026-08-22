@@ -132,15 +132,15 @@ describe("groupTranscript", () => {
 });
 
 describe("summariseActivity", () => {
-  it("counts calls with correct singular/plural wording", () => {
-    expect(summariseActivity([tool("t1")]).countLabel).toBe("1 tool call");
-    expect(summariseActivity([tool("t1"), tool("t2")]).countLabel).toBe("2 tool calls");
+  it("counts the steps in the group", () => {
+    expect(summariseActivity([tool("t1")]).stepCount).toBe(1);
+    expect(summariseActivity([tool("t1"), tool("t2")]).stepCount).toBe(2);
   });
 
   it("returns empty facts for no steps", () => {
     const summary = summariseActivity([]);
     expect(summary).toEqual({
-      countLabel: "0 tool calls",
+      stepCount: 0,
       namesLabel: "",
       serverNames: [],
       errorCount: 0,

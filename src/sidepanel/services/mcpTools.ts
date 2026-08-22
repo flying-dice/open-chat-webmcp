@@ -55,6 +55,7 @@ import {
 } from "../../domain/tools";
 import { sidePanelServices } from "../app-services";
 import { setServerTools } from "../stores/panel.svelte";
+import { m } from "../../paraglide/messages.js";
 
 // ---------------------------------------------------------------------------
 // Tuning
@@ -125,7 +126,7 @@ async function refreshNow(): Promise<void> {
     serverName: config.name,
     error: {
       kind: "permission",
-      message: `This extension hasn't been granted permission to reach "${config.name}" (${config.url}) yet — grant it from the options page's MCP Servers section, then try again.`,
+      message: m.mcpTools_permissionDeniedError({ name: config.name, url: config.url }),
     },
   }));
 
@@ -264,7 +265,7 @@ async function executeServerTool(
   if (!allowed) {
     return {
       ok: false,
-      error: `This extension no longer has permission to reach "${config.name}" (${config.url}) — grant it from the options page's MCP Servers section and try again.`,
+      error: m.mcpTools_permissionRevokedError({ name: config.name, url: config.url }),
     };
   }
 
@@ -277,7 +278,7 @@ async function executeServerTool(
   if (callResult.isError) {
     return {
       ok: false,
-      error: contentToText(callResult.content) || "The server reported an error for this call.",
+      error: contentToText(callResult.content) || m.mcpTools_serverErrorFallback(),
     };
   }
   return { ok: true, result: successResult(callResult) };

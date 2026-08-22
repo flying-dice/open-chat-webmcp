@@ -26,6 +26,8 @@
   import Icon from "./Icon.svelte";
   import { cn } from "$lib/utils";
   import type { ConnectionStatus, PageInfo } from "../stores/panel.svelte";
+  import { connectionStatusLabel } from "../presentation/connectionStatus";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     pageInfo: PageInfo | undefined;
@@ -36,34 +38,23 @@
 
   const { pageInfo, connectionStatus, onOpenTools }: Props = $props();
 
-  // TODO: clean-code - 0.4 - DRY: identical statusLabel lookup table declared independently in OverflowMenu.svelte instead of exported once from src/sidepanel/presentation/, the pattern capabilityBadge.ts/toolOrigin.ts already establish for exactly this kind of shared wording.
-  const statusLabel: Record<ConnectionStatus, string> = {
-    unknown: "Not connected",
-    connecting: "Connecting…",
-    connected: "Connected",
-    disconnected: "Disconnected",
-    error: "Connection error",
-  };
-
   const label = $derived.by((): string => {
-    if (!pageInfo) return "No active tab";
-    if (pageInfo.restricted) return `Can't read ${pageInfo.origin}`;
-    return `Sharing '${pageInfo.title || pageInfo.origin}'`;
+    if (!pageInfo) return m.contextChip_noActiveTab();
+    if (pageInfo.restricted) return m.contextChip_cantReadOrigin({ origin: pageInfo.origin });
+    return m.contextChip_sharing({ title: pageInfo.title || pageInfo.origin });
   });
 
   const toolCountLabel = $derived.by((): string | undefined => {
     if (!pageInfo || pageInfo.restricted) return undefined;
-    return `${pageInfo.toolCount} ${pageInfo.toolCount === 1 ? "tool" : "tools"}`;
+    return m.contextChip_toolCount({ count: pageInfo.toolCount });
   });
 
   /** The full story, for the tooltip and the accessible name — the strip itself only has room for the headline. */
   const detail = $derived.by((): string => {
-    const parts = [label, statusLabel[connectionStatus]];
+    const parts = [label, connectionStatusLabel(connectionStatus)];
     if (toolCountLabel) parts.push(toolCountLabel);
     if (pageInfo?.restricted) {
-      parts.push(
-        "This page doesn't allow extension scripts to run, so there's nothing to call here — chat still works, just without page tools.",
-      );
+      parts.push(m.contextChip_restrictedDetail());
     }
     return parts.join(" · ");
   });
@@ -125,7 +116,7 @@
     class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
     onclick={onOpenTools}
     title={detail}
-    aria-label={`${detail}. Open tools and call log`}
+    aria-label={m.contextChip_openToolsAriaLabel({ detail })}
   >
     {@render body()}
     <span class="flex-none"><Icon name="chevron_right" class="size-4" /></span>

@@ -87,6 +87,7 @@ vi.mock("../stores/panel.svelte", () => ({
   },
 }));
 
+import { m } from "../../paraglide/messages.js";
 import ProviderPicker from "./ProviderPicker.svelte";
 import {
   selectModel,
@@ -161,7 +162,7 @@ afterEach(() => {
  * go through `within(await content())` rather than the unscoped `screen`.
  */
 async function content(): Promise<HTMLElement> {
-  return screen.findByLabelText("Choose a model");
+  return screen.findByLabelText(m.providerPicker_choosePopoverAriaLabel());
 }
 
 describe("ProviderPicker", () => {
@@ -175,7 +176,7 @@ describe("ProviderPicker", () => {
     // the CONTENT's own loading line, not just that the phrase exists
     // somewhere on the page.
     const region = within(await content());
-    expect(region.getByText("Loading providers…")).toBeInTheDocument();
+    expect(region.getByText(m.loadingProvidersLabel())).toBeInTheDocument();
   });
 
   it("shows an empty state with a link to options when no providers are registered", async () => {
@@ -184,8 +185,10 @@ describe("ProviderPicker", () => {
     render(ProviderPicker);
 
     const region = within(await content());
-    expect(region.getByText("No providers are registered yet.")).toBeInTheDocument();
-    expect(region.getByRole("button", { name: "Open options to add one" })).toBeInTheDocument();
+    expect(region.getByText(m.providerPicker_noProvidersMessage())).toBeInTheDocument();
+    expect(
+      region.getByRole("button", { name: m.providerPicker_openOptionsAddOneAction() }),
+    ).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -214,10 +217,12 @@ describe("ProviderPicker", () => {
 
     render(ProviderPicker);
 
-    expect(await screen.findByText("Unverified")).toBeInTheDocument();
+    expect(await screen.findByText(m.providerPicker_unverifiedHeading())).toBeInTheDocument();
     const row = screen.getByText("mystery").closest('[role="option"]');
     expect(row).not.toBeNull();
-    expect(within(row as HTMLElement).getByText(/Unverified/)).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByText(new RegExp(m.capabilityBadge_unverified())),
+    ).toBeInTheDocument();
   });
 
   it("shows a no-tools model under 'No tool support' with its badge label", async () => {
@@ -227,10 +232,12 @@ describe("ProviderPicker", () => {
 
     render(ProviderPicker);
 
-    expect(await screen.findByText("No tool support")).toBeInTheDocument();
+    expect(await screen.findByText(m.providerPicker_noToolSupportHeading())).toBeInTheDocument();
     const row = screen.getByText("chatty").closest('[role="option"]');
     expect(row).not.toBeNull();
-    expect(within(row as HTMLElement).getByText(/No tools/)).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByText(new RegExp(m.capabilityBadge_noTools())),
+    ).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -285,8 +292,10 @@ describe("ProviderPicker", () => {
 
     render(ProviderPicker);
 
-    const input = await screen.findByLabelText("Model id for Custom Host");
-    const submit = screen.getByRole("button", { name: "Check" });
+    const input = await screen.findByLabelText(
+      m.providerPicker_modelIdAriaLabel({ provider: "Custom Host" }),
+    );
+    const submit = screen.getByRole("button", { name: m.providerPicker_checkAction() });
 
     await user.type(input, "gpt-4o-mini");
     await user.click(submit);
@@ -310,7 +319,7 @@ describe("ProviderPicker", () => {
     render(ProviderPicker);
 
     expect(await screen.findByText("Could not reach Alpha.")).toBeInTheDocument();
-    const retry = screen.getByRole("button", { name: "Retry" });
+    const retry = screen.getByRole("button", { name: m.retryAction() });
     await user.click(retry);
 
     expect(reloadModels).toHaveBeenCalledWith("a");
@@ -327,7 +336,7 @@ describe("ProviderPicker", () => {
     render(ProviderPicker);
 
     await screen.findByText("model-0");
-    expect(screen.queryByLabelText("Filter models")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(m.providerPicker_filterAriaLabel())).not.toBeInTheDocument();
   });
 
   it("shows the filter input past the threshold and narrows the visible rows by model id", async () => {
@@ -340,7 +349,7 @@ describe("ProviderPicker", () => {
 
     render(ProviderPicker);
 
-    const filter = await screen.findByLabelText("Filter models");
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
     expect(screen.getByText("model-0")).toBeInTheDocument();
     expect(screen.getByText("model-5")).toBeInTheDocument();
 

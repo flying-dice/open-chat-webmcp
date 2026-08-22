@@ -77,6 +77,7 @@ import {
 import { storageFailureMessage } from "../../ui/storageMessage";
 import { chat, sidePanelServices } from "../app-services";
 import { reportNotice } from "./notices.svelte";
+import { m } from "../../paraglide/messages.js";
 
 export type { SelectionResolution } from "../../domain/providers";
 
@@ -481,7 +482,7 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   // selection below is set either way rather than snapping the picker back to
   // a model the user did not choose.
   const [, err] = await chat().setSelection(tabId, next, true);
-  if (err) reportNotice(storageFailureMessage("Couldn't save your model choice", err));
+  if (err) reportNotice(storageFailureMessage(m.selection_saveModelFailedWhat(), err));
   selectionExplicit = true;
 
   // Seeding the global default is a convenience, not part of committing the

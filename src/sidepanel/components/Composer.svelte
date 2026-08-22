@@ -62,6 +62,7 @@
   import { Button } from "$lib/components/ui/button";
   import { selection, openPicker, openOptionsPage } from "../stores/selection.svelte";
   import { isSelectionUsable } from "../../domain/providers";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     busy: boolean;
@@ -150,33 +151,35 @@
          very thing being asked for. -->
     <div class="flex flex-col items-start gap-2 px-2 pb-1">
       {#if blocked.kind === "providers-loading"}
-        <p class="text-sm text-muted-foreground">Loading providers…</p>
+        <p class="text-sm text-muted-foreground">{m.loadingProvidersLabel()}</p>
       {:else if blocked.kind === "providers-error"}
-        <p class="text-sm text-muted-foreground">Couldn't load your providers.</p>
-        <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>Open options</Button>
+        <p class="text-sm text-muted-foreground">{m.composer_providersError()}</p>
+        <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}
+          >{m.openOptionsAction()}</Button
+        >
       {:else if blocked.kind === "no-providers"}
         <p class="text-sm text-muted-foreground">
-          No provider is registered yet — add one on the options page to start chatting.
+          {m.composer_noProvidersMessage()}
         </p>
         <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
-          Open options to add a provider
+          {m.openOptionsAddProviderAction()}
         </Button>
       {:else if blocked.kind === "unselected"}
         <p class="text-sm text-muted-foreground">
           {#if blocked.dangling}
-            The provider this chat was using has been removed. Choose a replacement to continue —
-            your conversation is kept.
+            {m.composer_danglingProviderMessage()}
           {:else}
-            Choose a provider and model before sending your first message.
+            {m.composer_unselectedMessage()}
           {/if}
         </p>
         <Button type="button" variant="secondary" size="sm" onclick={openPicker}>
-          Choose provider &amp; model
+          {m.composer_chooseProviderModelAction()}
         </Button>
       {:else if blocked.kind === "needs-confirmation"}
         <p class="text-sm text-muted-foreground">
-          This chat will use <strong class="text-foreground">{blocked.label}</strong> — confirm it
-          below to start.
+          {m.composer_needsConfirmationPrefix()}<strong class="text-foreground"
+            >{blocked.label}</strong
+          >{m.composer_needsConfirmationSuffix()}
         </p>
       {/if}
     </div>
@@ -185,10 +188,10 @@
       bind:ref={textarea}
       bind:value
       onkeydown={handleKeydown}
-      placeholder="Ask about this page…"
+      placeholder={m.composer_placeholder()}
       rows={1}
       disabled={busy}
-      aria-label="Message"
+      aria-label={m.composer_messageAriaLabel()}
       aria-describedby="composer-hint"
       class="min-h-0 max-h-[8lh] resize-none border-0 bg-transparent p-0 px-2 text-sm shadow-none focus-visible:ring-0"
     />
@@ -196,7 +199,7 @@
          pushed the actual prompt off the end of a 320px panel. It is still
          announced, just not drawn. -->
     <p id="composer-hint" class="sr-only">
-      Press Enter to send, Shift and Enter for a new line.
+      {m.composer_hintText()}
     </p>
   {/if}
 
@@ -217,7 +220,7 @@
       {#if busy}
         <IconButton
           icon="stop"
-          label="Stop generating"
+          label={m.composer_stopLabel()}
           tone="danger"
           variant="filled"
           size="compact"
@@ -226,7 +229,7 @@
       {:else if !blocked}
         <IconButton
           icon="arrow_upward"
-          label="Send"
+          label={m.composer_sendLabel()}
           tone="primary"
           variant="filled"
           size="compact"

@@ -36,6 +36,7 @@
   } from "$lib/components/ui/empty";
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     /** Switch back to the chat view — called only once opening a chat actually succeeds. */
@@ -64,7 +65,7 @@
     // them on a failed read, and that still holds: the list you can see is
     // real, it is just possibly out of date. Card 95 says so out loud.
     if (err) {
-      failure = storageFailureMessage("Couldn't load your chats", err);
+      failure = storageFailureMessage(m.historyPanel_loadFailedWhat(), err);
       return;
     }
     failure = undefined;
@@ -94,7 +95,7 @@
     const [opened, err] = await chat().openChat(chatId);
     openingId = undefined;
     if (err) {
-      failure = storageFailureMessage("Couldn't open that chat", err);
+      failure = storageFailureMessage(m.historyPanel_openFailedWhat(), err);
       return;
     }
     failure = undefined;
@@ -104,9 +105,9 @@
 
   async function handleDelete(summary: ChatSummary): Promise<void> {
     if (openingId || deletingId) return;
-    const label = summary.origin || "this chat";
+    const label = summary.origin || m.historyPanel_unnamedChatFallback();
     const ok = confirm(
-      `Delete the chat from ${label} (${summary.messageCount} message${summary.messageCount === 1 ? "" : "s"})? This cannot be undone.`,
+      m.historyPanel_deleteConfirm({ origin: label, count: summary.messageCount }),
     );
     if (!ok) return;
 
@@ -118,7 +119,7 @@
     const [, err] = await sidePanelServices().chats.deleteChat(summary.id);
     if (err) {
       deletingId = undefined;
-      failure = storageFailureMessage("Couldn't delete that chat", err);
+      failure = storageFailureMessage(m.historyPanel_deleteFailedWhat(), err);
       return;
     }
     // If this was the chat currently open in this tab, point the tab at
@@ -135,10 +136,7 @@
     // otherwise clear a message about something that DID fail.
     await refresh();
     if (discardErr) {
-      failure = storageFailureMessage(
-        "Deleted that chat, but couldn't start a fresh one for this tab",
-        discardErr,
-      );
+      failure = storageFailureMessage(m.historyPanel_discardFailedWhat(), discardErr);
     }
   }
 </script>
@@ -154,19 +152,16 @@
       </Alert.Root>
     {/if}
     {#if status === "loading"}
-      <p class="p-2 text-sm text-muted-foreground">Loading…</p>
+      <p class="p-2 text-sm text-muted-foreground">{m.historyPanel_loading()}</p>
     {:else if summaries.length === 0}
       <Empty>
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <HugeiconsIcon icon={BubbleChatIcon} strokeWidth={2} />
           </EmptyMedia>
-          <EmptyTitle>No chats yet</EmptyTitle>
+          <EmptyTitle>{m.historyPanel_emptyTitle()}</EmptyTitle>
           <EmptyDescription>
-            Every conversation you have — on any site, in any tab — is listed here,
-            newest first, once it has at least one message. Nothing is deleted
-            automatically; use the delete button on an entry, or "Clear all
-            history" on the options page, when you're done with one.
+            {m.historyPanel_emptyDescription()}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>

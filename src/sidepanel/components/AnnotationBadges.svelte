@@ -22,6 +22,7 @@
    */
   import type { McpToolAnnotations, ToolAnnotations } from "../../domain/tools";
   import { Badge } from "$lib/components/ui/badge";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     /** The tool's normalised WebMCP annotations, absent when the tool declared none — or when the tool itself is unknown. */
@@ -39,14 +40,16 @@
 </script>
 
 {#if readOnly}
-  <Badge variant="outline">read-only</Badge>
+  <Badge variant="outline">{m.annotationBadges_readOnly()}</Badge>
 {/if}
 {#if untrustedContent}
-  <Badge variant="destructive">untrusted content</Badge>
+  <Badge variant="destructive">{m.annotationBadges_untrustedContent()}</Badge>
 {/if}
 {#if destructive}
-  <Badge variant="destructive">server: destructive</Badge>
+  <Badge variant="destructive">{m.annotationBadges_serverDestructive()}</Badge>
 {/if}
 {#if unannotated}
-  <Badge variant="outline" class="border-dashed text-muted-foreground">unannotated</Badge>
+  <Badge variant="outline" class="border-dashed text-muted-foreground"
+    >{m.annotationBadges_unannotated()}</Badge
+  >
 {/if}

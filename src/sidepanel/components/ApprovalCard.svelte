@@ -59,6 +59,7 @@
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Label } from "$lib/components/ui/label";
+  import { m } from "../../paraglide/messages.js";
 
   interface Props {
     request: PendingApproval;
@@ -82,12 +83,14 @@
 
 <Card.Root
   role="group"
-  aria-label={`Approval needed: ${request.call.name}`}
+  aria-label={m.approvalCard_ariaLabel({ name: request.call.name })}
   class="w-full min-w-0 gap-3 ring-2 ring-primary/30"
 >
   <Card.Header>
     <div class="flex items-center justify-between gap-2">
-      <span class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Approval needed</span>
+      <span class="text-xs font-medium tracking-wide text-muted-foreground uppercase"
+        >{m.approvalCard_heading()}</span
+      >
       <div class="flex flex-wrap justify-end gap-1">
         <AnnotationBadges annotations={tool?.annotations} mcpAnnotations={tool?.mcpAnnotations} />
       </div>
@@ -98,29 +101,28 @@
   <Card.Content class="flex flex-col gap-3">
     <p class="text-sm" class:text-primary={isServerTool} class:font-semibold={isServerTool}>
       {#if tool === undefined}
-        Origin unknown — this name isn't in the current tool list.
+        {m.approvalCard_originUnknown()}
       {:else}
-        Runs on <strong>{originLabel(tool.origin)}</strong>{isServerTool ? " (a remote MCP server, not this page)" : ""}.
+        {m.approvalCard_runsOnPrefix()}<strong>{originLabel(tool.origin)}</strong>{isServerTool
+          ? m.approvalCard_runsOnServerSuffix()
+          : m.approvalCard_runsOnPageSuffix()}
       {/if}
     </p>
 
     {#if tool === undefined}
       <p class="text-sm text-destructive">
-        This tool isn't in the current tool list — it may be a hallucinated
-        name, or a tool that was unregistered/removed after the model
-        requested it. Review the arguments below carefully before approving.
+        {m.approvalCard_unknownToolWarning()}
       </p>
     {:else if tool.description}
       <p class="text-sm text-muted-foreground">{tool.description}</p>
     {/if}
 
     <p class="text-sm text-muted-foreground">
-      These hints are reported by {isServerTool ? "the MCP server" : "the page"} itself, not verified by
-      the extension — treat them as a guide, not a guarantee.
+      {isServerTool ? m.approvalCard_hintsDisclaimerServer() : m.approvalCard_hintsDisclaimerPage()}
     </p>
 
     <div>
-      <h3 class="mb-1 text-sm font-medium">Arguments</h3>
+      <h3 class="mb-1 text-sm font-medium">{m.argumentsHeading()}</h3>
       <ToolArgs args={request.call.arguments} />
     </div>
 
@@ -130,20 +132,16 @@
         bind:checked={remember}
         class="size-4 shrink-0 rounded border-input accent-primary"
       />
-      {#if isServerTool}
-        Don't ask again for this tool on this server (this session)
-      {:else}
-        Don't ask again for this tool on this page (this session)
-      {/if}
+      {isServerTool ? m.approvalCard_skipServerLabel() : m.approvalCard_skipPageLabel()}
     </Label>
   </Card.Content>
 
   <Card.Footer class="flex justify-end gap-2">
     <Button type="button" variant="destructive" bind:ref={denyButton} onclick={() => deny(request.id)}>
-      Deny
+      {m.approvalCard_denyAction()}
     </Button>
     <Button type="button" variant="default" onclick={() => approve(request.id, remember)}>
-      Approve
+      {m.approvalCard_approveAction()}
     </Button>
   </Card.Footer>
 </Card.Root>

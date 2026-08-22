@@ -32,6 +32,7 @@ vi.mock("../stores/approvals.svelte", () => ({
 
 import ApprovalCard from "./ApprovalCard.svelte";
 import { approve, deny } from "../stores/approvals.svelte";
+import { m } from "../../paraglide/messages.js";
 
 function makeCall(overrides: Partial<ToolCall> = {}): ToolCall {
   return { id: "call-1", name: "get_page_text", arguments: { selector: "main" }, ...overrides };
@@ -82,16 +83,16 @@ describe("ApprovalCard", () => {
 
   it("focuses the Deny button immediately on mount", () => {
     render(ApprovalCard, { request: makePending() });
-    expect(screen.getByRole("button", { name: "Deny" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: m.approvalCard_denyAction() })).toHaveFocus();
   });
 
   it("moves focus from Deny to Approve on Tab", async () => {
     const user = userEvent.setup();
     render(ApprovalCard, { request: makePending() });
 
-    expect(screen.getByRole("button", { name: "Deny" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: m.approvalCard_denyAction() })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("button", { name: "Approve" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: m.approvalCard_approveAction() })).toHaveFocus();
   });
 
   describe("approve/deny/skip-for-session callbacks", () => {
@@ -100,7 +101,7 @@ describe("ApprovalCard", () => {
       const request = makePending({ id: "req-deny" });
       render(ApprovalCard, { request });
 
-      await user.click(screen.getByRole("button", { name: "Deny" }));
+      await user.click(screen.getByRole("button", { name: m.approvalCard_denyAction() }));
 
       expect(deny).toHaveBeenCalledTimes(1);
       expect(deny).toHaveBeenCalledWith("req-deny");
@@ -112,7 +113,7 @@ describe("ApprovalCard", () => {
       const request = makePending({ id: "req-approve" });
       render(ApprovalCard, { request });
 
-      await user.click(screen.getByRole("button", { name: "Approve" }));
+      await user.click(screen.getByRole("button", { name: m.approvalCard_approveAction() }));
 
       expect(approve).toHaveBeenCalledTimes(1);
       expect(approve).toHaveBeenCalledWith("req-approve", false);
@@ -126,12 +127,8 @@ describe("ApprovalCard", () => {
       });
       render(ApprovalCard, { request });
 
-      await user.click(
-        screen.getByRole("checkbox", {
-          name: "Don't ask again for this tool on this page (this session)",
-        }),
-      );
-      await user.click(screen.getByRole("button", { name: "Approve" }));
+      await user.click(screen.getByRole("checkbox", { name: m.approvalCard_skipPageLabel() }));
+      await user.click(screen.getByRole("button", { name: m.approvalCard_approveAction() }));
 
       expect(approve).toHaveBeenCalledTimes(1);
       expect(approve).toHaveBeenCalledWith("req-remember", true);
@@ -142,9 +139,7 @@ describe("ApprovalCard", () => {
       render(ApprovalCard, { request });
 
       expect(
-        screen.getByRole("checkbox", {
-          name: "Don't ask again for this tool on this page (this session)",
-        }),
+        screen.getByRole("checkbox", { name: m.approvalCard_skipPageLabel() }),
       ).toBeInTheDocument();
     });
 
@@ -156,9 +151,7 @@ describe("ApprovalCard", () => {
       render(ApprovalCard, { request });
 
       expect(
-        screen.getByRole("checkbox", {
-          name: "Don't ask again for this tool on this server (this session)",
-        }),
+        screen.getByRole("checkbox", { name: m.approvalCard_skipServerLabel() }),
       ).toBeInTheDocument();
     });
 
@@ -166,9 +159,7 @@ describe("ApprovalCard", () => {
       const request = makePending({ tool: undefined, call: makeCall({ name: "vanished_tool" }) });
       render(ApprovalCard, { request });
 
-      expect(
-        screen.getByText("Origin unknown — this name isn't in the current tool list."),
-      ).toBeInTheDocument();
+      expect(screen.getByText(m.approvalCard_originUnknown())).toBeInTheDocument();
     });
   });
 
@@ -179,7 +170,7 @@ describe("ApprovalCard", () => {
       });
       render(ApprovalCard, { request });
 
-      expect(screen.getByText("read-only")).toBeInTheDocument();
+      expect(screen.getByText(m.annotationBadges_readOnly())).toBeInTheDocument();
     });
 
     it("shows 'untrusted content' when the tool's annotations set untrustedContentHint", () => {
@@ -188,7 +179,7 @@ describe("ApprovalCard", () => {
       });
       render(ApprovalCard, { request });
 
-      expect(screen.getByText("untrusted content")).toBeInTheDocument();
+      expect(screen.getByText(m.annotationBadges_untrustedContent())).toBeInTheDocument();
     });
 
     it("shows 'unannotated' when the tool has no annotations at all", () => {
@@ -197,7 +188,7 @@ describe("ApprovalCard", () => {
       });
       render(ApprovalCard, { request });
 
-      expect(screen.getByText("unannotated")).toBeInTheDocument();
+      expect(screen.getByText(m.annotationBadges_unannotated())).toBeInTheDocument();
     });
 
     it("shows 'server: destructive' for a server tool whose mcpAnnotations set destructiveHint", () => {
@@ -207,7 +198,7 @@ describe("ApprovalCard", () => {
       });
       render(ApprovalCard, { request });
 
-      expect(screen.getByText("server: destructive")).toBeInTheDocument();
+      expect(screen.getByText(m.annotationBadges_serverDestructive())).toBeInTheDocument();
     });
   });
 });
