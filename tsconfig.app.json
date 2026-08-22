@@ -4,7 +4,15 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
     "module": "esnext",
-    "types": ["svelte", "vite/client", "chrome"],
+    // "@testing-library/jest-dom/vitest" (card 82) is the ambient module
+    // augmentation that adds jest-dom's DOM matchers (toBeInTheDocument, ...)
+    // to Vitest's `expect` — vitest.setup.ts imports it for the RUNTIME
+    // registration (every component test needs that, once, via
+    // `test.setupFiles`), but a type program only sees an ambient
+    // augmentation if something in ITS OWN program pulls the declaration in,
+    // and vitest.setup.ts lives outside src/ (tsconfig.app.json's own
+    // include), so it's named here too for the type side.
+    "types": ["svelte", "vite/client", "chrome", "@testing-library/jest-dom/vitest"],
     "allowArbitraryExtensions": true,
     "noEmit": true,
     /**

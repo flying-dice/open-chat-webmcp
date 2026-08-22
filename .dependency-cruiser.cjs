@@ -349,9 +349,17 @@ module.exports = {
      * 78 and is at src/ui/components/ui/ now; the path is the shadcn CLI's
      * (`components.json`'s `ui` alias), under the folder that names the
      * layer.
+     *
+     * `\.test\.ts$` (card 82, decisions/30) excludes the Vitest suite: a test
+     * file's job is to import its test framework and exercise production
+     * code from OUTSIDE the architecture, not to obey the same dependency
+     * rules the code under test does — `domain-has-no-dependencies` would
+     * otherwise flag every `src/domain/**\/*.test.ts`'s `import ... from
+     * "vitest"` as the domain taking an npm dependency, which is not the
+     * coupling that rule exists to catch.
      */
     exclude: {
-      path: "^src/ui/components/ui/",
+      path: "^src/ui/components/ui/|\\.test\\.ts$",
     },
     doNotFollow: {
       path: "node_modules",
