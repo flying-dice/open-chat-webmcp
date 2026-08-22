@@ -1,4 +1,9 @@
 import { mount } from "svelte";
+// Tailwind v4 + the shadcn-svelte Zinc/Maia token block. FIRST, ahead of the
+// legacy sheets, so that where preflight and theme.css/options.css disagree
+// the legacy rules still win for the components that have not been migrated
+// yet (decisions/28-shadcn-svelte-maia-zinc.md).
+import "../app.css";
 import App from "./App.svelte";
 
 // Chrome-native design tokens (decisions/08-native-chrome-design-language.md)
@@ -21,6 +26,11 @@ import "./options.css";
 // side-effect import — importing this module here does not register it for
 // a different entry point/bundle.
 import "../lib/providers/openai";
+
+import { startDarkModeSync } from "../lib/dark-mode";
+
+// Must run before mount so the first paint is already in the right theme.
+startDarkModeSync();
 
 const app = mount(App, {
   target: document.getElementById("app")!,

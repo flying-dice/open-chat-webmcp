@@ -19,8 +19,10 @@ Research (2026-08-22, against shadcn-svelte@1.5.0 and its repo) confirmed:
 shadcn-svelte is Svelte-5-native on bits-ui, supports plain Vite without
 SvelteKit given manual `$lib` alias wiring, and ships the new preset system
 whose **Maia** style (soft, rounded, generous spacing — pill buttons/inputs,
-`rounded-2xl` cards/menus) is applied as a `.style-maia` per-component
-utility overlay. Base color and style are independent knobs, so **Zinc**
+`rounded-2xl` cards/menus) is baked into the component source the registry
+serves for that preset (card 65 established the working recipe: `init` then
+`apply bc6ENMW -y --skip-preflight`; there is no runtime style class to
+activate). Base color and style are independent knobs, so **Zinc**
 tokens (confirmed OKLCH light/dark blocks) combine cleanly with Maia. Maia
 pairs with Hugeicons and the Figtree font, both delivered as bundled npm
 packages — compatible with MV3's no-remote-assets CSP.

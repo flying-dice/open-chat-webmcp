@@ -1,11 +1,27 @@
+import path from "node:path";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { crx } from "@crxjs/vite-plugin";
+import tailwindcss from "@tailwindcss/vite";
 import manifest from "./manifest.config.ts";
 
 // https://vite.dev/config/
 export default defineConfig({
+  // `$lib` is a SvelteKit convention with no runtime behind it — this is a
+  // plain multi-entry Vite build, so the alias has to be declared by hand
+  // here AND in tsconfig.json/tsconfig.app.json (the shadcn-svelte CLI reads
+  // the root tsconfig.json to validate its aliases; svelte-check reads the
+  // app one). See decisions/28-shadcn-svelte-maia-zinc.md.
+  resolve: {
+    alias: {
+      $lib: path.resolve(import.meta.dirname, "./src/lib"),
+    },
+  },
   plugins: [
+    // Tailwind v4 has no config file: `@import "tailwindcss"` in src/app.css
+    // plus this plugin is the whole setup. It must run before svelte() so the
+    // generated stylesheet exists by the time components are transformed.
+    tailwindcss(),
     svelte(),
     crx({
       manifest,

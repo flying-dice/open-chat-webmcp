@@ -15,7 +15,15 @@
      */
     "allowJs": true,
     "checkJs": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    // `$lib` alias — mirrored in tsconfig.json (for the shadcn-svelte CLI)
+    // and vite.config.ts (for the actual bundle). No `baseUrl`: TS 6
+    // deprecates it and resolves relative `paths` against this file's
+    // directory anyway.
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
 }

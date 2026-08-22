@@ -3,5 +3,17 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  // Solution-style configs carry no sources, so these options compile
+  // nothing — they exist because the shadcn-svelte CLI resolves the aliases
+  // in components.json against the ROOT tsconfig.json and errors out if
+  // `$lib/...` is not declared here. The alias that actually typechecks the
+  // app lives in tsconfig.app.json; keep the two in sync.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
+  }
 }

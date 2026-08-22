@@ -1,4 +1,9 @@
 import { mount } from "svelte";
+// Tailwind v4 + the shadcn-svelte Zinc/Maia token block. FIRST, ahead of the
+// legacy sheets, so that where preflight and theme.css's element reset
+// disagree the legacy rules still win for the components that have not been
+// migrated yet (decisions/28-shadcn-svelte-maia-zinc.md).
+import "../app.css";
 import "../lib/theme.css";
 // Material 3 expressive tokens for the panel only — layered over theme.css,
 // never loaded by the options page. See decisions/18.
@@ -17,6 +22,11 @@ import App from "./App.svelte";
 // picker (src/sidepanel/stores/selection.svelte.ts) tries to build a
 // client for an OpenAI-type provider.
 import "../lib/providers/openai";
+
+import { startDarkModeSync } from "../lib/dark-mode";
+
+// Must run before mount so the first paint is already in the right theme.
+startDarkModeSync();
 
 const app = mount(App, {
   target: document.getElementById("app")!,
