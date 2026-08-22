@@ -319,13 +319,15 @@ async function main() {
     );
 
     // ---------------------------------------------------------------------
-    // Screenshots — BEST EFFORT (panel is being actively edited elsewhere)
+    // Screenshots — BEST EFFORT, but not silently so: checks/screenshots.mjs
+    // asserts its full expected matrix, so a drifted selector reports SKIP
+    // naming the missing shot rather than PASS with a shorter file list.
     // ---------------------------------------------------------------------
     await report.runBestEffort(
       "Side panel screenshots: 320/400px x light/dark, plus the overflow menu and model sheet (human eyeball check)",
       async () => {
-        const { files } = await screenshotSidepanel(context, extensionId, SCREENSHOT_DIR);
-        return { files };
+        const { count, files } = await screenshotSidepanel(context, extensionId, SCREENSHOT_DIR);
+        return { count, files };
       },
     );
 

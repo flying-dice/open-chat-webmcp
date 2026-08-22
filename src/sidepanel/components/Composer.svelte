@@ -134,7 +134,7 @@
 </script>
 
 <form
-  class="composer relative flex flex-none flex-col gap-1 rounded-2xl rounded-t-none border border-border bg-card px-2 pt-3 pb-2"
+  class="relative flex flex-none flex-col gap-1 rounded-2xl rounded-t-none border border-border bg-card px-2 pt-3 pb-2"
   data-blocked={blocked !== undefined}
   onsubmit={(e) => (e.preventDefault(), send())}
 >

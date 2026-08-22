@@ -121,7 +121,7 @@
 {#if onOpenTools}
   <button
     type="button"
-    class="context-chip flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
+    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
     onclick={onOpenTools}
     title={detail}
     aria-label={`${detail}. Open tools and call log`}
@@ -131,7 +131,7 @@
   </button>
 {:else}
   <div
-    class="context-chip flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground"
+    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground"
     title={detail}
   >
     {@render body()}

@@ -339,8 +339,14 @@
   </Command.Item>
 {/snippet}
 
-<div class="picker relative min-w-0">
+<div class="relative min-w-0">
   <Popover.Root open={selection.pickerOpen} onOpenChange={(o) => (o ? openPicker() : closePicker())}>
+    <!-- `picker__trigger` carries no styling of its own — kept purely so
+         verify/checks/screenshots.mjs can open the model sheet for its
+         screenshot matrix. The chip's own accessible name is whichever model
+         is selected, which moves with the harness's seed data, so a class is
+         the stable handle. Card 72 kept the hook and deleted the rest of the
+         legacy names around it. -->
     <Popover.Trigger
       class={cn(
         "picker__trigger inline-flex max-w-[180px] min-w-0 items-center gap-1 rounded-full bg-secondary py-1 pr-1 pl-3 text-sm text-secondary-foreground",

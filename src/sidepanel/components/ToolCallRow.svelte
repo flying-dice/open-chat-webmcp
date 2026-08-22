@@ -140,7 +140,16 @@
 <li class="step grid grid-cols-[12px_minmax(0,1fr)] gap-x-2">
   <span
     class={cn(
-      "mt-1.5 ml-0.5 size-2 shrink-0 rounded-full shadow-[0_0_0_2px_var(--background)]",
+      // `relative` is load-bearing, not cosmetic: ActivityGroup.svelte draws
+      // the connecting rail as an absolutely-positioned `before:` on the
+      // <ol>, which — being positioned with `z-index: auto` — paints above
+      // every static child and was slicing each dot in half down the middle
+      // (visible in light mode, where the rail is a pale grey line straight
+      // through a red or green circle). Making the dot positioned too puts
+      // it in the same layer, where tree order wins and it paints on top,
+      // with the background-coloured ring below punching the rail out
+      // cleanly around it.
+      "relative mt-1.5 ml-0.5 size-2 shrink-0 rounded-full shadow-[0_0_0_2px_var(--background)]",
       dotClass,
       displayStatus === "running" && "animate-pulse",
     )}
@@ -186,7 +195,7 @@
     {#if untrustedContent || metaLabel}
       <div class="flex flex-wrap gap-1">
         {#if untrustedContent}
-          <!-- theme.css had no separate "warning" token (decisions/08) —
+          <!-- The Zinc palette has no separate "warning" token —
                this reuses `destructive`, the only attention colour
                available, purely to catch the eye; it does not imply the
                call itself is dangerous to make. -->

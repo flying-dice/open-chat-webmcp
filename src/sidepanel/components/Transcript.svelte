@@ -33,9 +33,8 @@
    * with Tailwind utilities and shadcn's Button (the note-action chips).
    * All colour/spacing/radius values below are Tailwind's own scale/tokens
    * (src/app.css) now, not the legacy `--color-*`/`--space-*` custom
-   * properties chat-theme.css/theme.css defined — those sheets stay loaded
-   * until card 72 deletes them (see this card's file-header caveat), but
-   * nothing here reads from them any more.
+   * properties chat-theme.css/theme.css defined — sheets card 72 has since
+   * deleted outright.
    */
   import Markdown from "../../lib/components/Markdown.svelte";
   import ActivityGroup from "./ActivityGroup.svelte";

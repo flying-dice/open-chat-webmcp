@@ -1,7 +1,13 @@
 /*
  * Custom icon path data for the side panel.
  *
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: CC0-1.0
+ *
+ * (Card 72: this used to read `Apache-2.0`, for the Material Symbols glyphs
+ * that filled this file before card 66 replaced them with Hugeicons. Not one
+ * of those paths survives, so the identifier now covers what's actually
+ * here — the CC0 Ollama trace described below, alongside the `sparkle` mark
+ * drawn for this project.)
  *
  * Card 66 (decisions/28-shadcn-svelte-maia-zinc.md) moved every standard
  * glyph to Hugeicons (`@hugeicons/core-free-icons`, mapped by name inside

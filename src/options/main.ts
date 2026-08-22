@@ -1,17 +1,11 @@
 import { mount } from "svelte";
-// Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): the options page is now
+// Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): the options page is
 // fully migrated to shadcn-svelte + Tailwind, so this is its ONLY stylesheet.
-// `src/options/options.css` is gone, and `src/lib/theme.css` is deliberately
-// NOT imported here any more: its element reset (`button`, `input`, `select`,
-// `h1-h3`, `body`) is unlayered CSS, so it outranks every Tailwind utility —
-// which lives in `@layer utilities` — regardless of import order, and would
-// repaint every shadcn Button/Input back to the legacy Chrome-native look.
-// The side panel still imports it until card 72 deletes it outright; the two
-// entry points have separate CSS bundles, so dropping it here reaches nothing
-// else. One knock-on: src/lib/components/Markdown.svelte (rendered by
-// ProviderForm/ProviderRow for a copyable fix command) styles itself from
-// theme.css tokens and therefore renders unstyled-but-legible here until card
-// 67 migrates it.
+// `src/options/options.css` and `src/lib/theme.css` are both gone — card 72
+// deleted the latter outright, along with `src/sidepanel/chat-theme.css`, once
+// the side panel stopped needing it. Nothing else belongs here: the shadcn
+// token block plus Tailwind's own theme is the single source of styling for
+// both entry points.
 import "../app.css";
 import App from "./App.svelte";
 

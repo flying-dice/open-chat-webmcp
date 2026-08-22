@@ -39,8 +39,10 @@
    * rule below reads shadcn's own Zinc tokens (src/app.css: --foreground,
    * --muted-foreground, --primary, --border, --muted, --background,
    * --radius-*) rather than the legacy chat-theme.css/theme.css custom
-   * properties, which stay loaded (see this card's file-header caveat) but
-   * are no longer read here.
+   * properties, which card 72 has since deleted. That purge is also why the
+   * block below has to restate element defaults Tailwind's preflight zeroes
+   * (paragraph/heading margins, list markers): theme.css used to supply them
+   * globally, and preflight — correctly, for utility-styled markup — does not.
    */
   interface Props {
     source: string;
@@ -110,10 +112,22 @@
     text-decoration: underline;
   }
 
+  .markdown-body :global(p) {
+    margin: 0 0 0.5rem 0;
+  }
+
   .markdown-body :global(ul),
   .markdown-body :global(ol) {
     margin: 0 0 0.5rem 0;
-    padding-left: 1rem;
+    padding-left: 1.25rem;
+  }
+
+  .markdown-body :global(ul) {
+    list-style: disc;
+  }
+
+  .markdown-body :global(ol) {
+    list-style: decimal;
   }
 
   .markdown-body :global(li) {
@@ -131,14 +145,34 @@
     color: var(--muted-foreground);
   }
 
+  /* Preflight strips heading font-size/weight/margin; markdown headings need
+     them back, on a scale that stays close to the 14px body text a 320px-wide
+     side panel is built around. */
+  .markdown-body :global(h1),
+  .markdown-body :global(h2),
+  .markdown-body :global(h3),
   .markdown-body :global(h4),
   .markdown-body :global(h5),
   .markdown-body :global(h6) {
     margin: 0 0 0.5rem 0;
-    font-size: 0.9375rem;
     line-height: 1.3;
     font-weight: 600;
     color: var(--foreground);
+  }
+
+  .markdown-body :global(h1) {
+    font-size: 1.125rem;
+  }
+
+  .markdown-body :global(h2) {
+    font-size: 1rem;
+  }
+
+  .markdown-body :global(h3),
+  .markdown-body :global(h4),
+  .markdown-body :global(h5),
+  .markdown-body :global(h6) {
+    font-size: 0.9375rem;
   }
 
   .markdown-body :global(p:last-child) {

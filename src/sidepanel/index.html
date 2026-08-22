@@ -1,5 +1,12 @@
 <!doctype html>
-<html lang="en">
+<!--
+  `scheme-light-dark` tells the browser this page supports both colour schemes
+  so form controls, scrollbars and the pre-paint background follow the system
+  theme. It replaces the `color-scheme: light dark` that src/lib/theme.css used
+  to declare — card 72 deleted that sheet (see src/sidepanel/main.ts), matching
+  what card 71 already did for the options entry point.
+-->
+<html lang="en" class="scheme-light-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

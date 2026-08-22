@@ -152,6 +152,68 @@ Consequence worth knowing: **closing the side panel aborts any in-flight
 generation.** The request is tied to the panel's lifetime via an
 `AbortController`; there is no mechanism to keep it going in the background.
 
+## UI and styling
+
+There are two UI surfaces — the side panel (`src/sidepanel/**`) and the
+options page (`src/options/**`) — and they are separate HTML entry points
+with separate JS and CSS bundles. What they share lives in `src/lib/`:
+`src/lib/components/ui/` (the component kit) and `src/lib/components/`
+(cross-surface components like `Markdown.svelte`).
+
+Both are built on **[shadcn-svelte](https://shadcn-svelte.com) + Tailwind CSS
+v4**, in the **Maia** style over the **Zinc** base colour
+([decisions/28](../decisions/28-shadcn-svelte-maia-zinc.md)). Concretely:
+
+- **One stylesheet, `src/app.css`**, imported first by each entry point's
+  `main.ts` and by nothing else. It pulls in Tailwind, `tw-animate-css`,
+  shadcn's Tailwind layer and the Figtree variable font, then declares the
+  Zinc token block (`--background`, `--foreground`, `--primary`, `--muted`,
+  `--border`, `--radius`, …) for `:root` and again for `.dark`, and maps them
+  onto Tailwind's theme in an `@theme inline` block. It is **generated**, not
+  hand-written: regenerate with
+  `npx shadcn-svelte@1.5.0 apply bc6ENMW -y --skip-preflight` rather than
+  editing token values in place.
+- **Components style themselves with Tailwind utilities and shadcn
+  variants.** There is no project design-token layer and no per-component
+  `<style>` block, with exactly two deliberate exceptions:
+  `ActivityIndicator.svelte`'s streaming-shimmer keyframes (an animated
+  `background-clip: text` gradient Tailwind has no utility for, plus its
+  `prefers-reduced-motion` fallback) and `Markdown.svelte`'s descendant rules,
+  which have to be plain CSS because the markup they target arrives through
+  `{@html}` and the Svelte compiler never sees it. Both read shadcn's own
+  tokens.
+- **The vendored kit in `src/lib/components/ui/` is generated source**, added
+  by the shadcn CLI and owned by it — exempt from the repo's clean-code and
+  module-boundary guards, and re-generated rather than refactored.
+- **Icons** are [Hugeicons](https://hugeicons.com) (Maia's pairing), mapped
+  from name to component inside `src/sidepanel/components/Icon.svelte`.
+  `src/lib/icons.ts` carries only the two marks that aren't stock glyphs — the
+  `sparkle` star and the Ollama logo — as inline SVG path data.
+- **Dark mode** is the `.dark` class on `<html>`, synced from
+  `prefers-color-scheme` by `src/lib/dark-mode.ts`, which each `main.ts` calls
+  *before* mounting so the first paint is already in the right theme. Both
+  `index.html` files carry `class="scheme-light-dark"` so the browser's own
+  form controls, scrollbars and pre-paint background follow suit.
+- **No remote assets.** Figtree ships as `@fontsource-variable/figtree` and
+  Hugeicons as npm packages, so nothing in `dist/` reaches out to a CDN —
+  which MV3's CSP would block anyway.
+
+This replaces three earlier hand-written stylesheets — `src/lib/theme.css`
+(a Chrome-native design-token set, [decisions/08](../decisions/08-native-chrome-design-language.md)),
+`src/sidepanel/chat-theme.css` (a Material-3-expressive overlay that beat it
+on specificity, [decisions/18](../decisions/18-side-panel-material-expressive.md))
+and `src/options/options.css` — all three of which are now deleted, along with
+~2,100 lines of per-component scoped CSS. Decisions 08 and 18 are Superseded.
+
+A few legacy class names survive as **styling-free hooks**:
+`.picker__trigger` (`ProviderPicker.svelte`), `.activity-group .summary`
+(`ActivityGroup.svelte`) and `.step .row-head` (`ToolCallRow.svelte`). They
+exist only so `verify/checks/screenshots.mjs` can drive those surfaces, whose
+accessible names move with the seeded data; each is commented as such at its
+definition. Everything else that check locates, it locates by role and
+accessible name — so a UI change that renames a button breaks the screenshot
+matrix loudly rather than silently capturing fewer shots.
+
 ## A tool call, end to end
 
 1. User sends a message. `src/sidepanel/services/agentLoop.ts` builds ONE

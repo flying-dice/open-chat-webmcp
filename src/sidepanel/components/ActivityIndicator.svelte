@@ -103,7 +103,7 @@
      reference the shadcn Zinc tokens (src/app.css) directly rather than
      `--color-on-surface(-variant)`, which lived in chat-theme.css — deleted
      wholesale by card 72. The 1800ms duration is likewise hardcoded rather
-     than reading the doomed `--duration-shimmer` custom property. */
+     than reading that sheet's `--duration-shimmer` custom property. */
   .shimmer {
     background-image: linear-gradient(
       90deg,

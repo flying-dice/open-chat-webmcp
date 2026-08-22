@@ -1,13 +1,13 @@
 import { mount } from "svelte";
-// Tailwind v4 + the shadcn-svelte Zinc/Maia token block. FIRST, ahead of the
-// legacy sheets, so that where preflight and theme.css's element reset
-// disagree the legacy rules still win for the components that have not been
-// migrated yet (decisions/28-shadcn-svelte-maia-zinc.md).
+// Tailwind v4 + the shadcn-svelte Zinc/Maia token block — the panel's ONLY
+// stylesheet (decisions/28-shadcn-svelte-maia-zinc.md). Card 72 deleted the
+// two legacy sheets this entry point used to import alongside it
+// (`src/lib/theme.css` and `src/sidepanel/chat-theme.css`); every component
+// now styles itself with Tailwind utilities and shadcn variants, so nothing
+// reads their custom properties any more, and their unlayered element reset
+// (`button`, `input`, `h1-h3`, `body`) was actively outranking Tailwind's
+// layered utilities.
 import "../app.css";
-import "../lib/theme.css";
-// Material 3 expressive tokens for the panel only — layered over theme.css,
-// never loaded by the options page. See decisions/18.
-import "./chat-theme.css";
 import App from "./App.svelte";
 
 // `createProviderClient` (src/lib/providers/registry.ts) dispatches by

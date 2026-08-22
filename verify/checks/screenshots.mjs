@@ -5,7 +5,13 @@
 //
 // BEST EFFORT: a broken render here is an expected possibility, not a
 // harness bug — verify/run.mjs treats a throw from this file as
-// non-fatal.
+// non-fatal (reported SKIP, not FAIL).
+//
+// "Non-fatal" is not the same as "silent". Card 72 made every locator this
+// file depends on a hard requirement (`requireLocator`) and asserts the full
+// `EXPECTED_SHOTS` matrix before returning, so a drifted accessible name or
+// hook class downgrades the check to SKIP *with the missing shot named*
+// instead of quietly writing eight files and reporting PASS.
 //
 // Two pieces of stubbing are what make the shots worth looking at at all:
 //
@@ -311,6 +317,41 @@ async function shoot(page, outDir, name) {
   return file;
 }
 
+/**
+ * Every capture this check is supposed to produce. Card 72: the anchored and
+ * activity shots used to hang off `if (await locator.count())` guards, so a
+ * drifted accessible name or hook class silently produced a SHORTER file list
+ * and the check still reported PASS — exactly the silent degradation
+ * decisions/28 warns migration cards about. The matrix below is asserted
+ * after the run instead, so a missing capture is a loud SKIP naming the shot
+ * that vanished.
+ */
+const EXPECTED_SHOTS = [
+  "sidepanel-light-320w",
+  "sidepanel-dark-320w",
+  "sidepanel-light-400w",
+  "sidepanel-dark-400w",
+  "sidepanel-dark-menu",
+  "sidepanel-dark-model-sheet",
+  "sidepanel-dark-activity-expanded",
+  "sidepanel-dark-activity-payload",
+  "sidepanel-dark-activity-collapsed",
+];
+
+/**
+ * Waits for a locator the matrix depends on, turning "it isn't there" into a
+ * message that names the selector and what it was for — a drifted hook class
+ * or accessible name is then one line of report output, not a mystery.
+ */
+async function requireLocator(locator, what) {
+  try {
+    await locator.first().waitFor({ state: "visible", timeout: 5000 });
+  } catch {
+    throw new Error(`Screenshot matrix incomplete: could not find ${what} (${locator}) — selector drifted?`);
+  }
+  return locator.first();
+}
+
 export async function screenshotSidepanel(context, extensionId, outDir) {
   mkdirSync(outDir, { recursive: true });
   const page = await context.newPage();
@@ -386,43 +427,45 @@ export async function screenshotSidepanel(context, extensionId, outDir) {
   await page.goto(sidepanelUrl(extensionId));
   await page.waitForTimeout(900);
 
-  const menuButton = page.getByRole("button", { name: "More options" });
-  if (await menuButton.count()) {
-    await menuButton.first().click();
-    await page.waitForTimeout(250);
-    files.push(await shoot(page, outDir, "sidepanel-dark-menu"));
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
-  }
+  const menuButton = await requireLocator(
+    page.getByRole("button", { name: "More options" }),
+    "the header's overflow-menu button",
+  );
+  await menuButton.click();
+  await page.waitForTimeout(250);
+  files.push(await shoot(page, outDir, "sidepanel-dark-menu"));
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
 
-  const modelChip = page.locator(".picker__trigger");
-  if (await modelChip.count()) {
-    await modelChip.first().click();
-    await page.waitForTimeout(250);
-    files.push(await shoot(page, outDir, "sidepanel-dark-model-sheet"));
-    // Dismiss before the activity shots below — left open, the sheet would
-    // sit on top of every one of them.
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
-  }
+  // `.picker__trigger` is a styling-free hook class kept on the composer's
+  // model chip purely for this locator (ProviderPicker.svelte:346) — the
+  // chip's own accessible name is the model id, which moves with seed data.
+  const modelChip = await requireLocator(page.locator(".picker__trigger"), "the composer's model-picker trigger");
+  await modelChip.click();
+  await page.waitForTimeout(250);
+  files.push(await shoot(page, outDir, "sidepanel-dark-model-sheet"));
+  // Dismiss before the activity shots below — left open, the sheet would
+  // sit on top of every one of them.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
 
   // Card 61: the activity timeline. Chat 0 (seed-0, still the current tab's
   // chat at this point — `tabchat:1` points at it, and nothing above has
   // navigated away) has an error AND a denied call, so its group is
   // expanded by default (decisions/26: a group that needs attention never
   // auto-collapses) — no click needed for the "expanded" shot.
-  const activitySummary = page.locator(".activity-group .summary");
-  if (await activitySummary.count()) {
-    await page.waitForTimeout(250);
-    files.push(await shoot(page, outDir, "sidepanel-dark-activity-expanded"));
+  //
+  // `.activity-group .summary` and `.step .row-head` are, like
+  // `.picker__trigger`, styling-free hook classes kept on
+  // ActivityGroup.svelte / ToolCallRow.svelte for these two locators.
+  await requireLocator(page.locator(".activity-group .summary"), "an activity group's summary row");
+  await page.waitForTimeout(250);
+  files.push(await shoot(page, outDir, "sidepanel-dark-activity-expanded"));
 
-    const firstRow = page.locator(".step .row-head").first();
-    if (await firstRow.count()) {
-      await firstRow.click();
-      await page.waitForTimeout(250);
-      files.push(await shoot(page, outDir, "sidepanel-dark-activity-payload"));
-    }
-  }
+  const firstRow = await requireLocator(page.locator(".step .row-head"), "a tool-call step's header row");
+  await firstRow.click();
+  await page.waitForTimeout(250);
+  files.push(await shoot(page, outDir, "sidepanel-dark-activity-payload"));
 
   // Chat 1 (seed-1) is a clean all-success run, so its group is COLLAPSED
   // by default — the contrast decisions/26 is built around, and otherwise
@@ -436,23 +479,31 @@ export async function screenshotSidepanel(context, extensionId, outDir) {
   await page.goto(sidepanelUrl(extensionId));
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(900);
-  const menuButtonAgain = page.getByRole("button", { name: "More options" });
-  if (await menuButtonAgain.count()) {
-    await menuButtonAgain.first().click();
-    await page.waitForTimeout(250);
-    // "Which links point off this page?" (seed-1's own first user message,
-    // via titleFromSummary) rather than a fixed index: the menu's first
-    // `role="menuitem"` is a connection-status row above "Recent chats",
-    // so an index would be one off from what it looks like it should be —
-    // matching by the chat's own title is what it actually says on screen.
-    const chatOneRow = page.getByRole("menuitem", { name: "Which links point off this page?" });
-    if (await chatOneRow.count()) {
-      await chatOneRow.first().click();
-      await page.waitForTimeout(400);
-      files.push(await shoot(page, outDir, "sidepanel-dark-activity-collapsed"));
-    }
-  }
+  const menuButtonAgain = await requireLocator(
+    page.getByRole("button", { name: "More options" }),
+    "the header's overflow-menu button (second open)",
+  );
+  await menuButtonAgain.click();
+  await page.waitForTimeout(250);
+  // "Which links point off this page?" (seed-1's own first user message,
+  // via titleFromSummary) rather than a fixed index: the menu's first
+  // `role="menuitem"` is a connection-status row above "Recent chats",
+  // so an index would be one off from what it looks like it should be —
+  // matching by the chat's own title is what it actually says on screen.
+  const chatOneRow = await requireLocator(
+    page.getByRole("menuitem", { name: "Which links point off this page?" }),
+    "seed-1's row in the menu's recent-chats list",
+  );
+  await chatOneRow.click();
+  await page.waitForTimeout(400);
+  files.push(await shoot(page, outDir, "sidepanel-dark-activity-collapsed"));
 
   await page.close();
-  return { files };
+
+  const captured = new Set(files.map((f) => path.basename(f, ".png")));
+  const missing = EXPECTED_SHOTS.filter((name) => !captured.has(name));
+  if (missing.length > 0) {
+    throw new Error(`Screenshot matrix incomplete: missing ${missing.join(", ")}`);
+  }
+  return { count: files.length, files };
 }

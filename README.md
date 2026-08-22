@@ -16,6 +16,15 @@ mechanism. The repository directory and git remote are intentionally left as
 `ollama-webmcp-chrome` — renaming those is a separate, riskier operation left
 to the user's discretion.
 
+| Light | Dark |
+| --- | --- |
+| ![The side panel in light mode: an activity timeline of four tool calls followed by the model's summary, with the page-context strip and composer docked at the bottom](docs/images/sidepanel-light.png) | ![The same conversation in dark mode](docs/images/sidepanel-dark.png) |
+
+*Both captured at 400px by `npm run verify`, which writes the full
+light/dark × 320/400px matrix (plus the overflow menu, model picker and
+activity timeline) to gitignored `verify/output/screenshots/` — see
+[Verification harness](#verification-harness).*
+
 ## What it does
 
 - Reads tools directly from a page's **native** `document.modelContext` —
@@ -34,8 +43,12 @@ to the user's discretion.
   the way you can a page
   (`decisions/20-approval-policy-is-per-tool-source.md`).
 - Keeps one conversation per browser tab, persisted across panel close/reopen.
-- Adopts Chrome's own visual language rather than inventing a UI style, so the
-  panel reads as part of the browser.
+- Built on [shadcn-svelte](https://shadcn-svelte.com) + Tailwind CSS v4 (Maia
+  style, Zinc base colour), light and dark, down to Chrome's 320px minimum
+  side-panel width — see
+  [decisions/28](decisions/28-shadcn-svelte-maia-zinc.md) and the
+  [UI and styling](docs/01-architecture.md#ui-and-styling) section of the
+  architecture doc.
 
 It does **not** phone home. There is no telemetry, no bundled backend, and no
 account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
@@ -360,15 +373,29 @@ as behavior changes. A few things worth knowing if you're picking this up:
 
 ## Third-party assets
 
-The side panel's icons are Material Symbols (Outlined, Weight 400, Grade 0,
-Optical size 24) from [google/material-design-icons][msicons], Copyright Google
-LLC, licensed under the Apache License 2.0. Only the `d` path attributes were
-extracted; they are inlined in `src/lib/icons.ts`, which carries the SPDX
-identifier and provenance. The `sparkle` glyph in that file is not Google's — it
-is a plain four-point star drawn for this project, since the reference panel's
-star is a product mark.
+The UI is built from **[shadcn-svelte][shadcn]** components (MIT), vendored
+into `src/lib/components/ui/` by that project's CLI in the Maia style over the
+Zinc base colour, on top of **[Tailwind CSS][tw]** v4 (MIT).
 
-[msicons]: https://github.com/google/material-design-icons
+Standard icons are **[Hugeicons][hugeicons]** free icons
+(`@hugeicons/core-free-icons`, MIT), Maia's paired icon set, mapped from name
+to component in `src/sidepanel/components/Icon.svelte`. Body text is
+**[Figtree][figtree]** by Erik Kennedy (SIL Open Font License 1.1), bundled
+locally via `@fontsource-variable/figtree` — nothing is fetched from a CDN at
+runtime.
+
+`src/lib/icons.ts` holds the only two hand-inlined marks. The `sparkle` glyph
+is a plain four-point star drawn for this project, since the reference panel's
+star is a product mark. The `ollama` glyph is the Ollama logo, taken from
+[Simple Icons][simpleicons] (CC0-1.0) and mechanically rescaled from their
+24-unit grid onto the 960-unit one the file uses; the file carries its SPDX
+identifier and full provenance.
+
+[shadcn]: https://shadcn-svelte.com
+[tw]: https://tailwindcss.com
+[hugeicons]: https://hugeicons.com
+[figtree]: https://github.com/erikdkennedy/figtree
+[simpleicons]: https://simpleicons.org/?q=ollama
 
 ## License
 
