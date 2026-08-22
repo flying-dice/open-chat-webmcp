@@ -11,11 +11,18 @@
    * `active` highlights the chat currently open in this tab
    * (`panel.activeChatId`, compared by the parent) so it's obvious which
    * entry the transcript view would show if you switched back to it.
+   *
+   * Re-skinned onto shadcn's Item primitive (decisions/28) — Item itself
+   * renders the row and carries `role="listitem"` for the ItemGroup list in
+   * HistoryPanel; the open button and delete button are its two children.
    */
   import type { ChatSummary } from "../../lib/session";
-  import Icon from "./Icon.svelte";
-  import IconButton from "./IconButton.svelte";
   import { titleFromSummary } from "../lib/chatTitle";
+  import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "$lib/components/ui/item";
+  import { Button } from "$lib/components/ui/button";
+  import { Badge } from "$lib/components/ui/badge";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { BubbleChatIcon, Delete02Icon } from "@hugeicons/core-free-icons";
 
   interface Props {
     summary: ChatSummary;
@@ -40,152 +47,56 @@
     event.stopPropagation();
     onDelete();
   }
+
+  const deleteLabel = $derived(
+    deleting ? "Deleting…" : `Delete chat from ${formatOrigin(summary.origin)}`,
+  );
 </script>
 
-<div class="history-item" data-active={active}>
+<Item
+  role="listitem"
+  variant={active ? "muted" : "default"}
+  class={active ? "gap-1 p-1" : "gap-1 p-1 hover:bg-muted/50"}
+>
   <button
     type="button"
-    class="history-item-main"
+    class="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left disabled:pointer-events-none disabled:opacity-50"
     onclick={onOpen}
     disabled={opening || deleting}
     aria-current={active}
   >
-    <span class="row-icon" aria-hidden="true"><Icon name="subject" size={20} /></span>
+    <ItemMedia variant="icon">
+      <HugeiconsIcon icon={BubbleChatIcon} strokeWidth={2} />
+    </ItemMedia>
 
-    <span class="history-item-text">
-      <span class="history-item-head">
-        <!-- Titled by its first message, exactly as the overflow menu's
-             recent-chats rows are, so the same chat is called the same
-             thing in both places. The origin moves down to the meta line —
-             it identifies the chat, but it isn't its name. -->
-        <span class="history-title">{titleFromSummary(summary)}</span>
+    <ItemContent>
+      <ItemTitle class="w-full">
+        <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary)}</span>
         {#if active}
-          <span class="badge badge-active">current</span>
+          <Badge variant="secondary" class="shrink-0">current</Badge>
         {/if}
-      </span>
+      </ItemTitle>
 
-      <span class="history-meta text-small">
+      <ItemDescription class="line-clamp-1">
         {formatOrigin(summary.origin)} · {formatTime(summary.updatedAt)} ·
         {summary.messageCount} message{summary.messageCount === 1 ? "" : "s"}
         {#if summary.toolCallCount > 0}
           · {summary.toolCallCount} tool call{summary.toolCallCount === 1 ? "" : "s"}
         {/if}
-      </span>
-    </span>
+      </ItemDescription>
+    </ItemContent>
   </button>
 
-  <span class="delete-slot">
-    <IconButton
-      icon="delete"
-      label={deleting ? "Deleting…" : `Delete chat from ${formatOrigin(summary.origin)}`}
-      tone="danger"
+  <ItemActions>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="text-muted-foreground hover:text-destructive"
+      aria-label={deleteLabel}
       disabled={opening || deleting}
       onclick={handleDeleteClick}
-    />
-  </span>
-</div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  /* A row, not a card: the history view is a list of one kind of thing, and
-     boxing each entry at this width wastes most of it on borders. The
-     active entry is tinted the same way the overflow menu tints it. */
-  .history-item {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    border: none;
-    border-radius: var(--radius-card);
-    background: transparent;
-    overflow: hidden;
-  }
-
-  .history-item:hover {
-    background: var(--state-hover);
-  }
-
-  .history-item[data-active="true"] {
-    background: var(--color-secondary-container);
-    color: var(--color-on-secondary-container);
-  }
-
-  .history-item-main {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-    text-align: left;
-    color: inherit;
-  }
-
-  .history-item-main:hover {
-    background: transparent;
-  }
-
-  .row-icon {
-    display: inline-flex;
-    flex: none;
-    color: var(--color-on-surface-variant);
-  }
-
-  .history-item-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .history-item-head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    width: 100%;
-  }
-
-  .history-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-  }
-
-  .badge-active {
-    flex: 0 0 auto;
-    font-size: var(--font-size-small);
-    line-height: 1;
-    padding: 2px var(--space-1);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-primary);
-    color: var(--color-primary);
-    white-space: nowrap;
-  }
-
-  .history-meta {
-    color: var(--color-on-surface-variant);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-  }
-
-  .history-item[data-active="true"] .history-meta {
-    color: inherit;
-    opacity: 0.75;
-  }
-
-  .delete-slot {
-    display: inline-flex;
-    flex: none;
-    margin-right: var(--space-1);
-  }
-</style>
+    >
+      <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+    </Button>
+  </ItemActions>
+</Item>

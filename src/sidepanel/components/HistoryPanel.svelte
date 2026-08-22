@@ -15,10 +15,24 @@
    * mismatch lives in App.svelte, next to the transcript itself, since it
    * applies for as long as that chat stays open, not just at the moment of
    * opening it from here.
+   *
+   * Re-skinned onto shadcn's Item/ScrollArea/Empty primitives (card 70,
+   * decisions/28) — no behaviour change, presentation only.
    */
   import { deleteChat, listChatSummaries, type ChatSummary } from "../../lib/session";
   import { discardActiveChatIfDeleted, openChatInTab, panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { ItemGroup } from "$lib/components/ui/item";
+  import {
+    Empty,
+    EmptyDescription,
+    EmptyHeader,
+    EmptyMedia,
+    EmptyTitle,
+  } from "$lib/components/ui/empty";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { BubbleChatIcon } from "@hugeicons/core-free-icons";
 
   interface Props {
     /** Switch back to the chat view — called only once opening a chat actually succeeds. */
@@ -80,23 +94,28 @@
   }
 </script>
 
-<div class="history-panel">
-  {#if status === "loading"}
-    <p class="text-small">Loading…</p>
-  {:else if summaries.length === 0}
-    <div class="empty-state">
-      <p>No chats yet.</p>
-      <p class="text-small">
-        Every conversation you have — on any site, in any tab — is listed here,
-        newest first, once it has at least one message. Nothing is deleted
-        automatically; use the delete button on an entry, or "Clear all
-        history" on the options page, when you're done with one.
-      </p>
-    </div>
-  {:else}
-    <ul class="history-list">
-      {#each summaries as summary (summary.id)}
-        <li>
+<ScrollArea class="min-h-0 min-w-0 flex-1">
+  <div class="min-w-0 p-3">
+    {#if status === "loading"}
+      <p class="p-2 text-sm text-muted-foreground">Loading…</p>
+    {:else if summaries.length === 0}
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <HugeiconsIcon icon={BubbleChatIcon} strokeWidth={2} />
+          </EmptyMedia>
+          <EmptyTitle>No chats yet</EmptyTitle>
+          <EmptyDescription>
+            Every conversation you have — on any site, in any tab — is listed here,
+            newest first, once it has at least one message. Nothing is deleted
+            automatically; use the delete button on an entry, or "Clear all
+            history" on the options page, when you're done with one.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    {:else}
+      <ItemGroup>
+        {#each summaries as summary (summary.id)}
           <HistoryListItem
             {summary}
             active={panel.activeChatId === summary.id}
@@ -105,48 +124,8 @@
             onOpen={() => handleOpen(summary.id)}
             onDelete={() => handleDelete(summary)}
           />
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</div>
-
-<style>
-  /* All colour/spacing/radius values come from src/lib/theme.css and
-     src/sidepanel/chat-theme.css (decisions/18). */
-
-  /* Since decisions/18 this is a full-panel view reached from the overflow
-     menu rather than a pane under a tab strip, so it owns its own scroller
-     and padding — previously it had neither and relied on the shell. */
-  .history-panel {
-    flex: 1 1 auto;
-    min-height: 0;
-    min-width: 0;
-    overflow-y: auto;
-    padding: var(--space-2) var(--space-3) var(--space-4);
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-1);
-    color: var(--color-on-surface-variant);
-  }
-
-  .empty-state p {
-    margin: 0;
-  }
-
-  .history-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    /* Rows, not cards: they carry their own hover/active fill and need no
-       gutter between them. */
-    gap: 0;
-    min-width: 0;
-  }
-</style>
+        {/each}
+      </ItemGroup>
+    {/if}
+  </div>
+</ScrollArea>
