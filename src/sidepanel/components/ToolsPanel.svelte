@@ -57,8 +57,8 @@
       >{m.toolsPanel_thisPageHeading()}</h2
     >
     {#if restricted}
-      <Empty.Root class="p-6 text-left md:p-6">
-        <Empty.Header class="max-w-none items-start text-left">
+      <Empty.Root class="p-6 text-start md:p-6">
+        <Empty.Header class="max-w-none items-start text-start">
           <Empty.Media variant="icon" class="size-9">
             <Icon name="close" class="size-5" />
           </Empty.Media>
@@ -71,8 +71,8 @@
         </Empty.Header>
       </Empty.Root>
     {:else if !webmcpAvailable}
-      <Empty.Root class="p-6 text-left md:p-6">
-        <Empty.Header class="max-w-none items-start text-left">
+      <Empty.Root class="p-6 text-start md:p-6">
+        <Empty.Header class="max-w-none items-start text-start">
           <Empty.Media variant="icon" class="size-9">
             <Icon name="info" class="size-5" />
           </Empty.Media>
@@ -85,8 +85,8 @@
         </Empty.Header>
       </Empty.Root>
     {:else if tools.length === 0}
-      <Empty.Root class="p-6 text-left md:p-6">
-        <Empty.Header class="max-w-none items-start text-left">
+      <Empty.Root class="p-6 text-start md:p-6">
+        <Empty.Header class="max-w-none items-start text-start">
           <Empty.Media variant="icon" class="size-9">
             <Icon name="build" class="size-5" />
           </Empty.Media>
@@ -115,8 +115,8 @@
       >{m.toolsPanel_mcpServersHeading()}</h2
     >
     {#if serverTools.length === 0}
-      <Empty.Root class="p-6 text-left md:p-6">
-        <Empty.Header class="max-w-none items-start text-left">
+      <Empty.Root class="p-6 text-start md:p-6">
+        <Empty.Header class="max-w-none items-start text-start">
           <Empty.Media variant="icon" class="size-9">
             <Icon name="terminal" class="size-5" />
           </Empty.Media>

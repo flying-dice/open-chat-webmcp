@@ -115,7 +115,18 @@
   const { name, class: className = "size-4" }: Props = $props();
 
   const isCustom = $derived(name === "sparkle" || name === "ollama");
-  const svgClass = $derived(cn("block shrink-0", className));
+  /**
+   * `arrow_back` is the one glyph in this map whose meaning IS "toward the
+   * start of reading order" — every call site uses it for browser-back-style
+   * navigation (`App.svelte`'s "back to chat" row), never for a fixed
+   * screen direction — so it is unconditionally mirrored under `dir="rtl"`
+   * here rather than left to each caller (card 104's RTL icon audit).
+   * `chevron_right`'s other directional uses are handled at their own call
+   * sites instead, because some of them combine it with a `rotate-90` on
+   * expand/collapse and mirroring would fight that rotation.
+   */
+  const isDirectional = $derived(name === "arrow_back");
+  const svgClass = $derived(cn("block shrink-0", isDirectional && "rtl:-scale-x-100", className));
 </script>
 
 {#if isCustom}

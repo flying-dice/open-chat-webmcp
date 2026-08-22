@@ -284,7 +284,12 @@
   {#if !atBottom}
     <!-- The one thing in the transcript that genuinely floats over content,
          so it is the one thing that gets a shadow. IconButton's own
-         `rounded-full` already makes the button itself circular. -->
+         `rounded-full` already makes the button itself circular.
+         `left-1/2` kept physical on purpose (card 104's RTL sweep): this is
+         pure horizontal centering, and the midpoint of a box is the same
+         point measured from either edge, so `start-1/2` would centre it
+         identically — `left` just matches the paired `-translate-x-1/2`
+         (a physical transform; Tailwind has no logical translate). -->
     <div class="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg">
       <IconButton
         icon="arrow_downward"

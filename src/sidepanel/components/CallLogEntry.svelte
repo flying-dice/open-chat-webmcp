@@ -93,15 +93,19 @@
     .join(" ")}
 >
   <div class="flex w-full flex-wrap items-center gap-2 bg-muted/50 px-2 py-1">
-    <Collapsible.Trigger class="flex min-w-0 flex-1 items-center gap-1 text-left">
+    <Collapsible.Trigger class="flex min-w-0 flex-1 items-center gap-1 text-start">
       <span
         class="inline-block shrink-0 text-xs text-muted-foreground transition-transform duration-150"
         class:rotate-90={expanded}
         aria-hidden="true">▸</span
       >
-      <span class="min-w-0 truncate font-mono text-code">{entry.name}</span>
+      <span class="min-w-0 truncate font-mono text-code" dir="ltr">{entry.name}</span>
       {#if entry.origin}
-        <Badge variant="outline" class={entry.origin.kind === "server" ? "border-primary text-primary" : ""}>
+        <Badge
+          variant="outline"
+          class={entry.origin.kind === "server" ? "border-primary text-primary" : ""}
+          dir="ltr"
+        >
           {originLabel(entry.origin)}
         </Badge>
       {/if}

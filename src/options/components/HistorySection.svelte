@@ -145,7 +145,7 @@
         <div class="flex flex-col gap-2">
           {#each sessions as session (session.id)}
             <div class="flex flex-col gap-0.5 rounded-xl border px-3 py-2">
-              <span class="font-medium break-all">{formatOrigin(session.origin)}</span>
+              <span class="font-medium break-all" dir="ltr">{formatOrigin(session.origin)}</span>
               <span class="text-xs text-muted-foreground">
                 {m.historyListItem_messageCount({ count: session.messageCount })} ·
                 {m.historyListItem_toolCallCount({ count: session.toolCallCount })} · updated

@@ -21,6 +21,7 @@
   import CallLogPanel from "./CallLogPanel.svelte";
   import * as Tabs from "$lib/components/ui/tabs";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { getLocale, getTextDirection } from "../../paraglide/runtime.js";
   import { m } from "../../paraglide/messages.js";
 
   interface Props {
@@ -60,7 +61,16 @@
       </Tabs.List>
     </div>
 
-    <ScrollArea class="min-h-0 flex-1">
+    <!-- `dir` is NOT inherited from the document by bits-ui's ScrollArea
+         (card 104's RTL pass, discovered live): it defaults its own `dir`
+         internally and stamps that as an explicit `dir` ATTRIBUTE on the
+         root it renders, which then overrides `<html dir>`'s inherited
+         `direction` for everything scrolled inside — every logical Tailwind
+         utility from this card's sweep (`text-start`, `ms-`/`ps-`, flex
+         auto-mirroring, …) silently reverts to LTR behaviour under it
+         unless told otherwise. Passed explicitly rather than left to the
+         default for exactly that reason. -->
+    <ScrollArea class="min-h-0 flex-1" dir={getTextDirection(getLocale())}>
       <Tabs.Content value="tools" class="px-3 pb-3">
         <ToolsPanel {tools} {serverTools} {webmcpAvailable} {restricted} />
       </Tabs.Content>

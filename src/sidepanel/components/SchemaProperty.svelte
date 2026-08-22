@@ -60,7 +60,7 @@
 
 <div class="min-w-0">
   <div class="flex min-w-0 flex-wrap items-baseline gap-1">
-    <span class="font-mono text-code font-semibold break-all">{name}</span>
+    <span class="font-mono text-code font-semibold break-all" dir="ltr">{name}</span>
     <span class="font-mono text-xs text-muted-foreground">{typeLabel}</span>
     {#if required}<span class="text-xs font-medium text-destructive">{m.schemaProperty_requiredLabel()}</span
       >{/if}
@@ -77,13 +77,13 @@
   {/if}
 
   {#if type === "object" && properties}
-    <div class="mt-1 flex flex-col gap-2 border-l-2 border-border pl-2">
+    <div class="mt-1 flex flex-col gap-2 border-s-2 border-border ps-2">
       {#each Object.entries(properties) as [childName, childNode] (childName)}
         <Self name={childName} node={childNode} required={requiredList.includes(childName)} />
       {/each}
     </div>
   {:else if type === "array" && itemProperties}
-    <div class="mt-1 flex flex-col gap-2 border-l-2 border-border pl-2">
+    <div class="mt-1 flex flex-col gap-2 border-s-2 border-border ps-2">
       <p class="text-xs text-muted-foreground">{m.schemaProperty_eachItemLabel()}</p>
       {#each Object.entries(itemProperties) as [childName, childNode] (childName)}
         <Self name={childName} node={childNode} required={itemRequiredList.includes(childName)} />

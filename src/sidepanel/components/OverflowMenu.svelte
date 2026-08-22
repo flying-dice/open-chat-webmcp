@@ -137,7 +137,10 @@
       <DropdownMenu.Item onSelect={onOpenHistory}>
         <Icon name="more_horiz" class="size-4" />
         <span class="min-w-0 flex-1 truncate">{m.overflowMenu_moreLabel()}</span>
-        <Icon name="chevron_right" class="size-4" />
+        <!-- Static forward-hint chevron (opens the History view) — genuinely
+             directional, no competing rotate transform, so it flips outright
+             under RTL (card 104's icon audit). -->
+        <Icon name="chevron_right" class="size-4 rtl:-scale-x-100" />
       </DropdownMenu.Item>
     {/if}
 

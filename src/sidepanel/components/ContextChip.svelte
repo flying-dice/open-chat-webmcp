@@ -25,6 +25,7 @@
    */
   import Icon from "./Icon.svelte";
   import { cn } from "$lib/utils";
+  import { isolateLtr } from "../../ui/bidi";
   import type { ConnectionStatus, PageInfo } from "../stores/panel.svelte";
   import { connectionStatusLabel } from "../presentation/connectionStatus";
   import { m } from "../../paraglide/messages.js";
@@ -38,10 +39,16 @@
 
   const { pageInfo, connectionStatus, onOpenTools }: Props = $props();
 
+  // The origin is a URL — always LTR — interpolated straight into a
+  // translated sentence with no DOM element boundary around just that
+  // part, so it gets Unicode-isolated rather than `dir="ltr"` (card 104's
+  // RTL bidi-isolation pass; `pageInfo.title` is left alone since a page's
+  // own title is natural-language text in whatever direction it is).
   const label = $derived.by((): string => {
     if (!pageInfo) return m.contextChip_noActiveTab();
-    if (pageInfo.restricted) return m.contextChip_cantReadOrigin({ origin: pageInfo.origin });
-    return m.contextChip_sharing({ title: pageInfo.title || pageInfo.origin });
+    if (pageInfo.restricted)
+      return m.contextChip_cantReadOrigin({ origin: isolateLtr(pageInfo.origin) });
+    return m.contextChip_sharing({ title: pageInfo.title || isolateLtr(pageInfo.origin) });
   });
 
   const toolCountLabel = $derived.by((): string | undefined => {
@@ -93,7 +100,7 @@
          row: it is a property of the thing the row is already about. -->
     <span
       class={cn(
-        "absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-secondary transition-colors",
+        "absolute -end-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-secondary transition-colors",
         dotColor[connectionStatus],
       )}
       aria-hidden="true"
@@ -113,17 +120,20 @@
 {#if onOpenTools}
   <button
     type="button"
-    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
+    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-start text-sm text-muted-foreground hover:bg-muted"
     onclick={onOpenTools}
     title={detail}
     aria-label={m.contextChip_openToolsAriaLabel({ detail })}
   >
     {@render body()}
-    <span class="flex-none"><Icon name="chevron_right" class="size-4" /></span>
+    <!-- Static forward-hint chevron (opens the tool inspector) — genuinely
+         directional, no competing rotate transform, so it flips outright
+         under RTL (card 104's icon audit). -->
+    <span class="flex-none"><Icon name="chevron_right" class="size-4 rtl:-scale-x-100" /></span>
   </button>
 {:else}
   <div
-    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-left text-sm text-muted-foreground"
+    class="flex w-full min-w-0 items-center gap-2 rounded-t-2xl rounded-b-none bg-secondary px-3 py-2 text-start text-sm text-muted-foreground"
     title={detail}
   >
     {@render body()}

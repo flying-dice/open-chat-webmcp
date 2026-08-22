@@ -76,7 +76,7 @@
 
     <div class="min-w-0">
       <div class="text-sm font-medium">{server.name}</div>
-      <div class="text-xs break-all text-muted-foreground">{server.url}</div>
+      <div class="text-xs break-all text-muted-foreground" dir="ltr">{server.url}</div>
     </div>
 
     {#if !server.enabled}
@@ -116,7 +116,7 @@
       <Badge variant="outline" title={m.permissionGrantedTitle()}>{m.permissionGrantedBadge()}</Badge>
     {/if}
 
-    <div class="ml-auto flex flex-wrap items-center gap-1">
+    <div class="ms-auto flex flex-wrap items-center gap-1">
       <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
         {testing ? m.testingLabel() : m.testConnectionAction()}
       </Button>

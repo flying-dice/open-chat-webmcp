@@ -27,6 +27,7 @@
   import type { TurnPhase } from "../../domain/chat";
   import type { IconName } from "../../ui/icons";
   import { formatDuration } from "../presentation/duration";
+  import { isolateLtr } from "../../ui/bidi";
   import { m } from "../../paraglide/messages.js";
 
   /**
@@ -47,15 +48,22 @@
 
   let { phase, modelLabel, modelIcon }: Props = $props();
 
+  // `tool`/`origin`/`model` are identifiers interpolated into a translated
+  // sentence with no element boundary around just that part, so they are
+  // Unicode-isolated rather than `dir="ltr"` (card 104's RTL bidi-isolation
+  // pass).
   const sentence = $derived.by((): string => {
     if (phase.kind === "waiting")
       return m.activityIndicator_waitingFor({
-        model: modelLabel ?? m.activityIndicator_waitingForModelFallback(),
+        model: modelLabel ? isolateLtr(modelLabel) : m.activityIndicator_waitingForModelFallback(),
       });
     // phase.kind === "calling"
     return phase.origin
-      ? m.activityIndicator_callingOn({ tool: phase.toolName, origin: originLabel(phase.origin) })
-      : m.activityIndicator_calling({ tool: phase.toolName });
+      ? m.activityIndicator_callingOn({
+          tool: isolateLtr(phase.toolName),
+          origin: isolateLtr(originLabel(phase.origin)),
+        })
+      : m.activityIndicator_calling({ tool: isolateLtr(phase.toolName) });
   });
 
   const startedAt = $derived(phase.kind === "calling" ? phase.startedAt : undefined);

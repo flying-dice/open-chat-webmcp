@@ -156,7 +156,7 @@
       // it in the same layer, where tree order wins and it paints on top,
       // with the background-coloured ring below punching the rail out
       // cleanly around it.
-      "relative mt-1.5 ml-0.5 size-2 shrink-0 rounded-full shadow-[0_0_0_2px_var(--background)]",
+      "relative mt-1.5 ms-0.5 size-2 shrink-0 rounded-full shadow-[0_0_0_2px_var(--background)]",
       dotClass,
       displayStatus === "running" && "animate-pulse",
     )}
@@ -164,9 +164,10 @@
   ></span>
 
   <Collapsible.Root bind:open class="flex min-w-0 flex-col gap-1">
-    <Collapsible.Trigger class="row-head group flex w-full min-w-0 items-center gap-2 py-1 text-left">
+    <Collapsible.Trigger class="row-head group flex w-full min-w-0 items-center gap-2 py-1 text-start">
       <span
         class="min-w-0 flex-1 truncate font-mono text-code group-hover:underline"
+        dir="ltr"
         title={message.toolName}>{message.toolName}</span
       >
 
@@ -179,7 +180,7 @@
         <!-- Decisions/19 §6 — same tinted-primary badge treatment as
              ToolListItem.svelte/CallLogEntry.svelte so a remote call reads
              consistently everywhere in the panel. -->
-        <Badge variant="outline" class="flex-none border-primary text-primary"
+        <Badge variant="outline" class="flex-none border-primary text-primary" dir="ltr"
           >{originLabel(message.toolOrigin)}</Badge
         >
       {:else}
@@ -190,6 +191,11 @@
         <span class="flex-none text-xs whitespace-nowrap text-muted-foreground">{durationLabel}</span>
       {/if}
 
+      <!-- NOT mirrored under RTL (card 104's icon audit): this is a
+           rotate-driven disclosure triangle, not a fixed forward-hint — its
+           orientation is fully described by `open` (right when collapsed,
+           down when expanded) and that pairing has to stay the same in both
+           directions, so `rtl:-scale-x-100` isn't applied here. -->
       <span
         class={cn(
           "flex-none text-muted-foreground transition-transform duration-150",

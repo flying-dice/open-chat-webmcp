@@ -18,6 +18,7 @@ import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import HistoryListItem from "./HistoryListItem.svelte";
 import type { ChatSummary } from "../../domain/chat";
+import { isolateLtr } from "../../ui/bidi";
 import { m } from "../../paraglide/messages.js";
 
 function summary(overrides: Partial<ChatSummary> = {}): ChatSummary {
@@ -91,7 +92,7 @@ describe("HistoryListItem", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: m.historyListItem_deleteLabel({ origin: "https://example.com" }),
+        name: m.historyListItem_deleteLabel({ origin: isolateLtr("https://example.com") }),
       }),
     );
     expect(onDelete).toHaveBeenCalledTimes(1);
@@ -139,7 +140,7 @@ describe("HistoryListItem", () => {
     expect(screen.getByRole("button", { name: /hello there/ })).toBeDisabled();
     expect(
       screen.getByRole("button", {
-        name: m.historyListItem_deleteLabel({ origin: "https://example.com" }),
+        name: m.historyListItem_deleteLabel({ origin: isolateLtr("https://example.com") }),
       }),
     ).toBeDisabled();
     unmount();

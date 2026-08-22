@@ -63,6 +63,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Separator } from "$lib/components/ui/separator";
   import { cn } from "$lib/utils";
+  import { isolateLtr } from "../../ui/bidi";
   import {
     isSelectable,
     isSelectionUsable,
@@ -159,7 +160,9 @@
       // flag that on the trigger chip too, not just in the composer.
       if (selection.needsConfirmation) {
         return {
-          label: m.providerPicker_confirmLabel({ label: `${r.config.name} · ${r.model}` }),
+          label: m.providerPicker_confirmLabel({
+            label: `${r.config.name} · ${isolateLtr(r.model)}`,
+          }),
           variant: "warning",
         };
       }
@@ -180,6 +183,17 @@
     if (isSelectionUsable(r, selection.needsConfirmation)) return r.model;
     return triggerInfo.label;
   });
+
+  /**
+   * `triggerText` is the bare model id in the common case (an identifier,
+   * always LTR) but falls back to a full translated sentence in the loading/
+   * error/confirm states — forcing `dir="ltr"` unconditionally on the chip
+   * would misrender THOSE as left-to-right too, so the attribute tracks
+   * which case is live (card 104's RTL bidi-isolation pass).
+   */
+  const triggerTextIsModelId = $derived(
+    isSelectionUsable(selection.resolution, selection.needsConfirmation),
+  );
 
   // ---- Building the flat, grouped list --------------------------------
 
@@ -333,7 +347,7 @@
     )}
   >
     <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span class={cn("truncate text-foreground", !selectable && "text-muted-foreground")}>
+      <span class={cn("truncate text-foreground", !selectable && "text-muted-foreground")} dir="ltr">
         {row.model.name}
       </span>
       {#if showProvider}
@@ -372,14 +386,14 @@
          legacy names around it. -->
     <Popover.Trigger
       class={cn(
-        "picker__trigger inline-flex max-w-[180px] min-w-0 items-center gap-1 rounded-full bg-secondary py-1 pr-1 pl-3 text-sm text-secondary-foreground",
+        "picker__trigger inline-flex max-w-[180px] min-w-0 items-center gap-1 rounded-full bg-secondary py-1 pe-1 ps-3 text-sm text-secondary-foreground",
         triggerInfo.variant === "muted" && "text-muted-foreground",
         triggerInfo.variant === "warning" && "text-destructive",
       )}
       title={triggerInfo.label}
       aria-label={triggerInfo.label}
     >
-      <span class="min-w-0 truncate">{triggerText}</span>
+      <span class="min-w-0 truncate" dir={triggerTextIsModelId ? "ltr" : undefined}>{triggerText}</span>
       <Icon name="expand_more" class="size-4" />
     </Popover.Trigger>
 

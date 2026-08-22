@@ -560,7 +560,7 @@
         <Field.Title>{m.mcpServerForm_manualRegistrationTitle()}</Field.Title>
         <Alert.Root class="bg-background">
           <Alert.Description>
-            <code class="font-mono text-xs">{oauthDiscovery.issuer}</code>
+            <code class="font-mono text-xs" dir="ltr">{oauthDiscovery.issuer}</code>
             {m.mcpServerForm_manualRegistrationNotice()}
           </Alert.Description>
         </Alert.Root>

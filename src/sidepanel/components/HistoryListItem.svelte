@@ -21,6 +21,7 @@
    */
   import type { ChatSummary } from "../../domain/chat";
   import { titleFromSummary } from "../../domain/chat";
+  import { isolateLtr } from "../../ui/bidi";
   import {
     Item,
     ItemActions,
@@ -47,8 +48,13 @@
 
   let { summary, active, opening, deleting, onOpen, onDelete }: Props = $props();
 
+  // The origin renders both inline (the description line, no element
+  // boundary of its own around just this part) and interpolated into
+  // `deleteLabel`'s translated sentence below, so it is Unicode-isolated at
+  // the source rather than via a `dir="ltr"` element (card 104's RTL
+  // bidi-isolation pass).
   function formatOrigin(origin: string): string {
-    return origin || m.historyListItem_unknownOrigin();
+    return origin ? isolateLtr(origin) : m.historyListItem_unknownOrigin();
   }
 
   function formatTime(ms: number): string {
@@ -74,7 +80,7 @@
 >
   <button
     type="button"
-    class="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left disabled:pointer-events-none disabled:opacity-50"
+    class="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-start disabled:pointer-events-none disabled:opacity-50"
     onclick={onOpen}
     disabled={opening || deleting}
     aria-current={active}

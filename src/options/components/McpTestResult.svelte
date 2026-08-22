@@ -47,7 +47,7 @@
       </Button>
     </div>
     {#if toolsExpanded}
-      <ul class="flex list-disc flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
+      <ul class="flex list-disc flex-col gap-0.5 ps-6 text-xs text-muted-foreground">
         <!-- Keyed by index, not `tool.name`: this is a raw server-reported
              list, un-deduplicated (unlike the sidepanel's merged tool list,
              which `buildServerMergedTools` — src/domain/tools/merge.ts —
@@ -59,7 +59,7 @@
              like this one. -->
         {#each tools as tool, i (i)}
           <li>
-            <code class="font-mono text-foreground">{tool.name}</code>{#if tool.description}<span
+            <code class="font-mono text-foreground" dir="ltr">{tool.name}</code>{#if tool.description}<span
               >
                 — {tool.description}</span
               >{/if}

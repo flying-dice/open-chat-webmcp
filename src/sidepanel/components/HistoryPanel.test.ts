@@ -16,6 +16,7 @@ import {
 } from "../testing/fake-services";
 import { fail, ok } from "../../domain/result";
 import type { ChatSummary } from "../../domain/chat";
+import { isolateLtr } from "../../ui/bidi";
 
 // jsdom has no ResizeObserver. HistoryPanel wraps its list in shadcn-svelte's
 // ScrollArea (bits-ui), which observes its content node to decide whether to
@@ -190,7 +191,7 @@ describe("HistoryPanel", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: m.historyListItem_deleteLabel({ origin: "https://a.example.com" }),
+        name: m.historyListItem_deleteLabel({ origin: isolateLtr("https://a.example.com") }),
       }),
     );
     await waitFor(() => expect(deleteChat).toHaveBeenCalledWith("a"));

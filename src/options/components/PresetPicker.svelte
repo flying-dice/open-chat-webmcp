@@ -33,7 +33,7 @@
 
   /** One tile's look — the old `.preset-tile`, as utilities. Shared by the preset tiles and the dashed "Custom" tile so the two can never drift apart. */
   const TILE =
-    "flex flex-col items-start gap-0.5 rounded-2xl border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none";
+    "flex flex-col items-start gap-0.5 rounded-2xl border bg-card px-3 py-2.5 text-start transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none";
 </script>
 
 <div class="flex flex-col gap-4 rounded-2xl border bg-muted/30 p-4">

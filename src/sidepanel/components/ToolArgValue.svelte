@@ -31,7 +31,7 @@
   {#if value.length === 0}
     <span class="text-muted-foreground italic">{m.toolArgValue_emptyList()}</span>
   {:else}
-    <ol class="mt-1 flex list-decimal flex-col gap-1 pl-5">
+    <ol class="mt-1 flex list-decimal flex-col gap-1 ps-5">
       {#each value as item, i (i)}
         <li><Self value={item} /></li>
       {/each}
@@ -41,10 +41,10 @@
   {#if Object.keys(value).length === 0}
     <span class="text-muted-foreground italic">{m.toolArgValue_emptyObject()}</span>
   {:else}
-    <dl class="mt-1 flex flex-col gap-1 border-l-2 border-border pl-2">
+    <dl class="mt-1 flex flex-col gap-1 border-s-2 border-border ps-2">
       {#each Object.entries(value) as [key, entryValue] (key)}
         <div class="flex flex-col">
-          <dt class="font-mono text-code font-medium text-muted-foreground">{key}</dt>
+          <dt class="font-mono text-code font-medium text-muted-foreground" dir="ltr">{key}</dt>
           <dd class="m-0 min-w-0"><Self value={entryValue} /></dd>
         </div>
       {/each}

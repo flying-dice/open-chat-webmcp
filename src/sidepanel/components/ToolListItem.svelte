@@ -61,9 +61,9 @@
 <Card.Root size="sm" class="w-full min-w-0 gap-2">
   <Card.Content class="flex min-w-0 flex-col gap-1">
     <div class="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-      <span class="min-w-0 font-mono text-code font-semibold break-words">{tool.name}</span>
+      <span class="min-w-0 font-mono text-code font-semibold break-words" dir="ltr">{tool.name}</span>
       <span class="flex flex-wrap justify-end gap-1">
-        <Badge variant="outline" class={isServerTool ? "border-primary text-primary" : ""}>
+        <Badge variant="outline" class={isServerTool ? "border-primary text-primary" : ""} dir="ltr">
           {originLabel(tool.origin)}
         </Badge>
         <AnnotationBadges annotations={tool.annotations} mcpAnnotations={tool.mcpAnnotations} />

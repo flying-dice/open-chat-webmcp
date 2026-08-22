@@ -209,7 +209,7 @@
        row is right-aligned until there is something true to put on the
        left. -->
   <div class="flex items-center gap-2">
-    <div class="ml-auto flex min-w-0 items-center gap-2">
+    <div class="ms-auto flex min-w-0 items-center gap-2">
       <!-- Rendered in the blocked state too, and not only for symmetry:
            `openPicker` sets `selection.pickerOpen`, which does nothing
            unless a ProviderPicker is actually mounted to read it. The

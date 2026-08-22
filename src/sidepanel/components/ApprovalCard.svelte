@@ -54,6 +54,7 @@
   import type { PendingApproval } from "../stores/approvals.svelte";
   import { approve, deny } from "../stores/approvals.svelte";
   import { originLabel } from "../presentation/toolOrigin";
+  import { isolateLtr } from "../../ui/bidi";
   import AnnotationBadges from "./AnnotationBadges.svelte";
   import ToolArgs from "./ToolArgs.svelte";
   import * as Card from "$lib/components/ui/card";
@@ -83,7 +84,7 @@
 
 <Card.Root
   role="group"
-  aria-label={m.approvalCard_ariaLabel({ name: request.call.name })}
+  aria-label={m.approvalCard_ariaLabel({ name: isolateLtr(request.call.name) })}
   class="w-full min-w-0 gap-3 ring-2 ring-primary/30"
 >
   <Card.Header>
@@ -95,7 +96,7 @@
         <AnnotationBadges annotations={tool?.annotations} mcpAnnotations={tool?.mcpAnnotations} />
       </div>
     </div>
-    <Card.Title class="font-mono text-sm font-semibold break-words">{request.call.name}</Card.Title>
+    <Card.Title class="font-mono text-sm font-semibold break-words" dir="ltr">{request.call.name}</Card.Title>
   </Card.Header>
 
   <Card.Content class="flex flex-col gap-3">
@@ -103,7 +104,7 @@
       {#if tool === undefined}
         {m.approvalCard_originUnknown()}
       {:else}
-        {m.approvalCard_runsOnPrefix()}<strong>{originLabel(tool.origin)}</strong>{isServerTool
+        {m.approvalCard_runsOnPrefix()}<strong dir="ltr">{originLabel(tool.origin)}</strong>{isServerTool
           ? m.approvalCard_runsOnServerSuffix()
           : m.approvalCard_runsOnPageSuffix()}
       {/if}

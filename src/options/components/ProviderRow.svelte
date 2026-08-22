@@ -153,7 +153,7 @@
 
     <div class="min-w-0">
       <div class="text-sm font-medium">{provider.name}</div>
-      <div class="text-xs break-all text-muted-foreground">{provider.baseUrl}</div>
+      <div class="text-xs break-all text-muted-foreground" dir="ltr">{provider.baseUrl}</div>
     </div>
 
     <Badge variant="outline">{backendLabel}</Badge>
@@ -179,7 +179,7 @@
       <Badge variant="outline" title={m.permissionGrantedTitle()}>{m.permissionGrantedBadge()}</Badge>
     {/if}
 
-    <div class="ml-auto flex flex-wrap items-center gap-1">
+    <div class="ms-auto flex flex-wrap items-center gap-1">
       <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
         {testing ? m.testingLabel() : m.testConnectionAction()}
       </Button>

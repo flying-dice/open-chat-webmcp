@@ -87,10 +87,14 @@
      silently skipping those shots. -->
 <Collapsible.Root open={expanded} onOpenChange={handleOpenChange} class="activity-group w-full min-w-0">
   <Collapsible.Trigger
-    class="summary group flex w-full min-w-0 items-center gap-2 py-1 text-left text-xs text-muted-foreground"
+    class="summary group flex w-full min-w-0 items-center gap-2 py-1 text-start text-xs text-muted-foreground"
   >
     <span class="inline-flex flex-none" aria-hidden="true"><Icon name="build" class="size-4" /></span>
     <span class="min-w-0 flex-1 truncate group-hover:underline">{summaryText}</span>
+    <!-- NOT mirrored under RTL (card 104's icon audit): a rotate-driven
+         disclosure triangle, same reasoning as ToolCallRow.svelte's — its
+         orientation is fully described by `expanded`, and that pairing has
+         to stay the same in both directions. -->
     <span
       class={cn("inline-flex flex-none transition-transform duration-150", expanded && "rotate-90")}
       aria-hidden="true"
@@ -105,7 +109,7 @@
          line is a `before:` pseudo-element rather than a real element so it
          costs no extra DOM node, same as the old `.timeline::before`. -->
     <ol
-      class="relative mt-2 flex flex-col gap-2 before:absolute before:top-2.5 before:bottom-2.5 before:left-[5px] before:w-0.5 before:rounded-full before:bg-border before:content-['']"
+      class="relative mt-2 flex flex-col gap-2 before:absolute before:top-2.5 before:bottom-2.5 before:start-[5px] before:w-0.5 before:rounded-full before:bg-border before:content-['']"
     >
       {#each steps as step (step.id)}
         <ToolCallRow message={step} {live} />
