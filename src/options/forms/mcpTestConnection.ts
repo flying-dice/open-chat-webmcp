@@ -45,7 +45,7 @@ export type McpTestOutcome =
  * `config.url` needs (`HostPermissions`, src/domain/permissions) — this function makes no
  * permission decisions itself, so it can be reused to test an unsaved draft
  * config as easily as a persisted one (mirrors
- * src/options/forms/testConnection.ts's `testProviderConnection` for the same
+ * src/options/forms/providerTestConnection.ts's `testProviderConnection` for the same
  * reason).
  */
 export async function testMcpServerConnection(

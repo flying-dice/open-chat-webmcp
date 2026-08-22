@@ -1,5 +1,4 @@
 <script lang="ts">
-  // TODO: clean-code - 0.5 - SRP: Bundles four largely independent UI concerns — basic fields, bearer-token entry, a full OAuth sign-in state machine with a nested manual-app-registration sub-flow, and connection-test orchestration — in one component.
   // Add/edit form for one MCP server config (card 39,
   // decisions/14-backend-mcp-servers.md,
   // decisions/15-custom-headers-are-credentials.md). Deliberately mirrors
@@ -23,25 +22,22 @@
   import { untrack } from "svelte";
   import {
     validateServerHeaders,
-    type McpAuthorizationServerInfo,
-    type McpOAuthAuth,
     type McpServerAuth,
     type McpServerConfig,
     type McpTransportPreference,
   } from "../../domain/tools";
-  // Card 78: the sign-in ORCHESTRATION this component used to run inline —
-  // three host-permission requests, RFC 9728/8414 discovery, the RFC 7591
-  // registration branch and the PKCE flow, in a fixed and load-bearing order —
-  // is `McpSignIn` (src/domain/tools/sign-in.ts), reached through this
-  // surface's services. What stays here is the form state machine: which
-  // panel is showing, what the status line says, and what `buildData()`
+  // Card 78 moved the sign-in ORCHESTRATION out — three host-permission
+  // requests, RFC 9728/8414 discovery, the RFC 7591 registration branch and
+  // the PKCE flow, in a fixed and load-bearing order — into `McpSignIn`
+  // (src/domain/tools/sign-in.ts). Card 113 moved the other half out too: the
+  // sign-in STATE MACHINE (which panel is showing, what is in flight, the
+  // credential held until submit) is ../forms/oauthSignIn.svelte.ts, rendered
+  // by ./McpOAuthPanel.svelte. What is left here is this form's own job —
+  // fields, validation, the connection test, and what `buildServerConfig()`
   // submits. Nothing below names `chrome`.
-  import { optionsServices } from "../app-services";
   import { originPatternForUrl } from "../../domain/permissions";
   import type { Result } from "../../domain/result";
   import type { StorageError } from "../../domain/storage";
-  import { copyText } from "../../ui/clipboard";
-  import { formatDateTime } from "../../ui/datetime";
   import { uiTextDirection } from "../../ui/direction";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { mcpReservedHeaderMessage } from "../../ui/reservedHeaderMessage";
@@ -57,9 +53,10 @@
     trackHostPermission,
   } from "../forms/hostPermission.svelte";
   import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
-  import { bannerClass } from "../forms/testResultDisplay";
+  import { createOAuthSignIn } from "../forms/oauthSignIn.svelte";
   import { m } from "../../paraglide/messages.js";
   import HeadersEditor from "./HeadersEditor.svelte";
+  import McpOAuthPanel from "./McpOAuthPanel.svelte";
   import McpTestResult from "./McpTestResult.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
@@ -120,7 +117,7 @@
   // bearer/oauth union; this form now offers a three-way choice — None /
   // Bearer token / Sign in with OAuth — mirroring the `transport` `<select>`
   // above. `authMode` decides which of the two credential states below
-  // `buildData()` reads from.
+  // `buildServerConfig()` reads from.
   type AuthMode = "none" | "bearer" | "oauth";
   let authMode = $state<AuthMode>(
     untrack(() =>
@@ -137,76 +134,25 @@
   );
   let showAuthToken = $state(false);
 
-  // The OAuth credential, held only in local state until the surrounding
-  // Add/Save submits `buildData()` — exactly the same "nothing persists
-  // until submit" posture `authToken` already has. Set by `handleOAuthSignIn`
-  // below, cleared by "Disconnect".
-  let oauthAuth = $state<McpOAuthAuth | undefined>(
-    untrack(() => (initial?.auth?.type === "oauth" ? initial.auth : undefined)),
-  );
-  let oauthSigningIn = $state(false);
-  let oauthError = $state<string | undefined>(undefined);
-
-  // Set once discovery has succeeded but found no `registrationEndpoint` —
-  // some real authorization servers (GitHub's, notably: github.com/login/oauth
-  // has no RFC 7591 registration endpoint at all) require a manually
-  // pre-registered app instead of dynamic client registration. While this is
-  // set (and `oauthAuth` isn't), the template shows a manual client-id/secret
-  // panel instead of going straight to sign-in. Cleared by `handleOAuthDisconnect`
-  // and by `handleOAuthCancelManual`.
-  let oauthDiscovery = $state<McpAuthorizationServerInfo | undefined>(undefined);
-  let manualClientId = $state("");
-  let manualClientSecret = $state("");
-  let showManualClientSecret = $state(false);
-  let redirectUriCopied = $state(false);
-
-  /** The redirect URI the authorization flow actually sends (`McpOAuthClient.redirectUri`, src/domain/tools) — the value the user must register with their OAuth app. Read through the port rather than computed here, so the panel can never show a URI the flow does not use. */
-  function redirectUri(): string {
-    return optionsServices().mcpSignIn.redirectUri();
-  }
-
-  async function copyRedirectUri(): Promise<void> {
-    // Card 95: the platform catch moved into src/ui/clipboard.ts's
-    // never-throws wrapper. A refusal is still silent by design — the field
-    // is selectable text, so copying is a convenience and not the only way to
-    // get the value.
-    if (!(await copyText(redirectUri()))) return;
-    redirectUriCopied = true;
-    setTimeout(() => (redirectUriCopied = false), 1500);
-  }
-
-  // TODO: clean-code - 0.3 - COUPLING: the "needs reconnect" rule (expiresAt <= Date.now() && !refreshToken) is duplicated inline in McpServerRow.svelte instead of living once in src/domain/tools.
-  /** Mirrors the "reconnect needed" condition McpServerRow.svelte checks against a saved server — here checked against the live local `oauthAuth` state instead of a stored config, so the form's own status line agrees with the row's badge. */
-  const oauthNeedsReconnect = $derived(
-    oauthAuth !== undefined &&
-      oauthAuth.expiresAt !== undefined &&
-      oauthAuth.expiresAt <= Date.now() &&
-      !oauthAuth.refreshToken,
-  );
+  // Live permission-grant state for whatever URL is currently typed, so
+  // "Test connection" can tell the user up front whether it will need to
+  // prompt for a host permission (the same tracker ProviderForm.svelte uses).
+  // Declared here rather than beside `testing` below because the OAuth
+  // machine reads and writes it too — sign-in asks for the very same grant.
+  const hostPermission = trackHostPermission(() => url);
 
   /**
-   * The OAuth status line's banner styling — card 71 kept it visually
-   * identical to a "Test connection" result banner (the same three
-   * ok/error/neutral treatments src/options/forms/testResultDisplay.ts's
-   * `bannerClass` hands out), because that is exactly what it is: the last
-   * known verdict on whether this server's credentials work.
+   * The OAuth sign-in machine (../forms/oauthSignIn.svelte.ts, card 113),
+   * rendered by ./McpOAuthPanel.svelte. Its credential is held in memory
+   * only until the surrounding Add/Save submits `buildServerConfig()` —
+   * exactly the same "nothing persists until submit" posture `authToken`
+   * already has.
    */
-  const oauthStatusClass = $derived(
-    bannerClass(oauthNeedsReconnect ? "error" : oauthAuth ? "ok" : "neutral"),
-  );
-
-  function oauthStatusText(): string {
-    if (!oauthAuth) return m.mcpServerForm_oauthNotConnected();
-    if (oauthNeedsReconnect) {
-      return m.mcpServerForm_oauthNeedsReconnect();
-    }
-    if (oauthAuth.expiresAt !== undefined) {
-      return m.mcpServerForm_oauthConnectedUntil({
-        date: formatDateTime(oauthAuth.expiresAt),
-      });
-    }
-    return m.mcpServerForm_oauthConnectedNoExpiry();
-  }
+  const oauth = createOAuthSignIn({
+    serverUrl: () => url,
+    hostPermission,
+    initialAuth: untrack(() => (initial?.auth?.type === "oauth" ? initial.auth : undefined)),
+  });
 
   /** Custom request headers (decisions/15-custom-headers-are-credentials.md), in the editor's row shape — see ../forms/headerRows.ts for why a row carries a synthetic id. */
   let headers = $state<HeaderRow[]>(
@@ -216,7 +162,7 @@
   /** Whether the draft currently has *some* auth that will put an `Authorization` header on the wire — a bearer token with text, or any held OAuth credential — regardless of which mode is selected. Feeds `validateServerHeaders`'s reserved-header check the same way `client.ts`'s own `hasResolvableAuth` decides whether `Authorization` is reserved. */
   function hasConfiguredAuth(): boolean {
     if (authMode === "bearer") return authToken.trim().length > 0;
-    if (authMode === "oauth") return oauthAuth !== undefined;
+    if (authMode === "oauth") return oauth.auth !== undefined;
     return false;
   }
 
@@ -236,11 +182,6 @@
 
   let saving = $state(false);
   let formError = $state<string | undefined>(undefined);
-
-  // Live permission-grant state for whatever URL is currently typed, so
-  // "Test connection" can tell the user up front whether it will need to
-  // prompt for a host permission (the same tracker ProviderForm.svelte uses).
-  const hostPermission = trackHostPermission(() => url);
 
   let testing = $state(false);
   let testOutcome = $state<McpTestOutcome | undefined>(undefined);
@@ -264,8 +205,7 @@
     AUTH_MODE_OPTIONS.find((a) => a.value === authMode)?.label ?? NONE_AUTH_MODE_OPTION.label,
   );
 
-  // TODO: clean-code - 0.15 - NAMING: buildData is a generic name for a well-typed, single-purpose builder — should convey it builds a server config (cf. ProviderForm.svelte's identically-named buildData).
-  function buildData(): Omit<McpServerConfig, "id"> {
+  function buildServerConfig(): Omit<McpServerConfig, "id"> {
     const cleanHeaders: Record<string, string> = {};
     for (const h of headers) {
       const key = h.key.trim();
@@ -277,20 +217,11 @@
     if (authMode === "bearer") {
       auth = authToken.trim().length > 0 ? { type: "bearer", token: authToken.trim() } : undefined;
     } else if (authMode === "oauth") {
-      // `$state.snapshot`, not `oauthAuth` directly: `oauthAuth` (and, for
-      // the manual-client-id path, the `oauthDiscovery` it was partly built
-      // from — see `handleOAuthContinueManual`) is Svelte reactive state, so
-      // reading it back out returns a Proxy, not the plain object it was
-      // assigned. `chrome.storage.local.set` doesn't preserve that Proxy's
-      // array-ness for nested fields (confirmed: `authorizationServer.scopesSupported`
-      // round-tripped as `{0: "repo", 1: "..."}` instead of a real array),
-      // which then failed `isMcpServerAuth`'s `Array.isArray` check on the
-      // next read and silently dropped the WHOLE auth object — exactly the
-      // "saved OAuth server reopens as auth: none" bug. Snapshotting here,
-      // at the one place this state crosses out to `addServer`/`updateServer`,
-      // guarantees a plain, storage-safe object regardless of how many
-      // reactive layers accumulated upstream.
-      auth = oauthAuth ? $state.snapshot(oauthAuth) : undefined; // undefined after Disconnect — persists as a cleared `auth` on submit, same as an emptied bearer token.
+      // `snapshotAuth()`, not a direct read of the machine's `auth` — see its
+      // doc comment in ../forms/oauthSignIn.svelte.ts for the storage bug a
+      // reactive Proxy causes here. This is the one place that credential
+      // crosses out to `addServer`/`updateServer`.
+      auth = oauth.snapshotAuth(); // undefined after Disconnect — persists as a cleared `auth` on submit, same as an emptied bearer token.
     }
 
     return {
@@ -311,7 +242,7 @@
    */
   async function handleTest(): Promise<void> {
     testOutcome = undefined;
-    const draft = buildData();
+    const draft = buildServerConfig();
     if (!originPatternForUrl(draft.url)) {
       testOutcome = {
         kind: "invalid-response",
@@ -336,110 +267,6 @@
     }
   }
 
-  /**
-   * "Sign in" (OAuth mode) — decisions/27 + card 63, and card 78's split.
-   *
-   * The ORDER the steps happen in (host permission for the MCP server, then
-   * discovery, then a host permission for each distinct
-   * authorization/token/registration origin discovery names, then either
-   * dynamic registration + the interactive flow or a hand-off to the manual
-   * client-id panel) is a rule, and it now lives in `McpSignIn`
-   * (src/domain/tools/sign-in.ts). What is still this component's is the
-   * three things it does with the answer: hold the credential in local state
-   * until submit, show the error, or open the manual panel.
-   *
-   * Still awaited straight through from this one click handler, with nothing
-   * deferred out of it, because `chrome.identity.launchWebAuthFlow` (inside
-   * the flow) needs an active user gesture and Chrome's tolerance for
-   * `await`ed work ahead of it isn't formally documented (decisions/27's
-   * Consequences). Moving the steps behind a port did not change that: they
-   * are the same awaits in the same order in the same call chain — the
-   * service never hands off to a `setTimeout` or a second handler either.
-   */
-  async function handleOAuthSignIn(): Promise<void> {
-    oauthError = undefined;
-    oauthDiscovery = undefined;
-
-    oauthSigningIn = true;
-    try {
-      const result = await optionsServices().mcpSignIn.begin(url.trim(), {
-        alreadyGranted: hostPermission.granted === true,
-        onServerPermission: (granted) => (hostPermission.granted = granted),
-      });
-      if (result.status === "error") {
-        oauthError = result.message;
-        return;
-      }
-      if (result.status === "needs-manual-client") {
-        // Some real authorization servers (GitHub's, notably:
-        // github.com/login/oauth has no RFC 7591 registration endpoint at
-        // all) require a manually pre-registered app. While this is set (and
-        // `oauthAuth` isn't), the template shows the manual client-id/secret
-        // panel instead of a plain sign-in button.
-        oauthDiscovery = result.discovery;
-        return;
-      }
-      oauthAuth = result.auth;
-    } finally {
-      oauthSigningIn = false;
-    }
-  }
-
-  /**
-   * "Continue" from the manual client-id panel — a fresh click, and
-   * therefore its own fresh user gesture, so the flow's
-   * `launchWebAuthFlow` step is exactly as valid here as it is from
-   * {@link handleOAuthSignIn}'s own first `await`. Host permissions for the
-   * authorization/token endpoints were already requested by the `begin` that
-   * produced `oauthDiscovery`.
-   */
-  async function handleOAuthContinueManual(): Promise<void> {
-    if (!oauthDiscovery) return;
-
-    oauthError = undefined;
-    oauthSigningIn = true;
-    try {
-      // Snapshot `oauthDiscovery` before it's threaded into the resulting
-      // `McpOAuthAuth.authorizationServer` (the flow carries this `discovery`
-      // argument straight through) — otherwise `oauthAuth` ends up holding a
-      // reactive Proxy nested inside plain state from the moment it's
-      // created, not just when `buildData()` reads it out. See the longer
-      // note at `buildData()`'s oauth branch for what breaks if a Proxy
-      // reaches `chrome.storage` unsnapshotted.
-      const result = await optionsServices().mcpSignIn.completeManual({
-        serverUrl: url.trim(),
-        clientId: manualClientId,
-        clientSecret: manualClientSecret,
-        discovery: $state.snapshot(oauthDiscovery),
-      });
-      if (result.status === "error") {
-        oauthError = result.message;
-        return;
-      }
-      oauthAuth = result.auth;
-      oauthDiscovery = undefined;
-      manualClientId = "";
-      manualClientSecret = "";
-    } finally {
-      oauthSigningIn = false;
-    }
-  }
-
-  function handleOAuthCancelManual(): void {
-    oauthDiscovery = undefined;
-    manualClientId = "";
-    manualClientSecret = "";
-    oauthError = undefined;
-  }
-
-  function handleOAuthDisconnect(): void {
-    oauthAuth = undefined;
-    oauthDiscovery = undefined;
-    manualClientId = "";
-    manualClientSecret = "";
-    oauthError = undefined;
-  }
-
   async function handleSubmit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     formError = undefined;
@@ -459,7 +286,7 @@
     }
 
     saving = true;
-    const [, err] = await onSubmit(buildData());
+    const [, err] = await onSubmit(buildServerConfig());
     saving = false;
     if (err) formError = storageFailureMessage(m.mcpServerForm_saveFailedWhat(), err);
   }
@@ -555,90 +382,7 @@
       </InputGroup.Root>
     </Field.Field>
   {:else if authMode === "oauth"}
-    <Field.Field>
-      {#if oauthDiscovery && !oauthAuth}
-        <!-- Card 71: this heading used to be a <label for="mf-oauth-client-id">
-             that duplicated the real Client ID label below it (two labels, one
-             control). It is a group heading, not a label, so it is one now —
-             the panel's fields and flow are otherwise untouched. -->
-        <Field.Title>{m.mcpServerForm_manualRegistrationTitle()}</Field.Title>
-        <Alert.Root class="bg-background">
-          <Alert.Description>
-            <code class="font-mono text-xs" dir="ltr">{oauthDiscovery.issuer}</code>
-            {m.mcpServerForm_manualRegistrationNotice()}
-          </Alert.Description>
-        </Alert.Root>
-
-        <Field.Label for="mf-oauth-redirect">{m.mcpServerForm_redirectUrlLabel()}</Field.Label>
-        <InputGroup.Root>
-          <InputGroup.Input id="mf-oauth-redirect" type="text" value={redirectUri()} readonly class="text-sm" />
-          <InputGroup.Addon align="inline-end">
-            <InputGroup.Button onclick={copyRedirectUri}>
-              {redirectUriCopied ? m.copiedLabel() : m.markdown_copyButtonLabel()}
-            </InputGroup.Button>
-          </InputGroup.Addon>
-        </InputGroup.Root>
-
-        <Field.Label for="mf-oauth-client-id">{m.mcpServerForm_clientIdLabel()}</Field.Label>
-        <Input id="mf-oauth-client-id" type="text" bind:value={manualClientId} autocomplete="off" class="text-sm" />
-
-        <Field.Label for="mf-oauth-client-secret">{m.mcpServerForm_clientSecretLabel()}</Field.Label>
-        <InputGroup.Root>
-          <InputGroup.Input
-            id="mf-oauth-client-secret"
-            type={showManualClientSecret ? "text" : "password"}
-            bind:value={manualClientSecret}
-            autocomplete="off"
-            class="text-sm"
-          />
-          <InputGroup.Addon align="inline-end">
-            <InputGroup.Button onclick={() => (showManualClientSecret = !showManualClientSecret)}>
-              {showManualClientSecret ? m.hideAction() : m.showAction()}
-            </InputGroup.Button>
-          </InputGroup.Addon>
-        </InputGroup.Root>
-
-        {#if oauthError}
-          <Field.Error>{oauthError}</Field.Error>
-        {/if}
-        <div class="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onclick={handleOAuthContinueManual}
-            disabled={oauthSigningIn || manualClientId.trim().length === 0}
-          >
-            {oauthSigningIn ? m.mcpServerForm_signingInLabel() : m.mcpServerForm_continueAction()}
-          </Button>
-          <Button variant="ghost" onclick={handleOAuthCancelManual}>{m.cancelAction()}</Button>
-        </div>
-      {:else}
-        <!-- Card 71: was a <label for="mf-oauth-signin"> pointing at the status
-             <p> below — a label can only name a form control, so this is a
-             group title now. The status text itself is unchanged. -->
-        <Field.Title>{m.mcpServerForm_oauthSignInTitle()}</Field.Title>
-        <p class={oauthStatusClass}>{oauthStatusText()}</p>
-        {#if oauthError}
-          <Field.Error>{oauthError}</Field.Error>
-        {/if}
-        <div class="flex items-center gap-2">
-          <Button variant="outline" onclick={handleOAuthSignIn} disabled={oauthSigningIn}>
-            {oauthSigningIn
-              ? m.mcpServerForm_signingInLabel()
-              : oauthAuth
-                ? m.mcpServerForm_reconnectAction()
-                : m.mcpServerForm_signInAction()}
-          </Button>
-          {#if oauthAuth}
-            <Button variant="ghost" onclick={handleOAuthDisconnect}>{m.mcpServerForm_disconnectAction()}</Button>
-          {/if}
-        </div>
-        <Alert.Root class="bg-background">
-          <Alert.Description>
-            {m.mcpServerForm_oauthDiscoveryNotice()}
-          </Alert.Description>
-        </Alert.Root>
-      {/if}
-    </Field.Field>
+    <McpOAuthPanel {oauth} />
   {/if}
 
   <!-- Static, developer-authored, no untrusted interpolation — {@html} is

@@ -56,7 +56,7 @@ function tabPointerKey(tabId: number): string {
   return `${TAB_POINTER_PREFIX}${tabId}`;
 }
 
-// TODO: clean-code - 0.4 - SRP: this module bundles defensive shape-validation/decoding (isChatSession, isChatIndexEntry, isTabPointer), debounce/flush write scheduling, index read-modify-write locking with eviction policy, and a Proxy-to-plain serialization workaround — several independently-changeable concerns co-located in one adapter.
+// TODO: clean-code - 0.4 - SRP: this module bundles defensive shape-validation/decoding (isChatSession, isChatIndexEntry, isTabPointer), debounce/flush write scheduling, index read-modify-write locking with eviction policy, and a Proxy-to-plain serialization workaround — several independently-changeable concerns co-located in one adapter. STAYS: they are not independently DEPLOYABLE. The debounce window, the index read-modify-write and the eviction policy are one transactional story — the flush must not race the index rewrite, and the eviction must see the write it is evicting around — so splitting them into modules would move the coupling into an interface without removing it, and would put the one place that knows chat storage's ordering rules in two files. The decoders are the honest split, but they are also the part with no logic to get wrong. Revisit if a SECOND store ever needs the same scheduler.
 // ---------------------------------------------------------------------------
 // Defensive parsing — drop anything that doesn't look right rather than
 // letting corrupted or foreign-written storage crash a consumer downstream.

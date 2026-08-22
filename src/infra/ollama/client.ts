@@ -1,4 +1,4 @@
-// TODO: clean-code - 0.3 - SRP: single file mixes model listing, capability detection+caching, tool-schema conversion, chat-error classification, and full NDJSON streaming/parsing for /api/chat — more than one wire-client sub-responsibility.
+// TODO: clean-code - 0.3 - SRP: single file mixes model listing, capability detection+caching, tool-schema conversion, chat-error classification, and full NDJSON streaming/parsing for /api/chat — more than one wire-client sub-responsibility. STAYS: it is one ADAPTER for one wire protocol, and the boundary rule that keeps this repo honest — adapters do not import adapters (guard:boundaries) — means splitting it creates a private sub-folder whose parts nothing else may use. Every piece listed here is Ollama's own wire quirk (its capability probe, its NDJSON framing, its error strings); none of it generalizes. The split worth making is by protocol, and there is only one protocol here.
 // Typed, UI-free REST client for a local Ollama server: model listing,
 // tool-capability detection, and streaming chat. This is the raw wire-level
 // client; ./adapter.ts wraps it to implement the shared `ChatProvider`
@@ -210,7 +210,7 @@ function originRejectedError(): OllamaError {
   };
 }
 
-// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/mcp/json-rpc.ts and src/infra/openai/index.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead.
+// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/mcp/json-rpc.ts and src/infra/openai/index.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead. STAYS: passing the body in instead means every caller reads the response before it knows whether it needs to — these are all error paths, and on the success path nothing should touch `.text()` at all. The three copies are six lines each of try/catch around one platform call, in three adapter stacks that may not import each other, and none of them has drifted since they were written.
 async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();

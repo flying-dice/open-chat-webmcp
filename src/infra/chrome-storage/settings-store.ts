@@ -14,7 +14,6 @@
 // three lines and the coupling it would buy back is the thing the decision
 // forbids.
 
-import { fail, ok } from "../../domain/result";
 import {
   DEFAULT_APPROVAL_POLICY,
   DEFAULT_MCP_APPROVAL_POLICY,
@@ -22,19 +21,17 @@ import {
   isMcpApprovalPolicy,
   type SettingsStore,
 } from "../../domain/settings";
-import { subscribeToKey, type StorageAreaGateway } from "./area";
+import { readDecoded, subscribeToKey, type StorageAreaGateway } from "./area";
 
 const SYNC_KEY_APPROVAL_POLICY = "settings:approvalPolicy";
 const SYNC_KEY_MCP_APPROVAL_POLICY = "settings:mcpApprovalPolicy";
 
-// TODO: clean-code - 0.35 - DRY: the migration turned every `chrome.storage` read into the same three-line composite — `const [value, err] = await area.read(KEY); if (err) return fail(err); return ok(<decode>(value) ? value : DEFAULT)` — copy-pasted at five sites across three files (here twice, provider-registry.ts's getDefaultSelection, provider-config-store.ts's getBaseUrl and the capability cache's get). Before card 92 each was a one-line `isX(value) ? value : DEFAULT`. A `readDecoded<T>(area, key, decode, fallback): Promise<Result<T, StorageError>>` in ./area.ts would collapse all five; noted by card 96's audit.
 export function createChromeStorageSettingsStore(sync: StorageAreaGateway): SettingsStore {
   return {
-    async getApprovalPolicy() {
-      const [value, err] = await sync.read(SYNC_KEY_APPROVAL_POLICY);
-      if (err) return fail(err);
-      return ok(isApprovalPolicy(value) ? value : DEFAULT_APPROVAL_POLICY);
-    },
+    getApprovalPolicy: () =>
+      readDecoded(sync, SYNC_KEY_APPROVAL_POLICY, (value) =>
+        isApprovalPolicy(value) ? value : DEFAULT_APPROVAL_POLICY,
+      ),
 
     setApprovalPolicy: (policy) => sync.write({ [SYNC_KEY_APPROVAL_POLICY]: policy }),
 
@@ -47,11 +44,10 @@ export function createChromeStorageSettingsStore(sync: StorageAreaGateway): Sett
       });
     },
 
-    async getMcpApprovalPolicy() {
-      const [value, err] = await sync.read(SYNC_KEY_MCP_APPROVAL_POLICY);
-      if (err) return fail(err);
-      return ok(isMcpApprovalPolicy(value) ? value : DEFAULT_MCP_APPROVAL_POLICY);
-    },
+    getMcpApprovalPolicy: () =>
+      readDecoded(sync, SYNC_KEY_MCP_APPROVAL_POLICY, (value) =>
+        isMcpApprovalPolicy(value) ? value : DEFAULT_MCP_APPROVAL_POLICY,
+      ),
 
     setMcpApprovalPolicy: (policy) => sync.write({ [SYNC_KEY_MCP_APPROVAL_POLICY]: policy }),
 

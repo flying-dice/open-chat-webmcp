@@ -21,7 +21,7 @@
    * the textarea/send form is replaced entirely by a `blocked` empty state
    * — never just greyed out with no explanation — whenever there's no
    * live, EXPLICITLY chosen provider+model yet. `blocked` is computed here
-   * from `selection`/`panel` (the same stores ProviderPicker.svelte and
+   * from `selection`/`panel` (the same stores ModelPicker.svelte and
    * App.svelte already read) rather than threaded down as props, so this
    * stays in sync with the picker without App.svelte having to mirror its
    * state. Four distinct cases, deliberately not collapsed into one banner
@@ -212,7 +212,7 @@
     <div class="ms-auto flex min-w-0 items-center gap-2">
       <!-- Rendered in the blocked state too, and not only for symmetry:
            `openPicker` sets `selection.pickerOpen`, which does nothing
-           unless a ProviderPicker is actually mounted to read it. The
+           unless a ModelPicker is actually mounted to read it. The
            blocked state's own "Choose provider & model" button depends on
            this being here. -->
       {#if picker}{@render picker()}{/if}

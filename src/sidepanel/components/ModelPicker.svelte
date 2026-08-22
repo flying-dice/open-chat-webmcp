@@ -1,5 +1,9 @@
 <script lang="ts">
-  // TODO: clean-code - 0.5 - NAMING: named ProviderPicker but card 51/decisions-22 flattened it into a single MODEL picker grouped by provider — heading reads "Choose your model", selectModel/ModelListEntry are the vocabulary throughout. Should say it picks a model.
+  // Card 113 renamed this file from ProviderPicker.svelte: card 51 /
+  // decisions/22 flattened it into a single MODEL picker grouped by provider,
+  // and the old name had been describing card 23's two-level control ever
+  // since — while the heading read "Choose your model" and
+  // `selectModel`/`ModelListEntry` were the vocabulary throughout.
   /**
    * The composer's flat model picker (card 51, decisions/22-flat-model-picker.md
    * — refining card 23's two-level provider-then-model control; re-skinned
@@ -229,7 +233,7 @@
    * "selectable" or vanishing — decisions/06's "never hide, never guess
    * safe" rule applies here too.
    */
-  // TODO: clean-code - 0.35 - SRP: mixes popover open/close + keyboard/filter UI with row-bucketing/grouping business logic (toRow, bucketOf, groups, visibleGroups, unverifiedRows, noToolsRows) in one file.
+  // TODO: clean-code - 0.35 - SRP: mixes popover open/close + keyboard/filter UI with row-bucketing/grouping business logic (toRow, bucketOf, groups, visibleGroups, unverifiedRows, noToolsRows) in one file. STAYS: the bucketing is not business logic in the domain sense — the RULE it applies (`isSelectable`, decisions/06/11) already lives in src/domain/providers/capability.ts and is imported. What is left here is presentation policy: which of three buckets a row is SHOWN in and in what order, which is this picker's own layout decision and has no second consumer. Card 113 checked for one: the options page's default-model dropdown needs a filtered list, not buckets.
   function bucketOf(
     capability: ModelCapabilities | undefined,
   ): "selectable" | "unverified" | "no-tools" {

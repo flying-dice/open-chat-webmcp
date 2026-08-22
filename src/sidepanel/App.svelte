@@ -31,7 +31,7 @@
   import Header from "./components/Header.svelte";
   import Transcript from "./components/Transcript.svelte";
   import Composer from "./components/Composer.svelte";
-  import ProviderPicker from "./components/ProviderPicker.svelte";
+  import ModelPicker from "./components/ModelPicker.svelte";
   import ContextChip from "./components/ContextChip.svelte";
   import NoticeCard from "./components/NoticeCard.svelte";
   import OverflowMenu from "./components/OverflowMenu.svelte";
@@ -204,7 +204,7 @@
     composerRef?.focusInput();
   }
 
-  // TODO: clean-code - 0.25 - SRP: handleSend mixes UI validation branching (no-provider/no-selection guards) with fallback assistant-note authoring and turn-dispatch assembly, rather than delegating the fallback messaging entirely to a service.
+  // TODO: clean-code - 0.25 - SRP: handleSend mixes UI validation branching (no-provider/no-selection guards) with fallback assistant-note authoring and turn-dispatch assembly, rather than delegating the fallback messaging entirely to a service. STAYS: the two guards are about what this SHELL can offer — no provider registered, nothing selected — and their answer is to open this shell's own picker and write a note into this shell's transcript. A service that authored them would have to be handed the picker and the localized copy back, which is the same coupling with an indirection in front. The dispatch half is already delegated (sendTurn -> src/domain/chat's runTurn).
   function handleSend(text: string): void {
     lastSentText = text;
 
@@ -361,7 +361,7 @@
         onStop={handleStop}
       >
         {#snippet picker()}
-          <ProviderPicker />
+          <ModelPicker />
         {/snippet}
       </Composer>
     </div>

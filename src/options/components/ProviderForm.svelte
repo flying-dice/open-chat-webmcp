@@ -53,7 +53,10 @@
     requestHostPermission,
     trackHostPermission,
   } from "../forms/hostPermission.svelte";
-  import { testProviderConnection, type TestOutcome } from "../forms/testConnection";
+  import {
+    testProviderConnection,
+    type ProviderTestOutcome,
+  } from "../forms/providerTestConnection";
   import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
   import HeadersEditor from "./HeadersEditor.svelte";
   import Markdown from "../../ui/components/Markdown.svelte";
@@ -223,10 +226,9 @@
   const hostPermission = trackHostPermission(() => baseUrl);
 
   let testing = $state(false);
-  let testOutcome = $state<TestOutcome | undefined>(undefined);
+  let testOutcome = $state<ProviderTestOutcome | undefined>(undefined);
 
-  // TODO: clean-code - 0.15 - NAMING: buildData is a generic name for a well-typed, single-purpose builder — should convey it builds a provider config (cf. McpServerForm.svelte's identically-named buildData).
-  function buildData(): Omit<ProviderConfig, "id"> {
+  function buildProviderConfig(): Omit<ProviderConfig, "id"> {
     // Drop only fully-blank rows (an added-but-not-yet-filled-in row) —
     // anything else is sent as typed, including an invalid one; callers
     // (handleTest/handleSubmit) check `firstHeaderError()` first and never
@@ -260,7 +262,7 @@
    */
   async function handleTest(): Promise<void> {
     testOutcome = undefined;
-    const draft = buildData();
+    const draft = buildProviderConfig();
     if (!originPatternForUrl(draft.baseUrl)) {
       testOutcome = {
         kind: "invalid-response",
@@ -304,7 +306,7 @@
     }
 
     saving = true;
-    const [, err] = await onSubmit(buildData());
+    const [, err] = await onSubmit(buildProviderConfig());
     saving = false;
     // The form stays open on a failed save (the parent only closes it on
     // success), so this is the one place the user can be told why — right

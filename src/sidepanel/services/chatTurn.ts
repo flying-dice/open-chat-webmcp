@@ -32,7 +32,7 @@ import {
 } from "../../domain/chat";
 import type { ChatProvider } from "../../domain/providers";
 import { chat, sidePanelServices } from "../app-services";
-import { getMergedToolsForTab } from "./mcpTools";
+import { mergeToolsForTab } from "./mcpTools";
 
 /**
  * The one `ToolExecutor` this surface has. Built once at module scope because
@@ -44,7 +44,7 @@ const toolExecutor: ToolExecutor = {
   async toolsForTurn(page) {
     const { pageTools } = sidePanelServices();
     const tools = await pageTools.toolsForTab(page.tabId);
-    return getMergedToolsForTab(tools, pageTools.executorForTab(page.tabId));
+    return mergeToolsForTab(tools, pageTools.executorForTab(page.tabId));
   },
 };
 

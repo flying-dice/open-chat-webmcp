@@ -20,6 +20,7 @@ import {
   type ServerToolExecutor,
   type ToolServerIdentity,
 } from "./merge";
+import type { McpServerConfig } from "./servers";
 
 // ---------------------------------------------------------------------------
 // slugifyServerName
@@ -181,6 +182,11 @@ function errorDiscovery(serverId: string, serverName: string): McpServerDiscover
   };
 }
 
+/** A full `McpServerConfig` from just the two fields this module actually reads (card 113 de-generified `buildServerMergedTools` onto the real config type — the rest is wire detail the merge never touches). */
+function serverConfig(id: string, name: string): McpServerConfig {
+  return { id, name, url: `https://${id}.example.com/mcp`, enabled: true, transport: "auto" };
+}
+
 interface ServerCall {
   config: ToolServerIdentity;
   toolName: string;
@@ -188,11 +194,11 @@ interface ServerCall {
 }
 
 function recordingServerExecutor(): {
-  execute: ServerToolExecutor<ToolServerIdentity>;
+  execute: ServerToolExecutor;
   calls: ServerCall[];
 } {
   const calls: ServerCall[] = [];
-  const execute: ServerToolExecutor<ToolServerIdentity> = async (config, toolName, args) => {
+  const execute: ServerToolExecutor = async (config, toolName, args) => {
     calls.push({ config, toolName, args });
     return { ok: true, result: "ok" };
   };
@@ -209,7 +215,7 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         {
-          config: { id: "s1", name: "My Server" },
+          config: serverConfig("s1", "My Server"),
           discovery: okDiscovery("s1", "My Server", [mcpTool({ name: "search" })]),
         },
       ],
@@ -222,7 +228,7 @@ describe("buildServerMergedTools", () => {
   it("contributes no tools at all for an error-status discovery — not even a placeholder", () => {
     const { execute } = recordingServerExecutor();
     const merged = buildServerMergedTools(
-      [{ config: { id: "s1", name: "Dead" }, discovery: errorDiscovery("s1", "Dead") }],
+      [{ config: serverConfig("s1", "Dead"), discovery: errorDiscovery("s1", "Dead") }],
       execute,
     );
     expect(merged).toEqual([]);
@@ -232,9 +238,9 @@ describe("buildServerMergedTools", () => {
     const { execute } = recordingServerExecutor();
     const merged = buildServerMergedTools(
       [
-        { config: { id: "err", name: "Foo" }, discovery: errorDiscovery("err", "Foo") },
+        { config: serverConfig("err", "Foo"), discovery: errorDiscovery("err", "Foo") },
         {
-          config: { id: "ok", name: "Foo" },
+          config: serverConfig("ok", "Foo"),
           discovery: okDiscovery("ok", "Foo", [mcpTool({ name: "ping" })]),
         },
       ],
@@ -251,7 +257,7 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         {
-          config: { id: "s1", name: "S" },
+          config: serverConfig("s1", "S"),
           discovery: okDiscovery("s1", "S", [
             mcpTool({ name: "a", annotations: { untrustedContentHint: false } }),
             mcpTool({ name: "b" }), // no annotations at all
@@ -272,7 +278,7 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         {
-          config: { id: "s1", name: "S" },
+          config: serverConfig("s1", "S"),
           discovery: okDiscovery("s1", "S", [
             mcpTool({ name: "t", annotations: { readOnlyHint: input } }),
           ]),
@@ -294,7 +300,7 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         {
-          config: { id: "s1", name: "S" },
+          config: serverConfig("s1", "S"),
           discovery: okDiscovery("s1", "S", [mcpTool({ name: "t", annotations: original })]),
         },
       ],
@@ -308,7 +314,7 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         {
-          config: { id: "s1", name: "S" },
+          config: serverConfig("s1", "S"),
           discovery: okDiscovery("s1", "S", [mcpTool({ name: "dup" }), mcpTool({ name: "dup" })]),
         },
       ],
@@ -334,7 +340,7 @@ describe("buildServerMergedTools", () => {
     const merged = buildServerMergedTools(
       [
         {
-          config: { id: "s1", name: "S" },
+          config: serverConfig("s1", "S"),
           discovery: okDiscovery("s1", "S", [
             mcpTool({ name: longName }),
             mcpTool({ name: longName }),
@@ -352,7 +358,7 @@ describe("buildServerMergedTools", () => {
 
   it("binds each tool's call to (config, its ORIGINAL tool name, args, opts) — never the namespaced name", async () => {
     const { execute, calls } = recordingServerExecutor();
-    const config = { id: "s1", name: "My Server" };
+    const config = serverConfig("s1", "My Server");
     const merged = buildServerMergedTools(
       [{ config, discovery: okDiscovery("s1", "My Server", [mcpTool({ name: "search" })]) }],
       execute,

@@ -102,7 +102,7 @@ function toOpenAiError(err: unknown): ProviderError {
   };
 }
 
-// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/mcp/json-rpc.ts and src/infra/ollama/client.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead.
+// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/mcp/json-rpc.ts and src/infra/ollama/client.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead. STAYS: passing the body in instead means every caller reads the response before it knows whether it needs to — these are all error paths, and on the success path nothing should touch `.text()` at all. The three copies are six lines each of try/catch around one platform call, in three adapter stacks that may not import each other, and none of them has drifted since they were written.
 async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();

@@ -112,7 +112,7 @@ export type ReservedHeaderReason =
  *   concept at all, so `Authorization` is always free there — useful for a
  *   gateway sitting in front of a local Ollama server.
  */
-// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/tools/servers.ts's validateServerHeaders/CLIENT_CONTROLLED_HEADERS — one returns an issue array for MCP servers, this returns a single reason value for providers, with no shared source tying the rule together.
+// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/tools/servers.ts's validateServerHeaders/CLIENT_CONTROLLED_HEADERS — one returns an issue array for MCP servers, this returns a single reason value for providers, with no shared source tying the rule together. STAYS: a shared source has nowhere to live yet. `providers` and `tools` are separate bounded contexts, and the rules disagree on CONTENT as well as shape — a provider reserves `authorization` whenever it holds an API key, an MCP server reserves it only when the transport will resolve auth for that call. Unifying them means a third context for HTTP header policy that both may import, which is a decision record (the same bar the isRecord markers are held to), not a drive-by. Card 107 already unified the part that was safe to unify: both rules render through one localized message (src/ui/reservedHeaderMessage.ts).
 export function reservedHeaderReason(
   name: string,
   opts: { type: ProviderType; apiKeyConfigured: boolean },

@@ -76,7 +76,7 @@ const permissions = createChromeHostPermissions();
 // type" throw for any new entry point that forgot it. This is the exhaustive
 // `Record<ProviderType, ...>` that replaced it: adding a third provider type
 // is a compile error here rather than a runtime throw.
-// TODO: clean-code - 0.25 - DRY: this createProviderClientFactory composition-root wiring block is copy-pasted verbatim from src/options/main.ts.
+// TODO: clean-code - 0.25 - DRY: this createProviderClientFactory composition-root wiring block is copy-pasted verbatim from src/options/main.ts. STAYS: each root wires its OWN surface's ports — different storage areas, different permission handling, a different presenter — and the shared-looking lines are the argument list of one call. A shared builder would need every surface-specific port passed into it, so the duplication moves from the call to the call's arguments. Composition roots are the one place this repo deliberately spells things out (decisions/29): a root that reads top to bottom is how you can see what a surface is made of.
 const createProviderClient = createProviderClientFactory({
   ollama: (config) =>
     createOllamaProvider(config, {

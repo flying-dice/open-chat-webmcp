@@ -20,7 +20,7 @@ export function truncate(s: string, max = 500): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
-// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/ollama/client.ts and src/infra/openai/index.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead.
+// TODO: clean-code - 0.35 - DRY: this safeReadText is independently redefined in src/infra/ollama/client.ts and src/infra/openai/index.ts; adapters-do-not-import-adapters blocks a shared infra util but nothing stops passing the body as an argument instead. STAYS: passing the body in instead means every caller reads the response before it knows whether it needs to — these are all error paths, and on the success path nothing should touch `.text()` at all. The three copies are six lines each of try/catch around one platform call, in three adapter stacks that may not import each other, and none of them has drifted since they were written.
 export async function safeReadText(response: Response): Promise<string | undefined> {
   try {
     const text = await response.text();
@@ -72,6 +72,19 @@ export async function safeAuthMessage(response: Response): Promise<string> {
   const parsed = tryParseJsonRpcError(body);
   if (parsed) return parsed.message;
   return body ? truncate(body) : "Authentication failed.";
+}
+
+/**
+ * The `McpError` for a 401/403, or `undefined` when the response is not an
+ * auth refusal at all — so a caller reads as `const authErr = await
+ * authErrorFor(response); if (authErr) return fail(authErr);` and never has to
+ * remember WHICH statuses count (card 113: this was written out at four sites
+ * across ./streamable-http.ts and ./legacy-sse.ts, and adding a status to the
+ * rule meant finding all four).
+ */
+export async function authErrorFor(response: Response): Promise<McpError | undefined> {
+  if (response.status !== 401 && response.status !== 403) return undefined;
+  return { kind: "auth", status: response.status, message: await safeAuthMessage(response) };
 }
 
 export function classifyRpcError(err: JsonRpcErrorObject): McpError {

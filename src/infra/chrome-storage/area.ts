@@ -85,6 +85,26 @@ export interface StorageAreaGateway {
   remove(keys: string | string[]): Promise<Result<void, StorageError>>;
 }
 
+/**
+ * Read one key and DECODE it in the same step (card 113).
+ *
+ * Every typed read in this folder was the same three-line composite — read,
+ * bail on the `StorageError`, then apply a type guard with a fallback — which
+ * the errors-as-values migration (card 92) turned five one-liners into. The
+ * decode stays entirely the caller's: `decode` is TOTAL (`unknown` in, a `T`
+ * out), so each store keeps its own guard and its own default, and this
+ * function never has an opinion about what "missing" or "malformed" means.
+ */
+export async function readDecoded<T>(
+  gateway: StorageAreaGateway,
+  key: string,
+  decode: (value: unknown) => T,
+): Promise<Result<T, StorageError>> {
+  const [value, err] = await gateway.read(key);
+  if (err) return fail(err);
+  return ok(decode(value));
+}
+
 export function createStorageAreaGateway(area: StorageAreaName): StorageAreaGateway {
   // Resolved per call, not captured at construction. Building a gateway must
   // not touch `chrome` at all: `createChromeStoragePorts()` (./ports.ts) builds

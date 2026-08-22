@@ -47,6 +47,7 @@
 //     generic over whatever richer config the adapter actually hands its
 //     executor.
 
+import type { McpServerConfig } from "./servers";
 import type { SerializedTool, ToolAnnotations } from "./tool";
 import type { McpServerDiscovery, McpToolAnnotations } from "./types";
 
@@ -222,10 +223,23 @@ export type PageToolExecutor = (
   opts: { signal?: AbortSignal },
 ) => Promise<MergedToolCallOutcome>;
 
-// TODO: clean-code - 0.4 - KISS: ServerToolExecutor and buildServerMergedTools below are generic over a server-config shape to avoid a domain->infra inward edge from when McpServerConfig lived in a chrome.storage adapter. Since the DDD restructure, McpServerConfig has lived in ./servers.ts — the same bounded context and barrel as this file — so the inward-edge risk no longer exists, and the generic is instantiated with exactly one concrete type across the whole codebase.
-/** Invokes one server tool by (config, toolName) — bound in src/sidepanel/services/mcpTools.ts, which wraps client.ts's `callServerTool` with the permission check and error-shape translation decisions/19 §4/§6 require. Never throws. */
-export type ServerToolExecutor<TServer extends ToolServerIdentity = ToolServerIdentity> = (
-  config: TServer,
+/**
+ * Invokes one server tool by (config, toolName) — bound in
+ * src/sidepanel/services/mcpTools.ts, which wraps the gateway's
+ * `callServerTool` with the permission check and error-shape translation
+ * decisions/19 §4/§6 require. Never throws.
+ *
+ * Card 113 dropped the `<TServer extends ToolServerIdentity>` parameter this
+ * and {@link buildServerMergedTools} used to carry. It existed to avoid a
+ * domain->infra inward edge from when `McpServerConfig` lived in a
+ * chrome.storage repository; since the DDD restructure that type has lived in
+ * ./servers.ts — the same bounded context and the same barrel as this file —
+ * so there is no edge to avoid, and the generic was only ever instantiated
+ * with this one type. {@link ToolServerIdentity} stays: it is still the
+ * statement of what this module actually reads off a config.
+ */
+export type ServerToolExecutor = (
+  config: McpServerConfig,
   toolName: string,
   args: Record<string, unknown>,
   opts: { signal?: AbortSignal },
@@ -247,9 +261,9 @@ export type ServerToolExecutor<TServer extends ToolServerIdentity = ToolServerId
  * whoever reads the discovery list directly (e.g. the options page's
  * connection test, or a future status readout), not this merge step.
  */
-export function buildServerMergedTools<TServer extends ToolServerIdentity>(
-  entries: readonly { config: TServer; discovery: McpServerDiscovery }[],
-  execute: ServerToolExecutor<TServer>,
+export function buildServerMergedTools(
+  entries: readonly { config: McpServerConfig; discovery: McpServerDiscovery }[],
+  execute: ServerToolExecutor,
 ): MergedTool[] {
   const slugs = assignServerSlugs(entries.map((e) => ({ id: e.config.id, name: e.config.name })));
   const used = new Set<string>();

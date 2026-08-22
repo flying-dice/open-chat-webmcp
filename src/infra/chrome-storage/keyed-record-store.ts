@@ -74,6 +74,23 @@ import type { StorageAreaGateway } from "./area";
  * malformed credential should leave the record usable without its
  * credential, not fail the whole listing.
  */
+/**
+ * A fresh record id for a store built on this mechanic: `crypto.randomUUID()`
+ * where available, otherwise `<prefix><timestamp>-<random>`.
+ *
+ * Card 113: the two registries above this had a copy each, identical but for
+ * the prefix literal. The prefix is only ever seen on the fallback path (a
+ * UUID has no room for one) and is a debugging affordance when reading raw
+ * `chrome.storage` — never something a caller may parse. Uniqueness only has
+ * to hold within ONE browser profile's store, which a millisecond timestamp
+ * plus 10 random base-36 characters comfortably gives.
+ */
+export function generateRecordId(prefix: string): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export interface CredentialPart<TValue> {
   /** Local-storage key prefix, e.g. `"providers:apiKey:"`. The full key is `` `${keyPrefix}${id}` ``. */
   readonly keyPrefix: string;

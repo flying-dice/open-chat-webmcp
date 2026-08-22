@@ -15,7 +15,7 @@ import type { Budget } from "./budget";
 import {
   classifyHttpErrorResponse,
   isJsonRpcResponse,
-  safeAuthMessage,
+  authErrorFor,
   toResultFromJsonRpc as toResult,
   type JsonRpcResponseMsg,
 } from "./json-rpc";
@@ -53,14 +53,8 @@ function createStreamableHttpSession(
       const response = await post({ jsonrpc: "2.0", id, method, params: params ?? {} });
       if ("failed" in response) return fail(response.failed);
 
-      // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in legacy-sse.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
-      if (response.status === 401 || response.status === 403) {
-        return fail({
-          kind: "auth",
-          status: response.status,
-          message: await safeAuthMessage(response),
-        });
-      }
+      const authErr = await authErrorFor(response);
+      if (authErr) return fail(authErr);
       if (!response.ok) {
         return fail(await classifyHttpErrorResponse(response));
       }
@@ -143,13 +137,8 @@ export async function tryStreamableHttp(
 
   const sessionId = response.headers.get("Mcp-Session-Id") ?? undefined;
 
-  // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and above, and twice more in legacy-sse.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
-  if (response.status === 401 || response.status === 403) {
-    return {
-      outcome: "failed",
-      error: { kind: "auth", status: response.status, message: await safeAuthMessage(response) },
-    };
-  }
+  const authErr = await authErrorFor(response);
+  if (authErr) return { outcome: "failed", error: authErr };
   if (config.transport === "auto" && (response.status === 404 || response.status === 405)) {
     return { outcome: "try-legacy" };
   }

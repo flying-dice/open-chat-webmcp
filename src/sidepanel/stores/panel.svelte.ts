@@ -370,8 +370,11 @@ declare global {
   }
 }
 
-// TODO: clean-code - 0.2 - NAMING: named/documented as a "snapshot" (implying a pure read) but carries enableTracing/disableTracing — state-mutating methods — as properties on the same object.
-function webmcpPanelDebugSnapshot() {
+// Card 113: this was named `webmcpPanelDebugSnapshot`, which promised a pure
+// read while carrying two state-MUTATING methods as properties on the same
+// object. It is a debug HANDLE — call it for the snapshot, reach for its
+// methods to flip tracing.
+function webmcpPanelDebugHandle() {
   const snapshot = chat().snapshot();
   return {
     ...snapshot,
@@ -380,6 +383,6 @@ function webmcpPanelDebugSnapshot() {
     tracingEnabled: sidePanelServices().tracing.isEnabled(),
   };
 }
-webmcpPanelDebugSnapshot.enableTracing = () => sidePanelServices().tracing.set(true);
-webmcpPanelDebugSnapshot.disableTracing = () => sidePanelServices().tracing.set(false);
-window.__webmcpPanelDebug = webmcpPanelDebugSnapshot;
+webmcpPanelDebugHandle.enableTracing = () => sidePanelServices().tracing.set(true);
+webmcpPanelDebugHandle.disableTracing = () => sidePanelServices().tracing.set(false);
+window.__webmcpPanelDebug = webmcpPanelDebugHandle;

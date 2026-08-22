@@ -31,7 +31,7 @@ export interface OptionsServices {
   permissions: HostPermissions;
 }
 
-// TODO: clean-code - 0.3 - DRY: this module-singleton "init once, throw if already set / throw if read before init" pair is identical logic duplicated in src/sidepanel/app-services.ts — extractable as one generic createServiceSlot<T>().
+// TODO: clean-code - 0.3 - DRY: this module-singleton "init once, throw if already set / throw if read before init" pair is identical logic duplicated in src/sidepanel/app-services.ts — extractable as one generic createServiceSlot<T>(). STAYS: there is no layer both surfaces may share for it. src/ui is the shared UI layer (components and copy), not a place for a service locator, and a composition-root helper in src/domain would be an outward dependency the boundaries guard exists to prevent. The duplicated part is also the part with a THROW in it (guard:throws allows these two files by name), so moving it moves an allowlist entry too. Ten lines, twice, with a guard watching both.
 // TODO: clean-code - 0.15 - COUPLING: the initXServices()/xServices() module-singleton pair is a documented, deliberate service-locator substitute for props/context; every consumer checked either destructures immediately or calls one member, so the hazard this pattern invites (re-widening the whole bundle) has not materialized in practice.
 let current: OptionsServices | undefined;
 

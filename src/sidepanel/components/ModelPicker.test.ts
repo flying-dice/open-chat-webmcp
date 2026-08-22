@@ -1,4 +1,4 @@
-// Component coverage for ProviderPicker.svelte (card 84). ProviderPicker
+// Component coverage for ModelPicker.svelte (card 84). ModelPicker
 // takes no props — every input arrives through the two module-singleton
 // stores it imports, `../stores/selection.svelte` and `../stores/panel.svelte`,
 // so both are mocked wholesale here rather than through their real
@@ -88,7 +88,7 @@ vi.mock("../stores/panel.svelte", () => ({
 }));
 
 import { m } from "../../paraglide/messages.js";
-import ProviderPicker from "./ProviderPicker.svelte";
+import ModelPicker from "./ModelPicker.svelte";
 import {
   selectModel,
   enterManualModel,
@@ -155,7 +155,7 @@ afterEach(() => {
 
 /**
  * The popover's content region, scoped by the `aria-label="Choose a model"`
- * ProviderPicker.svelte sets on it directly. Several of its status lines
+ * ModelPicker.svelte sets on it directly. Several of its status lines
  * ("Loading providers…", the empty-state sentence) repeat verbatim on the
  * trigger chip's own accessible name/title, so queries that care about the
  * CONTENT specifically (not just "this text exists somewhere on the page")
@@ -165,11 +165,11 @@ async function content(): Promise<HTMLElement> {
   return screen.findByLabelText(m.providerPicker_choosePopoverAriaLabel());
 }
 
-describe("ProviderPicker", () => {
+describe("ModelPicker", () => {
   // -------------------------------------------------------------------------
   it("shows a loading message while providers are loading", async () => {
     state.providersStatus = "loading";
-    render(ProviderPicker);
+    render(ModelPicker);
 
     // "Loading providers…" also appears as the trigger chip's own text/title
     // (`triggerInfo.label`) — scope to the content region so this asserts
@@ -182,7 +182,7 @@ describe("ProviderPicker", () => {
   it("shows an empty state with a link to options when no providers are registered", async () => {
     state.providers = [];
     state.providersStatus = "loaded";
-    render(ProviderPicker);
+    render(ModelPicker);
 
     const region = within(await content());
     expect(region.getByText(m.providerPicker_noProvidersMessage())).toBeInTheDocument();
@@ -201,7 +201,7 @@ describe("ProviderPicker", () => {
       b: loaded([entry(model("mistral"), TOOL_CAPABLE)]),
     };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     expect(await screen.findByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("Beta")).toBeInTheDocument();
@@ -215,7 +215,7 @@ describe("ProviderPicker", () => {
     state.providers = [a];
     state.modelsByProvider = { a: loaded([entry(model("mystery"), UNKNOWN)]) };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     expect(await screen.findByText(m.providerPicker_unverifiedHeading())).toBeInTheDocument();
     const row = screen.getByText("mystery").closest('[role="option"]');
@@ -230,7 +230,7 @@ describe("ProviderPicker", () => {
     state.providers = [a];
     state.modelsByProvider = { a: loaded([entry(model("chatty"), NO_TOOLS)]) };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     expect(await screen.findByText(m.providerPicker_noToolSupportHeading())).toBeInTheDocument();
     const row = screen.getByText("chatty").closest('[role="option"]');
@@ -247,7 +247,7 @@ describe("ProviderPicker", () => {
     state.providers = [a];
     state.modelsByProvider = { a: loaded([entry(model("chatty"), NO_TOOLS)]) };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     const row = (await screen.findByText("chatty")).closest('[role="option"]') as HTMLElement;
     expect(row).toHaveAttribute("aria-disabled", "true");
@@ -266,7 +266,7 @@ describe("ProviderPicker", () => {
     state.providers = [a];
     state.modelsByProvider = { a: loaded([entry(model("llama3.1"), TOOL_CAPABLE)]) };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     const row = (await screen.findByText("llama3.1")).closest('[role="option"]') as HTMLElement;
     expect(row).not.toHaveAttribute("aria-disabled", "true");
@@ -290,7 +290,7 @@ describe("ProviderPicker", () => {
       },
     };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     const input = await screen.findByLabelText(
       m.providerPicker_modelIdAriaLabel({ provider: "Custom Host" }),
@@ -316,7 +316,7 @@ describe("ProviderPicker", () => {
       },
     };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     expect(await screen.findByText("Could not reach Alpha.")).toBeInTheDocument();
     const retry = screen.getByRole("button", { name: m.retryAction() });
@@ -333,7 +333,7 @@ describe("ProviderPicker", () => {
       a: loaded(Array.from({ length: 8 }, (_, i) => entry(model(`model-${i}`), TOOL_CAPABLE))),
     };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     await screen.findByText("model-0");
     expect(screen.queryByLabelText(m.providerPicker_filterAriaLabel())).not.toBeInTheDocument();
@@ -347,7 +347,7 @@ describe("ProviderPicker", () => {
       a: loaded(Array.from({ length: 9 }, (_, i) => entry(model(`model-${i}`), TOOL_CAPABLE))),
     };
 
-    render(ProviderPicker);
+    render(ModelPicker);
 
     const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
     expect(screen.getByText("model-0")).toBeInTheDocument();

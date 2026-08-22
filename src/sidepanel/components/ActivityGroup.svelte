@@ -79,7 +79,7 @@
   });
 </script>
 
-<!-- TODO: clean-code - 0.2 - COUPLING: `activity-group`/`summary` (like ProviderPicker.svelte's `picker__trigger`) are classes with no styling of their own kept only so scripts/verify/checks/screenshots.mjs can find them — a magic-string contract with no compiler behind it. -->
+<!-- TODO: clean-code - 0.2 - COUPLING: `activity-group`/`summary` (like ModelPicker.svelte's `picker__trigger`) are classes with no styling of their own kept only so scripts/verify/checks/screenshots.mjs can find them — a magic-string contract with no compiler behind it. -->
 <!-- `activity-group`/`summary` class names carry no styling of their own —
      kept purely so verify/checks/screenshots.mjs's `.activity-group
      .summary` locator (its activity-timeline screenshots, predating

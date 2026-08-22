@@ -1,4 +1,4 @@
-// TODO: clean-code - 0.3 - SRP: combines provider-list loading, per-provider model-loading/capability resolution, and selection persistence with an unrelated picker open/close UI toggle (pickerOpen/openPicker/closePicker).
+// TODO: clean-code - 0.3 - SRP: combines provider-list loading, per-provider model-loading/capability resolution, and selection persistence with an unrelated picker open/close UI toggle (pickerOpen/openPicker/closePicker). STAYS: the first three are one concept — decisions/22's flat picker cannot resolve a selection without every provider's model list, and card 27 exists precisely because the selection was owned in two places at once. The genuinely foreign part is the popover toggle, kept here only because Composer.svelte opens the picker that ModelPicker.svelte owns (card 35/36) and there is no third store for one boolean; card 113 measured that as three lines of state against two component test files that mock this module wholesale.
 // Provider + model selection for the side panel's picker (card 23, flattened
 // by card 51 per decisions/22-flat-model-picker.md, decisions/10-provider-registry-and-credential-storage.md,
 // decisions/11-provider-capability-detection.md).
@@ -24,7 +24,7 @@
 //     the same discipline decisions/19 §4 applies to MCP server discovery,
 //     src/sidepanel/services/mcpTools.ts's `refreshNow`/`ensureMcpDiscoveryFresh`).
 //     Card 23's two-level "browse one provider at a time" concept is gone:
-//     the flat picker (ProviderPicker.svelte) needs every provider's list at
+//     the flat picker (ModelPicker.svelte) needs every provider's list at
 //     once to build its grouped view, so this module fetches all of them.
 //
 // PER-PROVIDER DEGRADATION: each provider's load is tracked by its own
@@ -63,7 +63,7 @@
 
 import {
   isSelectable,
-  resolveCapabilities,
+  loadProviderModels,
   resolveCapability,
   resolveSelection,
   type ModelCapabilities,
@@ -130,7 +130,7 @@ export type ModelsState =
 // State
 // ---------------------------------------------------------------------------
 
-// TODO: clean-code - 0.15 - COUPLING: eight independent module-level $state fields plus a non-reactive providerTokens map are mutated by overlapping functions (syncToTab, loadProviders, loadModelsForProvider, selectModel, refresh) with implicit ordering assumptions — a wide surface to hold in your head to change one function safely.
+// TODO: clean-code - 0.15 - COUPLING: eight independent module-level $state fields plus a non-reactive providerTokens map are mutated by overlapping functions (syncToTab, loadProviders, loadModelsForProvider, selectModel, refresh) with implicit ordering assumptions — a wide surface to hold in your head to change one function safely. STAYS: it is one aggregate — card 27 is the bug report for what happens when this state is owned in two places. The ordering assumptions are real but are stated where they bind (each function's doc comment) and are pinned by the store's tests; card 113 narrowed the surface where it honestly could, moving the model-load sequence itself into src/domain/providers/capability.ts's `loadProviderModels`.
 let tabId = $state<number | undefined>(undefined);
 let origin = $state<string>("");
 
@@ -166,7 +166,7 @@ const providerTokens: Record<string, number> = {};
 
 /**
  * Card 35/36: the picker popover's own open/close state, lifted out of
- * ProviderPicker.svelte (which still owns the click-outside/Escape wiring)
+ * ModelPicker.svelte (which still owns the click-outside/Escape wiring)
  * so Composer.svelte's blocked-composer empty state (card 35's "route to
  * the picker in one click") can open the SAME popover instance mounted in
  * the header, rather than each component owning an independent one that
@@ -202,7 +202,7 @@ export const selection = {
   get resolution(): SelectionResolution {
     return resolution;
   },
-  /** Every provider's model-list state, keyed by provider id (decisions/22: the flat picker needs all of them at once, loaded in parallel and degrading independently — see this module's header comment). ProviderPicker.svelte builds its per-provider groups plus the Unverified/No-tool-support buckets from this. */
+  /** Every provider's model-list state, keyed by provider id (decisions/22: the flat picker needs all of them at once, loaded in parallel and degrading independently — see this module's header comment). ModelPicker.svelte builds its per-provider groups plus the Unverified/No-tool-support buckets from this. */
   get modelsByProvider(): Record<string, ModelsState> {
     return providerModelsState;
   },
@@ -281,7 +281,7 @@ async function loadProviders(): Promise<void> {
  *
  * Relies on the chat service having already loaded (or created) `newTabId`'s
  * chat by the time this runs — true for this store's one caller
- * (`ProviderPicker.svelte`'s effect on `panel.pageInfo`), since
+ * (`ModelPicker.svelte`'s effect on `panel.pageInfo`), since
  * src/infra/chrome-runtime/tab-sync.ts's `refreshActiveTab` always awaits
  * the session's `syncToTab`
  * before setting `pageInfo`. If that ever isn't true yet (session not
@@ -289,8 +289,16 @@ async function loadProviders(): Promise<void> {
  * resolves to `"none"` rather than guessing — a transient display gap, not
  * a lost write, and it self-corrects on the next sync.
  */
-export async function syncToTab(newTabId: number, newOrigin: string): Promise<void> {
-  const changedTab = tabId !== newTabId || origin !== newOrigin;
+export async function syncToTab(
+  newTabId: number,
+  newOrigin: string,
+  opts?: { force?: boolean },
+): Promise<void> {
+  // `force` is `refresh()`'s way of saying "treat this as a fresh tab even
+  // though it is the same one" — it used to say that by assigning
+  // `tabId = undefined` first, which worked only because that made the
+  // identity check below fail (card 113).
+  const changedTab = opts?.force === true || tabId !== newTabId || origin !== newOrigin;
   tabId = newTabId;
   origin = newOrigin;
 
@@ -375,36 +383,43 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
  * (see this module's header comment) so retrying provider A can never
  * discard an in-flight load for provider B.
  */
-// TODO: clean-code - 0.45 - DRY: duplicates at length the same per-provider-token-guarded "listModels -> branch on error kind -> resolveCapabilities -> filter selectable" sequence as src/options/components/ProvidersSection.svelte's loadDefaultModelOptions, instead of sharing an extracted helper.
 async function loadModelsForProvider(config: ProviderConfig): Promise<void> {
   const token = (providerTokens[config.id] ?? 0) + 1;
   providerTokens[config.id] = token;
   providerModelsState[config.id] = { status: "loading" };
 
+  // Card 113: the sequence itself — list, branch on the error kind, resolve
+  // every model's capability, and abandon a superseded load at either await —
+  // is `loadProviderModels` (src/domain/providers/capability.ts), shared with
+  // the options page's "Set as default" dropdown. What stays here is what
+  // this store alone does with the answer: its own state shape, its own
+  // `manualEntry` slot for a provider with no listing API, and keeping the
+  // raw `ProviderError` alongside the prose so the picker can offer a
+  // kind-specific fix.
   const client = sidePanelServices().createProviderClient(config);
-  const [models, listErr] = await client.listModels();
-  if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
+  const load = await loadProviderModels(client, {
+    stillCurrent: () => providerTokens[config.id] === token,
+  });
+  if (!load) return; // superseded by a later reload for this provider
 
-  if (listErr) {
-    if (listErr.kind === "not-supported") {
-      providerModelsState[config.id] = {
-        status: "not-supported",
-        message: describeProviderError(listErr),
-        manualEntry: undefined,
-      };
-      return;
-    }
+  if (load.status === "not-supported") {
+    providerModelsState[config.id] = {
+      status: "not-supported",
+      message: describeProviderError(load.error),
+      manualEntry: undefined,
+    };
+    return;
+  }
+  if (load.status === "error") {
     providerModelsState[config.id] = {
       status: "error",
-      message: describeProviderError(listErr),
-      error: listErr,
+      message: describeProviderError(load.error),
+      error: load.error,
     };
     return;
   }
 
-  const entries = await resolveCapabilities(client, models);
-  if (providerTokens[config.id] !== token) return; // superseded by a later reload for this provider
-  providerModelsState[config.id] = { status: "loaded", entries };
+  providerModelsState[config.id] = { status: "loaded", entries: load.entries };
 }
 
 /** Re-run one provider's model list — the picker's per-group "Retry" affordance after `modelsByProvider[id].status === "error"` (or its empty/zero-models state). Unlike the initial `ensureModelsLoaded` pass, this always reloads, even for a provider already showing something. */
@@ -513,15 +528,15 @@ export async function selectModel(providerId: string, model: string): Promise<vo
  * Routing confirmation through `selectModel` also closes a hole this had:
  * it only checked `resolution.status === "ok"`, never capability, so it
  * could confirm a model that isn't tool-capable. `handlePickModel` in
- * ProviderPicker.svelte refuses those rows (decisions/06, /11).
+ * ModelPicker.svelte refuses those rows (decisions/06, /11).
  */
 
-/** Card 35/36's shared picker popover — open it (e.g. from Composer's blocked-composer empty state), so ProviderPicker.svelte's already-mounted instance in the composer's action row shows up in exactly one click. */
+/** Card 35/36's shared picker popover — open it (e.g. from Composer's blocked-composer empty state), so ModelPicker.svelte's already-mounted instance in the composer's action row shows up in exactly one click. */
 export function openPicker(): void {
   pickerOpen = true;
 }
 
-/** Close the shared picker popover — ProviderPicker.svelte's click-outside/Escape/pick-a-model handlers call this. */
+/** Close the shared picker popover — ModelPicker.svelte's click-outside/Escape/pick-a-model handlers call this. */
 export function closePicker(): void {
   pickerOpen = false;
 }
@@ -535,11 +550,7 @@ export async function refresh(): Promise<void> {
   if (tabId === undefined) return;
   await loadProviders();
   await Promise.all(providers.map((p) => loadModelsForProvider(p)));
-  const currentTabId = tabId;
-  const currentOrigin = origin;
-  // TODO: clean-code - 0.2 - KISS: mutating tabId to undefined solely to flip syncToTab's changedTab branch is a side-channel signal rather than an explicit parameter; syncToTab(tabId, origin, { force: true }) would say the same thing without exploiting the "assign to invalidate identity" trick.
-  tabId = undefined; // force syncToTab's changedTab branch
-  await syncToTab(currentTabId, currentOrigin);
+  await syncToTab(tabId, origin, { force: true });
 }
 
 /** Open the extension's options page — the "no providers registered" and "provider deleted" empty states both link here (decisions/10: provider CRUD lives only in the options page). */

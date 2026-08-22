@@ -27,7 +27,7 @@
 // before each `it()` — never by trying to re-init.
 //
 // WHAT THIS DOES NOT COVER. Composer.svelte, ApprovalCard.svelte,
-// Transcript.svelte and ProviderPicker.svelte never import app-services
+// Transcript.svelte and ModelPicker.svelte never import app-services
 // directly — they read the side panel's OWN reactive stores
 // (src/sidepanel/stores/selection.svelte.ts, stores/approvals.svelte.ts,
 // stores/panel.svelte.ts), which in turn read app-services. Driving those

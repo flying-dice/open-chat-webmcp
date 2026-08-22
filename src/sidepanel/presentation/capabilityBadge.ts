@@ -11,7 +11,7 @@
 // Still one shared copy, for the same reason the domain module is one shared
 // copy: decisions/11 makes "the exact same answer and the exact same words"
 // a cross-surface requirement, and card 41 exists because that logic was
-// once private to ProviderPicker.svelte.
+// once private to ModelPicker.svelte.
 
 import type { ToolCapabilityStatus } from "../../domain/providers";
 import { m } from "../../paraglide/messages.js";

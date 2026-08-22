@@ -7,14 +7,17 @@
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): same shadcn
   // Badge/Button treatment ProviderRow.svelte got, kept deliberately
   // identical so the two registries still read as the same kind of list.
-  import type { McpServerConfig } from "../../domain/tools";
+  // Card 113 made that literal: the wrapper, the reorder pair, the
+  // header-count line and the permission badges are ./RegistryRow.svelte
+  // now, and what is left below is only what an MCP server row says that a
+  // provider row does not.
+  import { oauthNeedsReconnect, type McpServerConfig } from "../../domain/tools";
   import type { McpTestOutcome } from "../forms/mcpTestConnection";
   import { m } from "../../paraglide/messages.js";
   import McpTestResult from "./McpTestResult.svelte";
+  import RegistryRow from "./RegistryRow.svelte";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
-  import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 
   interface Props {
     server: McpServerConfig;
@@ -50,35 +53,20 @@
   const headerCount = $derived(Object.keys(server.headers ?? {}).length);
 </script>
 
-<!-- TODO: clean-code - 0.4 - DRY: the move-up/move-down button pair, the outer row wrapper, the "Permission needed"/"Permission granted" badge pair, and the masked-header-count line are markup-identical to ProviderRow.svelte's row shell — a shared ReorderButtons/row-shell component would remove this. -->
-<div class="flex flex-col gap-2 rounded-2xl border p-3" class:opacity-60={!server.enabled}>
-  <div class="flex flex-wrap items-center gap-2">
-    <div class="flex flex-col gap-0.5">
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        onclick={onMoveUp}
-        disabled={isFirst}
-        aria-label={m.mcpServerRow_moveUpAriaLabel({ name: server.name })}
-      >
-        <HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        onclick={onMoveDown}
-        disabled={isLast}
-        aria-label={m.mcpServerRow_moveDownAriaLabel({ name: server.name })}
-      >
-        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
-      </Button>
-    </div>
-
-    <div class="min-w-0">
-      <div class="text-sm font-medium">{server.name}</div>
-      <div class="text-xs break-all text-muted-foreground" dir="ltr">{server.url}</div>
-    </div>
-
+<RegistryRow
+  name={server.name}
+  url={server.url}
+  {isFirst}
+  {isLast}
+  {onMoveUp}
+  {onMoveDown}
+  moveUpLabel={m.mcpServerRow_moveUpAriaLabel({ name: server.name })}
+  moveDownLabel={m.mcpServerRow_moveDownAriaLabel({ name: server.name })}
+  {permissionGranted}
+  {headerCount}
+  dimmed={!server.enabled}
+>
+  {#snippet badges()}
     {#if !server.enabled}
       <Badge variant="outline" title={m.mcpServerRow_disabledTitle()}>
         {m.mcpServerRow_disabledBadge()}
@@ -94,39 +82,27 @@
       badge): a best-known-state indicator checked against the stored
       config's `expiresAt`/`refreshToken` on render — NOT a live network
       probe (decisions/27's consequences: "the management UI ... needs a way
-      to show 'reconnect needed' distinctly from 'add a token'").
+      to show 'reconnect needed' distinctly from 'add a token'"). The rule
+      itself is src/domain/tools's `oauthNeedsReconnect` (card 113), shared
+      with the form's own status line so the two can never disagree.
     -->
-    <!-- TODO: clean-code - 0.3 - COUPLING: the "needs reconnect" rule (expiresAt <= Date.now() && !refreshToken) is duplicated inline in McpServerForm.svelte's oauthNeedsReconnect instead of living once in src/domain/tools. -->
-    {#if server.auth?.type === "oauth" && server.auth.expiresAt !== undefined && server.auth.expiresAt <= Date.now() && !server.auth.refreshToken}
+    {#if oauthNeedsReconnect(server.auth)}
       <Badge variant="destructive" title={m.mcpServerRow_reconnectNeededTitle()}>
         {m.mcpServerRow_reconnectNeededBadge()}
       </Badge>
     {/if}
+  {/snippet}
 
-    {#if headerCount > 0}
-      <span class="text-xs text-muted-foreground" title={m.headerValuesMaskedTitle()}>
-        {m.customHeaderCountLabel({ count: headerCount })}
-      </span>
-    {/if}
-    {#if permissionGranted === false}
-      <Badge variant="destructive" title={m.permissionNeededTitle()}>
-        {m.permissionNeededBadge()}
-      </Badge>
-    {:else if permissionGranted === true}
-      <Badge variant="outline" title={m.permissionGrantedTitle()}>{m.permissionGrantedBadge()}</Badge>
-    {/if}
-
-    <div class="ms-auto flex flex-wrap items-center gap-1">
-      <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
-        {testing ? m.testingLabel() : m.testConnectionAction()}
-      </Button>
-      <Button variant="outline" size="sm" onclick={onToggleEnabled}>
-        {server.enabled ? m.disableAction() : m.enableAction()}
-      </Button>
-      <Button variant="outline" size="sm" onclick={onEdit}>{m.editAction()}</Button>
-      <Button variant="outline" size="sm" onclick={onRemove}>{m.removeAction()}</Button>
-    </div>
-  </div>
+  {#snippet actions()}
+    <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
+      {testing ? m.testingLabel() : m.testConnectionAction()}
+    </Button>
+    <Button variant="outline" size="sm" onclick={onToggleEnabled}>
+      {server.enabled ? m.disableAction() : m.enableAction()}
+    </Button>
+    <Button variant="outline" size="sm" onclick={onEdit}>{m.editAction()}</Button>
+    <Button variant="outline" size="sm" onclick={onRemove}>{m.removeAction()}</Button>
+  {/snippet}
 
   <McpTestResult outcome={testOutcome} />
-</div>
+</RegistryRow>

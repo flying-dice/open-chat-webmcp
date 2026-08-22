@@ -28,8 +28,8 @@ import type {
   ProviderSelection,
   ProviderType,
 } from "../../domain/providers";
-import { isRecord, type StorageAreaGateway } from "./area";
-import { createKeyedRecordStore, credentialPart } from "./keyed-record-store";
+import { isRecord, readDecoded, type StorageAreaGateway } from "./area";
+import { createKeyedRecordStore, credentialPart, generateRecordId } from "./keyed-record-store";
 
 const SYNC_KEY_PROVIDERS = "providers:list";
 const SYNC_KEY_DEFAULT_SELECTION = "providers:default";
@@ -44,7 +44,11 @@ interface ProviderCredentials {
   headers?: ProviderHeader[] | undefined;
 }
 
-// TODO: clean-code - 0.2 - DRY: decodeProviderCore follows the identical isRecord(v) && typeof v.id === "string" && v.id.length > 0 && ... defensive-cast pattern as mcp-server-registry.ts's decodeServerCore, and generateProviderId below mirrors generateServerId (same crypto.randomUUID + fallback, differing only in the prefix literal) — per-record-shape leftovers around keyed-record-store.ts's shared mechanic.
+// Card 113 took the ID GENERATION half of this pair's duplication out: both
+// registries now call ./keyed-record-store.ts's `generateRecordId`, the same
+// module that already owns their shared storage mechanic.
+//
+// TODO: clean-code - 0.2 - DRY: what remains after card 113 shared the id generator is the DECODE — this function and mcp-server-registry.ts's decodeServerCore share a SHAPE (isRecord, then a field-by-field conjunction, then the one cast that states what the conjunction proved) but not a single line of content: different field names, different primitive types, different literal unions (PROVIDER_TYPES here, TRANSPORT_PREFERENCES there). STAYS: a generic decoder over a field spec would replace two readable conjunctions with one indirection plus a spec language, and would still have to reproduce the same narrowing-honest cast — two explicit decoders on purpose.
 /** Defensive against corrupted/foreign-written storage: drop any entry that doesn't look like a provider config rather than letting it crash a consumer downstream. */
 function decodeProviderCore(v: unknown): ProviderConfigCore | undefined {
   if (
@@ -108,9 +112,7 @@ function isProviderSelection(v: unknown): v is ProviderSelection {
 }
 
 function generateProviderId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `provider-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return generateRecordId("provider-");
 }
 
 export function createChromeStorageProviderRegistry(
@@ -164,11 +166,10 @@ export function createChromeStorageProviderRegistry(
 
     reorderProviders: (orderedIds) => records.reorder(orderedIds),
 
-    async getDefaultSelection() {
-      const [value, err] = await sync.read(SYNC_KEY_DEFAULT_SELECTION);
-      if (err) return fail(err);
-      return ok(isProviderSelection(value) ? value : undefined);
-    },
+    getDefaultSelection: () =>
+      readDecoded(sync, SYNC_KEY_DEFAULT_SELECTION, (value) =>
+        isProviderSelection(value) ? value : undefined,
+      ),
 
     setDefaultSelection: (selection) => sync.write({ [SYNC_KEY_DEFAULT_SELECTION]: selection }),
   };

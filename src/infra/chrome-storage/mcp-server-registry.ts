@@ -27,7 +27,7 @@ import type {
   McpTransportPreference,
 } from "../../domain/tools";
 import { isRecord, type StorageAreaGateway } from "./area";
-import { createKeyedRecordStore, credentialPart } from "./keyed-record-store";
+import { createKeyedRecordStore, credentialPart, generateRecordId } from "./keyed-record-store";
 
 const SYNC_KEY_SERVERS = "mcp:servers:list";
 const LOCAL_KEY_AUTH_PREFIX = "mcp:auth:";
@@ -41,7 +41,11 @@ interface McpServerCredentials {
   headers?: Record<string, string> | undefined;
 }
 
-// TODO: clean-code - 0.2 - DRY: decodeServerCore follows the identical isRecord(v) && typeof v.id === "string" && v.id.length > 0 && ... defensive-cast pattern as provider-registry.ts's decodeProviderCore, and generateServerId below mirrors generateProviderId (same crypto.randomUUID + fallback, differing only in the prefix literal) — per-record-shape leftovers around keyed-record-store.ts's shared mechanic.
+// Card 113 took the ID GENERATION half of this pair's duplication out: both
+// registries now call ./keyed-record-store.ts's `generateRecordId`, the same
+// module that already owns their shared storage mechanic.
+//
+// TODO: clean-code - 0.2 - DRY: what remains after card 113 shared the id generator is the DECODE — this function and provider-registry.ts's decodeProviderCore share a SHAPE (isRecord, then a field-by-field conjunction, then the one cast that states what the conjunction proved) but not a single line of content: different field names, different primitive types, different literal unions (TRANSPORT_PREFERENCES here, PROVIDER_TYPES there). STAYS: a generic decoder over a field spec would replace two readable conjunctions with one indirection plus a spec language, and would still have to reproduce the same narrowing-honest cast — two explicit decoders on purpose.
 /** Defensive against corrupted/foreign-written storage: drop any entry that doesn't look like a server config rather than letting it crash a consumer downstream. */
 function decodeServerCore(v: unknown): McpServerConfigCore | undefined {
   if (
@@ -113,9 +117,7 @@ function isHeadersMap(v: unknown): v is Record<string, string> {
 }
 
 function generateServerId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `mcp-server-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return generateRecordId("mcp-server-");
 }
 
 export function createChromeStorageMcpServerRegistry(

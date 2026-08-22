@@ -16,13 +16,24 @@
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): same shadcn
   // Card/Alert/Empty/Button shell ProvidersSection got, kept in step with it
   // for the same reason the state layout is.
+  //
+  // Card 113 made the mirroring literal where it was only a resemblance: the
+  // permission-grant map, the permission-gated test flow and card 95's
+  // write-failure line are ../forms/registrySection.svelte.ts now, and the
+  // reorder swap is ../forms/reorder.ts — shared with ProvidersSection.svelte
+  // and holding nothing that knows which registry it is serving.
   import { onMount } from "svelte";
   import { fail, ok, type Result } from "../../domain/result";
   import type { StorageError } from "../../domain/storage";
   import type { McpServerConfig } from "../../domain/tools";
-  import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import { testMcpServerConnection, type McpTestOutcome } from "../forms/mcpTestConnection";
+  import { reorderStep } from "../forms/reorder";
+  import {
+    createRegistryTestGate,
+    createSectionFailure,
+    permissionDeniedOutcome,
+  } from "../forms/registrySection.svelte";
   import { m } from "../../paraglide/messages.js";
   import McpServerForm from "./McpServerForm.svelte";
   import McpServerRow from "./McpServerRow.svelte";
@@ -36,22 +47,16 @@
   let servers = $state<McpServerConfig[]>([]);
   let loading = $state(true);
   /** Card 95: this section's storage-failure line — mirrors ProvidersSection.svelte's, for the same reasons. Form saves report into McpServerForm.svelte instead. */
-  let failure = $state<string | undefined>(undefined);
+  const failure = createSectionFailure();
 
   let adding = $state(false);
   let editingId = $state<string | null>(null);
 
-  /** `undefined` per id while its grant check is in flight — kept distinct from a settled `false` so the badge never briefly flashes "needed". */
-  let permissionGranted = $state<Record<string, boolean | undefined>>({});
-  let testOutcomes = $state<Record<string, McpTestOutcome | undefined>>({});
-  let testingIds = $state<Record<string, boolean>>({});
+  /** Host-permission grants + the per-row "Test connection" flow, in the shared gate ProvidersSection.svelte also uses. */
+  const gate = createRegistryTestGate<McpTestOutcome>(permissionDeniedOutcome);
 
-  // TODO: clean-code - 0.45 - DRY: refreshPermissions (Promise.all + Object.fromEntries over cached grants) and handleMove/handleTest below are the same generic reorder/permission-gate plumbing duplicated a second time in ProvidersSection.svelte, with no domain-specific reason left to be typed twice.
-  async function refreshPermissions(): Promise<void> {
-    const entries = await Promise.all(
-      servers.map(async (s) => [s.id, await optionsServices().permissions.has(s.url)] as const),
-    );
-    permissionGranted = Object.fromEntries(entries);
+  function refreshPermissions(): Promise<void> {
+    return gate.refreshGrants(servers.map((s) => ({ id: s.id, url: s.url })));
   }
 
   async function refresh(): Promise<void> {
@@ -61,10 +66,10 @@
     // "your servers are gone", which is a worse lie here than anywhere else
     // on this page — these rows carry stored tokens.
     if (err) {
-      failure = storageFailureMessage(m.mcpServersSection_loadFailedWhat(), err);
+      failure.report(m.mcpServersSection_loadFailedWhat(), err);
       return;
     }
-    failure = undefined;
+    failure.clear();
     servers = loaded;
     await refreshPermissions();
   }
@@ -84,11 +89,11 @@
     });
   });
 
-  /** Card 92 — see ProvidersSection.svelte's twin: a write that failed must not be followed by the UI change that assumed it landed. Card 95 turns each one into a line the user can actually read, except the two FORM writes, which report inside the still-open form. */
-  // TODO: clean-code - 0.35 - DRY: the whole card-95 write-failure protocol is duplicated between this section and ProvidersSection.svelte — a `failure` state field, this `reportWriteFailure(what, cause)` helper, and `handleAddSubmit`/`handleEditSubmit` typed `Promise<Result<void, StorageError>>` so the paired form (McpServerForm.svelte) can render the message under its own fields. Same shape as the four DRY markers this file pair already carries; new with the errors-as-values migration (card 96's audit), and the same decisions/20 caution applies — an extraction must not let an edit to one section silently change the other.
-  function reportWriteFailure(what: string, cause: StorageError): void {
-    failure = storageFailureMessage(what, cause);
-  }
+  // Card 92 — see ProvidersSection.svelte's twin: a write that failed must not
+  // be followed by the UI change that assumed it landed. Card 95 turns each one
+  // into a line the user can actually read (`failure.report`), except the two
+  // FORM writes below, which hand their error back so the still-open form can
+  // render it under its own fields.
 
   async function handleAddSubmit(
     data: Omit<McpServerConfig, "id">,
@@ -116,9 +121,8 @@
     if (!confirmed) return;
     const [, err] = await optionsServices().mcpServers.removeServer(server.id);
     if (err)
-      return reportWriteFailure(m.mcpServersSection_removeFailedWhat({ name: server.name }), err);
-    delete testOutcomes[server.id];
-    delete permissionGranted[server.id];
+      return failure.report(m.mcpServersSection_removeFailedWhat({ name: server.name }), err);
+    gate.forget(server.id);
     await refresh();
   }
 
@@ -130,7 +134,7 @@
     // — so a failed write leaves the switch where it was, and this line is
     // the only thing that distinguishes that from a click that missed.
     if (err) {
-      return reportWriteFailure(
+      return failure.report(
         server.enabled
           ? m.mcpServersSection_turnOffFailedWhat({ name: server.name })
           : m.mcpServersSection_turnOnFailedWhat({ name: server.name }),
@@ -140,54 +144,19 @@
     await refresh();
   }
 
-  // TODO: clean-code - 0.45 - DRY: byte-identical optimistic-reorder-then-persist logic to ProvidersSection.svelte's handleMove.
   async function handleMove(index: number, direction: -1 | 1): Promise<void> {
-    const target = index + direction;
-    if (target < 0 || target >= servers.length) return;
-    const current = servers[index];
-    const swapped = servers[target];
-    if (!current || !swapped) return; // both indices are in-range, checked above — this can't actually miss
-    const next = [...servers];
-    next[index] = swapped;
-    next[target] = current;
+    const next = reorderStep(servers, index, direction);
+    if (!next) return;
     servers = next; // optimistic reorder while the write lands
     const [, err] = await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
     // Same as ProvidersSection's twin: the optimistic swap already happened,
     // so a failure leaves the list ahead of storage until the next refresh.
-    if (err) reportWriteFailure(m.mcpServersSection_reorderFailedWhat(), err);
+    if (err) failure.report(m.mcpServersSection_reorderFailedWhat(), err);
   }
 
-  /**
-   * "Test connection" for a saved row — MUST call `permissions.request`
-   * as the first `await` when the grant isn't already known-true
-   * (decisions/14): a click handler is the only place the browser honours
-   * that request, and any async work ahead of it risks losing the gesture.
-   */
-  // TODO: clean-code - 0.45 - DRY: the "check cached grant -> permissions.request as first await -> run the test, else report the same permission-denied string" flow duplicates ProvidersSection.svelte's handleTest.
-  async function handleTest(server: McpServerConfig): Promise<void> {
-    testingIds = { ...testingIds, [server.id]: true };
-    testOutcomes = { ...testOutcomes, [server.id]: undefined };
-
-    try {
-      let granted = permissionGranted[server.id];
-      if (granted !== true) {
-        granted = await optionsServices().permissions.request(server.url);
-        permissionGranted = { ...permissionGranted, [server.id]: granted };
-        if (!granted) {
-          testOutcomes = {
-            ...testOutcomes,
-            [server.id]: {
-              kind: "permission-denied",
-              message: m.permissionDeniedRetryMessage(),
-            },
-          };
-          return;
-        }
-      }
-      testOutcomes = { ...testOutcomes, [server.id]: await testMcpServerConnection(server) };
-    } finally {
-      testingIds = { ...testingIds, [server.id]: false };
-    }
+  /** "Test connection" for a saved row — the shared gate does the host-permission dance (decisions/14) and holds the outcome. */
+  function handleTest(server: McpServerConfig): Promise<void> {
+    return gate.test({ id: server.id, url: server.url }, () => testMcpServerConnection(server));
   }
 </script>
 
@@ -203,9 +172,9 @@
     </Card.Header>
 
     <Card.Content class="flex flex-col gap-4">
-      {#if failure}
+      {#if failure.message}
         <Alert.Root variant="destructive">
-          <Alert.Description>{failure}</Alert.Description>
+          <Alert.Description>{failure.message}</Alert.Description>
         </Alert.Root>
       {/if}
 
@@ -245,9 +214,9 @@
                   {server}
                   isFirst={index === 0}
                   isLast={index === servers.length - 1}
-                  permissionGranted={permissionGranted[server.id]}
-                  testOutcome={testOutcomes[server.id]}
-                  testing={testingIds[server.id] ?? false}
+                  permissionGranted={gate.granted[server.id]}
+                  testOutcome={gate.outcomes[server.id]}
+                  testing={gate.isTesting(server.id)}
                   onEdit={() => (editingId = server.id)}
                   onRemove={() => handleRemove(server)}
                   onMoveUp={() => handleMove(index, -1)}

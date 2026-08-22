@@ -63,6 +63,31 @@ export interface McpOAuthAuth {
 /** Optional auth for a server: a static bearer token, or an OAuth 2.1 (PKCE) token set (decisions/27). CREDENTIAL — never synced. */
 export type McpServerAuth = McpBearerAuth | McpOAuthAuth;
 
+/**
+ * Whether an OAuth credential can no longer be used or silently renewed, and
+ * so needs the user to sign in again: its access token has expired and there
+ * is no refresh token to trade in for a new one. An absent `expiresAt` means
+ * "unknown expiry" (see {@link McpOAuthAuth.expiresAt}) — still valid until a
+ * 401 says otherwise, never a reconnect prompt.
+ *
+ * Card 113: this is a RULE about a stored credential, not a rendering
+ * decision, and it was written out by hand twice — once in
+ * src/options/components/McpServerRow.svelte's badge condition (against a
+ * saved config) and once in the MCP form's own live sign-in state (against
+ * the credential held before submit). Both call this now, so the badge and
+ * the form's status line can never disagree about what "expired" means.
+ *
+ * `now` is a parameter rather than a `Date.now()` read so the rule is
+ * testable without a clock fake; every caller in the app omits it.
+ */
+export function oauthNeedsReconnect(
+  auth: McpServerAuth | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (auth?.type !== "oauth") return false;
+  return auth.expiresAt !== undefined && auth.expiresAt <= now && !auth.refreshToken;
+}
+
 /** A server config as the rest of the app sees it — `auth`/`headers`, when present, have already been merged in from wherever the adapter keeps credentials. */
 export interface McpServerConfig {
   id: string;
@@ -95,7 +120,7 @@ export type McpServerConfigCore = Omit<McpServerConfig, "auth" | "headers">;
 // ---------------------------------------------------------------------------
 
 /** Header names the client controls for correctness and never lets a custom header override (decisions/15). Compared case-insensitively. `authorization` is only actually reserved when the server has auth configured — see {@link validateServerHeaders}. */
-// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/providers/provider.ts's reservedHeaderReason — one returns an issue array for MCP servers, the other a single reason value for providers, with no shared source tying the rule together.
+// TODO: clean-code - 0.5 - DRY: an independent, unlinked implementation of "which header names are reserved" from src/domain/providers/provider.ts's reservedHeaderReason — one returns an issue array for MCP servers, the other a single reason value for providers, with no shared source tying the rule together. STAYS: a shared source has nowhere to live yet. `providers` and `tools` are separate bounded contexts, and the rules disagree on CONTENT as well as shape — a provider reserves `authorization` whenever it holds an API key, an MCP server reserves it only when the transport will resolve auth for that call. Unifying them means a third context for HTTP header policy that both may import, which is a decision record (the same bar the isRecord markers are held to), not a drive-by. Card 107 already unified the part that was safe to unify: both rules render through one localized message (src/ui/reservedHeaderMessage.ts).
 export const CLIENT_CONTROLLED_HEADERS = ["content-type", "accept"] as const;
 
 /**

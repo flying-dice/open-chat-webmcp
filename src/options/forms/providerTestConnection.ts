@@ -1,5 +1,9 @@
-// TODO: clean-code - 0.4 - NAMING: exported type TestOutcome and this file name are both unprefixed, while the sibling MCP-connection test explicitly names its subject (McpTestOutcome, mcpTestConnection.ts). testResultDisplay.ts imports both side by side; the asymmetry makes it easy to misread which subject a call site is formatting. Should read ProviderTestOutcome/providerTestConnection.ts.
-// "Test connection" for the provider registry UI (card 22). Resolves
+// "Test connection" for the provider registry UI (card 22). Named for its
+// subject — `ProviderTestOutcome` in `providerTestConnection.ts`, matching the
+// sibling `McpTestOutcome`/`mcpTestConnection.ts` (card 113: the two are
+// imported side by side by testResultDisplay.ts, and the old unprefixed
+// `TestOutcome`/`testConnection.ts` made it easy to misread which subject a
+// call site was formatting). Resolves
 // through the provider's own `ChatProvider` client — built via the
 // `createProviderClient` dispatcher this surface's composition root wired
 // (card 75, card 78) exactly the way the side panel would — never a bespoke
@@ -16,7 +20,7 @@ import type { ProviderConfig } from "../../domain/providers";
 import { m } from "../../paraglide/messages.js";
 import { optionsServices } from "../app-services";
 
-export type TestOutcome =
+export type ProviderTestOutcome =
   | { kind: "success"; modelCount: number }
   | { kind: "not-supported"; message: string }
   | { kind: "auth"; message: string }
@@ -47,12 +51,12 @@ export type TestOutcome =
  * function makes no permission decisions itself, so it can be reused to
  * test an unsaved draft config as easily as a persisted one.
  */
-export async function testProviderConnection(config: ProviderConfig): Promise<TestOutcome> {
+export async function testProviderConnection(config: ProviderConfig): Promise<ProviderTestOutcome> {
   // Card 75: `createProviderClient` is now the exhaustive dispatcher from
   // src/domain/providers/client-factory.ts — there is no "unregistered
   // provider type" state left to throw for, so this no longer needs a
   // try/catch around client construction. `"unexpected"` stays on
-  // `TestOutcome` for genuinely unanticipated failures elsewhere in this
+  // `ProviderTestOutcome` for genuinely unanticipated failures elsewhere in this
   // module's callers.
   const client = optionsServices().createProviderClient(config);
   const [models, error] = await client.listModels();

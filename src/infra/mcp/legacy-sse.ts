@@ -13,7 +13,7 @@ import { raceWithBudget, type Budget } from "./budget";
 import {
   classifyHttpErrorResponse,
   isJsonRpcResponse,
-  safeAuthMessage,
+  authErrorFor,
   toResultFromJsonRpc,
   type JsonRpcResponseMsg,
 } from "./json-rpc";
@@ -173,19 +173,28 @@ async function postLegacyMessage(
   } catch (err) {
     return fail(budget.classify(err));
   }
-  // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in streamable-http.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
-  if (response.status === 401 || response.status === 403) {
-    return fail({
-      kind: "auth",
-      status: response.status,
-      message: await safeAuthMessage(response),
-    });
-  }
+  const authErr = await authErrorFor(response);
+  if (authErr) return fail(authErr);
   // The spec mandates 202 for an accepted notification/response; be
   // lenient and accept any 2xx here too, since some legacy servers reply
   // 200 to the initial POST instead.
   if (response.ok) return ok();
   return fail(await classifyHttpErrorResponse(response));
+}
+
+/**
+ * Turn a `raceWithBudget` failure into an `McpError` (card 113). The two arms
+ * are always the same question — did the budget RUN OUT, or did the thing we
+ * were waiting on end without answering — and only the wording and the
+ * non-timeout kind differ per wait, so those are the arguments. Written out
+ * three times in this file before, once per wait.
+ */
+function budgetError(
+  err: "timeout" | "other",
+  timeoutMessage: string,
+  otherError: McpError,
+): McpError {
+  return err === "timeout" ? { kind: "timeout", message: timeoutMessage } : otherError;
 }
 
 export async function connectLegacySse(
@@ -205,14 +214,8 @@ export async function connectLegacySse(
     return fail(budget.classify(err));
   }
 
-  // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in streamable-http.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
-  if (response.status === 401 || response.status === 403) {
-    return fail({
-      kind: "auth",
-      status: response.status,
-      message: await safeAuthMessage(response),
-    });
-  }
+  const authErr = await authErrorFor(response);
+  if (authErr) return fail(authErr);
   if (!response.ok) {
     return fail({
       kind: "not-mcp-endpoint",
@@ -229,17 +232,14 @@ export async function connectLegacySse(
 
   const pump = new LegacySsePump(response.body, config.url);
 
-  // TODO: clean-code - 0.35 - DRY: `raceWithBudget`'s `Result<T, "timeout" | "other">` (card 94's Result-ification of budget.ts) is turned into an `McpError` by the same `err === "timeout" ? {kind:"timeout", …} : {kind:…, …}` ternary at three sites in this file — here, the initialize wait below, and the per-request wait in `session.request`. A `budgetErrorToMcpError(err, timeoutMessage, otherError)` helper would collapse the three; noted by card 96's audit.
   const [postEndpoint, postEndpointErr] = await raceWithBudget(pump.endpoint(), budget);
   if (postEndpointErr) {
     pump.close();
     return fail(
-      postEndpointErr === "timeout"
-        ? { kind: "timeout", message: 'Timed out waiting for the legacy SSE "endpoint" event.' }
-        : {
-            kind: "not-mcp-endpoint",
-            message: "SSE stream ended before an endpoint event arrived.",
-          },
+      budgetError(postEndpointErr, 'Timed out waiting for the legacy SSE "endpoint" event.', {
+        kind: "not-mcp-endpoint",
+        message: "SSE stream ended before an endpoint event arrived.",
+      }),
     );
   }
 
@@ -261,12 +261,10 @@ export async function connectLegacySse(
   if (initResponseErr) {
     pump.close();
     return fail(
-      initResponseErr === "timeout"
-        ? { kind: "timeout", message: "Timed out waiting for the initialize response." }
-        : {
-            kind: "invalid-response",
-            message: "Legacy SSE stream closed before the initialize response arrived.",
-          },
+      budgetError(initResponseErr, "Timed out waiting for the initialize response.", {
+        kind: "invalid-response",
+        message: "Legacy SSE stream closed before the initialize response arrived.",
+      }),
     );
   }
 
@@ -291,12 +289,10 @@ export async function connectLegacySse(
       const [resp, respErr] = await raceWithBudget(waiter, budget);
       if (respErr) {
         return fail(
-          respErr === "timeout"
-            ? { kind: "timeout", message: `Timed out waiting for a response to "${method}".` }
-            : {
-                kind: "invalid-response",
-                message: "Legacy SSE stream closed before a response arrived.",
-              },
+          budgetError(respErr, `Timed out waiting for a response to "${method}".`, {
+            kind: "invalid-response",
+            message: "Legacy SSE stream closed before a response arrived.",
+          }),
         );
       }
       return toResultFromJsonRpc(resp);

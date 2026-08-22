@@ -1,4 +1,4 @@
-// TODO: clean-code - 0.3 - SRP: blends four distinct jobs — background discovery caching/scheduling, permission checks, server-tool execution, and MCP-content-to-text formatting — in one module.
+// TODO: clean-code - 0.3 - SRP: blends four distinct jobs — background discovery caching/scheduling, permission checks, server-tool execution, and MCP-content-to-text formatting — in one module. STAYS: the four are one decisions/19 §4 story — discovery is cached because calls must not wait on it, the permission check gates both discovery and calls, and the content formatting is what makes a call's result a transcript entry. Splitting them leaves the cache reachable from a module that does not schedule its refresh, which is exactly the hazard the COUPLING marker below already names. The right fix is that cache getting an explicit lifecycle, not four files sharing it.
 // Owns everything about turning configured MCP servers into tools the agent
 // loop can call, per decisions/14-backend-mcp-servers.md and
 // decisions/19-merging-server-tools-with-page-tools.md. This is the
@@ -64,9 +64,12 @@ import { m } from "../../paraglide/messages.js";
 /** How long a discovery result is trusted before a background refresh is due again. Not a hard cache-validity boundary — a turn always uses whatever's cached regardless of age (decisions/19 §4); this only paces how often this module bothers re-asking servers that are already known. */
 const DISCOVERY_REFRESH_INTERVAL_MS = 60_000;
 
-/** The gateway's own `DEFAULT_CALL_TOOL_TIMEOUT_MS` budget (src/infra/mcp/timeouts.ts) already bounds one `callServerTool` — this module adds no second timeout on top of it, matching the page-tool call path's own single-timeout-per-hop discipline. */
-
-// TODO: clean-code - 0.3 - DEAD: orphaned doc comment above with no subject — the next code is a "// Cache" section-header comment, not a const/function this doc could attach to. Reads as a leftover from a deleted constant.
+// NO SECOND TIMEOUT HERE: the gateway's own `DEFAULT_CALL_TOOL_TIMEOUT_MS`
+// budget (src/infra/mcp/timeouts.ts) already bounds one `callServerTool`, and
+// this module adds nothing on top of it — the same single-timeout-per-hop
+// discipline the page-tool call path keeps. (Card 113: this was a `/** */` doc
+// comment with no subject under it, which read as a leftover from a deleted
+// constant; it is a note about this module, so it says so as one.)
 
 // ---------------------------------------------------------------------------
 // Cache
@@ -77,7 +80,7 @@ interface CacheEntry {
   discovery: McpServerDiscovery;
 }
 
-// TODO: clean-code - 0.2 - COUPLING: the cache/refreshing/lastRefreshStartedAt triple is temporally coupled — any future caller of cachedServerTools() that doesn't first (directly or transitively) call ensureMcpDiscoveryFresh() silently gets a stale/empty list rather than an error.
+// TODO: clean-code - 0.2 - COUPLING: the cache/refreshing/lastRefreshStartedAt triple is temporally coupled — any future caller of cachedServerTools() that doesn't first (directly or transitively) call ensureMcpDiscoveryFresh() silently gets a stale/empty list rather than an error. STAYS: there is exactly one caller (mergeToolsForTab, below, which kicks the refresh itself) and the staleness is by DESIGN — decisions/19 §4 says a turn uses whatever is cached and never waits on discovery, so "stale" is the specified behaviour and an error would be wrong. The hazard is a future SECOND caller; the fix is to give the cache an explicit lifecycle object rather than to split this module.
 let cache: CacheEntry[] = [];
 let lastRefreshStartedAt = 0;
 let refreshing: Promise<void> | undefined;
@@ -184,9 +187,13 @@ export function initMcpToolsSync(): () => void {
  * (decisions/19 §1). Synchronous and network-free — reads the in-memory
  * cache built by the last `refreshNow` — and always kicks a background
  * refresh for the NEXT call, never waits on one now (decisions/19 §4).
+ *
+ * Card 113 renamed this from `getMergedToolsForTab`: "get" promised a pure
+ * read, and this also SCHEDULES that background refresh. `merge…` says the
+ * work it does; the refresh it kicks is documented in the line above rather
+ * than hidden behind a getter's name.
  */
-// TODO: clean-code - 0.3 - NAMING: getMergedToolsForTab reads as a pure getter, but calling it also triggers ensureMcpDiscoveryFresh() — a background network refresh — as a side effect not implied by "get".
-export function getMergedToolsForTab(
+export function mergeToolsForTab(
   pageTools: SerializedTool[],
   callPageTool: (
     toolName: string,

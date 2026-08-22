@@ -13,7 +13,7 @@
 // (`bannerClass` below) rather than mirrored, so the two registries' banners
 // cannot drift.
 //
-// Kept separate on purpose: the WORDING. `TestOutcome` and `McpTestOutcome`
+// Kept separate on purpose: the WORDING. `ProviderTestOutcome` and `McpTestOutcome`
 // name different failure modes for different reasons (card 39's explicit
 // ask: "not an MCP endpoint" — the one users hit by pasting a web page URL —
 // must say so plainly, and a successful MCP handshake with zero tools must
@@ -29,7 +29,7 @@
 
 import { m } from "../../paraglide/messages.js";
 import type { McpTestOutcome } from "./mcpTestConnection";
-import type { TestOutcome } from "./testConnection";
+import type { ProviderTestOutcome } from "./providerTestConnection";
 
 /**
  * The banner's Tailwind classes for one of three readings — success reads as
@@ -59,7 +59,7 @@ export function bannerClass(tone: "ok" | "error" | "neutral"): string {
 // Provider registry (decisions/10)
 // ---------------------------------------------------------------------------
 
-export function providerTestResultClass(outcome: TestOutcome): string {
+export function providerTestResultClass(outcome: ProviderTestOutcome): string {
   switch (outcome.kind) {
     case "success":
       return bannerClass("ok");
@@ -70,7 +70,7 @@ export function providerTestResultClass(outcome: TestOutcome): string {
   }
 }
 
-export function providerTestResultMessage(outcome: TestOutcome): string {
+export function providerTestResultMessage(outcome: ProviderTestOutcome): string {
   switch (outcome.kind) {
     case "success":
       return m.testResultDisplay_providerSuccess({ count: outcome.modelCount });

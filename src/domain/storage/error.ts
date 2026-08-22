@@ -47,7 +47,7 @@
  * - `Unexpected` — anything the adapter could not classify. Always carries
  *   its `cause`.
  */
-// TODO: clean-code - 0.3 - KISS: two of these five members are unreachable — a repo-wide search for `new StorageError(` finds exactly one construction site (src/infra/chrome-storage/area.ts), which only ever produces "Unavailable" or "Unexpected". "NotFound" and "Conflict" are never constructed anywhere in src/ — premature generality in the domain's own error vocabulary.
+// TODO: clean-code - 0.3 - KISS: two of these five members are unreachable — a repo-wide search for `new StorageError(` finds exactly one construction site (src/infra/chrome-storage/area.ts), which only ever produces "Unavailable" or "Unexpected". "NotFound" and "Conflict" are never constructed anywhere in src/ — premature generality in the domain's own error vocabulary. STAYS: the two unreachable kinds are a DOCUMENTED contract, not an accident — keyed-record-store.ts says in prose what it reserves `NotFound` for, and every kind already has translated user-facing copy in each locale plus a retryable/not-retryable verdict (src/ui/storageMessage.ts). Removing them deletes six locales' worth of message keys to save one union member each, and the next port that needs an optimistic-concurrency failure puts them straight back.
 export type StorageErrorKind = "Unavailable" | "NotFound" | "Conflict" | "Corrupt" | "Unexpected";
 
 /**

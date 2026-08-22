@@ -44,9 +44,13 @@
   import { HugeiconsIcon } from "@hugeicons/svelte";
   import { Message01Icon } from "@hugeicons/core-free-icons";
 
-  // TODO: clean-code - 0.35 - NAMING: local state (sessions, sessionsLoading, refreshSessions, loop var session) names a ChatSummary[] "sessions" — the vocabulary decisions/13 and the domain/chat README deliberately retired in favour of "chat". The sibling component rendering the identical type, HistoryPanel.svelte, correctly uses summaries/summary.
-  let sessions = $state<ChatSummary[]>([]);
-  let sessionsLoading = $state(true);
+  // Card 113: this state used to be named `sessions`/`refreshSessions`, the
+  // vocabulary decisions/13 and src/domain/chat/README.md deliberately retired
+  // in favour of "chat". `summaries`/`summary` is what the sibling component
+  // rendering the identical `ChatSummary[]`, HistoryPanel.svelte, already
+  // called it.
+  let summaries = $state<ChatSummary[]>([]);
+  let summariesLoading = $state(true);
   let clearingHistory = $state(false);
   /** The AlertDialog replacing the old `confirm()` — closed explicitly once `chats.clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
   let confirmOpen = $state(false);
@@ -54,7 +58,7 @@
   /** Card 95: this section's error line. One at a time — a failed listing and a failed clear-all cannot both be true of the same click, and the second attempt at either replaces it. */
   let failure = $state<string | undefined>(undefined);
 
-  async function refreshSessions(): Promise<void> {
+  async function refreshSummaries(): Promise<void> {
     const [loaded, err] = await optionsServices().chats.listChatSummaries();
     // Card 92 kept the previous listing on screen rather than blanking it;
     // card 95 says WHY it may be out of date. Blanking would be the worst
@@ -65,21 +69,21 @@
       return;
     }
     failure = undefined;
-    sessions = loaded;
+    summaries = loaded;
   }
 
   onMount(() => {
-    refreshSessions().finally(() => (sessionsLoading = false));
+    refreshSummaries().finally(() => (summariesLoading = false));
   });
 
   function formatOrigin(origin: string): string {
     return origin || m.historySection_unknownOrigin();
   }
 
-  let totalMessages = $derived(sessions.reduce((sum, s) => sum + s.messageCount, 0));
+  let totalMessages = $derived(summaries.reduce((sum, s) => sum + s.messageCount, 0));
 
   async function handleClearAll(): Promise<void> {
-    if (sessions.length === 0) return;
+    if (summaries.length === 0) return;
     clearingHistory = true;
     // Card 92: only empty the list when the clear actually landed — showing
     // an empty history for chats that are still in storage would be the worst
@@ -90,7 +94,7 @@
     if (err) failure = storageFailureMessage(m.historySection_clearFailedWhat(), err);
     else {
       failure = undefined;
-      sessions = [];
+      summaries = [];
     }
     clearingHistory = false;
     confirmOpen = false;
@@ -124,9 +128,9 @@
         </Alert.Description>
       </Alert.Root>
 
-      {#if sessionsLoading}
+      {#if summariesLoading}
         <p class="text-sm text-muted-foreground">{m.loadingLabel()}</p>
-      {:else if sessions.length === 0}
+      {:else if summaries.length === 0}
         <Empty.Root class="border p-8">
           <Empty.Header>
             <Empty.Media variant="icon">
@@ -140,13 +144,13 @@
         </Empty.Root>
       {:else}
         <div class="flex flex-col gap-2">
-          {#each sessions as session (session.id)}
+          {#each summaries as summary (summary.id)}
             <div class="flex flex-col gap-0.5 rounded-xl border px-3 py-2">
-              <span class="font-medium break-all" dir="ltr">{formatOrigin(session.origin)}</span>
+              <span class="font-medium break-all" dir="ltr">{formatOrigin(summary.origin)}</span>
               <span class="text-xs text-muted-foreground">
-                {m.historyListItem_messageCount({ count: session.messageCount })} ·
-                {m.historyListItem_toolCallCount({ count: session.toolCallCount })} ·
-                {m.historySection_updatedAt({ when: formatDateTime(session.updatedAt) })}
+                {m.historyListItem_messageCount({ count: summary.messageCount })} ·
+                {m.historyListItem_toolCallCount({ count: summary.toolCallCount })} ·
+                {m.historySection_updatedAt({ when: formatDateTime(summary.updatedAt) })}
               </span>
             </div>
           {/each}
@@ -160,12 +164,12 @@
             >
               {clearingHistory
                 ? m.historySection_clearingLabel()
-                : m.historyClearAllButton({ count: sessions.length })}
+                : m.historyClearAllButton({ count: summaries.length })}
             </AlertDialog.Trigger>
             <AlertDialog.Content>
               <AlertDialog.Header>
                 <AlertDialog.Title>
-                  {m.historyClearConfirmTitle({ count: sessions.length })}
+                  {m.historyClearConfirmTitle({ count: summaries.length })}
                 </AlertDialog.Title>
                 <AlertDialog.Description>
                   {m.historySection_clearConfirmDescription({ totalMessages })}

@@ -6,25 +6,26 @@
   //
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
   // `.provider-row`/`.badge`/`.icon-btn` are now shadcn `Badge`/`Button` plus
-  // Tailwind utilities. The row is a bordered div rather than a `Card`
-  // because it nests inside the section's own card and a card-in-card reads
-  // as two elevations for one thing. Every control keeps its original
-  // accessible name (the verify harness locates them by name —
-  // decisions/28's consequences).
+  // Tailwind utilities, and card 113 moved the parts McpServerRow.svelte
+  // spelled out identically — the bordered wrapper, the reorder pair, the
+  // masked-header-count line, the permission badges — into the shared
+  // ./RegistryRow.svelte shell. Every control keeps its original accessible
+  // name (the verify harness locates them by name — decisions/28's
+  // consequences), which is why the reorder labels are passed in rather than
+  // built by the shell.
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../domain/providers";
   import { getPreset, type ProviderModel } from "../../domain/providers";
-  import type { TestOutcome } from "../forms/testConnection";
+  import type { ProviderTestOutcome } from "../forms/providerTestConnection";
   import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
   import { m } from "../../paraglide/messages.js";
   import { uiTextDirection } from "../../ui/direction";
   import Markdown from "../../ui/components/Markdown.svelte";
+  import RegistryRow from "./RegistryRow.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Select from "$lib/components/ui/select";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
-  import { HugeiconsIcon } from "@hugeicons/svelte";
-  import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 
   /** See ProviderForm.svelte's identical helper for why this reuses Markdown.svelte's code-block/copy-button pipeline instead of a second one (card 14, card 33). */
   function fenceOf(command: string): string {
@@ -38,7 +39,7 @@
     isLast: boolean;
     /** `undefined` while the grant check is still in flight, distinct from a settled `true`/`false`. */
     permissionGranted: boolean | undefined;
-    testOutcome: TestOutcome | undefined;
+    testOutcome: ProviderTestOutcome | undefined;
     testing: boolean;
     /**
      * Card 52 (decisions/23-default-model-from-known-list-not-free-text.md):
@@ -128,35 +129,19 @@
   let backendLabel = $derived(getPreset(provider.presetId)?.label ?? TYPE_LABELS[provider.type]);
 </script>
 
-<!-- TODO: clean-code - 0.4 - DRY: the move-up/move-down button pair, the outer row wrapper, the "Permission needed"/"Permission granted" badge pair, and the masked-header-count line are markup-identical to McpServerRow.svelte's row shell — a shared ReorderButtons/row-shell component would remove this. -->
-<div class="flex flex-col gap-2 rounded-2xl border p-3">
-  <div class="flex flex-wrap items-center gap-2">
-    <div class="flex flex-col gap-0.5">
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        onclick={onMoveUp}
-        disabled={isFirst}
-        aria-label={m.providerRow_moveUpAriaLabel({ name: provider.name })}
-      >
-        <HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        onclick={onMoveDown}
-        disabled={isLast}
-        aria-label={m.providerRow_moveDownAriaLabel({ name: provider.name })}
-      >
-        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
-      </Button>
-    </div>
-
-    <div class="min-w-0">
-      <div class="text-sm font-medium">{provider.name}</div>
-      <div class="text-xs break-all text-muted-foreground" dir="ltr">{provider.baseUrl}</div>
-    </div>
-
+<RegistryRow
+  name={provider.name}
+  url={provider.baseUrl}
+  {isFirst}
+  {isLast}
+  {onMoveUp}
+  {onMoveDown}
+  moveUpLabel={m.providerRow_moveUpAriaLabel({ name: provider.name })}
+  moveDownLabel={m.providerRow_moveDownAriaLabel({ name: provider.name })}
+  {permissionGranted}
+  headerCount={provider.headers?.length ?? 0}
+>
+  {#snippet badges()}
     <Badge variant="outline">{backendLabel}</Badge>
     {#if isDefault}
       {#if defaultInvalidReason}
@@ -167,49 +152,37 @@
         <Badge>{m.providerRow_defaultBadge()}</Badge>
       {/if}
     {/if}
-    {#if provider.headers && provider.headers.length > 0}
-      <span class="text-xs text-muted-foreground" title={m.headerValuesMaskedTitle()}>
-        {m.customHeaderCountLabel({ count: provider.headers.length })}
-      </span>
-    {/if}
-    {#if permissionGranted === false}
-      <Badge variant="destructive" title={m.permissionNeededTitle()}>
-        {m.permissionNeededBadge()}
-      </Badge>
-    {:else if permissionGranted === true}
-      <Badge variant="outline" title={m.permissionGrantedTitle()}>{m.permissionGrantedBadge()}</Badge>
-    {/if}
+  {/snippet}
 
-    <div class="ms-auto flex flex-wrap items-center gap-1">
-      <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
-        {testing ? m.testingLabel() : m.testConnectionAction()}
-      </Button>
-      {#if !isDefault}
-        {#if defaultModelsLoading}
-          <Button variant="outline" size="sm" disabled>{m.providerRow_checkingLabel()}</Button>
-        {:else if defaultModelOptions.length > 0}
-          <Select.Root type="single" bind:value={selectedModelId}>
-            <Select.Trigger size="sm" aria-label={m.providerRow_defaultModelAriaLabel({ name: provider.name })}>
-              {selectedModelLabel}
-            </Select.Trigger>
-            <Select.Content dir={uiTextDirection()}>
-              {#each defaultModelOptions as model (model.id)}
-                <Select.Item value={model.id} label={model.name} />
-              {/each}
-            </Select.Content>
-          </Select.Root>
-          <Button variant="outline" size="sm" onclick={() => onSetDefault(selectedModelId)}>
-            {m.providerRow_setDefaultAction()}
-          </Button>
-        {/if}
+  {#snippet actions()}
+    <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
+      {testing ? m.testingLabel() : m.testConnectionAction()}
+    </Button>
+    {#if !isDefault}
+      {#if defaultModelsLoading}
+        <Button variant="outline" size="sm" disabled>{m.providerRow_checkingLabel()}</Button>
+      {:else if defaultModelOptions.length > 0}
+        <Select.Root type="single" bind:value={selectedModelId}>
+          <Select.Trigger size="sm" aria-label={m.providerRow_defaultModelAriaLabel({ name: provider.name })}>
+            {selectedModelLabel}
+          </Select.Trigger>
+          <Select.Content dir={uiTextDirection()}>
+            {#each defaultModelOptions as model (model.id)}
+              <Select.Item value={model.id} label={model.name} />
+            {/each}
+          </Select.Content>
+        </Select.Root>
+        <Button variant="outline" size="sm" onclick={() => onSetDefault(selectedModelId)}>
+          {m.providerRow_setDefaultAction()}
+        </Button>
       {/if}
-      <Button variant="outline" size="sm" onclick={onEdit}>{m.editAction()}</Button>
-      <Button variant="outline" size="sm" onclick={onRemove}>{m.removeAction()}</Button>
-    </div>
-  </div>
+    {/if}
+    <Button variant="outline" size="sm" onclick={onEdit}>{m.editAction()}</Button>
+    <Button variant="outline" size="sm" onclick={onRemove}>{m.removeAction()}</Button>
+  {/snippet}
 
   {#if !isDefault && !defaultModelsLoading && defaultModelOptions.length === 0 && defaultModelBlockedReason}
-    <!-- Card 41/52: same treatment ProviderPicker.svelte gives a disabled
+    <!-- Card 41/52: same treatment ModelPicker.svelte gives a disabled
          model row's reason — muted, explanatory text, not an alarm. -->
     <p class="text-xs text-muted-foreground">{defaultModelBlockedReason}</p>
   {/if}
@@ -224,4 +197,4 @@
       <Markdown source={fenceOf(fix.command)} />
     {/if}
   {/if}
-</div>
+</RegistryRow>

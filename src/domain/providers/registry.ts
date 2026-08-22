@@ -173,7 +173,7 @@ export async function resolveSelection(
  * list moved out from under a stale selection and the user hasn't
  * re-confirmed it). Three sidepanel call sites re-derived this
  * independently — App.svelte's send guard, Composer.svelte's `blocked`
- * state, and ProviderPicker.svelte's trigger label — before this became the
+ * state, and ModelPicker.svelte's trigger label — before this became the
  * one place the rule lives (card 90).
  */
 export function isSelectionUsable(
