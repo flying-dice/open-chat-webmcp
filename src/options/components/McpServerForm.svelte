@@ -36,6 +36,15 @@
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../../lib/permissions";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
   import { testResultClass, testResultMessage, testResultTools } from "../lib/mcpTestResultDisplay";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Field from "$lib/components/ui/field";
+  import * as InputGroup from "$lib/components/ui/input-group";
+  import * as Select from "$lib/components/ui/select";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
   interface Props {
     mode: "add" | "edit";
@@ -123,6 +132,22 @@
       oauthAuth.expiresAt !== undefined &&
       oauthAuth.expiresAt <= Date.now() &&
       !oauthAuth.refreshToken,
+  );
+
+  /**
+   * The OAuth status line's banner styling — card 71 kept it visually
+   * identical to a "Test connection" result banner (the same three
+   * ok/error/neutral treatments src/options/lib/mcpTestResultDisplay.ts
+   * hands out), because that is exactly what it is: the last known verdict
+   * on whether this server's credentials work.
+   */
+  const OAUTH_STATUS_BASE = "rounded-lg border px-3 py-2 text-sm";
+  const oauthStatusClass = $derived(
+    oauthNeedsReconnect
+      ? `${OAUTH_STATUS_BASE} border-destructive/40 bg-destructive/5 text-destructive`
+      : oauthAuth
+        ? `${OAUTH_STATUS_BASE} border-primary/40 bg-primary/5 text-foreground`
+        : `${OAUTH_STATUS_BASE} text-muted-foreground`,
   );
 
   function oauthStatusText(): string {
@@ -218,6 +243,21 @@
 
   let testing = $state(false);
   let testOutcome = $state<McpTestOutcome | undefined>(undefined);
+
+  // Card 71: shadcn's `Select` renders whatever the trigger is given, unlike
+  // the native `<select>` these replaced, which showed the chosen `<option>`'s
+  // own text. Both lists stay the single source of truth for their labels.
+  const AUTH_MODE_OPTIONS: { value: AuthMode; label: string }[] = [
+    { value: "none", label: "None" },
+    { value: "bearer", label: "Bearer token" },
+    { value: "oauth", label: "Sign in with OAuth" },
+  ];
+  let transportLabel = $derived(
+    TRANSPORT_OPTIONS.find((t) => t.value === transport)?.label ?? TRANSPORT_OPTIONS[0].label,
+  );
+  let authModeLabel = $derived(
+    AUTH_MODE_OPTIONS.find((a) => a.value === authMode)?.label ?? AUTH_MODE_OPTIONS[0].label,
+  );
 
   function buildData(): Omit<McpServerConfig, "id"> {
     const cleanHeaders: Record<string, string> = {};
@@ -497,149 +537,190 @@
   }
 </script>
 
-<form class="form" onsubmit={handleSubmit}>
-  <div class="field-row">
-    <div class="field">
-      <label for="mf-name">Display name</label>
-      <input id="mf-name" type="text" bind:value={name} placeholder="e.g. Internal ticket tracker" required />
-    </div>
-    <div class="field">
-      <label for="mf-transport">Transport</label>
-      <select id="mf-transport" bind:value={transport}>
-        {#each TRANSPORT_OPTIONS as t (t.value)}
-          <option value={t.value}>{t.label}</option>
-        {/each}
-      </select>
-    </div>
+
+<form class="flex flex-col gap-4 rounded-2xl border bg-muted/30 p-4" onsubmit={handleSubmit}>
+  <div class="flex flex-wrap gap-4">
+    <Field.Field class="flex-1 basis-50">
+      <Field.Label for="mf-name">Display name</Field.Label>
+      <Input
+        id="mf-name"
+        type="text"
+        bind:value={name}
+        placeholder="e.g. Internal ticket tracker"
+        required
+      />
+    </Field.Field>
+    <Field.Field class="flex-1 basis-50">
+      <Field.Label for="mf-transport">Transport</Field.Label>
+      <Select.Root
+        type="single"
+        value={transport}
+        onValueChange={(next) => (transport = next as McpTransportPreference)}
+      >
+        <Select.Trigger id="mf-transport" class="w-full">{transportLabel}</Select.Trigger>
+        <Select.Content>
+          {#each TRANSPORT_OPTIONS as t (t.value)}
+            <Select.Item value={t.value} label={t.label} />
+          {/each}
+        </Select.Content>
+      </Select.Root>
+    </Field.Field>
   </div>
 
-  <div class="field">
-    <label for="mf-url">MCP endpoint URL</label>
-    <input id="mf-url" type="text" bind:value={url} placeholder="https://mcp.example.com/mcp" required />
+  <Field.Field>
+    <Field.Label for="mf-url">MCP endpoint URL</Field.Label>
+    <Input id="mf-url" type="text" bind:value={url} placeholder="https://mcp.example.com/mcp" required />
     {#if permissionGranted === false}
-      <span class="badge badge--danger">Permission needed for this host</span>
+      <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
     {:else if permissionGranted === true}
-      <span class="badge">Permission granted</span>
+      <Badge variant="outline" class="w-fit!">Permission granted</Badge>
     {/if}
-  </div>
+  </Field.Field>
 
-  <p class="note">
-    Only remote HTTP/SSE MCP servers are supported — this extension can't spawn or speak to a
-    local stdio process. For a stdio-only server, put an off-the-shelf stdio-to-HTTP proxy in
-    front of it and enter the proxy's URL here instead.
-  </p>
+  <Alert.Root class="bg-background">
+    <Alert.Description>
+      Only remote HTTP/SSE MCP servers are supported — this extension can't spawn or speak to a
+      local stdio process. For a stdio-only server, put an off-the-shelf stdio-to-HTTP proxy in
+      front of it and enter the proxy's URL here instead.
+    </Alert.Description>
+  </Alert.Root>
 
-  <div class="field">
-    <label for="mf-auth-mode">Authentication</label>
-    <select id="mf-auth-mode" bind:value={authMode}>
-      <option value="none">None</option>
-      <option value="bearer">Bearer token</option>
-      <option value="oauth">Sign in with OAuth</option>
-    </select>
-  </div>
+  <Field.Field>
+    <Field.Label for="mf-auth-mode">Authentication</Field.Label>
+    <Select.Root
+      type="single"
+      value={authMode}
+      onValueChange={(next) => (authMode = next as AuthMode)}
+    >
+      <Select.Trigger id="mf-auth-mode" class="w-full">{authModeLabel}</Select.Trigger>
+      <Select.Content>
+        {#each AUTH_MODE_OPTIONS as option (option.value)}
+          <Select.Item value={option.value} label={option.label} />
+        {/each}
+      </Select.Content>
+    </Select.Root>
+  </Field.Field>
 
   {#if authMode === "bearer"}
-    <div class="field">
-      <label for="mf-token">Bearer token</label>
-      <div class="api-key-field">
-        <input
+    <Field.Field>
+      <Field.Label for="mf-token">Bearer token</Field.Label>
+      <InputGroup.Root>
+        <InputGroup.Input
           id="mf-token"
           type={showAuthToken ? "text" : "password"}
           bind:value={authToken}
           placeholder="Sent as Authorization: Bearer …"
           autocomplete="off"
         />
-        <button type="button" class="btn-plain" onclick={() => (showAuthToken = !showAuthToken)}>
-          {showAuthToken ? "Hide" : "Show"}
-        </button>
-      </div>
-    </div>
+        <InputGroup.Addon align="inline-end">
+          <InputGroup.Button onclick={() => (showAuthToken = !showAuthToken)}>
+            {showAuthToken ? "Hide" : "Show"}
+          </InputGroup.Button>
+        </InputGroup.Addon>
+      </InputGroup.Root>
+    </Field.Field>
   {:else if authMode === "oauth"}
-    <div class="field">
+    <Field.Field>
       {#if oauthDiscovery && !oauthAuth}
-        <label for="mf-oauth-client-id">Manual app registration</label>
-        <p class="note">
-          <code>{oauthDiscovery.issuer}</code> doesn't support automatic client registration. Create
-          an OAuth app there using the callback URL below, then enter the client ID it gives you
-          (and a client secret too, if it requires one).
-        </p>
-        <label for="mf-oauth-redirect">Callback / redirect URL</label>
-        <div class="api-key-field">
-          <input id="mf-oauth-redirect" type="text" value={redirectUri()} readonly />
-          <button type="button" class="btn-plain" onclick={copyRedirectUri}>
-            {redirectUriCopied ? "Copied" : "Copy"}
-          </button>
-        </div>
-        <label for="mf-oauth-client-id">Client ID</label>
-        <input id="mf-oauth-client-id" type="text" bind:value={manualClientId} autocomplete="off" />
-        <label for="mf-oauth-client-secret">Client secret (optional)</label>
-        <div class="api-key-field">
-          <input
+        <!-- Card 71: this heading used to be a <label for="mf-oauth-client-id">
+             that duplicated the real Client ID label below it (two labels, one
+             control). It is a group heading, not a label, so it is one now —
+             the panel's fields and flow are otherwise untouched. -->
+        <Field.Title>Manual app registration</Field.Title>
+        <Alert.Root class="bg-background">
+          <Alert.Description>
+            <code class="font-mono text-xs">{oauthDiscovery.issuer}</code> doesn't support automatic
+            client registration. Create an OAuth app there using the callback URL below, then enter
+            the client ID it gives you (and a client secret too, if it requires one).
+          </Alert.Description>
+        </Alert.Root>
+
+        <Field.Label for="mf-oauth-redirect">Callback / redirect URL</Field.Label>
+        <InputGroup.Root>
+          <InputGroup.Input id="mf-oauth-redirect" type="text" value={redirectUri()} readonly />
+          <InputGroup.Addon align="inline-end">
+            <InputGroup.Button onclick={copyRedirectUri}>
+              {redirectUriCopied ? "Copied" : "Copy"}
+            </InputGroup.Button>
+          </InputGroup.Addon>
+        </InputGroup.Root>
+
+        <Field.Label for="mf-oauth-client-id">Client ID</Field.Label>
+        <Input id="mf-oauth-client-id" type="text" bind:value={manualClientId} autocomplete="off" />
+
+        <Field.Label for="mf-oauth-client-secret">Client secret (optional)</Field.Label>
+        <InputGroup.Root>
+          <InputGroup.Input
             id="mf-oauth-client-secret"
             type={showManualClientSecret ? "text" : "password"}
             bind:value={manualClientSecret}
             autocomplete="off"
           />
-          <button type="button" class="btn-plain" onclick={() => (showManualClientSecret = !showManualClientSecret)}>
-            {showManualClientSecret ? "Hide" : "Show"}
-          </button>
-        </div>
+          <InputGroup.Addon align="inline-end">
+            <InputGroup.Button onclick={() => (showManualClientSecret = !showManualClientSecret)}>
+              {showManualClientSecret ? "Hide" : "Show"}
+            </InputGroup.Button>
+          </InputGroup.Addon>
+        </InputGroup.Root>
+
         {#if oauthError}
-          <p class="form__error">{oauthError}</p>
+          <Field.Error>{oauthError}</Field.Error>
         {/if}
-        <div class="form__actions">
-          <button
-            type="button"
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
             onclick={handleOAuthContinueManual}
             disabled={oauthSigningIn || manualClientId.trim().length === 0}
           >
             {oauthSigningIn ? "Signing in…" : "Continue"}
-          </button>
-          <button type="button" class="btn-plain" onclick={handleOAuthCancelManual}>Cancel</button>
+          </Button>
+          <Button variant="ghost" onclick={handleOAuthCancelManual}>Cancel</Button>
         </div>
       {:else}
-        <label for="mf-oauth-signin">OAuth sign-in</label>
-        <p
-          id="mf-oauth-signin"
-          class={`test-result ${oauthNeedsReconnect ? "test-result--error" : oauthAuth ? "test-result--ok" : "test-result--info"}`}
-        >
-          {oauthStatusText()}
-        </p>
+        <!-- Card 71: was a <label for="mf-oauth-signin"> pointing at the status
+             <p> below — a label can only name a form control, so this is a
+             group title now. The status text itself is unchanged. -->
+        <Field.Title>OAuth sign-in</Field.Title>
+        <p class={oauthStatusClass}>{oauthStatusText()}</p>
         {#if oauthError}
-          <p class="form__error">{oauthError}</p>
+          <Field.Error>{oauthError}</Field.Error>
         {/if}
-        <div class="form__actions">
-          <button type="button" onclick={handleOAuthSignIn} disabled={oauthSigningIn}>
+        <div class="flex items-center gap-2">
+          <Button variant="outline" onclick={handleOAuthSignIn} disabled={oauthSigningIn}>
             {oauthSigningIn ? "Signing in…" : oauthAuth ? "Reconnect" : "Sign in"}
-          </button>
+          </Button>
           {#if oauthAuth}
-            <button type="button" class="btn-plain" onclick={handleOAuthDisconnect}>Disconnect</button>
+            <Button variant="ghost" onclick={handleOAuthDisconnect}>Disconnect</Button>
           {/if}
         </div>
-        <p class="note">
-          Discovers the server's authorization server and opens a sign-in window. If the server
-          supports dynamic client registration (RFC 7591) this registers automatically; otherwise
-          you'll be asked for a client ID from an app you register with it yourself.
-        </p>
+        <Alert.Root class="bg-background">
+          <Alert.Description>
+            Discovers the server's authorization server and opens a sign-in window. If the server
+            supports dynamic client registration (RFC 7591) this registers automatically; otherwise
+            you'll be asked for a client ID from an app you register with it yourself.
+          </Alert.Description>
+        </Alert.Root>
       {/if}
-    </div>
+    </Field.Field>
   {/if}
 
-  <div class="field">
-    <label for="mf-header-0-key">Custom headers (optional)</label>
-    <p class="note">
-      Sent on every request to this server — for a gateway that wants its own <code
-        >x-api-key</code
-      >, a tenant or project header, or a proxy <code>Authorization</code>. A bearer token from the
-      field above isn't enough for those.
-    </p>
+  <Field.Field>
+    <Field.Label for="mf-header-0-key">Custom headers (optional)</Field.Label>
+    <Alert.Root class="bg-background">
+      <Alert.Description>
+        Sent on every request to this server — for a gateway that wants its own <code
+          class="font-mono text-xs">x-api-key</code
+        >, a tenant or project header, or a proxy <code class="font-mono text-xs">Authorization</code
+        >. A bearer token from the field above isn't enough for those.
+      </Alert.Description>
+    </Alert.Root>
 
     {#if headers.length > 0}
-      <div class="header-rows">
+      <div class="flex flex-col gap-1">
         {#each headers as row, i (row.id)}
           {@const err = headerRowError(row)}
-          <div class="header-row">
-            <input
+          <div class="flex items-start gap-1">
+            <Input
               id={i === 0 ? "mf-header-0-key" : undefined}
               type="text"
               bind:value={row.key}
@@ -647,58 +728,66 @@
               autocomplete="off"
               aria-invalid={err ? "true" : undefined}
             />
-            <input
+            <Input
               type={showHeaderValues ? "text" : "password"}
               bind:value={row.value}
               placeholder="Value"
               autocomplete="off"
               aria-invalid={err ? "true" : undefined}
             />
-            <button
-              type="button"
-              class="btn-plain"
+            <Button
+              variant="ghost"
+              size="icon"
               onclick={() => removeHeaderRow(row.id)}
               aria-label={`Remove header ${row.key || i + 1}`}
             >
-              Remove
-            </button>
+              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+            </Button>
           </div>
           {#if err}
-            <p class="header-row__error">{err}</p>
+            <Field.Error>{err}</Field.Error>
           {/if}
         {/each}
       </div>
     {/if}
 
-    <div class="form__actions">
-      <button type="button" class="btn-plain" onclick={addHeaderRow}>+ Add header</button>
+    <div class="flex items-center gap-2">
+      <Button variant="ghost" size="sm" onclick={addHeaderRow}>
+        <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
+        Add header
+      </Button>
       {#if headers.length > 0}
-        <button type="button" class="btn-plain" onclick={() => (showHeaderValues = !showHeaderValues)}>
+        <Button variant="ghost" size="sm" onclick={() => (showHeaderValues = !showHeaderValues)}>
           {showHeaderValues ? "Hide values" : "Show values"}
-        </button>
+        </Button>
       {/if}
     </div>
-  </div>
+  </Field.Field>
 
-  <p class="note">
-    The bearer token, OAuth tokens, and custom header values above are stored unencrypted on this
-    device (chrome.storage.local) and never synced to your Google account. Anyone with access to
-    this browser profile's data can read them.
-  </p>
+  <Alert.Root class="bg-background">
+    <Alert.Description>
+      The bearer token, OAuth tokens, and custom header values above are stored unencrypted on this
+      device (chrome.storage.local) and never synced to your Google account. Anyone with access to
+      this browser profile's data can read them.
+    </Alert.Description>
+  </Alert.Root>
 
   {#if formError}
-    <p class="form__error">{formError}</p>
+    <Field.Error>{formError}</Field.Error>
   {/if}
 
   {#if testOutcome}
-    <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
+    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
     {#if testResultTools(testOutcome)}
       {@const tools = testResultTools(testOutcome) ?? []}
-      <button type="button" class="btn-plain" onclick={() => (toolsExpanded = !toolsExpanded)}>
-        {toolsExpanded ? "Hide" : "Show"} {tools.length} tool{tools.length === 1 ? "" : "s"}
-      </button>
+      <div class="flex">
+        <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
+          {toolsExpanded ? "Hide" : "Show"}
+          {tools.length} tool{tools.length === 1 ? "" : "s"}
+        </Button>
+      </div>
       {#if toolsExpanded}
-        <ul class="mcp-tool-list">
+        <ul class="flex list-disc flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
           <!-- Keyed by index, not `tool.name`: this is a raw server-reported
                list, un-deduplicated (unlike the sidepanel's merged tool list,
                which `buildServerMergedTools` — src/lib/mcp/merge.ts —
@@ -709,20 +798,25 @@
                unique for a wholesale-replaced, non-reorderable snapshot list
                like this one. -->
           {#each tools as tool, i (i)}
-            <li><code>{tool.name}</code>{#if tool.description}<span> — {tool.description}</span>{/if}</li>
+            <li>
+              <code class="font-mono text-foreground">{tool.name}</code>{#if tool.description}<span
+                >
+                  — {tool.description}</span
+                >{/if}
+            </li>
           {/each}
         </ul>
       {/if}
     {/if}
   {/if}
 
-  <div class="form__actions">
-    <button type="submit" class="btn-primary" disabled={saving}>
+  <div class="flex flex-wrap items-center gap-2">
+    <Button type="submit" disabled={saving}>
       {saving ? "Saving…" : mode === "add" ? "Add server" : "Save changes"}
-    </button>
-    <button type="button" onclick={handleTest} disabled={testing}>
+    </Button>
+    <Button variant="outline" onclick={handleTest} disabled={testing}>
       {testing ? "Testing…" : "Test connection"}
-    </button>
-    <button type="button" class="btn-plain" onclick={onCancel}>Cancel</button>
+    </Button>
+    <Button variant="ghost" onclick={onCancel}>Cancel</Button>
   </div>
 </form>

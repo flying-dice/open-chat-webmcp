@@ -18,6 +18,12 @@
   // local Ollama server can sit behind a gateway too, and needs the same
   // shape. Header VALUES get the exact same treatment as `apiKey`: masked
   // by default, stored local-only (registry.ts), never synced.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
+  // `.form`/`.field`/`.api-key-field` became shadcn `Field` + `Input` +
+  // `InputGroup`. The masked-by-default API key and header values, and the
+  // Show/Hide toggles that reveal them, behave exactly as before — the
+  // toggle just lives in an `InputGroup` addon instead of a sibling button.
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../lib/providers/registry";
   import { reservedHeaderReason, type ProviderType } from "../../lib/provider";
@@ -27,6 +33,15 @@
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
   import Markdown from "../../lib/components/Markdown.svelte";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Field from "$lib/components/ui/field";
+  import * as InputGroup from "$lib/components/ui/input-group";
+  import * as Select from "$lib/components/ui/select";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
@@ -307,40 +322,55 @@
       saving = false;
     }
   }
+
+  /** The provider-type dropdown's trigger text — shadcn's `Select` renders whatever we put in the trigger, unlike the native `<select>` this replaced. */
+  let typeLabel = $derived(typeInfo.label);
 </script>
 
-<form class="form" onsubmit={handleSubmit}>
+<form class="flex flex-col gap-4 rounded-2xl border bg-muted/30 p-4" onsubmit={handleSubmit}>
   {#if mode === "add" && preset}
-    <div class="preset-banner">
-      <span class="badge badge--primary">{preset.label}</span>
+    <div class="flex items-center gap-2">
+      <Badge>{preset.label}</Badge>
       {#if onChangeBackend}
-        <button type="button" class="btn-plain" onclick={onChangeBackend}>Change backend</button>
+        <Button variant="ghost" size="sm" onclick={onChangeBackend}>Change backend</Button>
       {/if}
     </div>
   {/if}
 
   {#if activePreset?.note}
-    <p class="note">{activePreset.note}</p>
+    <Alert.Root class="bg-background">
+      <Alert.Description>{activePreset.note}</Alert.Description>
+    </Alert.Root>
   {/if}
 
-  <div class="field-row">
-    <div class="field">
-      <label for="pf-name">Display name</label>
-      <input id="pf-name" type="text" bind:value={name} placeholder="e.g. Local Ollama" required />
-    </div>
-    <div class="field">
-      <label for="pf-type">Provider type</label>
-      <select id="pf-type" bind:value={type}>
-        {#each PROVIDER_TYPES as t (t.value)}
-          <option value={t.value}>{t.label}</option>
-        {/each}
-      </select>
-    </div>
+  <div class="flex flex-wrap gap-4">
+    <Field.Field class="flex-1 basis-50">
+      <Field.Label for="pf-name">Display name</Field.Label>
+      <Input id="pf-name" type="text" bind:value={name} placeholder="e.g. Local Ollama" required />
+    </Field.Field>
+    <Field.Field class="flex-1 basis-50">
+      <Field.Label for="pf-type">Provider type</Field.Label>
+      <!-- Controlled rather than `bind:value`: `type` is a `ProviderType`, not
+           a plain string, and the `$effect` above reacts to it changing — so
+           the cast happens here, at the one place a new value arrives. -->
+      <Select.Root
+        type="single"
+        value={type}
+        onValueChange={(next) => (type = next as ProviderType)}
+      >
+        <Select.Trigger id="pf-type" class="w-full">{typeLabel}</Select.Trigger>
+        <Select.Content>
+          {#each PROVIDER_TYPES as t (t.value)}
+            <Select.Item value={t.value} label={t.label} />
+          {/each}
+        </Select.Content>
+      </Select.Root>
+    </Field.Field>
   </div>
 
-  <div class="field">
-    <label for="pf-url">Base URL</label>
-    <input
+  <Field.Field>
+    <Field.Label for="pf-url">Base URL</Field.Label>
+    <Input
       id="pf-url"
       type="text"
       bind:value={baseUrl}
@@ -348,59 +378,66 @@
       required
     />
     {#if permissionGranted === false}
-      <span class="badge badge--danger">Permission needed for this host</span>
+      <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
     {:else if permissionGranted === true}
-      <span class="badge">Permission granted</span>
+      <Badge variant="outline" class="w-fit!">Permission granted</Badge>
     {/if}
-  </div>
+  </Field.Field>
 
   {#if showApiKeyField}
-    <div class="field">
-      <label for="pf-key">API key{activePreset && !activePreset.requiresKey ? "" : " (optional)"}</label>
-      <div class="api-key-field">
-        <input
+    <Field.Field>
+      <Field.Label for="pf-key">
+        API key{activePreset && !activePreset.requiresKey ? "" : " (optional)"}
+      </Field.Label>
+      <InputGroup.Root>
+        <InputGroup.Input
           id="pf-key"
           type={showApiKey ? "text" : "password"}
           bind:value={apiKey}
           placeholder="sk-…"
           autocomplete="off"
         />
-        <button type="button" class="btn-plain" onclick={() => (showApiKey = !showApiKey)}>
-          {showApiKey ? "Hide" : "Show"}
-        </button>
-      </div>
+        <InputGroup.Addon align="inline-end">
+          <InputGroup.Button onclick={() => (showApiKey = !showApiKey)}>
+            {showApiKey ? "Hide" : "Show"}
+          </InputGroup.Button>
+        </InputGroup.Addon>
+      </InputGroup.Root>
       {#if activePreset?.docsUrl && activePreset.requiresKey}
-        <p class="hint">
+        <Field.Description>
           Get an API key from <a href={activePreset.docsUrl} target="_blank" rel="noreferrer"
             >{activePreset.label}</a
           >.
-        </p>
+        </Field.Description>
       {/if}
-    </div>
+    </Field.Field>
   {:else if typeInfo.needsApiKey && activePreset?.local}
-    <p class="hint">
+    <p class="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
       {activePreset.label} doesn't need an API key by default.
-      <button type="button" class="btn-plain" onclick={() => (forceShowApiKeyField = true)}
-        >Add one anyway</button
-      >
+      <Button variant="ghost" size="sm" onclick={() => (forceShowApiKeyField = true)}>
+        Add one anyway
+      </Button>
     </p>
   {/if}
 
-  <div class="field">
-    <label for="pf-header-0-key">Custom headers (optional)</label>
-    <p class="note">
-      Sent on every request to this provider — for a gateway that wants its own <code
-        >x-api-key</code
-      >, a tenant or project header, a proxy <code>Authorization</code>, or a Cloudflare Access
-      service-token pair. A bearer token from the API key field above isn't enough for those.
-    </p>
+  <Field.Field>
+    <Field.Label for="pf-header-0-key">Custom headers (optional)</Field.Label>
+    <Alert.Root class="bg-background">
+      <Alert.Description>
+        Sent on every request to this provider — for a gateway that wants its own <code
+          class="font-mono text-xs">x-api-key</code
+        >, a tenant or project header, a proxy <code class="font-mono text-xs">Authorization</code>,
+        or a Cloudflare Access service-token pair. A bearer token from the API key field above isn't
+        enough for those.
+      </Alert.Description>
+    </Alert.Root>
 
     {#if headers.length > 0}
-      <div class="header-rows">
+      <div class="flex flex-col gap-1">
         {#each headers as row, i (row.id)}
           {@const err = headerRowError(row)}
-          <div class="header-row">
-            <input
+          <div class="flex items-start gap-1">
+            <Input
               id={i === 0 ? "pf-header-0-key" : undefined}
               type="text"
               bind:value={row.key}
@@ -408,65 +445,72 @@
               autocomplete="off"
               aria-invalid={err ? "true" : undefined}
             />
-            <input
+            <Input
               type={showHeaderValues ? "text" : "password"}
               bind:value={row.value}
               placeholder="Value"
               autocomplete="off"
               aria-invalid={err ? "true" : undefined}
             />
-            <button
-              type="button"
-              class="btn-plain"
+            <Button
+              variant="ghost"
+              size="icon"
               onclick={() => removeHeaderRow(row.id)}
               aria-label={`Remove header ${row.key || i + 1}`}
             >
-              Remove
-            </button>
+              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+            </Button>
           </div>
           {#if err}
-            <p class="header-row__error">{err}</p>
+            <Field.Error>{err}</Field.Error>
           {/if}
         {/each}
       </div>
     {/if}
 
-    <div class="form__actions">
-      <button type="button" class="btn-plain" onclick={addHeaderRow}>+ Add header</button>
+    <div class="flex items-center gap-2">
+      <Button variant="ghost" size="sm" onclick={addHeaderRow}>
+        <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
+        Add header
+      </Button>
       {#if headers.length > 0}
-        <button type="button" class="btn-plain" onclick={() => (showHeaderValues = !showHeaderValues)}>
+        <Button variant="ghost" size="sm" onclick={() => (showHeaderValues = !showHeaderValues)}>
           {showHeaderValues ? "Hide values" : "Show values"}
-        </button>
+        </Button>
       {/if}
     </div>
-  </div>
+  </Field.Field>
 
-  <p class="note">
-    API keys and custom header values are stored unencrypted on this device
-    (chrome.storage.local) and never synced to your Google account. Anyone with access to this
-    browser profile can read them.
-  </p>
+  <Alert.Root class="bg-background">
+    <Alert.Description>
+      API keys and custom header values are stored unencrypted on this device
+      (chrome.storage.local) and never synced to your Google account. Anyone with access to this
+      browser profile can read them.
+    </Alert.Description>
+  </Alert.Root>
 
   {#if formError}
-    <p class="form__error">{formError}</p>
+    <Field.Error>{formError}</Field.Error>
   {/if}
 
   {#if testOutcome}
-    <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
+    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
     {#if testOutcome.kind === "unreachable" && testOutcome.fix}
       {@const fix = testOutcome.fix}
-      <p class="note">{fix.label}:</p>
+      <Alert.Root class="bg-background">
+        <Alert.Description>{fix.label}:</Alert.Description>
+      </Alert.Root>
       <Markdown source={fenceOf(fix.command)} />
     {/if}
   {/if}
 
-  <div class="form__actions">
-    <button type="submit" class="btn-primary" disabled={saving}>
+  <div class="flex flex-wrap items-center gap-2">
+    <Button type="submit" disabled={saving}>
       {saving ? "Saving…" : mode === "add" ? "Add provider" : "Save changes"}
-    </button>
-    <button type="button" onclick={handleTest} disabled={testing}>
+    </Button>
+    <Button variant="outline" onclick={handleTest} disabled={testing}>
       {testing ? "Testing…" : "Test connection"}
-    </button>
-    <button type="button" class="btn-plain" onclick={onCancel}>Cancel</button>
+    </Button>
+    <Button variant="ghost" onclick={onCancel}>Cancel</Button>
   </div>
 </form>

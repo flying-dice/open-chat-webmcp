@@ -6,36 +6,34 @@
   // requires this attribution to stay visible somewhere in the product
   // rather than just in a commit message, so it lives here rather than only
   // in the board card. Static content only — no settings, no state.
+  //
+  // Card 71: same `.section` shell as every other section, now a shadcn
+  // `Card` (decisions/28-shadcn-svelte-maia-zinc.md). The licence text is
+  // still rendered unconditionally — nothing here is collapsible or
+  // conditional, because it has to stay visible.
+  import * as Card from "$lib/components/ui/card";
 </script>
 
-<section class="section" aria-labelledby="attribution-heading">
-  <div class="section__header">
-    <h2 id="attribution-heading">Attribution</h2>
-    <p>Third-party content used under its original license.</p>
-  </div>
+<section aria-labelledby="attribution-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="attribution-heading" class="text-base font-medium">Attribution</h2>
+      <Card.Description>Third-party content used under its original license.</Card.Description>
+    </Card.Header>
 
-  <p class="attribution-line">
-    Icon by
-    <a href="https://www.flaticon.com/authors/sonnycandra" target="_blank" rel="noopener noreferrer"
-      >sonnycandra</a
-    >
-    from the
-    <a href="https://www.flaticon.com/packs/ecommerce-1340" target="_blank" rel="noopener noreferrer"
-      >ECommerce</a
-    >
-    pack on
-    <a href="https://www.flaticon.com/" target="_blank" rel="noopener noreferrer">Flaticon</a>.
-  </p>
+    <Card.Content>
+      <p class="text-sm text-muted-foreground [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-4">
+        Icon by
+        <a href="https://www.flaticon.com/authors/sonnycandra" target="_blank" rel="noopener noreferrer"
+          >sonnycandra</a
+        >
+        from the
+        <a href="https://www.flaticon.com/packs/ecommerce-1340" target="_blank" rel="noopener noreferrer"
+          >ECommerce</a
+        >
+        pack on
+        <a href="https://www.flaticon.com/" target="_blank" rel="noopener noreferrer">Flaticon</a>.
+      </p>
+    </Card.Content>
+  </Card.Root>
 </section>
-
-<style>
-  .attribution-line {
-    margin: 0;
-    font-size: var(--font-size-small);
-    color: var(--color-on-surface-variant);
-  }
-
-  .attribution-line a {
-    color: var(--color-primary);
-  }
-</style>

@@ -5,15 +5,24 @@
 
 import type { TestOutcome } from "./testConnection";
 
-/** CSS class for the outcome banner — success reads as positive, everything else (including "permission denied") reads as blocking, "aborted" as neutral. */
+/**
+ * Tailwind classes for the outcome banner — success reads as positive,
+ * everything else (including "permission denied") reads as blocking,
+ * "aborted" as neutral. Card 71 swapped the old options.css
+ * `.test-result--ok/--error/--info` classes for shadcn token utilities
+ * (decisions/28-shadcn-svelte-maia-zinc.md); the three-way split, and the
+ * fact that both call sites share it, are unchanged.
+ */
+const TEST_RESULT_BASE = "rounded-lg border px-3 py-2 text-sm";
+
 export function testResultClass(outcome: TestOutcome): string {
   switch (outcome.kind) {
     case "success":
-      return "test-result--ok";
+      return `${TEST_RESULT_BASE} border-primary/40 bg-primary/5 text-foreground`;
     case "aborted":
-      return "test-result--info";
+      return `${TEST_RESULT_BASE} text-muted-foreground`;
     default:
-      return "test-result--error";
+      return `${TEST_RESULT_BASE} border-destructive/40 bg-destructive/5 text-destructive`;
   }
 }
 

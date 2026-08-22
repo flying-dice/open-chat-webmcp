@@ -12,6 +12,10 @@
   // test-connection flow" — this is the same kind of section, one field
   // shape different (auth+headers instead of type+apiKey+model), plus an
   // enable/disable toggle providers don't have.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): same shadcn
+  // Card/Alert/Empty/Button shell ProvidersSection got, kept in step with it
+  // for the same reason the state layout is.
   import { onMount } from "svelte";
   import {
     addServer,
@@ -25,6 +29,12 @@
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
   import McpServerForm from "./McpServerForm.svelte";
   import McpServerRow from "./McpServerRow.svelte";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Card from "$lib/components/ui/card";
+  import * as Empty from "$lib/components/ui/empty";
+  import { Button } from "$lib/components/ui/button";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { PlusSignIcon, Wrench01Icon } from "@hugeicons/core-free-icons";
 
   let servers = $state<McpServerConfig[]>([]);
   let loading = $state(true);
@@ -140,74 +150,87 @@
   }
 </script>
 
-<section class="section" aria-labelledby="mcp-servers-heading">
-  <div class="section__header">
-    <h2 id="mcp-servers-heading">MCP servers</h2>
-    <p>
-      An MCP server exposes tools the model can call that have nothing to do with the current page
-      — a ticket tracker, a search index, an internal service. Its tools are merged into the same
-      list the page's own tools appear in, namespaced by server so nothing collides — but a server
-      tool call is judged by its own, separate, stricter approval policy, not the page's
-      (decisions/20-approval-policy-is-per-tool-source.md). See "MCP server tool approval" above.
-    </p>
-  </div>
+<section aria-labelledby="mcp-servers-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="mcp-servers-heading" class="text-base font-medium">MCP servers</h2>
+      <Card.Description>
+        An MCP server exposes tools the model can call that have nothing to do with the current page
+        — a ticket tracker, a search index, an internal service. Its tools are merged into the same
+        list the page's own tools appear in, namespaced by server so nothing collides — but a server
+        tool call is judged by its own, separate, stricter approval policy, not the page's
+        (decisions/20-approval-policy-is-per-tool-source.md). See "MCP server tool approval" above.
+      </Card.Description>
+    </Card.Header>
 
-  <p class="note">
-    The bearer token and custom header values you set below are stored unencrypted on this device
-    (chrome.storage.local) and never synced to your Google account. Anyone with access to this
-    browser profile's data can read them.
-  </p>
+    <Card.Content class="flex flex-col gap-4">
+      <Alert.Root class="bg-muted/40">
+        <Alert.Description>
+          The bearer token and custom header values you set below are stored unencrypted on this
+          device (chrome.storage.local) and never synced to your Google account. Anyone with access
+          to this browser profile's data can read them.
+        </Alert.Description>
+      </Alert.Root>
 
-  {#if loading}
-    <p>Loading MCP servers…</p>
-  {:else}
-    {#if servers.length === 0 && !adding}
-      <div class="empty-state">
-        <span class="empty-state__glyph" aria-hidden="true">🛠️</span>
-        <span class="empty-state__title">No MCP servers registered yet</span>
-        <p>
-          Only remote HTTP/SSE MCP servers are supported here — this extension can't spawn or
-          speak to a local stdio process the way a desktop MCP client can. To reach a stdio-only
-          server, put an off-the-shelf stdio-to-HTTP proxy in front of it and add the proxy's URL
-          below instead.
-        </p>
-      </div>
-    {:else if servers.length > 0}
-      <div class="provider-list">
-        {#each servers as server, index (server.id)}
-          {#if editingId === server.id}
-            <McpServerForm
-              mode="edit"
-              initial={server}
-              onSubmit={(data) => handleEditSubmit(server.id, data)}
-              onCancel={() => (editingId = null)}
-            />
-          {:else}
-            <McpServerRow
-              {server}
-              isFirst={index === 0}
-              isLast={index === servers.length - 1}
-              permissionGranted={permissionGranted[server.id]}
-              testOutcome={testOutcomes[server.id]}
-              testing={testingIds[server.id] ?? false}
-              onEdit={() => (editingId = server.id)}
-              onRemove={() => handleRemove(server)}
-              onMoveUp={() => handleMove(index, -1)}
-              onMoveDown={() => handleMove(index, 1)}
-              onToggleEnabled={() => handleToggleEnabled(server)}
-              onTest={() => handleTest(server)}
-            />
-          {/if}
-        {/each}
-      </div>
-    {/if}
+      {#if loading}
+        <p class="text-sm text-muted-foreground">Loading MCP servers…</p>
+      {:else}
+        {#if servers.length === 0 && !adding}
+          <Empty.Root class="border p-8">
+            <Empty.Header>
+              <Empty.Media variant="icon">
+                <HugeiconsIcon icon={Wrench01Icon} strokeWidth={2} />
+              </Empty.Media>
+              <Empty.Title>No MCP servers registered yet</Empty.Title>
+              <Empty.Description>
+                Only remote HTTP/SSE MCP servers are supported here — this extension can't spawn or
+                speak to a local stdio process the way a desktop MCP client can. To reach a
+                stdio-only server, put an off-the-shelf stdio-to-HTTP proxy in front of it and add
+                the proxy's URL below instead.
+              </Empty.Description>
+            </Empty.Header>
+          </Empty.Root>
+        {:else if servers.length > 0}
+          <div class="flex flex-col gap-2">
+            {#each servers as server, index (server.id)}
+              {#if editingId === server.id}
+                <McpServerForm
+                  mode="edit"
+                  initial={server}
+                  onSubmit={(data) => handleEditSubmit(server.id, data)}
+                  onCancel={() => (editingId = null)}
+                />
+              {:else}
+                <McpServerRow
+                  {server}
+                  isFirst={index === 0}
+                  isLast={index === servers.length - 1}
+                  permissionGranted={permissionGranted[server.id]}
+                  testOutcome={testOutcomes[server.id]}
+                  testing={testingIds[server.id] ?? false}
+                  onEdit={() => (editingId = server.id)}
+                  onRemove={() => handleRemove(server)}
+                  onMoveUp={() => handleMove(index, -1)}
+                  onMoveDown={() => handleMove(index, 1)}
+                  onToggleEnabled={() => handleToggleEnabled(server)}
+                  onTest={() => handleTest(server)}
+                />
+              {/if}
+            {/each}
+          </div>
+        {/if}
 
-    {#if adding}
-      <McpServerForm mode="add" onSubmit={handleAddSubmit} onCancel={() => (adding = false)} />
-    {:else}
-      <div class="toolbar">
-        <button type="button" class="btn-primary" onclick={() => (adding = true)}>+ Add MCP server</button>
-      </div>
-    {/if}
-  {/if}
+        {#if adding}
+          <McpServerForm mode="add" onSubmit={handleAddSubmit} onCancel={() => (adding = false)} />
+        {:else}
+          <div class="flex justify-end">
+            <Button onclick={() => (adding = true)}>
+              <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
+              Add MCP server
+            </Button>
+          </div>
+        {/if}
+      {/if}
+    </Card.Content>
+  </Card.Root>
 </section>

@@ -12,12 +12,29 @@
   // registry in App.svelte's order: the page now reads configuration first
   // (providers, approval policies, MCP servers) and stored data last, which
   // is also the order of how destructive each section is.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): migrated to shadcn
+  // components. The one behavioural change is the confirm step — the native
+  // `confirm()` is now an `AlertDialog`, which is why `handleClearAll` no
+  // longer asks a question and simply performs the delete the dialog's
+  // action button already confirmed. Everything the old prompt spelled out
+  // (chat count, message count, "cannot be undone") is in the dialog's
+  // description instead, so nothing is deleted with less warning than before.
   import { onMount } from "svelte";
   import { clearAllChats, listChatSummaries, type ChatSummary } from "../../lib/session";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Card from "$lib/components/ui/card";
+  import * as Empty from "$lib/components/ui/empty";
+  import { buttonVariants } from "$lib/components/ui/button";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { Message01Icon } from "@hugeicons/core-free-icons";
 
   let sessions = $state<ChatSummary[]>([]);
   let sessionsLoading = $state(true);
   let clearingHistory = $state(false);
+  /** The AlertDialog replacing the old `confirm()` — closed explicitly once `clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
+  let confirmOpen = $state(false);
 
   async function refreshSessions(): Promise<void> {
     sessions = await listChatSummaries();
@@ -35,108 +52,111 @@
     return new Date(ms).toLocaleString();
   }
 
+  let totalMessages = $derived(sessions.reduce((sum, s) => sum + s.messageCount, 0));
+
   async function handleClearAll(): Promise<void> {
     if (sessions.length === 0) return;
-    const totalMessages = sessions.reduce((sum, s) => sum + s.messageCount, 0);
-    const ok = confirm(
-      `Delete all ${sessions.length} stored chat${sessions.length === 1 ? "" : "s"} ` +
-        `(${totalMessages} message${totalMessages === 1 ? "" : "s"} total)? ` +
-        `This removes every conversation and tool-call log, on every site and every tab. This cannot be undone.`,
-    );
-    if (!ok) return;
-
     clearingHistory = true;
     try {
       await clearAllChats();
       sessions = [];
     } finally {
       clearingHistory = false;
+      confirmOpen = false;
     }
   }
 </script>
 
-<section class="section" aria-labelledby="history-heading">
-  <div class="section__header">
-    <h2 id="history-heading">Chat history</h2>
-    <p>
-      Every chat is listed here, newest first, no matter which tab or site it happened on — a chat
-      is its own thing now, not tied to a tab (decisions/13-global-tab-aware-chat-history.md). Open
-      and delete individual chats from the side panel's History view; this page only offers
-      clear-all. Provider connections — base URL, API keys, default model — are managed in
-      <a href="#providers-heading">Chat providers</a> above.
-    </p>
-  </div>
+<section aria-labelledby="history-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="history-heading" class="text-base font-medium">Chat history</h2>
+      <Card.Description>
+        Every chat is listed here, newest first, no matter which tab or site it happened on — a chat
+        is its own thing now, not tied to a tab (decisions/13-global-tab-aware-chat-history.md). Open
+        and delete individual chats from the side panel's History view; this page only offers
+        clear-all. Provider connections — base URL, API keys, default model — are managed in
+        <a href="#providers-heading" class="underline underline-offset-4">Chat providers</a> above.
+      </Card.Description>
+    </Card.Header>
 
-  <p class="note">
-    Conversation history — including page content and tool-call results from sites you've chatted
-    with, even authenticated ones — is stored unencrypted on this device
-    (<code>chrome.storage.local</code>). Anyone with access to this browser profile's data can read
-    it. Nothing here is synced off the device.
-  </p>
+    <Card.Content class="flex flex-col gap-4">
+      <Alert.Root class="bg-muted/40">
+        <Alert.Description>
+          Conversation history — including page content and tool-call results from sites you've
+          chatted with, even authenticated ones — is stored unencrypted on this device
+          (<code class="font-mono text-xs">chrome.storage.local</code>). Anyone with access to this
+          browser profile's data can read it. Nothing here is synced off the device.
+        </Alert.Description>
+      </Alert.Root>
 
-  {#if sessionsLoading}
-    <p>Loading…</p>
-  {:else if sessions.length === 0}
-    <div class="empty-state">
-      <span class="empty-state__glyph" aria-hidden="true">💬</span>
-      <span class="empty-state__title">No stored sessions</span>
-      <p>Nothing to clear yet — open the side panel on a WebMCP-capable site to start one.</p>
-    </div>
-  {:else}
-    <div class="session-list">
-      {#each sessions as session (session.id)}
-        <div class="session-row">
-          <span class="session-row__origin">{formatOrigin(session.origin)}</span>
-          <span class="session-row__meta">
-            {session.messageCount} message{session.messageCount === 1 ? "" : "s"} ·
-            {session.toolCallCount} tool call{session.toolCallCount === 1 ? "" : "s"} · updated
-            {formatUpdatedAt(session.updatedAt)}
-          </span>
+      {#if sessionsLoading}
+        <p class="text-sm text-muted-foreground">Loading…</p>
+      {:else if sessions.length === 0}
+        <Empty.Root class="border p-8">
+          <Empty.Header>
+            <Empty.Media variant="icon">
+              <HugeiconsIcon icon={Message01Icon} strokeWidth={2} />
+            </Empty.Media>
+            <Empty.Title>No stored sessions</Empty.Title>
+            <Empty.Description>
+              Nothing to clear yet — open the side panel on a WebMCP-capable site to start one.
+            </Empty.Description>
+          </Empty.Header>
+        </Empty.Root>
+      {:else}
+        <div class="flex flex-col gap-2">
+          {#each sessions as session (session.id)}
+            <div class="flex flex-col gap-0.5 rounded-xl border px-3 py-2">
+              <span class="font-medium break-all">{formatOrigin(session.origin)}</span>
+              <span class="text-xs text-muted-foreground">
+                {session.messageCount} message{session.messageCount === 1 ? "" : "s"} ·
+                {session.toolCallCount} tool call{session.toolCallCount === 1 ? "" : "s"} · updated
+                {formatUpdatedAt(session.updatedAt)}
+              </span>
+            </div>
+          {/each}
         </div>
-      {/each}
-    </div>
 
-    <div class="toolbar">
-      <button type="button" class="btn-danger" onclick={handleClearAll} disabled={clearingHistory}>
-        {clearingHistory ? "Clearing…" : `Clear all history (${sessions.length})`}
-      </button>
-    </div>
-  {/if}
+        <div class="flex justify-end">
+          <AlertDialog.Root bind:open={confirmOpen}>
+            <AlertDialog.Trigger
+              class={buttonVariants({ variant: "destructive" })}
+              disabled={clearingHistory}
+            >
+              {clearingHistory ? "Clearing…" : `Clear all history (${sessions.length})`}
+            </AlertDialog.Trigger>
+            <AlertDialog.Content>
+              <AlertDialog.Header>
+                <AlertDialog.Title>
+                  Delete all {sessions.length} stored chat{sessions.length === 1 ? "" : "s"}?
+                </AlertDialog.Title>
+                <AlertDialog.Description>
+                  That's {totalMessages} message{totalMessages === 1 ? "" : "s"} in total. This
+                  removes every conversation and tool-call log, on every site and every tab. This
+                  cannot be undone.
+                </AlertDialog.Description>
+              </AlertDialog.Header>
+              <AlertDialog.Footer>
+                <AlertDialog.Cancel disabled={clearingHistory}>Cancel</AlertDialog.Cancel>
+                <AlertDialog.Action
+                  variant="destructive"
+                  disabled={clearingHistory}
+                  onclick={(event) => {
+                    // Keep the dialog open while the delete runs — bits-ui's
+                    // Action closes on click by default, which would hide the
+                    // "Clearing…" state mid-flight.
+                    event.preventDefault();
+                    handleClearAll();
+                  }}
+                >
+                  {clearingHistory ? "Clearing…" : "Delete everything"}
+                </AlertDialog.Action>
+              </AlertDialog.Footer>
+            </AlertDialog.Content>
+          </AlertDialog.Root>
+        </div>
+      {/if}
+    </Card.Content>
+  </Card.Root>
 </section>
-
-<style>
-  /* Scoped to this component: options.css is the shared vocabulary for
-     every options section. These rules only ever reference tokens already
-     declared in src/lib/theme.css — no new colours, spacing, or radii, per
-     decisions/08. */
-
-  .session-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .session-row {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    border: 1px solid var(--color-outline-variant);
-    border-radius: var(--radius-card);
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .session-row__origin {
-    font-weight: 600;
-    word-break: break-all;
-  }
-
-  .session-row__meta {
-    color: var(--color-on-surface-variant);
-    font-size: var(--font-size-small);
-  }
-
-  .btn-danger {
-    border-color: var(--color-danger);
-    color: var(--color-danger);
-  }
-</style>

@@ -1,17 +1,19 @@
 import { mount } from "svelte";
-// Tailwind v4 + the shadcn-svelte Zinc/Maia token block. FIRST, ahead of the
-// legacy sheets, so that where preflight and theme.css/options.css disagree
-// the legacy rules still win for the components that have not been migrated
-// yet (decisions/28-shadcn-svelte-maia-zinc.md).
+// Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): the options page is now
+// fully migrated to shadcn-svelte + Tailwind, so this is its ONLY stylesheet.
+// `src/options/options.css` is gone, and `src/lib/theme.css` is deliberately
+// NOT imported here any more: its element reset (`button`, `input`, `select`,
+// `h1-h3`, `body`) is unlayered CSS, so it outranks every Tailwind utility —
+// which lives in `@layer utilities` — regardless of import order, and would
+// repaint every shadcn Button/Input back to the legacy Chrome-native look.
+// The side panel still imports it until card 72 deletes it outright; the two
+// entry points have separate CSS bundles, so dropping it here reaches nothing
+// else. One knock-on: src/lib/components/Markdown.svelte (rendered by
+// ProviderForm/ProviderRow for a copyable fix command) styles itself from
+// theme.css tokens and therefore renders unstyled-but-legible here until card
+// 67 migrates it.
 import "../app.css";
 import App from "./App.svelte";
-
-// Chrome-native design tokens (decisions/08-native-chrome-design-language.md)
-// — without this import the options page never loads the token stylesheet
-// and every colour/spacing/radius value in this page's CSS falls back to
-// nothing.
-import "../lib/theme.css";
-import "./options.css";
 
 // `createProviderClient` (src/lib/providers/registry.ts) dispatches by
 // provider type via a registry that each client populates through a

@@ -2,8 +2,8 @@
   // Card 13: the two approval policies. Both live in this one component
   // (mounted once from App.svelte, per the comment there) because they're
   // plain preferences rather than anything with its own CRUD flow like
-  // ProvidersSection — each gets its own `.section` card from options.css
-  // so they read as two settings, not one crowded one.
+  // ProvidersSection — each still gets its own `Card` so they read as two
+  // settings, not one crowded one.
   //
   // Approval policy (decisions/05-tool-approval-policy.md): stored via
   // src/lib/settings.ts, the typed getter/setter/subscription contract card
@@ -22,6 +22,15 @@
   // The chat-history controls that used to be a third section here now live
   // in HistorySection.svelte, so App.svelte can order them below the MCP
   // servers registry.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): the hand-rolled
+  // `.policy-option` radio cards became shadcn `RadioGroup` + `Field`, whose
+  // `has-data-checked:` label styling gives the selected option its own
+  // treatment for free. Both groups stay CONTROLLED (`value` in,
+  // `onValueChange` out) rather than `bind:value`, because the optimistic
+  // write below has to be able to revert the selection when the storage write
+  // throws — a two-way binding would leave the UI showing a policy that was
+  // never saved.
   import { onDestroy, onMount } from "svelte";
   import {
     getApprovalPolicy,
@@ -33,6 +42,11 @@
     type ApprovalPolicy,
     type McpApprovalPolicy,
   } from "../../lib/settings";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Card from "$lib/components/ui/card";
+  import * as Field from "$lib/components/ui/field";
+  import { Badge } from "$lib/components/ui/badge";
+  import { RadioGroup, RadioGroupItem } from "$lib/components/ui/radio-group";
 
   const POLICY_OPTIONS: {
     value: ApprovalPolicy;
@@ -145,147 +159,113 @@
       throw err;
     }
   }
-
 </script>
 
-<section class="section" aria-labelledby="approval-heading">
-  <div class="section__header">
-    <h2 id="approval-heading">Tool approval</h2>
-    <p>
-      Controls when a tool call from the page's own WebMCP tools runs immediately versus waiting
-      for you to approve it first (decisions/05-tool-approval-policy.md).
-    </p>
-  </div>
+<section aria-labelledby="approval-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="approval-heading" class="text-base font-medium">Tool approval</h2>
+      <Card.Description>
+        Controls when a tool call from the page's own WebMCP tools runs immediately versus waiting
+        for you to approve it first (decisions/05-tool-approval-policy.md).
+      </Card.Description>
+    </Card.Header>
 
-  {#if policyLoading}
-    <p>Loading…</p>
-  {:else}
-    <div class="policy-options" role="radiogroup" aria-labelledby="approval-heading">
-      {#each POLICY_OPTIONS as option (option.value)}
-        <label class="policy-option" class:policy-option--danger={option.danger}>
-          <input
-            type="radio"
-            name="approval-policy"
-            value={option.value}
-            checked={policy === option.value}
-            onchange={() => handlePolicyChange(option.value)}
-          />
-          <span class="policy-option__body">
-            <span class="policy-option__label">
-              {option.label}
-              {#if option.danger}<span class="badge badge--danger">Risk</span>{/if}
-            </span>
-            <span class="policy-option__description">{option.description}</span>
-          </span>
-        </label>
-      {/each}
-    </div>
+    <Card.Content class="flex flex-col gap-4">
+      {#if policyLoading}
+        <p class="text-sm text-muted-foreground">Loading…</p>
+      {:else}
+        <RadioGroup
+          value={policy}
+          onValueChange={(next) => handlePolicyChange(next as ApprovalPolicy)}
+          aria-labelledby="approval-heading"
+        >
+          {#each POLICY_OPTIONS as option (option.value)}
+            <Field.Label
+              for={`approval-policy-${option.value}`}
+              class={option.danger ? "has-data-checked:border-destructive/40" : undefined}
+            >
+              <Field.Field orientation="horizontal">
+                <RadioGroupItem value={option.value} id={`approval-policy-${option.value}`} />
+                <Field.Content>
+                  <Field.Title>
+                    {option.label}
+                    {#if option.danger}<Badge variant="destructive">Risk</Badge>{/if}
+                  </Field.Title>
+                  <Field.Description>{option.description}</Field.Description>
+                </Field.Content>
+              </Field.Field>
+            </Field.Label>
+          {/each}
+        </RadioGroup>
 
-    <p class="note">
-      Tool safety annotations like <code>readOnlyHint</code> are supplied by the page itself, not
-      verified by the extension — a hostile page can label a genuinely destructive tool
-      "read-only" to slip it past this policy. This setting is UX guidance for the common case, not
-      a security boundary; the actual boundary is which sites you've chosen to open the side panel
-      on and grant this extension permission to reach. Every call, auto-run or approved, is still
-      recorded in the tool-call log so nothing happens invisibly.
-    </p>
-  {/if}
+        <Alert.Root class="bg-muted/40">
+          <Alert.Description>
+            Tool safety annotations like <code class="font-mono text-xs">readOnlyHint</code> are
+            supplied by the page itself, not verified by the extension — a hostile page can label a
+            genuinely destructive tool "read-only" to slip it past this policy. This setting is UX
+            guidance for the common case, not a security boundary; the actual boundary is which
+            sites you've chosen to open the side panel on and grant this extension permission to
+            reach. Every call, auto-run or approved, is still recorded in the tool-call log so
+            nothing happens invisibly.
+          </Alert.Description>
+        </Alert.Root>
+      {/if}
+    </Card.Content>
+  </Card.Root>
 </section>
 
-<section class="section" aria-labelledby="mcp-approval-heading">
-  <div class="section__header">
-    <h2 id="mcp-approval-heading">MCP server tool approval</h2>
-    <p>
-      A SEPARATE setting from "Tool approval" above (decisions/20-approval-policy-is-per-tool-source.md)
-      — controls when a call to one of your configured MCP servers' tools runs immediately versus
-      waiting for your approval. Changing the page policy above never affects this one, or the other
-      way around.
-    </p>
-  </div>
+<section aria-labelledby="mcp-approval-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="mcp-approval-heading" class="text-base font-medium">MCP server tool approval</h2>
+      <Card.Description>
+        A SEPARATE setting from "Tool approval" above
+        (decisions/20-approval-policy-is-per-tool-source.md) — controls when a call to one of your
+        configured MCP servers' tools runs immediately versus waiting for your approval. Changing
+        the page policy above never affects this one, or the other way around.
+      </Card.Description>
+    </Card.Header>
 
-  {#if mcpPolicyLoading}
-    <p>Loading…</p>
-  {:else}
-    <div class="policy-options" role="radiogroup" aria-labelledby="mcp-approval-heading">
-      {#each MCP_POLICY_OPTIONS as option (option.value)}
-        <label class="policy-option" class:policy-option--danger={option.danger}>
-          <input
-            type="radio"
-            name="mcp-approval-policy"
-            value={option.value}
-            checked={mcpPolicy === option.value}
-            onchange={() => handleMcpPolicyChange(option.value)}
-          />
-          <span class="policy-option__body">
-            <span class="policy-option__label">
-              {option.label}
-              {#if option.danger}<span class="badge badge--danger">Risk</span>{/if}
-            </span>
-            <span class="policy-option__description">{option.description}</span>
-          </span>
-        </label>
-      {/each}
-    </div>
+    <Card.Content class="flex flex-col gap-4">
+      {#if mcpPolicyLoading}
+        <p class="text-sm text-muted-foreground">Loading…</p>
+      {:else}
+        <RadioGroup
+          value={mcpPolicy}
+          onValueChange={(next) => handleMcpPolicyChange(next as McpApprovalPolicy)}
+          aria-labelledby="mcp-approval-heading"
+        >
+          {#each MCP_POLICY_OPTIONS as option (option.value)}
+            <Field.Label
+              for={`mcp-approval-policy-${option.value}`}
+              class={option.danger ? "has-data-checked:border-destructive/40" : undefined}
+            >
+              <Field.Field orientation="horizontal">
+                <RadioGroupItem value={option.value} id={`mcp-approval-policy-${option.value}`} />
+                <Field.Content>
+                  <Field.Title>
+                    {option.label}
+                    {#if option.danger}<Badge variant="destructive">Risk</Badge>{/if}
+                  </Field.Title>
+                  <Field.Description>{option.description}</Field.Description>
+                </Field.Content>
+              </Field.Field>
+            </Field.Label>
+          {/each}
+        </RadioGroup>
 
-    <p class="note">
-      A remote server is not something you're looking at the way you are the current page — you
-      have no ambient evidence a call actually was read-only, and its blast radius can be an
-      account, a repo, or a ticket queue rather than one tab. That is why this policy defaults to
-      "Always confirm" rather than mirroring the page policy's default, and why the two settings are
-      kept fully independent. Manage which servers are configured from the MCP Servers section
-      below.
-    </p>
-  {/if}
+        <Alert.Root class="bg-muted/40">
+          <Alert.Description>
+            A remote server is not something you're looking at the way you are the current page —
+            you have no ambient evidence a call actually was read-only, and its blast radius can be
+            an account, a repo, or a ticket queue rather than one tab. That is why this policy
+            defaults to "Always confirm" rather than mirroring the page policy's default, and why
+            the two settings are kept fully independent. Manage which servers are configured from
+            the MCP Servers section below.
+          </Alert.Description>
+        </Alert.Root>
+      {/if}
+    </Card.Content>
+  </Card.Root>
 </section>
-
-<style>
-  /* Scoped to this component: options.css is the shared vocabulary for
-     every options section, but this component doesn't have write access to
-     it (it belongs to card 22's ProvidersSection area). These rules only
-     ever reference tokens already declared in src/lib/theme.css — no new
-     colours, spacing, or radii, per decisions/08. */
-
-  .policy-options {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .policy-option {
-    display: flex;
-    gap: var(--space-2);
-    align-items: flex-start;
-    border: 1px solid var(--color-outline-variant);
-    border-radius: var(--radius-card);
-    padding: var(--space-3);
-    cursor: pointer;
-  }
-
-  .policy-option input[type="radio"] {
-    margin-top: 3px;
-    flex: none;
-  }
-
-  .policy-option--danger {
-    border-color: var(--color-danger);
-  }
-
-  .policy-option__body {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .policy-option__label {
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .policy-option__description {
-    color: var(--color-on-surface-variant);
-    font-size: var(--font-size-small);
-  }
-
-</style>

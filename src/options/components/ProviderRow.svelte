@@ -3,6 +3,14 @@
   // storage mutation and the permission/test-connection flow live in the
   // parent (ProvidersSection.svelte), passed in as callbacks, so this
   // component never touches chrome.storage or chrome.permissions directly.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
+  // `.provider-row`/`.badge`/`.icon-btn` are now shadcn `Badge`/`Button` plus
+  // Tailwind utilities. The row is a bordered div rather than a `Card`
+  // because it nests inside the section's own card and a card-in-card reads
+  // as two elevations for one thing. Every control keeps its original
+  // accessible name (the verify harness locates them by name —
+  // decisions/28's consequences).
   import { untrack } from "svelte";
   import type { ProviderConfig } from "../../lib/providers/registry";
   import { getPreset } from "../../lib/providers/presets";
@@ -10,6 +18,12 @@
   import type { TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
   import Markdown from "../../lib/components/Markdown.svelte";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Select from "$lib/components/ui/select";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 
   /** See ProviderForm.svelte's identical helper for why this reuses Markdown.svelte's code-block/copy-button pipeline instead of a second one (card 14, card 33). */
   function fenceOf(command: string): string {
@@ -89,6 +103,11 @@
     }
   });
 
+  /** The chosen model's display name for the `Select` trigger — shadcn's trigger renders whatever we put in it, unlike the native `<select>` this replaced, which showed the selected `<option>`'s text itself. */
+  let selectedModelLabel = $derived(
+    defaultModelOptions.find((m) => m.id === selectedModelId)?.name ?? "Select a model",
+  );
+
   const TYPE_LABELS: Record<ProviderConfig["type"], string> = {
     ollama: "Ollama",
     openai: "OpenAI-compatible",
@@ -107,81 +126,102 @@
   let backendLabel = $derived(getPreset(provider.presetId)?.label ?? TYPE_LABELS[provider.type]);
 </script>
 
-<div class="provider-row">
-  <div class="provider-row__top">
-    <div class="provider-row__order">
-      <button class="icon-btn" type="button" onclick={onMoveUp} disabled={isFirst} aria-label={`Move ${provider.name} up`}>
-        ▲
-      </button>
-      <button class="icon-btn" type="button" onclick={onMoveDown} disabled={isLast} aria-label={`Move ${provider.name} down`}>
-        ▼
-      </button>
+<div class="flex flex-col gap-2 rounded-2xl border p-3">
+  <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-col gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        onclick={onMoveUp}
+        disabled={isFirst}
+        aria-label={`Move ${provider.name} up`}
+      >
+        <HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        onclick={onMoveDown}
+        disabled={isLast}
+        aria-label={`Move ${provider.name} down`}
+      >
+        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
+      </Button>
     </div>
 
-    <div>
-      <div class="provider-row__name">{provider.name}</div>
-      <div class="provider-row__url">{provider.baseUrl}</div>
+    <div class="min-w-0">
+      <div class="font-semibold">{provider.name}</div>
+      <div class="text-xs break-all text-muted-foreground">{provider.baseUrl}</div>
     </div>
 
-    <span class="badge">{backendLabel}</span>
+    <Badge variant="outline">{backendLabel}</Badge>
     {#if isDefault}
       {#if defaultInvalidReason}
-        <span class="badge badge--danger" title={defaultInvalidReason}>Default — needs attention</span>
+        <Badge variant="destructive" title={defaultInvalidReason}>Default — needs attention</Badge>
       {:else}
-        <span class="badge badge--primary">Default</span>
+        <Badge>Default</Badge>
       {/if}
     {/if}
     {#if provider.headers && provider.headers.length > 0}
       <span
-        class="provider-row__headers"
+        class="text-xs text-muted-foreground"
         title="Header values are masked here — open Edit to view or change them."
       >
         {provider.headers.length} custom header{provider.headers.length === 1 ? "" : "s"}
       </span>
     {/if}
     {#if permissionGranted === false}
-      <span
-        class="badge badge--danger"
+      <Badge
+        variant="destructive"
         title="This extension hasn't been granted permission to contact this host — it will never connect until you grant it."
       >
         Permission needed
-      </span>
+      </Badge>
     {:else if permissionGranted === true}
-      <span class="badge" title="This extension can contact this host.">Permission granted</span>
+      <Badge variant="outline" title="This extension can contact this host.">Permission granted</Badge>
     {/if}
 
-    <div class="provider-row__actions">
-      <button type="button" onclick={onTest} disabled={testing}>
+    <div class="ml-auto flex flex-wrap items-center gap-1">
+      <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
         {testing ? "Testing…" : "Test connection"}
-      </button>
+      </Button>
       {#if !isDefault}
         {#if defaultModelsLoading}
-          <button type="button" disabled>Checking…</button>
+          <Button variant="outline" size="sm" disabled>Checking…</Button>
         {:else if defaultModelOptions.length > 0}
-          <select bind:value={selectedModelId} aria-label={`Default model for ${provider.name}`}>
-            {#each defaultModelOptions as model (model.id)}
-              <option value={model.id}>{model.name}</option>
-            {/each}
-          </select>
-          <button type="button" onclick={() => onSetDefault(selectedModelId)}>Set as default</button>
+          <Select.Root type="single" bind:value={selectedModelId}>
+            <Select.Trigger size="sm" aria-label={`Default model for ${provider.name}`}>
+              {selectedModelLabel}
+            </Select.Trigger>
+            <Select.Content>
+              {#each defaultModelOptions as model (model.id)}
+                <Select.Item value={model.id} label={model.name} />
+              {/each}
+            </Select.Content>
+          </Select.Root>
+          <Button variant="outline" size="sm" onclick={() => onSetDefault(selectedModelId)}>
+            Set as default
+          </Button>
         {/if}
       {/if}
-      <button type="button" onclick={onEdit}>Edit</button>
-      <button type="button" onclick={onRemove}>Remove</button>
+      <Button variant="outline" size="sm" onclick={onEdit}>Edit</Button>
+      <Button variant="outline" size="sm" onclick={onRemove}>Remove</Button>
     </div>
   </div>
 
   {#if !isDefault && !defaultModelsLoading && defaultModelOptions.length === 0 && defaultModelBlockedReason}
     <!-- Card 41/52: same treatment ProviderPicker.svelte gives a disabled
          model row's reason — muted, explanatory text, not an alarm. -->
-    <p class="hint">{defaultModelBlockedReason}</p>
+    <p class="text-xs text-muted-foreground">{defaultModelBlockedReason}</p>
   {/if}
 
   {#if testOutcome}
-    <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
+    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
     {#if testOutcome.kind === "unreachable" && testOutcome.fix}
       {@const fix = testOutcome.fix}
-      <p class="note">{fix.label}:</p>
+      <Alert.Root class="bg-muted/40">
+        <Alert.Description>{fix.label}:</Alert.Description>
+      </Alert.Root>
       <Markdown source={fenceOf(fix.command)} />
     {/if}
   {/if}

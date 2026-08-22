@@ -4,6 +4,12 @@
   // reorder + set-default UI on top of src/lib/providers/registry.ts, which
   // already implements every storage operation this component calls —
   // nothing here talks to chrome.storage directly.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
+  // `.section`/`.note`/`.empty-state`/`.toolbar` became shadcn
+  // `Card`/`Alert`/`Empty`/`Button`. No flow changed — the add step machine,
+  // the optimistic reorder and the permission-first test handler below are
+  // byte-for-byte what they were.
   import { onMount } from "svelte";
   import {
     addProvider,
@@ -31,6 +37,12 @@
   import PresetPicker from "./PresetPicker.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderRow from "./ProviderRow.svelte";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Card from "$lib/components/ui/card";
+  import * as Empty from "$lib/components/ui/empty";
+  import { Button } from "$lib/components/ui/button";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { PlugSocketIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
   let providers = $state<ProviderConfig[]>([]);
   let defaultSelection = $state<ProviderSelection | undefined>(undefined);
@@ -46,7 +58,7 @@
    * side panel's per-provider model-loading shape").
    *
    * `"loaded"`'s `options` is PRE-FILTERED to tool-capable models only
-   * (`isSelectable`) — ProviderRow's `<select>` never has to re-check
+   * (`isSelectable`) — ProviderRow's model dropdown never has to re-check
    * capability itself, and an empty `options` array is exactly the "loaded,
    * but nothing tool-capable" blocked state (decisions/11, decisions/23).
    */
@@ -256,7 +268,7 @@
     return state === undefined || state.status === "loading";
   }
 
-  /** `provider`'s tool-capable model options, or `[]` while loading/blocked — exactly what ProviderRow's `<select>` renders. */
+  /** `provider`'s tool-capable model options, or `[]` while loading/blocked — exactly what ProviderRow's dropdown renders. */
   function defaultModelOptionsFor(provider: ProviderConfig): { model: ProviderModel; capability: ModelCapabilities }[] {
     const state = defaultModelOptionsState[provider.id];
     return state?.status === "loaded" ? state.options : [];
@@ -336,105 +348,121 @@
   }
 </script>
 
-<section class="section" aria-labelledby="providers-heading">
-  <div class="section__header">
-    <h2 id="providers-heading">Chat providers</h2>
-    <p>
-      Register the Ollama or OpenAI-compatible endpoints the side panel can chat through. Exactly
-      one provider (and model) is the default the panel opens with.
-    </p>
-  </div>
+<section aria-labelledby="providers-heading">
+  <Card.Root>
+    <Card.Header>
+      <h2 id="providers-heading" class="text-base font-medium">Chat providers</h2>
+      <Card.Description>
+        Register the Ollama or OpenAI-compatible endpoints the side panel can chat through. Exactly
+        one provider (and model) is the default the panel opens with.
+      </Card.Description>
+    </Card.Header>
 
-  <p class="note">
-    API keys and custom header values are stored unencrypted on this device
-    (chrome.storage.local) and never synced to your Google account. Anyone with access to this
-    browser profile's data can read them.
-  </p>
+    <Card.Content class="flex flex-col gap-4">
+      <Alert.Root class="bg-muted/40">
+        <Alert.Description>
+          API keys and custom header values are stored unencrypted on this device
+          (chrome.storage.local) and never synced to your Google account. Anyone with access to this
+          browser profile's data can read them.
+        </Alert.Description>
+      </Alert.Root>
 
-  {#if !loading && staleDefaultReason}
-    <!-- Card 41's fourth checklist item: the STORED default (not merely the
-         one currently displayed as selectable) is no longer valid — surface
-         it clearly instead of silently letting a broken default keep
-         seeding new chats. -->
-    <p class="note note--warning" role="alert">
-      The default provider/model can no longer be confirmed as tool-capable: {staleDefaultReason} New
-      chats seeded from it will need a different model picked in the side panel before they can use
-      page tools. Pick a new default below.
-    </p>
-  {/if}
+      {#if !loading && staleDefaultReason}
+        <!-- Card 41's fourth checklist item: the STORED default (not merely the
+             one currently displayed as selectable) is no longer valid — surface
+             it clearly instead of silently letting a broken default keep
+             seeding new chats. -->
+        <Alert.Root variant="destructive" role="alert">
+          <Alert.Description>
+            The default provider/model can no longer be confirmed as tool-capable: {staleDefaultReason}
+            New chats seeded from it will need a different model picked in the side panel before
+            they can use page tools. Pick a new default below.
+          </Alert.Description>
+        </Alert.Root>
+      {/if}
 
-  {#if loading}
-    <p>Loading providers…</p>
-  {:else}
-    {#if providers.length === 0 && addStep === "closed"}
-      <div class="empty-state">
-        <span class="empty-state__glyph" aria-hidden="true">🔌</span>
-        <span class="empty-state__title">No providers registered yet</span>
-        <p>
-          Add a provider below to let the side panel connect to Ollama or an OpenAI-compatible
-          endpoint. Until then, the side panel has nothing to chat through — this is separate from
-          having no tool-capable models on a provider you've already added.
-        </p>
-      </div>
-    {:else if providers.length > 0}
-      <div class="provider-list">
-        {#each providers as provider, index (provider.id)}
-          {#if editingId === provider.id}
-            <ProviderForm
-              mode="edit"
-              initial={provider}
-              onSubmit={(data) => handleEditSubmit(provider.id, data)}
-              onCancel={() => (editingId = null)}
-            />
-          {:else}
-            {@const isDefault = defaultSelection?.providerId === provider.id}
-            <ProviderRow
-              {provider}
-              {isDefault}
-              isFirst={index === 0}
-              isLast={index === providers.length - 1}
-              permissionGranted={permissionGranted[provider.id]}
-              testOutcome={testOutcomes[provider.id]}
-              testing={testingIds[provider.id] ?? false}
-              defaultModelsLoading={defaultModelsLoading(provider)}
-              defaultModelOptions={defaultModelOptionsFor(provider).map((o) => o.model)}
-              defaultModelBlockedReason={setDefaultBlockedReason(provider)}
-              defaultInvalidReason={isDefault ? staleDefaultReason : undefined}
-              onEdit={() => (editingId = provider.id)}
-              onRemove={() => handleRemove(provider)}
-              onMoveUp={() => handleMove(index, -1)}
-              onMoveDown={() => handleMove(index, 1)}
-              onSetDefault={(modelId) => handleSetDefault(provider, modelId)}
-              onTest={() => handleTest(provider)}
-            />
-          {/if}
-        {/each}
-      </div>
-    {/if}
+      {#if loading}
+        <p class="text-sm text-muted-foreground">Loading providers…</p>
+      {:else}
+        {#if providers.length === 0 && addStep === "closed"}
+          <Empty.Root class="border p-8">
+            <Empty.Header>
+              <Empty.Media variant="icon">
+                <HugeiconsIcon icon={PlugSocketIcon} strokeWidth={2} />
+              </Empty.Media>
+              <Empty.Title>No providers registered yet</Empty.Title>
+              <Empty.Description>
+                Add a provider below to let the side panel connect to Ollama or an
+                OpenAI-compatible endpoint. Until then, the side panel has nothing to chat through —
+                this is separate from having no tool-capable models on a provider you've already
+                added.
+              </Empty.Description>
+            </Empty.Header>
+          </Empty.Root>
+        {:else if providers.length > 0}
+          <div class="flex flex-col gap-2">
+            {#each providers as provider, index (provider.id)}
+              {#if editingId === provider.id}
+                <ProviderForm
+                  mode="edit"
+                  initial={provider}
+                  onSubmit={(data) => handleEditSubmit(provider.id, data)}
+                  onCancel={() => (editingId = null)}
+                />
+              {:else}
+                {@const isDefault = defaultSelection?.providerId === provider.id}
+                <ProviderRow
+                  {provider}
+                  {isDefault}
+                  isFirst={index === 0}
+                  isLast={index === providers.length - 1}
+                  permissionGranted={permissionGranted[provider.id]}
+                  testOutcome={testOutcomes[provider.id]}
+                  testing={testingIds[provider.id] ?? false}
+                  defaultModelsLoading={defaultModelsLoading(provider)}
+                  defaultModelOptions={defaultModelOptionsFor(provider).map((o) => o.model)}
+                  defaultModelBlockedReason={setDefaultBlockedReason(provider)}
+                  defaultInvalidReason={isDefault ? staleDefaultReason : undefined}
+                  onEdit={() => (editingId = provider.id)}
+                  onRemove={() => handleRemove(provider)}
+                  onMoveUp={() => handleMove(index, -1)}
+                  onMoveDown={() => handleMove(index, 1)}
+                  onSetDefault={(modelId) => handleSetDefault(provider, modelId)}
+                  onTest={() => handleTest(provider)}
+                />
+              {/if}
+            {/each}
+          </div>
+        {/if}
 
-    {#if addStep === "choose"}
-      <PresetPicker
-        onChoose={(preset) => {
-          chosenPreset = preset;
-          addStep = "form";
-        }}
-        onCancel={() => (addStep = "closed")}
-      />
-    {:else if addStep === "form"}
-      <ProviderForm
-        mode="add"
-        preset={chosenPreset}
-        onSubmit={handleAddSubmit}
-        onCancel={() => {
-          addStep = "closed";
-          chosenPreset = undefined;
-        }}
-        onChangeBackend={() => (addStep = "choose")}
-      />
-    {:else}
-      <div class="toolbar">
-        <button type="button" class="btn-primary" onclick={() => (addStep = "choose")}>+ Add provider</button>
-      </div>
-    {/if}
-  {/if}
+        {#if addStep === "choose"}
+          <PresetPicker
+            onChoose={(preset) => {
+              chosenPreset = preset;
+              addStep = "form";
+            }}
+            onCancel={() => (addStep = "closed")}
+          />
+        {:else if addStep === "form"}
+          <ProviderForm
+            mode="add"
+            preset={chosenPreset}
+            onSubmit={handleAddSubmit}
+            onCancel={() => {
+              addStep = "closed";
+              chosenPreset = undefined;
+            }}
+            onChangeBackend={() => (addStep = "choose")}
+          />
+        {:else}
+          <div class="flex justify-end">
+            <Button onclick={() => (addStep = "choose")}>
+              <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} data-icon="inline-start" />
+              Add provider
+            </Button>
+          </div>
+        {/if}
+      {/if}
+    </Card.Content>
+  </Card.Root>
 </section>

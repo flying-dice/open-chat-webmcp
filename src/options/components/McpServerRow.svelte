@@ -3,9 +3,17 @@
   // storage mutation and the permission/test-connection flow live in the
   // parent (McpServersSection.svelte), passed in as callbacks — mirrors
   // ProviderRow.svelte's split for the same reason.
+  //
+  // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): same shadcn
+  // Badge/Button treatment ProviderRow.svelte got, kept deliberately
+  // identical so the two registries still read as the same kind of list.
   import type { McpServerConfig } from "../../lib/mcp/registry";
   import type { McpTestOutcome } from "../lib/mcpTestConnection";
   import { testResultClass, testResultMessage, testResultTools } from "../lib/mcpTestResultDisplay";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { HugeiconsIcon } from "@hugeicons/svelte";
+  import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
 
   interface Props {
     server: McpServerConfig;
@@ -43,31 +51,49 @@
   let toolsExpanded = $state(false);
 </script>
 
-<div class="provider-row" class:provider-row--disabled={!server.enabled}>
-  <div class="provider-row__top">
-    <div class="provider-row__order">
-      <button class="icon-btn" type="button" onclick={onMoveUp} disabled={isFirst} aria-label={`Move ${server.name} up`}>
-        ▲
-      </button>
-      <button class="icon-btn" type="button" onclick={onMoveDown} disabled={isLast} aria-label={`Move ${server.name} down`}>
-        ▼
-      </button>
+<div class="flex flex-col gap-2 rounded-2xl border p-3" class:opacity-60={!server.enabled}>
+  <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-col gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        onclick={onMoveUp}
+        disabled={isFirst}
+        aria-label={`Move ${server.name} up`}
+      >
+        <HugeiconsIcon icon={ArrowUp01Icon} strokeWidth={2} />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        onclick={onMoveDown}
+        disabled={isLast}
+        aria-label={`Move ${server.name} down`}
+      >
+        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
+      </Button>
     </div>
 
-    <div>
-      <div class="provider-row__name">{server.name}</div>
-      <div class="provider-row__url">{server.url}</div>
+    <div class="min-w-0">
+      <div class="font-semibold">{server.name}</div>
+      <div class="text-xs break-all text-muted-foreground">{server.url}</div>
     </div>
 
     {#if !server.enabled}
-      <span class="badge" title="Disabled servers contribute no tools and their host permission is not requested.">
+      <Badge
+        variant="outline"
+        title="Disabled servers contribute no tools and their host permission is not requested."
+      >
         Disabled
-      </span>
+      </Badge>
     {/if}
     {#if server.auth?.type === "bearer" && server.auth.token}
-      <span class="badge" title="A bearer token is configured — masked here, open Edit to view or change it.">
+      <Badge
+        variant="outline"
+        title="A bearer token is configured — masked here, open Edit to view or change it."
+      >
         Bearer token
-      </span>
+      </Badge>
     {/if}
     <!--
       Card 62 widened McpServerAuth to a bearer/oauth union. Card 63 (this
@@ -77,58 +103,68 @@
       to show 'reconnect needed' distinctly from 'add a token'").
     -->
     {#if server.auth?.type === "oauth" && server.auth.expiresAt !== undefined && server.auth.expiresAt <= Date.now() && !server.auth.refreshToken}
-      <span
-        class="badge badge--danger"
+      <Badge
+        variant="destructive"
         title="This server's OAuth token has expired and there's no refresh token to renew it automatically — open Edit and sign in again."
       >
         Reconnect needed
-      </span>
+      </Badge>
     {/if}
 
     {#if headerCount > 0}
       <span
-        class="provider-row__headers"
+        class="text-xs text-muted-foreground"
         title="Header values are masked here — open Edit to view or change them."
       >
         {headerCount} custom header{headerCount === 1 ? "" : "s"}
       </span>
     {/if}
     {#if permissionGranted === false}
-      <span
-        class="badge badge--danger"
+      <Badge
+        variant="destructive"
         title="This extension hasn't been granted permission to contact this host — it will never connect until you grant it."
       >
         Permission needed
-      </span>
+      </Badge>
     {:else if permissionGranted === true}
-      <span class="badge" title="This extension can contact this host.">Permission granted</span>
+      <Badge variant="outline" title="This extension can contact this host.">Permission granted</Badge>
     {/if}
 
-    <div class="provider-row__actions">
-      <button type="button" onclick={onTest} disabled={testing}>
+    <div class="ml-auto flex flex-wrap items-center gap-1">
+      <Button variant="outline" size="sm" onclick={onTest} disabled={testing}>
         {testing ? "Testing…" : "Test connection"}
-      </button>
-      <button type="button" onclick={onToggleEnabled}>{server.enabled ? "Disable" : "Enable"}</button>
-      <button type="button" onclick={onEdit}>Edit</button>
-      <button type="button" onclick={onRemove}>Remove</button>
+      </Button>
+      <Button variant="outline" size="sm" onclick={onToggleEnabled}>
+        {server.enabled ? "Disable" : "Enable"}
+      </Button>
+      <Button variant="outline" size="sm" onclick={onEdit}>Edit</Button>
+      <Button variant="outline" size="sm" onclick={onRemove}>Remove</Button>
     </div>
   </div>
 
   {#if testOutcome}
-    <p class={`test-result ${testResultClass(testOutcome)}`}>{testResultMessage(testOutcome)}</p>
+    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
     {#if testResultTools(testOutcome)}
       {@const tools = testResultTools(testOutcome) ?? []}
-      <button type="button" class="btn-plain" onclick={() => (toolsExpanded = !toolsExpanded)}>
-        {toolsExpanded ? "Hide" : "Show"} {tools.length} tool{tools.length === 1 ? "" : "s"}
-      </button>
+      <div class="flex">
+        <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
+          {toolsExpanded ? "Hide" : "Show"}
+          {tools.length} tool{tools.length === 1 ? "" : "s"}
+        </Button>
+      </div>
       {#if toolsExpanded}
-        <ul class="mcp-tool-list">
+        <ul class="flex list-disc flex-col gap-0.5 pl-6 text-xs text-muted-foreground">
           <!-- Keyed by index, not `tool.name` — see McpServerForm.svelte's
                matching list for why: a raw, un-deduplicated server tool list
                can have colliding display names (confirmed against GitHub's
                real MCP server, which crashed this exact block otherwise). -->
           {#each tools as tool, i (i)}
-            <li><code>{tool.name}</code>{#if tool.description}<span> — {tool.description}</span>{/if}</li>
+            <li>
+              <code class="font-mono text-foreground">{tool.name}</code>{#if tool.description}<span
+                >
+                  — {tool.description}</span
+                >{/if}
+            </li>
           {/each}
         </ul>
       {/if}
