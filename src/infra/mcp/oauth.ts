@@ -292,6 +292,14 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
   }
 
   return {
+    // Card 78: the same `getRedirectURL()` `runAuthorizationFlow` sends as
+    // `redirect_uri`, exposed on the port so the options form's manual
+    // app-registration panel shows the value the flow actually uses instead
+    // of computing its own. Guarded the way `runAuthorizationFlow` guards
+    // `launchWebAuthFlow`, so it never throws outside a browser-extension
+    // context (a future test render, a bare Node import of the barrel).
+    redirectUri: () =>
+      typeof chrome !== "undefined" && chrome.identity ? chrome.identity.getRedirectURL() : "",
     discoverAuthorizationServer,
     registerClient,
     runAuthorizationFlow,

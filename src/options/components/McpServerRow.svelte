@@ -9,7 +9,7 @@
   // identical so the two registries still read as the same kind of list.
   import type { McpServerConfig } from "../../domain/tools";
   import type { McpTestOutcome } from "../lib/mcpTestConnection";
-  import { testResultClass, testResultMessage, testResultTools } from "../lib/mcpTestResultDisplay";
+  import { mcpTestResultClass, mcpTestResultMessage, mcpTestResultTools } from "../lib/testResultDisplay";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { HugeiconsIcon } from "@hugeicons/svelte";
@@ -143,9 +143,9 @@
   </div>
 
   {#if testOutcome}
-    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
-    {#if testResultTools(testOutcome)}
-      {@const tools = testResultTools(testOutcome) ?? []}
+    <p class={mcpTestResultClass(testOutcome)}>{mcpTestResultMessage(testOutcome)}</p>
+    {#if mcpTestResultTools(testOutcome)}
+      {@const tools = mcpTestResultTools(testOutcome) ?? []}
       <div class="flex">
         <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
           {toolsExpanded ? "Hide" : "Show"}

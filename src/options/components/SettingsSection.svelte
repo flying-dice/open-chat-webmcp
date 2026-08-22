@@ -33,7 +33,7 @@
   // never saved.
   import { onDestroy, onMount } from "svelte";
   import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
-  import { settingsStore } from "../../infra/chrome-storage";
+  import { optionsServices } from "../app-services";
   import * as Alert from "$lib/components/ui/alert";
   import * as Card from "$lib/components/ui/card";
   import * as Field from "$lib/components/ui/field";
@@ -109,10 +109,10 @@
   let unsubscribeMcpPolicy: (() => void) | undefined;
 
   onMount(() => {
-    settingsStore.getApprovalPolicy()
+    optionsServices().settings.getApprovalPolicy()
       .then((p) => (policy = p))
       .finally(() => (policyLoading = false));
-    settingsStore.getMcpApprovalPolicy()
+    optionsServices().settings.getMcpApprovalPolicy()
       .then((p) => (mcpPolicy = p))
       .finally(() => (mcpPolicyLoading = false));
 
@@ -121,8 +121,8 @@
     // from a different machine on the same profile) rather than only ever
     // reflecting what this tab itself last wrote. Two independent
     // subscriptions (decisions/20) — one can never fire the other's callback.
-    unsubscribePolicy = settingsStore.onApprovalPolicyChange((p) => (policy = p));
-    unsubscribeMcpPolicy = settingsStore.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
+    unsubscribePolicy = optionsServices().settings.onApprovalPolicyChange((p) => (policy = p));
+    unsubscribeMcpPolicy = optionsServices().settings.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
   });
 
   onDestroy(() => {
@@ -134,7 +134,7 @@
     const previous = policy;
     policy = next; // optimistic
     try {
-      await settingsStore.setApprovalPolicy(next);
+      await optionsServices().settings.setApprovalPolicy(next);
     } catch (err) {
       policy = previous;
       throw err;
@@ -145,7 +145,7 @@
     const previous = mcpPolicy;
     mcpPolicy = next; // optimistic
     try {
-      await settingsStore.setMcpApprovalPolicy(next);
+      await optionsServices().settings.setMcpApprovalPolicy(next);
     } catch (err) {
       mcpPolicy = previous;
       throw err;

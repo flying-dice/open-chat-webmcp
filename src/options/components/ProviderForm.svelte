@@ -32,11 +32,12 @@
     type ProviderPreset,
     type ProviderType,
   } from "../../domain/providers";
-  import { DEFAULT_OPENAI_BASE_URL } from "../../infra/openai";
-  import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../lib/permissions";
+  import { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
+  import { originPatternForUrl } from "../../domain/permissions";
+  import { optionsServices } from "../app-services";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
-  import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
-  import Markdown from "../../lib/components/Markdown.svelte";
+  import { providerTestResultClass, providerTestResultMessage } from "../lib/testResultDisplay";
+  import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -49,7 +50,7 @@
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
-   * through Markdown.svelte's existing code-block pipeline (src/lib/markdown.ts's
+   * through Markdown.svelte's existing code-block pipeline (src/ui/markdown.ts's
    * `renderCodeBlock`) — that pipeline already gives every fenced block its
    * own working "Copy"/"Copied" button, so this reuses that exact,
    * already-tested affordance instead of hand-rolling a second one
@@ -226,7 +227,7 @@
     const url = baseUrl.trim();
     permissionGranted = undefined;
     if (!originPatternForUrl(url)) return;
-    hasHostPermission(url).then((granted) => {
+    optionsServices().permissions.has(url).then((granted) => {
       permissionGranted = granted;
     });
   });
@@ -261,7 +262,7 @@
   }
 
   /**
-   * "Test connection" — MUST call `chrome.permissions.request` as the first
+   * "Test connection" — MUST call `permissions.request` as the first
    * `await` in this click-bound handler when permission isn't already known
    * to be granted (decisions/09): the browser only honours the request while
    * still inside the user gesture that triggered it, so no other async work
@@ -282,7 +283,7 @@
     testing = true;
     try {
       if (permissionGranted !== true) {
-        const granted = await requestHostPermission(draft.baseUrl);
+        const granted = await optionsServices().permissions.request(draft.baseUrl);
         permissionGranted = granted;
         if (!granted) {
           testOutcome = {
@@ -498,7 +499,7 @@
   {/if}
 
   {#if testOutcome}
-    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
+    <p class={providerTestResultClass(testOutcome)}>{providerTestResultMessage(testOutcome)}</p>
     {#if testOutcome.kind === "unreachable" && testOutcome.fix}
       {@const fix = testOutcome.fix}
       <Alert.Root class="bg-background">

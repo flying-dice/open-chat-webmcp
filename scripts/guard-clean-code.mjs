@@ -21,7 +21,7 @@
 // format, and a violation nobody can score is a violation nobody can triage.
 // Fixing it is a one-character edit, so this is cheap to comply with.
 //
-// src/lib/components/ui/ (generated shadcn-svelte source) is excluded — it's
+// src/ui/components/ui/ (generated shadcn-svelte source) is excluded — it's
 // a vendored kit, not our architecture. Same exclusion as the boundary
 // guard's (.dependency-cruiser.cjs).
 
@@ -34,7 +34,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(ROOT, "src");
 
 /** Vendored/generated source that is not ours to keep clean (decisions/31). */
-const EXCLUDED = [path.join("src", "lib", "components", "ui")];
+const EXCLUDED = [path.join("src", "ui", "components", "ui")];
 
 /** The threshold decision 31 fixes: strictly above this fails. */
 const FAIL_ABOVE = 0.5;

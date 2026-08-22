@@ -11,38 +11,36 @@
 //   `ModelGateway`   — the client the user's current selection resolves to,
 //                      passed in by App.svelte's send path.
 //   `ToolExecutor`   — this tab's page tools (from the worker's registry, via
-//                      ./activeTab.ts) merged with whatever server tools
-//                      ./mcpTools.ts currently has cached (decisions/19 §4:
-//                      never a fresh network round trip on a turn's critical
-//                      path), each page tool bound to
-//                      src/infra/chrome-runtime's `createPageToolExecutor`.
+//                      the injected `pageTools` access) merged with whatever
+//                      server tools ./mcpTools.ts currently has cached
+//                      (decisions/19 §4: never a fresh network round trip on a
+//                      turn's critical path), each page tool bound to a
+//                      per-tab `PageToolExecutor`.
 //   `ApprovalRequester` — card 09's real approve/deny UI
 //                      (src/sidepanel/stores/approvals.svelte.ts), or the
 //                      deny-by-default fail-safe.
 //
 // The `chrome.runtime` round trip that used to sit at the bottom of the loop
-// is now behind that port and inside an adapter; nothing in this file talks to
-// the platform either.
+// is behind a port and inside an adapter (card 77), and as of card 78 this
+// module does not name that adapter either: both halves of `pageTools` arrive
+// from src/sidepanel/app-services.ts, wired by the composition root.
 
-import {
-  chat,
-} from "../stores/panel.svelte";
 import { denyByDefaultApprovalRequester, type ApprovalRequester, type ToolExecutor } from "../../domain/chat";
 import type { ChatProvider } from "../../domain/providers";
-import { createPageToolExecutor } from "../../infra/chrome-runtime";
-import { getToolsForTab } from "./activeTab";
+import { chat, sidePanelServices } from "../app-services";
 import { getMergedToolsForTab } from "./mcpTools";
 
 /**
  * The one `ToolExecutor` this surface has. Built once at module scope because
- * it holds nothing — it closes over the two module-level services that own the
- * page-tool lookup and the server-tool cache, and binds a fresh page executor
- * per turn from the tab it is asked about.
+ * it holds nothing — it resolves the wired page-tool access and the
+ * server-tool cache per turn, and binds a fresh page executor from the tab it
+ * is asked about.
  */
 const toolExecutor: ToolExecutor = {
   async toolsForTurn(page) {
-    const pageTools = await getToolsForTab(page.tabId);
-    return getMergedToolsForTab(pageTools, createPageToolExecutor(page.tabId));
+    const { pageTools } = sidePanelServices();
+    const tools = await pageTools.toolsForTab(page.tabId);
+    return getMergedToolsForTab(tools, pageTools.executorForTab(page.tabId));
   },
 };
 
@@ -70,7 +68,7 @@ export interface SendTurnOptions {
  * model reads on the next round or as a plain assistant note for the user.
  */
 export function sendTurn(userText: string, opts: SendTurnOptions): Promise<void> {
-  return chat.runTurn(userText, {
+  return chat().runTurn(userText, {
     model: opts.provider,
     modelId: opts.model,
     tools: toolExecutor,

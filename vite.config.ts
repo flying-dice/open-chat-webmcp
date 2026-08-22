@@ -24,9 +24,15 @@ export default defineConfig({
   // here AND in tsconfig.json/tsconfig.app.json (the shadcn-svelte CLI reads
   // the root tsconfig.json to validate its aliases; svelte-check reads the
   // app one). See decisions/28-shadcn-svelte-maia-zinc.md.
+  //
+  // Card 78 (decisions/33-shared-ui-layer.md) pointed it at `src/ui`: the
+  // folder was `src/lib`, the pre-DDD grab bag decisions/29 set out to empty,
+  // and the last thing left in it was the shared UI layer. The ALIAS keeps
+  // its `$lib` spelling because that is the name the shadcn-svelte CLI and
+  // every file of the vendored kit write; the FOLDER now names its layer.
   resolve: {
     alias: {
-      $lib: path.resolve(import.meta.dirname, "./src/lib"),
+      $lib: path.resolve(import.meta.dirname, "./src/ui"),
     },
   },
   plugins: [

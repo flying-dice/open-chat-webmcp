@@ -39,7 +39,7 @@
 
 import type { ApprovalDecision, ApprovalRequest, ApprovalRequester } from "../../domain/chat";
 import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
-import { settingsStore } from "../../infra/chrome-storage";
+import { sidePanelServices } from "../app-services";
 import { panel } from "./panel.svelte";
 import type { ToolCall } from "../../domain/providers";
 import type { MergedTool } from "../../domain/tools";
@@ -98,10 +98,11 @@ export const approvals = {
  * unsubscribe function that tears both down.
  */
 export function initApprovalPolicySync(): () => void {
-  void settingsStore.getApprovalPolicy().then((p) => (pagePolicy = p));
-  void settingsStore.getMcpApprovalPolicy().then((p) => (mcpPolicy = p));
-  const unsubPage = settingsStore.onApprovalPolicyChange((p) => (pagePolicy = p));
-  const unsubMcp = settingsStore.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
+  const settings = sidePanelServices().settings;
+  void settings.getApprovalPolicy().then((p) => (pagePolicy = p));
+  void settings.getMcpApprovalPolicy().then((p) => (mcpPolicy = p));
+  const unsubPage = settings.onApprovalPolicyChange((p) => (pagePolicy = p));
+  const unsubMcp = settings.onMcpApprovalPolicyChange((p) => (mcpPolicy = p));
   return () => {
     unsubPage();
     unsubMcp();

@@ -10,8 +10,8 @@ Registration is no longer a side-effect import: this module used to call
 `registerProviderType("openai", createOpenAiProvider)` at its own bottom, on
 import, since the old locator (`src/lib/providers/clients.ts`) was off-limits
 to the card that first landed this client. That locator is deleted. Each
-surface's interim wiring (`src/sidepanel/lib/providerClients.ts`,
-`src/options/lib/providerClients.ts`) now imports `createOllamaProvider` and
+surface's composition root (`src/sidepanel/main.ts`, `src/options/main.ts`)
+now imports `createOllamaProvider` and
 `createOpenAiProvider` directly and puts them in an exhaustive
 `Record<ProviderType, ...>` (`src/domain/providers/client-factory.ts`) — a
 third provider type with no entry there is a compile error, not a runtime
@@ -20,6 +20,7 @@ third provider type with no entry there is a compile error, not a runtime
 Adapters map their technology's failures INTO the domain's error vocabulary;
 nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or
 `chrome.runtime.lastError`. Only a composition root
-(`src/sidepanel/main.ts`, `src/options/main.ts`, `src/background/sw.ts`)
-constructs what lives here — today via the two surfaces' interim wiring
-files above, pending real dependency injection in cards 77/78.
+(`src/sidepanel/main.ts`, `src/options/main.ts`) constructs what lives here.
+Card 78 deleted the interim per-surface wiring files that used to share that
+job and turned on `only-roots-construct-infra`, so the rule is now lint-enforced
+rather than a convention.

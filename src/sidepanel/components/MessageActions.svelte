@@ -36,7 +36,7 @@
   let resetTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Same 1.5s confirmation window as the code-block copy button in
-  // src/lib/components/Markdown.svelte, so the two feel like one gesture.
+  // src/ui/components/Markdown.svelte, so the two feel like one gesture.
   const COPIED_RESET_MS = 1500;
 
   async function copy(): Promise<void> {

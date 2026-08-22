@@ -20,8 +20,8 @@
    * decisions/28) — no behaviour change, presentation only.
    */
   import type { ChatSummary } from "../../domain/chat";
-  import { chatStore } from "../../infra/chrome-storage";
-  import { chat, panel } from "../stores/panel.svelte";
+  import { chat, sidePanelServices } from "../app-services";
+  import { panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { ItemGroup } from "$lib/components/ui/item";
@@ -48,7 +48,7 @@
   let deletingId = $state<string | undefined>(undefined);
 
   async function refresh(): Promise<void> {
-    summaries = await chatStore.listChatSummaries();
+    summaries = await sidePanelServices().chats.listChatSummaries();
   }
 
   // Re-list every time this view mounts (switching to it from Chat/Tools &
@@ -66,7 +66,7 @@
     if (openingId || deletingId) return;
     openingId = chatId;
     try {
-      if (await chat.openChat(chatId)) onOpenChat();
+      if (await chat().openChat(chatId)) onOpenChat();
     } finally {
       openingId = undefined;
     }
@@ -82,12 +82,12 @@
 
     deletingId = summary.id;
     try {
-      await chatStore.deleteChat(summary.id);
+      await sidePanelServices().chats.deleteChat(summary.id);
       // If this was the chat currently open in this tab, point the tab at
       // a fresh one — otherwise the next message sent would silently
       // recreate the chat we just deleted (see that function's doc
       // comment).
-      await chat.discardIfDeleted(summary.id);
+      await chat().discardIfDeleted(summary.id);
       await refresh();
     } finally {
       deletingId = undefined;

@@ -14,8 +14,8 @@ implemented in `src/infra/chrome-storage`. `client.ts` takes both as injected
 options (`defaults`, `capabilityCache`) — it never imports
 `src/infra/chrome-storage` itself, which is what keeps this folder from
 breaking `adapters-do-not-import-adapters`. They are supplied at each
-surface's interim wiring (`src/sidepanel/lib/providerClients.ts`,
-`src/options/lib/providerClients.ts`), which is also where `createOllamaProvider`
+surface's composition root (`src/sidepanel/main.ts`, `src/options/main.ts`),
+which is also where `createOllamaProvider`
 is put into the `ProviderType -> ChatProvider` map
 (`src/domain/providers/client-factory.ts`) that replaced the old
 `registerProviderType`/`createProviderClient` locator.
@@ -23,6 +23,7 @@ is put into the `ProviderType -> ChatProvider` map
 Adapters map their technology's failures INTO the domain's error vocabulary;
 nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or
 `chrome.runtime.lastError`. Only a composition root
-(`src/sidepanel/main.ts`, `src/options/main.ts`, `src/background/sw.ts`)
-constructs what lives here — today via the two surfaces' interim wiring
-files above, pending real dependency injection in cards 77/78.
+(`src/sidepanel/main.ts`, `src/options/main.ts`) constructs what lives here.
+Card 78 deleted the interim per-surface wiring files that used to share that
+job and turned on `only-roots-construct-infra`, so the rule is now lint-enforced
+rather than a convention.

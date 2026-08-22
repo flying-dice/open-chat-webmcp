@@ -2,6 +2,12 @@
   // Side panel app shell (card 07): header / transcript / composer, laid
   // out to stay usable down to ~320px (decisions/01, decisions/08).
   //
+  // Every service this shell calls arrives from src/sidepanel/app-services.ts,
+  // wired once by src/sidepanel/main.ts (card 78) — this component constructs
+  // nothing and names no adapter. The tab sync and the pagehide flush that
+  // used to live in `onMount` below moved to that root with the rest of the
+  // surface's lifecycle.
+  //
   // `handleSend` is the agent loop's (card 08) entry point: it resolves the
   // active provider+model from src/sidepanel/stores/selection.svelte.ts,
   // decides whether to attach page tools (only when
@@ -33,14 +39,12 @@
   import Inspector from "./components/Inspector.svelte";
   import HistoryPanel from "./components/HistoryPanel.svelte";
   import { titleFromMessages } from "../domain/chat";
-  import { initActiveTabSync } from "./services/activeTab";
   import { initMcpToolsSync } from "./services/mcpTools";
   import { sendTurn } from "./services/chatTurn";
-  import { createProviderClient } from "./lib/providerClients";
-  import { iconForProvider } from "../lib/providerIcon";
-  import { chatStore } from "../infra/chrome-storage";
+  import { iconForProvider } from "../ui/providerIcon";
+  import { chat, sidePanelServices } from "./app-services";
   import { selection } from "./stores/selection.svelte";
-  import { chat, panel, requestStop } from "./stores/panel.svelte";
+  import { panel, requestStop } from "./stores/panel.svelte";
   import { dismissAllPending, initApprovalPolicySync, requestApproval } from "./stores/approvals.svelte";
 
   let view = $state<"chat" | "inspector" | "history">("chat");
@@ -128,7 +132,6 @@
   });
 
   onMount(() => {
-    const teardownTabSync = initActiveTabSync();
     const teardownPolicySync = initApprovalPolicySync();
     // Card 38 (decisions/19 §4): kicks the first MCP server discovery
     // immediately and keeps it refreshed in the background for the panel's
@@ -136,27 +139,9 @@
     // almost always finds something already cached rather than starting cold.
     const teardownMcpToolsSync = initMcpToolsSync();
 
-    // Card 59 item 2: `chrome.storage.local` writes are debounced per chat
-    // (the chat-store adapter's DEBOUNCE_MS/MAX_WAIT_MS), so the tail of a
-    // streamed reply can still be sitting unwritten when the panel closes.
-    // `chatStore.flushAll` forces every chat with a write in flight to commit
-    // synchronously — not just the visible one, since decisions/25 §3/card
-    // 58's `liveSessions` means more than one chat can be generating at
-    // once. `pagehide` (not `beforeunload`, which an MV3 extension page is
-    // not guaranteed to receive, and not `visibilitychange`, which also
-    // fires on an ordinary tab switch while the panel document stays open
-    // and mid-stream work is meant to keep running) is Chrome's reliable
-    // signal that this document is actually going away.
-    const handlePageHide = () => {
-      void chatStore.flushAll();
-    };
-    window.addEventListener("pagehide", handlePageHide);
-
     return () => {
-      teardownTabSync();
       teardownPolicySync();
       teardownMcpToolsSync();
-      window.removeEventListener("pagehide", handlePageHide);
     };
   });
 
@@ -201,7 +186,7 @@
     const info = panel.pageInfo;
     if (!info || panel.isTurnActive) return;
     if (panel.messages.length > 0) {
-      await chat.startNewChat(info.origin);
+      await chat().startNewChat(info.origin);
     }
     composerRef?.focusInput();
   }
@@ -217,9 +202,9 @@
     // `selection.needsConfirmation`), so this is defence-in-depth against a
     // send reaching here some other way — not the primary UI.
     if (resolution.status !== "ok" || tabId === undefined || selection.needsConfirmation) {
-      chat.addUserMessage(text);
+      chat().addUserMessage(text);
       const noProviders = selection.providers.length === 0;
-      chat.addAssistantNote(
+      chat().addAssistantNote(
         noProviders
           ? "No provider is registered yet — add one on the options page, then pick it from the picker in the header."
           : "No provider/model selected yet — pick one from the picker in the header before sending a message.",
@@ -228,11 +213,13 @@
       return;
     }
 
-    // Card 75: `createProviderClient` (./lib/providerClients.ts) is now the
-    // exhaustive dispatcher from src/domain/providers/client-factory.ts —
-    // there is no "unregistered provider type" state left to throw for, so
-    // this no longer needs a try/catch around client construction.
-    const provider = createProviderClient(resolution.config);
+    // Card 75: `createProviderClient` is the exhaustive dispatcher from
+    // src/domain/providers/client-factory.ts — there is no "unregistered
+    // provider type" state left to throw for, so this no longer needs a
+    // try/catch around client construction. Card 78: it arrives as a port
+    // from src/sidepanel/app-services.ts, built once by the composition root,
+    // instead of being imported from an interim wiring module.
+    const provider = sidePanelServices().createProviderClient(resolution.config);
 
     void sendTurn(text, {
       provider,
@@ -273,7 +260,7 @@
    * render, never inferred" rule.
    */
   function handleRename(title: string): void {
-    void chat.renameCurrent(title);
+    void chat().renameCurrent(title);
   }
 </script>
 

@@ -1,6 +1,6 @@
 // Resolves a provider's icon KEY (chosen by the preset catalogue in
 // src/domain/providers) to a glyph this UI can actually draw
-// (src/lib/icons.ts).
+// (src/ui/icons.ts).
 //
 // Card 73 (decisions/29) cut the presets→icons edge: the catalogue used to
 // type its `icon` field as `IconName`, so the DOMAIN depended on which
@@ -22,7 +22,7 @@ import type { IconName } from "./icons";
 /** Generic fallback for a key this UI has no glyph for — matches the catalogue's own `smart_toy` default. */
 const FALLBACK_ICON: IconName = "smart_toy";
 
-/** Every icon key `src/domain/providers`' preset catalogue can name, mapped to this panel's icon set. Keys are the catalogue's; values are `src/lib/icons.ts`'s. */
+/** Every icon key `src/domain/providers`' preset catalogue can name, mapped to this panel's icon set. Keys are the catalogue's; values are `src/ui/icons.ts`'s. */
 const PROVIDER_ICONS: Record<string, IconName> = {
   air: "air",
   alt_route: "alt_route",

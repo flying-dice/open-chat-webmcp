@@ -156,9 +156,14 @@ generation.** The request is tied to the panel's lifetime via an
 
 There are two UI surfaces — the side panel (`src/sidepanel/**`) and the
 options page (`src/options/**`) — and they are separate HTML entry points
-with separate JS and CSS bundles. What they share lives in `src/lib/`:
-`src/lib/components/ui/` (the component kit) and `src/lib/components/`
-(cross-surface components like `Markdown.svelte`).
+with separate JS and CSS bundles. What they share lives in `src/ui/`, the
+shared UI layer: `src/ui/components/ui/` (the vendored component kit) and
+`src/ui/components/` (cross-surface components like `Markdown.svelte`),
+alongside `markdown.ts`, `icons.ts` and `providerIcon.ts`. That folder was
+`src/lib` until card 78 emptied it of everything that was not UI and
+[decisions/33](../decisions/33-shared-ui-layer.md) renamed it; the `$lib`
+alias still spells itself `$lib` (the shadcn CLI's convention) and points
+there.
 
 Both are built on **[shadcn-svelte](https://shadcn-svelte.com) + Tailwind CSS
 v4**, in the **Maia** style over the **Zinc** base colour
@@ -182,15 +187,15 @@ v4**, in the **Maia** style over the **Zinc** base colour
   which have to be plain CSS because the markup they target arrives through
   `{@html}` and the Svelte compiler never sees it. Both read shadcn's own
   tokens.
-- **The vendored kit in `src/lib/components/ui/` is generated source**, added
+- **The vendored kit in `src/ui/components/ui/` is generated source**, added
   by the shadcn CLI and owned by it — exempt from the repo's clean-code and
   module-boundary guards, and re-generated rather than refactored.
 - **Icons** are [Hugeicons](https://hugeicons.com) (Maia's pairing), mapped
   from name to component inside `src/sidepanel/components/Icon.svelte`.
-  `src/lib/icons.ts` carries only the two marks that aren't stock glyphs — the
+  `src/ui/icons.ts` carries only the two marks that aren't stock glyphs — the
   `sparkle` star and the Ollama logo — as inline SVG path data.
 - **Dark mode** is the `.dark` class on `<html>`, synced from
-  `prefers-color-scheme` by `src/lib/dark-mode.ts`, which each `main.ts` calls
+  `prefers-color-scheme` by `src/infra/dom/dark-mode.ts`, which each `main.ts` calls
   *before* mounting so the first paint is already in the right theme. Both
   `index.html` files carry `class="scheme-light-dark"` so the browser's own
   form controls, scrollbars and pre-paint background follow suit.
@@ -239,7 +244,8 @@ matrix loudly rather than silently capturing fewer shots.
    configured independently on the options page.
 3. Once cleared to run, a PAGE tool call goes through the worker/relay hops
    below; a SERVER tool call instead goes straight out over HTTP via
-   `src/lib/mcp/client.ts`'s `callServerTool`. `executeToolCall` itself never
+   the `McpToolGateway` port's `callServerTool` (`src/domain/tools`,
+   implemented in `src/infra/mcp`). `executeToolCall` itself never
    branches on which kind it's calling — it just invokes whichever executor
    the merged entry already carries.
 4. **Page tools only:** the panel sends `runtime:call-tool` to the service

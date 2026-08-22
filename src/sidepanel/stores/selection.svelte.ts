@@ -74,9 +74,7 @@ import {
   type ProviderSelection,
   type SelectionResolution,
 } from "../../domain/providers";
-import { providerRegistry } from "../../infra/chrome-storage";
-import { createProviderClient } from "../lib/providerClients";
-import { chat } from "./panel.svelte";
+import { chat, sidePanelServices } from "../app-services";
 
 export type { SelectionResolution } from "../../domain/providers";
 
@@ -237,7 +235,7 @@ function ensureModelsLoaded(): void {
 async function loadProviders(): Promise<void> {
   providersStatus = "loading";
   try {
-    providers = await providerRegistry.listProviders();
+    providers = await sidePanelServices().providers.listProviders();
     providersStatus = "loaded";
 
     // Drop model-list state for providers that no longer exist, so a
@@ -270,7 +268,8 @@ async function loadProviders(): Promise<void> {
  * Relies on the chat service having already loaded (or created) `newTabId`'s
  * chat by the time this runs — true for this store's one caller
  * (`ProviderPicker.svelte`'s effect on `panel.pageInfo`), since
- * `activeTab.ts`'s `refreshActiveTab` always awaits `chat.syncToTab`
+ * src/infra/chrome-runtime/tab-sync.ts's `refreshActiveTab` always awaits
+ * the session's `syncToTab`
  * before setting `pageInfo`. If that ever isn't true yet (session not
  * loaded for this tab), `chat.getSelection` returns `undefined` and this
  * resolves to `"none"` rather than guessing — a transient display gap, not
@@ -287,25 +286,25 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
     ensureModelsLoaded();
   }
 
-  const defaultSelection = await providerRegistry.getDefaultSelection();
+  const defaultSelection = await sidePanelServices().providers.getDefaultSelection();
 
   // Seed a brand-new chat with the global default the first time this tab is
   // seen — but write it through the chat service's live session (never a
   // private copy): `setSelection` no-ops harmlessly if no chat is loaded for
   // this tab yet, and is idempotent once one is (a later run sees the
   // selection already set and skips the write).
-  let stored = chat.getSelection(newTabId);
+  let stored = chat().getSelection(newTabId);
   if (stored === undefined && defaultSelection) {
     // Card 35: this is the exact "resolve implicitly from a stored default"
     // path the card is unhappy about — `explicit: false` records that so the
     // composer knows to ask for a one-click confirmation before the first
     // message, rather than treating this silent seed as good enough.
-    const applied = await chat.setSelection(newTabId, defaultSelection, false);
+    const applied = await chat().setSelection(newTabId, defaultSelection, false);
     if (applied) stored = { selection: defaultSelection, explicit: false };
   }
 
   selectionExplicit = stored?.explicit === true;
-  resolution = await resolveSelection(providerRegistry, stored?.selection);
+  resolution = await resolveSelection(sidePanelServices().providers, stored?.selection);
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +313,7 @@ export async function syncToTab(newTabId: number, newOrigin: string): Promise<vo
 
 function buildClient(config: ProviderConfig): ChatProvider | undefined {
   try {
-    return createProviderClient(config);
+    return sidePanelServices().createProviderClient(config);
   } catch {
     // No factory registered for this provider's type (registry.ts: a
     // programming-error path, e.g. a self-registering module — see
@@ -454,11 +453,12 @@ export async function selectModel(providerId: string, model: string): Promise<vo
   const next: ProviderSelection = { providerId, model };
 
   // Card 35: a click here IS the deliberate choice — explicit: true.
-  await chat.setSelection(tabId, next, true);
+  await chat().setSelection(tabId, next, true);
   selectionExplicit = true;
 
-  const currentDefault = await providerRegistry.getDefaultSelection();
-  if (!currentDefault) await providerRegistry.setDefaultSelection(next);
+  const registry = sidePanelServices().providers;
+  const currentDefault = await registry.getDefaultSelection();
+  if (!currentDefault) await registry.setDefaultSelection(next);
 
   resolution = { status: "ok", config, model };
 }
@@ -512,5 +512,5 @@ export async function refresh(): Promise<void> {
 
 /** Open the extension's options page — the "no providers registered" and "provider deleted" empty states both link here (decisions/10: provider CRUD lives only in the options page). */
 export function openOptionsPage(): void {
-  chrome.runtime.openOptionsPage();
+  sidePanelServices().shell.openOptionsPage();
 }

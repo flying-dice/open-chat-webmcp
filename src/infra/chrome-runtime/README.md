@@ -6,8 +6,9 @@ The `chrome.runtime` / `chrome.tabs` / `chrome.permissions` side: the cross-cont
 | --- | --- | --- |
 | landed (card 73) | the six-message protocol, `isRuntimeMessage`, and typed send/receive helpers | `src/lib/protocol.ts` — deleted outright by card 76 once its last re-export importer was gone (the tool DESCRIPTOR types it used to own moved to `src/domain/tools` in card 73) |
 | landed (card 77) | `createPageToolExecutor` — the `runtime:call-tool` round trip (panel → worker → relay) behind `src/domain/tools`'s `PageToolExecutor` port | `src/sidepanel/services/agentLoop.ts`'s `callPageTool`, the last `chrome.*` call inside the agent loop. The timeout race did NOT come with it: the ladder's outermost rung is applied by the domain turn, uniformly to page and server tools alike |
-| pending (card 78) | `originPatternForUrl`, `hasHostPermission`, `requestHostPermission` — and the deletion of the surviving re-export shim `src/options/lib/permissions.ts` (the MCP-side twin `src/lib/mcp/permissions.ts` is already gone, card 76) | `src/lib/permissions.ts` |
-| pending (card 78) | active-tab tracking, tab-switch vs. same-tab cross-origin-nav discrimination, and the `runtime:get-tools` lookup | `src/sidepanel/services/activeTab.ts` (~17 `chrome.*` sites). Card 77 moved the CONSEQUENCE of a tab switch into `src/domain/chat`'s `ChatService`; what is left in that file is the `chrome.tabs`/`chrome.runtime` listening itself, which is what belongs here |
+| landed (card 78) | `permissions.ts` — `createChromeHostPermissions()`, the one implementation of `HostPermissions` (`src/domain/permissions`), including the `onAdded`/`onRemoved` subscription the two options sections used to make themselves | `src/lib/permissions.ts`, plus the surviving re-export shim `src/options/lib/permissions.ts` (both deleted). `originPatternForUrl` went the OTHER way, into `src/domain/permissions` — it is pure URL parsing, and every caller that only validates a URL now asks the domain |
+| landed (card 78) | `tab-sync.ts` — active-tab tracking, tab-switch vs. same-tab cross-origin-nav discrimination, the serialization queue and staleness guards, and the `runtime:get-tools` lookup (also exported on its own as `createTabToolsLookup`, for a turn's page tools) | `src/sidepanel/services/activeTab.ts` (~20 `chrome.*` sites, deleted). Card 77 moved the CONSEQUENCE of a tab switch into `src/domain/chat`'s `ChatService`; this is the listening itself. It takes `TabSyncSession` (three `ChatService` methods, structurally) and `TabSyncView` (where a resolved page lands) as arguments, so it names neither the domain service nor the panel store |
+| landed (card 78) | `extension-shell.ts` — `chrome.runtime.openOptionsPage()`, the side panel's "provider CRUD lives on the options page" affordance (decisions/10) | `src/sidepanel/stores/selection.svelte.ts`'s last `chrome.*` site |
 
 ## `chrome.identity` does NOT land here
 
@@ -31,5 +32,6 @@ is now the settled answer:
 Adapters map their technology's failures INTO the domain's error vocabulary;
 nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or
 `chrome.runtime.lastError`. Only a composition root
-(`src/sidepanel/main.ts`, `src/options/main.ts`, `src/background/sw.ts`)
-constructs what lives here.
+(`src/sidepanel/main.ts`, `src/options/main.ts`, `src/background/sw.ts`,
+`src/content/relay.ts`) constructs what lives here — enforced since card 78 by
+`only-roots-construct-infra` in `.dependency-cruiser.cjs`.

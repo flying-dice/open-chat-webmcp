@@ -77,7 +77,7 @@ export interface StorageAreaGateway {
 
 export function createStorageAreaGateway(area: StorageAreaName): StorageAreaGateway {
   // Resolved per call, not captured at construction. Building a gateway must
-  // not touch `chrome` at all: `src/infra/chrome-storage/wiring.ts` builds
+  // not touch `chrome` at all: `createChromeStoragePorts()` (./ports.ts) builds
   // the whole bundle at module scope, and a module-scope read of
   // `chrome.storage.local` would make merely IMPORTING that file depend on
   // the extension APIs being present — which is exactly what makes an

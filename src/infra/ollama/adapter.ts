@@ -72,7 +72,7 @@ function toChatMessage(message: OllamaChatMessage): ChatMessage {
 /**
  * The storage ports the raw client needs (card 74). Supplied by whichever
  * composition-root wiring builds this provider (card 75:
- * src/sidepanel/lib/providerClients.ts, src/options/lib/providerClients.ts)
+ * the `createProviderClientFactory` map in each composition root)
  * rather than reached for here, so neither this adapter nor ./client.ts
  * imports src/infra/chrome-storage — which is what keeps this folder from
  * breaking `adapters-do-not-import-adapters`.

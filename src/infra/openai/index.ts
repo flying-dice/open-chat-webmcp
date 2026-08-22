@@ -29,8 +29,8 @@
 // src/lib/providers/clients.ts locator (`registerProviderType("openai",
 // createOpenAiProvider)` at the bottom of the file) since that module was
 // off-limits to the card that landed this client. The locator is gone —
-// each composition root's interim wiring (src/sidepanel/lib/providerClients.ts,
-// src/options/lib/providerClients.ts) imports `createOpenAiProvider`
+// each composition root's `createProviderClientFactory` map
+// (src/sidepanel/main.ts, src/options/main.ts) imports `createOpenAiProvider`
 // directly and puts it in an exhaustive `Record<ProviderType, ...>` instead.
 
 import type { SerializedTool } from "../../domain/tools";
@@ -48,20 +48,18 @@ import type {
   ProviderResult,
   ToolCall,
 } from "../../domain/providers";
+import { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
 
 // ---------------------------------------------------------------------------
 // Config defaults
 // ---------------------------------------------------------------------------
 
 /**
- * Default base URL when a config doesn't specify one. `baseUrl` is the host
- * only — every request path below appends its own `/v1/...` suffix, the same
- * convention Ollama's client uses for `/api/...` — so an OpenAI-compatible
- * host (OpenRouter's `https://openrouter.ai/api`, a local proxy, etc.) works
- * by pointing this at that host, not at a pre-built `/v1/chat/completions`
- * URL.
+ * Re-exported for this adapter's own callers; card 78 moved the value itself
+ * to src/domain/providers, where the options form can read it without
+ * importing an adapter. See its doc comment there for what `baseUrl` means.
  */
-export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
+export { DEFAULT_OPENAI_BASE_URL } from "../../domain/providers";
 
 // ---------------------------------------------------------------------------
 // Shared helpers

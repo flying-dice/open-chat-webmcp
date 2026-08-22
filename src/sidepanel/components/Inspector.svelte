@@ -14,7 +14,7 @@
    * wrapper) so each section renders as a real `Tabs.Content` tabpanel —
    * same two values, same labels, same default ("tools").
    */
-  import type { SerializedTool } from "../../infra/chrome-runtime";
+  import type { SerializedTool } from "../../domain/tools";
   import type { MergedTool } from "../../domain/tools";
   import type { ToolCallLogEntry } from "../../domain/chat";
   import ToolsPanel from "./ToolsPanel.svelte";

@@ -18,8 +18,7 @@
   // for the same reason the state layout is.
   import { onMount } from "svelte";
   import type { McpServerConfig } from "../../domain/tools";
-  import { mcpServerRegistry } from "../../infra/chrome-storage";
-  import { hasHostPermission, requestHostPermission } from "../../lib/permissions";
+  import { optionsServices } from "../app-services";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
   import McpServerForm from "./McpServerForm.svelte";
   import McpServerRow from "./McpServerRow.svelte";
@@ -43,13 +42,13 @@
 
   async function refreshPermissions(): Promise<void> {
     const entries = await Promise.all(
-      servers.map(async (s) => [s.id, await hasHostPermission(s.url)] as const),
+      servers.map(async (s) => [s.id, await optionsServices().permissions.has(s.url)] as const),
     );
     permissionGranted = Object.fromEntries(entries);
   }
 
   async function refresh(): Promise<void> {
-    servers = await mcpServerRegistry.listServers();
+    servers = await optionsServices().mcpServers.listServers();
     await refreshPermissions();
   }
 
@@ -61,26 +60,21 @@
     // Keep the "Permission needed" / "Permission granted" badges live if the
     // user grants or revokes a host permission from chrome://extensions
     // while this page is open, not just right after a Test Connection click
-    // (mirrors ProvidersSection.svelte).
-    const onPermissionsChanged = () => {
+    // (mirrors ProvidersSection.svelte, including card 78's move of the
+    // `onAdded`/`onRemoved` pair behind the `HostPermissions` port).
+    return optionsServices().permissions.onChanged(() => {
       refreshPermissions();
-    };
-    chrome.permissions.onAdded.addListener(onPermissionsChanged);
-    chrome.permissions.onRemoved.addListener(onPermissionsChanged);
-    return () => {
-      chrome.permissions.onAdded.removeListener(onPermissionsChanged);
-      chrome.permissions.onRemoved.removeListener(onPermissionsChanged);
-    };
+    });
   });
 
   async function handleAddSubmit(data: Omit<McpServerConfig, "id">): Promise<void> {
-    await mcpServerRegistry.addServer(data);
+    await optionsServices().mcpServers.addServer(data);
     adding = false;
     await refresh();
   }
 
   async function handleEditSubmit(id: string, data: Omit<McpServerConfig, "id">): Promise<void> {
-    await mcpServerRegistry.updateServer(id, data);
+    await optionsServices().mcpServers.updateServer(id, data);
     editingId = null;
     await refresh();
   }
@@ -90,14 +84,14 @@
       `Remove "${server.name}"? Its tools will no longer be offered to the model, and its stored token and headers will be deleted.`,
     );
     if (!ok) return;
-    await mcpServerRegistry.removeServer(server.id);
+    await optionsServices().mcpServers.removeServer(server.id);
     delete testOutcomes[server.id];
     delete permissionGranted[server.id];
     await refresh();
   }
 
   async function handleToggleEnabled(server: McpServerConfig): Promise<void> {
-    await mcpServerRegistry.updateServer(server.id, { enabled: !server.enabled });
+    await optionsServices().mcpServers.updateServer(server.id, { enabled: !server.enabled });
     await refresh();
   }
 
@@ -107,11 +101,11 @@
     const next = [...servers];
     [next[index], next[target]] = [next[target], next[index]];
     servers = next; // optimistic reorder while the write lands
-    await mcpServerRegistry.reorderServers(next.map((s) => s.id));
+    await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
   }
 
   /**
-   * "Test connection" for a saved row — MUST call `chrome.permissions.request`
+   * "Test connection" for a saved row — MUST call `permissions.request`
    * as the first `await` when the grant isn't already known-true
    * (decisions/14): a click handler is the only place the browser honours
    * that request, and any async work ahead of it risks losing the gesture.
@@ -123,7 +117,7 @@
     try {
       let granted = permissionGranted[server.id];
       if (granted !== true) {
-        granted = await requestHostPermission(server.url);
+        granted = await optionsServices().permissions.request(server.url);
         permissionGranted = { ...permissionGranted, [server.id]: granted };
         if (!granted) {
           testOutcomes = {

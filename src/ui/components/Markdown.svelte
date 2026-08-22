@@ -8,7 +8,7 @@
    * can be partial/incomplete markdown (an unclosed fence, a dangling
    * `**`, a half-typed link) at any point and this component re-renders
    * reactively without throwing or flickering between block types. See
-   * src/lib/markdown.ts for the streaming-tolerance and sanitisation
+   * src/ui/markdown.ts for the streaming-tolerance and sanitisation
    * design (marked -> DOMPurify, strict allowlist, no raw HTML
    * passthrough).
    *
@@ -189,7 +189,7 @@
     overflow-wrap: anywhere;
   }
 
-  /* Fenced code block wrapper (built in src/lib/markdown.ts renderCodeBlock) */
+  /* Fenced code block wrapper (built in src/ui/markdown.ts renderCodeBlock) */
   .markdown-body :global(.md-code) {
     margin: 0 0 0.5rem 0;
     border: 1px solid var(--border);

@@ -140,6 +140,22 @@ export interface McpTokenResolver {
  * `WWW-Authenticate`-challenge discovery are out of scope there).
  */
 export interface McpOAuthClient extends McpTokenResolver {
+  /**
+   * The redirect URI this extension's authorization flow comes back to — the
+   * value an authorization server must have registered for the sign-in to be
+   * accepted, and therefore the value the manual-app-registration panel
+   * (McpServerForm.svelte) shows the user to copy.
+   *
+   * Part of the PORT rather than something a UI derives, because it is the
+   * SAME string {@link McpOAuthClient.runAuthorizationFlow} sends as
+   * `redirect_uri`: a form that computed it independently could drift from
+   * what the flow actually uses, and the only symptom would be an
+   * authorization server rejecting the callback. Card 78 moved it here from a
+   * direct `chrome.identity.getRedirectURL()` call in that component — the
+   * last `chrome.identity` site outside src/infra/mcp.
+   */
+  redirectUri(): string;
+
   /** RFC 9728 then RFC 8414: resolve the authorization server for an MCP server's URL. */
   discoverAuthorizationServer(mcpServerUrl: string): Promise<McpResult<McpAuthorizationServerInfo>>;
 

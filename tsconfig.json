@@ -12,8 +12,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "$lib": ["./src/lib"],
-      "$lib/*": ["./src/lib/*"]
+      "$lib": ["./src/ui"],
+      "$lib/*": ["./src/ui/*"]
     }
   }
 }

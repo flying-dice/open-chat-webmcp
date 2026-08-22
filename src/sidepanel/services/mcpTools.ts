@@ -1,8 +1,8 @@
 // Owns everything about turning configured MCP servers into tools the agent
 // loop can call, per decisions/14-backend-mcp-servers.md and
 // decisions/19-merging-server-tools-with-page-tools.md. This is the
-// sidepanel-side counterpart to src/sidepanel/services/activeTab.ts: that
-// module keeps the page's own tool list in step with the worker's registry;
+// sidepanel-side counterpart to src/infra/chrome-runtime/tab-sync.ts: that
+// adapter keeps the page's own tool list in step with the worker's registry;
 // this one keeps every enabled server's tool list in step with reality,
 // off the critical path of any one turn (decisions/19 §4), and exposes the
 // per-turn combine step src/sidepanel/services/chatTurn.ts's `ToolExecutor` calls.
@@ -16,7 +16,7 @@
 // there is nothing to persist here, a fresh panel just discovers again.
 //
 // PERMISSION (decisions/19 §4: "reported as unavailable with that specific
-// reason, never as a generic failure"): checked via `hasHostPermission`
+// reason, never as a generic failure"): checked via the injected `HostPermissions` port
 // BEFORE ever attempting a request, because the transport's own `fetch`
 // failure can't tell "no permission" apart from "genuinely unreachable" (a
 // blocked CORS preflight and a dead host both reject as a bare TypeError) —
@@ -32,26 +32,27 @@
 // comment in src/domain/tools). This module only ever forwards that
 // already-safe text.
 //
-// PORTS (card 76): the gateway below is the `McpToolGateway` INTERFACE from
-// src/domain/tools; the instance comes from this surface's interim wiring
-// (src/sidepanel/lib/mcpClients.ts). This module names no transport module
-// and constructs nothing.
+// PORTS (cards 76 and 78): everything this module talks to is an INTERFACE
+// from src/domain — `McpToolGateway` and `McpServerRegistry`
+// (src/domain/tools), `HostPermissions` (src/domain/permissions) — resolved
+// through src/sidepanel/app-services.ts, which the composition root wired. It
+// names no adapter and constructs nothing. Card 76 left the gateway arriving
+// via an interim wiring module; card 78 deleted that module along with this
+// file's last two `src/infra` imports.
 
-import type { McpServerConfig, McpToolGateway } from "../../domain/tools";
-import { mcpServerRegistry } from "../../infra/chrome-storage";
-import { hasHostPermission } from "../../lib/permissions";
-import { mcpToolGateway } from "../lib/mcpClients";
 import {
   buildServerMergedTools,
   combineWithPageTools,
   describeMcpError,
   type MergedTool,
   type MergedToolCallOutcome,
+  type McpServerConfig,
   type McpServerDiscovery,
   type McpToolCallResult,
   type McpToolContent,
+  type SerializedTool,
 } from "../../domain/tools";
-import type { SerializedTool } from "../../infra/chrome-runtime";
+import { sidePanelServices } from "../app-services";
 import { setServerTools } from "../stores/panel.svelte";
 
 // ---------------------------------------------------------------------------
@@ -63,8 +64,6 @@ const DISCOVERY_REFRESH_INTERVAL_MS = 60_000;
 
 /** The gateway's own `DEFAULT_CALL_TOOL_TIMEOUT_MS` budget (src/infra/mcp/timeouts.ts) already bounds one `callServerTool` — this module adds no second timeout on top of it, matching the page-tool call path's own single-timeout-per-hop discipline. */
 
-/** The one `McpToolGateway` this service talks through. A local alias so every call site below reads as a port call, and so card 78 has one line to change when this arrives as an argument instead. */
-const gateway: McpToolGateway = mcpToolGateway;
 
 // ---------------------------------------------------------------------------
 // Cache
@@ -88,12 +87,13 @@ function cachedServerTools(): MergedTool[] {
 }
 
 async function refreshNow(): Promise<void> {
-  const servers = await mcpServerRegistry.listEnabledServers();
+  const { mcpServers, mcpTools: gateway, permissions } = sidePanelServices();
+  const servers = await mcpServers.listEnabledServers();
 
   const checks = await Promise.all(
     servers.map(async (config) => ({
       config,
-      allowed: await hasHostPermission(config.url).catch(() => false),
+      allowed: await permissions.has(config.url).catch(() => false),
     })),
   );
   const permitted = checks.filter((c) => c.allowed).map((c) => c.config);
@@ -140,8 +140,10 @@ export function ensureMcpDiscoveryFresh(opts?: { force?: boolean }): void {
 
 /**
  * Wires a periodic background refresh for the lifetime of the panel — call
- * once from App.svelte's `onMount`, alongside `initActiveTabSync`/
- * `initApprovalPolicySync`. Returns a cleanup function that stops the
+ * once from App.svelte's `onMount`, alongside `initApprovalPolicySync`
+ * (card 78 moved the tab sync itself up into src/sidepanel/main.ts, since
+ * `chrome.tabs` listeners are a composition-root concern). Returns a cleanup
+ * function that stops the
  * interval (the in-flight `refreshNow` promise, if any, is left to settle on
  * its own rather than aborted mid-flight — the gateway's own budgets already
  * bound how long that can take).
@@ -229,7 +231,8 @@ async function executeServerTool(
   // revoked between one turn's discovery snapshot and this call (another
   // options tab, or the user reacting mid-conversation) — decisions/19 §4's
   // "specific reason" requirement applies here too, not just to discovery.
-  const allowed = await hasHostPermission(config.url).catch(() => false);
+  const { mcpTools: gateway, permissions } = sidePanelServices();
+  const allowed = await permissions.has(config.url).catch(() => false);
   if (!allowed) {
     return {
       ok: false,

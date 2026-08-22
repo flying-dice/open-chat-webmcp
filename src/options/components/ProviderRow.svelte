@@ -15,8 +15,8 @@
   import type { ProviderConfig } from "../../domain/providers";
   import { getPreset, type ProviderModel } from "../../domain/providers";
   import type { TestOutcome } from "../lib/testConnection";
-  import { testResultClass, testResultMessage } from "../lib/testResultDisplay";
-  import Markdown from "../../lib/components/Markdown.svelte";
+  import { providerTestResultClass, providerTestResultMessage } from "../lib/testResultDisplay";
+  import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Select from "$lib/components/ui/select";
   import { Badge } from "$lib/components/ui/badge";
@@ -215,7 +215,7 @@
   {/if}
 
   {#if testOutcome}
-    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
+    <p class={providerTestResultClass(testOutcome)}>{providerTestResultMessage(testOutcome)}</p>
     {#if testOutcome.kind === "unreachable" && testOutcome.fix}
       {@const fix = testOutcome.fix}
       <Alert.Root class="bg-muted/40">

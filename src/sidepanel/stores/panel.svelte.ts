@@ -16,8 +16,8 @@
 // plain object of getters, so a component reads `panel.messages` and Svelte
 // tracks the underlying rune, without this module exporting mutable bindings.
 //
-// THE PRESENTER. `chat` (the `ChatService` built at the bottom of this file)
-// owns the session; this module renders it. The two meet at `ChatPresenter`
+// THE PRESENTER. `ChatService` (built by src/sidepanel/main.ts, reached here
+// as `chat()`) owns the session; this module renders it. The two meet at `ChatPresenter`
 // (src/domain/chat/ports.ts), implemented here:
 //   - `show(session)` — the service is switching the visible chat. We assign
 //     it to `$state` and return WHAT WE ASSIGNED, which is the Svelte 5 Proxy
@@ -36,29 +36,30 @@
 //     until its own chat is on screen. Backed by `visibilityListeners`, which
 //     `show` fires.
 //
-// WIRING (interim, card 78's to delete): `chat` is constructed here from the
-// module-level `chatStore`/`settingsStore` bindings in
-// src/infra/chrome-storage/wiring.ts, on the same pattern as
-// src/sidepanel/lib/{providerClients,mcpClients}.ts. `createChatService` takes
-// every dependency as an argument specifically so card 78 can move this one
-// call into src/sidepanel/main.ts and pass the service down — nothing about
-// the service assumes it is built here.
+// THE TAB-SYNC VIEW. `tabSyncView` at the bottom of this file is the other
+// inbound seam: src/infra/chrome-runtime/tab-sync.ts reports what the active
+// tab currently IS (title, origin, favicon, tool list, and the two
+// availability signals), and this module turns that into `PageInfo`. The
+// adapter never learns that shape — card 78's whole point is that
+// `chrome.tabs` and this store no longer see each other.
+//
+// WIRING (card 78): nothing is constructed here any more. `ChatService` is
+// built by src/sidepanel/main.ts from the storage ports, the presenter below
+// and the approval-policy gate, and reaches this module — like every other
+// port — through `chat()` (src/sidepanel/app-services.ts). Card 77 wrote
+// `createChatService` to take every dependency as an argument for exactly
+// this move; nothing about the service changed to make it.
 
-import {
-  createChatService,
-  type ChatService,
-  type ChatPresenter,
-  type ChatSession,
-  type ModelContactState,
-  type ToolCallLogEntry,
-  type TranscriptEntry,
-  type TurnPhase,
+import type {
+  ChatPresenter,
+  ChatSession,
+  ModelContactState,
+  ToolCallLogEntry,
+  TranscriptEntry,
+  TurnPhase,
 } from "../../domain/chat";
-import { createApprovalPolicyGate } from "../../domain/settings";
-import { chatStore, settingsStore, tracingFlag } from "../../infra/chrome-storage";
-import { AGENT_LOOP_TOOL_CALL_TIMEOUT_MS } from "../../infra/webmcp";
 import type { MergedTool, SerializedTool } from "../../domain/tools";
-import { originLabel } from "../lib/toolOrigin";
+import { chat, sidePanelServices } from "../app-services";
 
 /**
  * Connection state as the panel SHOWS it. `"unknown"`/`"disconnected"` exist
@@ -121,7 +122,7 @@ let turnPhaseByChat = $state<Record<string, TurnPhase | null>>({});
 
 let connectionStatus = $state<ConnectionStatus>("unknown");
 let pageInfo = $state<PageInfo | undefined>(undefined);
-/** The active tab's current published tool list (card 11's inspector) — kept in sync by src/sidepanel/services/activeTab.ts. */
+/** The active tab's current published tool list (card 11's inspector) — kept in sync through `tabSyncView` below by src/infra/chrome-runtime/tab-sync.ts. */
 let tools = $state<SerializedTool[]>([]);
 /** Every currently-cached MCP server tool (card 38's Tools view, decisions/19 §6) — kept in sync by src/sidepanel/services/mcpTools.ts's background discovery, independent of which tab is active. Never network-blocking to read: always whatever that module's cache currently holds. */
 let serverTools = $state<MergedTool[]>([]);
@@ -133,7 +134,7 @@ const visibilityListeners = new Set<(chatId: string | undefined) => void>();
 // The presenter (see the module doc comment)
 // ---------------------------------------------------------------------------
 
-const presenter: ChatPresenter = {
+export const presenter: ChatPresenter = {
   show(next: ChatSession): ChatSession {
     session = next;
     const adopted = session;
@@ -176,36 +177,6 @@ const presenter: ChatPresenter = {
     });
   },
 };
-
-// ---------------------------------------------------------------------------
-// The chat service — interim wiring, see the module doc comment
-// ---------------------------------------------------------------------------
-
-/**
- * The side panel's `ChatService`: everything that can be DONE to a
- * conversation. Components and services call it directly
- * (`chat.startNewChat`, `chat.openChat`, `chat.addAssistantNote`, …) rather
- * than through delegating wrappers in this file — the wrappers were the
- * god-store.
- */
-export const chat: ChatService = createChatService({
-  store: chatStore,
-  presenter,
-  policy: createApprovalPolicyGate(settingsStore),
-  // Presentation, injected: card 73 moved `originLabel` out of the domain
-  // deliberately, and decisions/19 §6 requires the system prompt to name a
-  // tool's origin in the SAME words the approval card and call log use.
-  originLabel,
-  // The outermost rung of the shared timeout ladder
-  // (src/infra/webmcp/timeouts.mjs). Injected because the ladder is a property
-  // of the messaging infrastructure — the domain must not import an adapter to
-  // learn a number.
-  toolCallTimeoutMs: AGENT_LOOP_TOOL_CALL_TIMEOUT_MS,
-  trace: (event, detail) => {
-    if (tracingFlag.isEnabled()) console.log("[webmcp][tab-sync]", event, detail);
-  },
-  reportWriteFailure: (message, cause) => console.error(message, cause),
-});
 
 // ---------------------------------------------------------------------------
 // What the UI reads
@@ -278,7 +249,7 @@ export const panel = {
 
 /** Called by the composer's stop button: cancels the VISIBLE chat's turn specifically (decisions/25 §3), never a background one. A no-op if nothing is in flight for it. */
 export function requestStop(): void {
-  if (session) chat.requestStop(session.id);
+  if (session) chat().requestStop(session.id);
 }
 
 /*
@@ -292,25 +263,67 @@ export function requestStop(): void {
  * render, and "we have not talked to a provider yet" is still a real state.
  */
 
-export function setPageInfo(info: PageInfo): void {
-  pageInfo = info;
-}
-
-export function setToolCount(tabId: number, count: number, available: boolean): void {
-  if (pageInfo && pageInfo.tabId === tabId) {
-    pageInfo = { ...pageInfo, toolCount: count, webmcpAvailable: available };
-  }
-}
-
-/** Sets the active tab's full tool list (card 11's Tools view) — same `tabId` guard as {@link setToolCount} so a late response for a tab that is no longer active can't clobber what's on screen. */
-export function setTools(tabId: number, next: SerializedTool[]): void {
-  if (pageInfo && pageInfo.tabId === tabId) tools = next;
-}
-
 /** Sets the currently-cached MCP server tool list (card 38). Not tab-scoped: server tools aren't per-page, so there is no stale-tab race to guard against. */
 export function setServerTools(next: MergedTool[]): void {
   serverTools = next;
 }
+
+// ---------------------------------------------------------------------------
+// The tab-sync view (card 78)
+// ---------------------------------------------------------------------------
+
+/**
+ * How src/infra/chrome-runtime/tab-sync.ts reports the active tab into this
+ * store — wired to it by src/sidepanel/main.ts.
+ *
+ * This is the same three writers `src/sidepanel/services/activeTab.ts` used
+ * to call as module imports (`setPageInfo`, `setToolCount`, `setTools`),
+ * gathered into one object so the adapter depends on a shape rather than on
+ * this module, with the `PageInfo` assembly kept on THIS side of the seam —
+ * `restricted`/`webmcpAvailable`/`toolCount` are display vocabulary
+ * (see `PageInfo` above), not something `chrome.tabs` should know it is
+ * producing.
+ */
+export const tabSyncView = {
+  pageResolved(page: {
+    tabId: number;
+    title: string;
+    origin: string;
+    favIconUrl?: string;
+    tools: SerializedTool[];
+    available: boolean;
+    restricted: boolean;
+  }): void {
+    pageInfo = {
+      tabId: page.tabId,
+      title: page.title,
+      origin: page.origin,
+      favIconUrl: page.favIconUrl,
+      toolCount: page.tools.length,
+      restricted: page.restricted,
+      webmcpAvailable: page.available,
+    };
+    // card 11's Tools view needs the full descriptors, not just the count.
+    tools = page.tools;
+  },
+
+  /** A bare title/favicon change on the tab already on screen — no navigation, no tools lookup, everything else about the page left exactly as it was. */
+  pageMetaChanged(meta: { title: string; favIconUrl?: string }): void {
+    if (!pageInfo) return;
+    pageInfo = { ...pageInfo, title: meta.title, favIconUrl: meta.favIconUrl };
+  },
+
+  /**
+   * The worker's live `runtime:tools-updated` broadcast. Guarded on `tabId`
+   * so a late response for a tab that is no longer the one on screen can't
+   * clobber what is displayed.
+   */
+  toolsChanged(tabId: number, next: SerializedTool[], available: boolean): void {
+    if (!pageInfo || pageInfo.tabId !== tabId) return;
+    pageInfo = { ...pageInfo, toolCount: next.length, webmcpAvailable: available };
+    tools = next;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Diagnostics (card 59 item 6)
@@ -356,14 +369,14 @@ declare global {
 }
 
 function webmcpPanelDebugSnapshot() {
-  const snapshot = chat.snapshot();
+  const snapshot = chat().snapshot();
   return {
     ...snapshot,
     streamingMessageId: snapshot.chatId ? (streamingByChat[snapshot.chatId] ?? null) : null,
     turnPhaseByChat: { ...turnPhaseByChat },
-    tracingEnabled: tracingFlag.isEnabled(),
+    tracingEnabled: sidePanelServices().tracing.isEnabled(),
   };
 }
-webmcpPanelDebugSnapshot.enableTracing = () => tracingFlag.set(true);
-webmcpPanelDebugSnapshot.disableTracing = () => tracingFlag.set(false);
+webmcpPanelDebugSnapshot.enableTracing = () => sidePanelServices().tracing.set(true);
+webmcpPanelDebugSnapshot.disableTracing = () => sidePanelServices().tracing.set(false);
 window.__webmcpPanelDebug = webmcpPanelDebugSnapshot;

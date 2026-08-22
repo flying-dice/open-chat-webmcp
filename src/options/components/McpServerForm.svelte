@@ -27,15 +27,17 @@
     type McpServerConfig,
     type McpTransportPreference,
   } from "../../domain/tools";
-  // Card 76: the OAuth chain is the `McpOAuthClient` PORT (src/domain/tools);
-  // the instance comes from this surface's interim wiring. The sign-in
-  // ORCHESTRATION below stays in this component — de-chroming components is
-  // card 78's job, not this one's.
-  import { mcpOAuthClient } from "../lib/mcpClients";
-  import { describeMcpError } from "../../domain/tools";
-  import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../../lib/permissions";
+  // Card 78: the sign-in ORCHESTRATION this component used to run inline —
+  // three host-permission requests, RFC 9728/8414 discovery, the RFC 7591
+  // registration branch and the PKCE flow, in a fixed and load-bearing order —
+  // is `McpSignIn` (src/domain/tools/sign-in.ts), reached through this
+  // surface's services. What stays here is the form state machine: which
+  // panel is showing, what the status line says, and what `buildData()`
+  // submits. Nothing below names `chrome`.
+  import { optionsServices } from "../app-services";
+  import { originPatternForUrl } from "../../domain/permissions";
   import { testMcpServerConnection, type McpTestOutcome } from "../lib/mcpTestConnection";
-  import { testResultClass, testResultMessage, testResultTools } from "../lib/mcpTestResultDisplay";
+  import { mcpTestResultClass, mcpTestResultMessage, mcpTestResultTools } from "../lib/testResultDisplay";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -109,9 +111,9 @@
   let showManualClientSecret = $state(false);
   let redirectUriCopied = $state(false);
 
-  /** `chrome.identity.getRedirectURL()`, guarded the same way `runAuthorizationFlow` guards it — a function rather than a module-level constant so it never runs outside a browser-extension context (e.g. a future test render). */
+  /** The redirect URI the authorization flow actually sends (`McpOAuthClient.redirectUri`, src/domain/tools) — the value the user must register with their OAuth app. Read through the port rather than computed here, so the panel can never show a URI the flow does not use. */
   function redirectUri(): string {
-    return typeof chrome !== "undefined" && chrome.identity ? chrome.identity.getRedirectURL() : "";
+    return optionsServices().mcpSignIn.redirectUri();
   }
 
   async function copyRedirectUri(): Promise<void> {
@@ -137,7 +139,7 @@
   /**
    * The OAuth status line's banner styling — card 71 kept it visually
    * identical to a "Test connection" result banner (the same three
-   * ok/error/neutral treatments src/options/lib/mcpTestResultDisplay.ts
+   * ok/error/neutral treatments src/options/lib/testResultDisplay.ts
    * hands out), because that is exactly what it is: the last known verdict
    * on whether this server's credentials work.
    */
@@ -236,7 +238,7 @@
     const u = url.trim();
     permissionGranted = undefined;
     if (!originPatternForUrl(u)) return;
-    hasHostPermission(u).then((granted) => {
+    optionsServices().permissions.has(u).then((granted) => {
       permissionGranted = granted;
     });
   });
@@ -298,7 +300,7 @@
   }
 
   /**
-   * "Test connection" — MUST call `chrome.permissions.request` as the first
+   * "Test connection" — MUST call `permissions.request` as the first
    * `await` in this click-bound handler when permission isn't already known
    * to be granted (decisions/14, mirroring decisions/09's rule for
    * providers): the browser only honours the request while still inside the
@@ -319,7 +321,7 @@
     testing = true;
     try {
       if (permissionGranted !== true) {
-        const granted = await requestHostPermission(draft.url);
+        const granted = await optionsServices().permissions.request(draft.url);
         permissionGranted = granted;
         if (!granted) {
           testOutcome = {
@@ -336,109 +338,50 @@
     }
   }
 
-  /** Request host permission for every distinct origin among a discovered authorization server's endpoints — they may differ from the MCP server's own origin. Returns `false` (with `oauthError` set) if any is declined, still inside the caller's gesture. */
-  async function grantEndpointPermissions(discovery: McpAuthorizationServerInfo): Promise<boolean> {
-    const endpointUrls = [
-      discovery.authorizationEndpoint,
-      discovery.tokenEndpoint,
-      discovery.registrationEndpoint,
-    ].filter((u): u is string => u !== undefined);
-    const distinctOrigins = new Map<string, string>(); // origin pattern -> a URL on that origin
-    for (const endpointUrl of endpointUrls) {
-      const pattern = originPatternForUrl(endpointUrl);
-      if (pattern && !distinctOrigins.has(pattern)) distinctOrigins.set(pattern, endpointUrl);
-    }
-    for (const endpointUrl of distinctOrigins.values()) {
-      const granted = await requestHostPermission(endpointUrl);
-      if (!granted) {
-        oauthError = `Permission to contact ${new URL(endpointUrl).origin} was declined — sign-in cannot continue.`;
-        return false;
-      }
-    }
-    return true;
-  }
-
   /**
-   * "Sign in" (OAuth mode) — decisions/27 + card 63. Every step below is
-   * awaited in this one click-bound handler, with nothing deferred out of
-   * it, because `chrome.identity.launchWebAuthFlow` (inside
-   * `runAuthorizationFlow`) needs an active user gesture and Chrome's
-   * tolerance for `await`ed work ahead of it isn't formally documented
-   * (decisions/27's Consequences) — so this mirrors `handleTest`'s
-   * permission-request-first discipline and then just keeps going, rather
-   * than ever handing off to a `setTimeout` or a second handler.
+   * "Sign in" (OAuth mode) — decisions/27 + card 63, and card 78's split.
    *
-   * Order: (1) host permission for the MCP server's own URL, (2) discover
-   * the authorization server, (3) host permission for each distinct
-   * authorization/token/registration origin discovery names. From there:
-   * if the server supports dynamic client registration (RFC 7591), (4)
-   * register and (5) run the interactive flow — all in this same click, no
-   * extra step for the common case. If it doesn't (e.g. GitHub's
-   * `github.com/login/oauth`, which has no registration endpoint at all —
-   * confirmed against the real server), this stops here and leaves
-   * `oauthDiscovery` set so the template shows a manual client-id/secret
-   * panel; `handleOAuthContinueManual` (below), bound to its own fresh
-   * click, finishes the flow from there. Success lands in `oauthAuth`;
-   * nothing is persisted to storage until the surrounding form submits.
+   * The ORDER the steps happen in (host permission for the MCP server, then
+   * discovery, then a host permission for each distinct
+   * authorization/token/registration origin discovery names, then either
+   * dynamic registration + the interactive flow or a hand-off to the manual
+   * client-id panel) is a rule, and it now lives in `McpSignIn`
+   * (src/domain/tools/sign-in.ts). What is still this component's is the
+   * three things it does with the answer: hold the credential in local state
+   * until submit, show the error, or open the manual panel.
+   *
+   * Still awaited straight through from this one click handler, with nothing
+   * deferred out of it, because `chrome.identity.launchWebAuthFlow` (inside
+   * the flow) needs an active user gesture and Chrome's tolerance for
+   * `await`ed work ahead of it isn't formally documented (decisions/27's
+   * Consequences). Moving the steps behind a port did not change that: they
+   * are the same awaits in the same order in the same call chain — the
+   * service never hands off to a `setTimeout` or a second handler either.
    */
   async function handleOAuthSignIn(): Promise<void> {
     oauthError = undefined;
     oauthDiscovery = undefined;
-    const serverUrl = url.trim();
-    if (!originPatternForUrl(serverUrl)) {
-      oauthError = "Enter a valid http:// or https:// URL first.";
-      return;
-    }
 
     oauthSigningIn = true;
     try {
-      // 1. Host permission for the MCP server's own URL — same pattern as handleTest above.
-      if (permissionGranted !== true) {
-        const granted = await requestHostPermission(serverUrl);
-        permissionGranted = granted;
-        if (!granted) {
-          oauthError =
-            "This extension doesn't have permission to contact this host yet, and the request was declined.";
-          return;
-        }
-      }
-
-      // 2. Discover the authorization server (RFC 9728 / RFC 8414).
-      const discovery = await mcpOAuthClient.discoverAuthorizationServer(serverUrl);
-      if (!discovery.ok) {
-        oauthError = describeMcpError(discovery.error);
+      const result = await optionsServices().mcpSignIn.begin(url.trim(), {
+        alreadyGranted: permissionGranted === true,
+        onServerPermission: (granted) => (permissionGranted = granted),
+      });
+      if (result.status === "error") {
+        oauthError = result.message;
         return;
       }
-
-      // 3. Endpoint host permissions — needed either way (DCR or manual).
-      if (!(await grantEndpointPermissions(discovery.value))) return;
-
-      // 4/5. Dynamic client registration, if this server supports it —
-      // otherwise hand off to the manual client-id panel.
-      if (!discovery.value.registrationEndpoint) {
-        oauthDiscovery = discovery.value;
+      if (result.status === "needs-manual-client") {
+        // Some real authorization servers (GitHub's, notably:
+        // github.com/login/oauth has no RFC 7591 registration endpoint at
+        // all) require a manually pre-registered app. While this is set (and
+        // `oauthAuth` isn't), the template shows the manual client-id/secret
+        // panel instead of a plain sign-in button.
+        oauthDiscovery = result.discovery;
         return;
       }
-      const registration = await mcpOAuthClient.registerClient(discovery.value.registrationEndpoint, redirectUri());
-      if (!registration.ok) {
-        oauthError = describeMcpError(registration.error);
-        return;
-      }
-      const flow = await mcpOAuthClient.runAuthorizationFlow(
-        {
-          serverUrl,
-          clientId: registration.value.clientId,
-          clientSecret: registration.value.clientSecret,
-          scope: discovery.value.scopesSupported?.join(" "),
-        },
-        discovery.value,
-      );
-      if (!flow.ok) {
-        oauthError = describeMcpError(flow.error);
-        return;
-      }
-
-      oauthAuth = flow.value;
+      oauthAuth = result.auth;
     } finally {
       oauthSigningIn = false;
     }
@@ -446,45 +389,36 @@
 
   /**
    * "Continue" from the manual client-id panel — a fresh click, and
-   * therefore its own fresh user gesture, so `runAuthorizationFlow`'s
-   * `chrome.identity.launchWebAuthFlow` step is exactly as valid here as it
-   * is from `handleOAuthSignIn`'s own first `await`. Host permissions for
-   * the authorization/token endpoints were already requested by
-   * `handleOAuthSignIn` before it handed off to this panel.
+   * therefore its own fresh user gesture, so the flow's
+   * `launchWebAuthFlow` step is exactly as valid here as it is from
+   * {@link handleOAuthSignIn}'s own first `await`. Host permissions for the
+   * authorization/token endpoints were already requested by the `begin` that
+   * produced `oauthDiscovery`.
    */
   async function handleOAuthContinueManual(): Promise<void> {
     if (!oauthDiscovery) return;
-    const clientId = manualClientId.trim();
-    if (clientId.length === 0) {
-      oauthError = "Enter the client ID from the OAuth app you registered.";
-      return;
-    }
 
     oauthError = undefined;
     oauthSigningIn = true;
     try {
       // Snapshot `oauthDiscovery` before it's threaded into the resulting
-      // `McpOAuthAuth.authorizationServer` (`runAuthorizationFlow` carries
-      // this `discovery` argument straight through) — otherwise `oauthAuth`
-      // ends up holding a reactive Proxy nested inside plain state from the
-      // moment it's created, not just when `buildData()` reads it out. See
-      // the longer note at `buildData()`'s oauth branch for what breaks if a
-      // Proxy reaches `chrome.storage` unsnapshotted.
-      const discoverySnapshot = $state.snapshot(oauthDiscovery);
-      const flow = await mcpOAuthClient.runAuthorizationFlow(
-        {
-          serverUrl: url.trim(),
-          clientId,
-          clientSecret: manualClientSecret.trim().length > 0 ? manualClientSecret.trim() : undefined,
-          scope: discoverySnapshot.scopesSupported?.join(" "),
-        },
-        discoverySnapshot,
-      );
-      if (!flow.ok) {
-        oauthError = describeMcpError(flow.error);
+      // `McpOAuthAuth.authorizationServer` (the flow carries this `discovery`
+      // argument straight through) — otherwise `oauthAuth` ends up holding a
+      // reactive Proxy nested inside plain state from the moment it's
+      // created, not just when `buildData()` reads it out. See the longer
+      // note at `buildData()`'s oauth branch for what breaks if a Proxy
+      // reaches `chrome.storage` unsnapshotted.
+      const result = await optionsServices().mcpSignIn.completeManual({
+        serverUrl: url.trim(),
+        clientId: manualClientId,
+        clientSecret: manualClientSecret,
+        discovery: $state.snapshot(oauthDiscovery),
+      });
+      if (result.status === "error") {
+        oauthError = result.message;
         return;
       }
-      oauthAuth = flow.value;
+      oauthAuth = result.auth;
       oauthDiscovery = undefined;
       manualClientId = "";
       manualClientSecret = "";
@@ -777,9 +711,9 @@
   {/if}
 
   {#if testOutcome}
-    <p class={testResultClass(testOutcome)}>{testResultMessage(testOutcome)}</p>
-    {#if testResultTools(testOutcome)}
-      {@const tools = testResultTools(testOutcome) ?? []}
+    <p class={mcpTestResultClass(testOutcome)}>{mcpTestResultMessage(testOutcome)}</p>
+    {#if mcpTestResultTools(testOutcome)}
+      {@const tools = mcpTestResultTools(testOutcome) ?? []}
       <div class="flex">
         <Button variant="ghost" size="sm" onclick={() => (toolsExpanded = !toolsExpanded)}>
           {toolsExpanded ? "Hide" : "Show"}

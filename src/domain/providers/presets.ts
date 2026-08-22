@@ -32,10 +32,10 @@
 
 // Card 73 (decisions/29) moved this catalogue into the `providers` bounded
 // context and cut its last outward edge: `icon` used to be typed `IconName`
-// from src/lib/icons.ts, i.e. the domain depended on which glyphs the UI
+// from src/ui/icons.ts, i.e. the domain depended on which glyphs the UI
 // happens to ship. It is now a plain icon KEY — a stable name this catalogue
 // chooses — and the UI resolves it against its own icon set
-// (src/lib/providerIcon.ts). Renaming or restyling a glyph is now a UI-only
+// (src/ui/providerIcon.ts). Renaming or restyling a glyph is now a UI-only
 // change; adding a preset here needs no icon-set edit to typecheck.
 
 import type { ProviderType } from "./provider";
@@ -67,10 +67,10 @@ export interface ProviderPreset {
    * a reply visibly comes from the vendor that answered it, not from
    * whichever provider happens to be selected today. A deliberately generic
    * glyph, not that vendor's real mark — same trademark-avoidance rule as
-   * `sparkle` in src/lib/icons.ts, just applied per-vendor instead of once.
+   * `sparkle` in src/ui/icons.ts, just applied per-vendor instead of once.
    *
    * An opaque KEY, not a glyph: the UI maps it to something drawable
-   * (src/lib/providerIcon.ts) and falls back if it doesn't recognise one.
+   * (src/ui/providerIcon.ts) and falls back if it doesn't recognise one.
    */
   icon: string;
 }
@@ -216,7 +216,7 @@ const DEFAULT_PROVIDER_ICON_KEY = "smart_toy";
  * still reads as "local runtime" vs. "some OpenAI-compatible API" rather
  * than defaulting to one specific vendor's glyph.
  *
- * Returns a key, never a glyph: `iconForProvider` in src/lib/providerIcon.ts
+ * Returns a key, never a glyph: `iconForProvider` in src/ui/providerIcon.ts
  * is the UI-layer resolver that turns it into something Icon.svelte can draw.
  */
 export function iconKeyForProvider(provider: { type: ProviderType; presetId?: string }): string {

@@ -54,7 +54,7 @@
     type ModelsState,
   } from "../stores/selection.svelte";
   import { panel } from "../stores/panel.svelte";
-  import Markdown from "../../lib/components/Markdown.svelte";
+  import Markdown from "../../ui/components/Markdown.svelte";
   import Icon from "./Icon.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import * as Command from "$lib/components/ui/command";
@@ -72,7 +72,7 @@
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
-   * through Markdown.svelte's existing code-block pipeline (src/lib/markdown.ts's
+   * through Markdown.svelte's existing code-block pipeline (src/ui/markdown.ts's
    * `renderCodeBlock`) — that pipeline already gives every fenced block its
    * own working "Copy"/"Copied" button, so this reuses that exact,
    * already-tested affordance instead of hand-rolling a second one
@@ -98,7 +98,7 @@
   const OLLAMA_TOOL_MODEL_SUGGESTION = "llama3.1";
 
   // Keep the store pointed at whichever tab is active. panel.pageInfo is
-  // owned by src/sidepanel/services/activeTab.ts; this only reads it.
+  // owned by src/infra/chrome-runtime/tab-sync.ts; this only reads it.
   $effect(() => {
     const info = panel.pageInfo;
     if (info) void syncToTab(info.tabId, info.origin);

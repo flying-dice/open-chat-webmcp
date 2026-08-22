@@ -3,11 +3,11 @@
    * A single glyph. Standard glyphs render as Hugeicons (Maia's icon
    * pairing, decisions/28-shadcn-svelte-maia-zinc.md); `sparkle` and
    * `ollama` — not stock Hugeicons glyphs — still render from the inline
-   * path data in src/lib/icons.ts, exactly as before.
+   * path data in src/ui/icons.ts, exactly as before.
    *
    * The `name`-based prop API is unchanged from the pre-migration version
    * on purpose: Transcript.svelte, ActivityIndicator.svelte and
-   * src/lib/providerIcon.ts all pass an `IconName` through here (or through
+   * src/ui/providerIcon.ts all pass an `IconName` through here (or through
    * IconButton) and are out of this card's scope, so this stayed a drop-in
    * replacement rather than a new API every caller has to adopt.
    *
@@ -48,7 +48,7 @@
     WindIcon,
     Wrench01Icon,
   } from "@hugeicons/core-free-icons";
-  import { ICON_VIEW_BOX, iconPaths, type IconName, type StandardIconName } from "../../lib/icons";
+  import { ICON_VIEW_BOX, iconPaths, type IconName, type StandardIconName } from "../../ui/icons";
 
   /** old Material Symbols name -> Hugeicons free icon (card 66's mapping). */
   const hugeicons: Record<StandardIconName, IconSvgElement> = {

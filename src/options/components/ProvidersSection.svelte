@@ -2,8 +2,15 @@
   // Provider registry management (card 22,
   // decisions/10-provider-registry-and-credential-storage.md): the CRUD +
   // reorder + set-default UI on top of the `ProviderRegistry` port, which
-  // already implements every storage operation this component calls —
-  // nothing here talks to chrome.storage directly.
+  // already implements every storage operation this component calls.
+  //
+  // Card 78: that header used to end "nothing here talks to chrome.storage
+  // directly" while this component made five `chrome.permissions` calls a few
+  // lines below it — true about storage, misleading about everything else.
+  // It talks to no platform API at all now: the registry, the client factory
+  // and the `HostPermissions` port all arrive from src/options/app-services.ts,
+  // and `npm run guard:boundaries` is what keeps that true rather than a
+  // comment.
   //
   // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): options.css's
   // `.section`/`.note`/`.empty-state`/`.toolbar` became shadcn
@@ -16,8 +23,7 @@
     type ProviderConfig,
     type ProviderSelection,
   } from "../../domain/providers";
-  import { providerRegistry } from "../../infra/chrome-storage";
-  import { createProviderClient } from "../lib/providerClients";
+  import { optionsServices } from "../app-services";
   import {
     describeProviderError,
     isSelectable,
@@ -29,7 +35,6 @@
     type ProviderModel,
     type ProviderPreset,
   } from "../../domain/providers";
-  import { hasHostPermission, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import PresetPicker from "./PresetPicker.svelte";
   import ProviderForm from "./ProviderForm.svelte";
@@ -98,7 +103,7 @@
 
   async function refreshPermissions(): Promise<void> {
     const entries = await Promise.all(
-      providers.map(async (p) => [p.id, await hasHostPermission(p.baseUrl)] as const),
+      providers.map(async (p) => [p.id, await optionsServices().permissions.has(p.baseUrl)] as const),
     );
     permissionGranted = Object.fromEntries(entries);
   }
@@ -106,7 +111,7 @@
   /** Mirrors `src/sidepanel/stores/selection.svelte.ts`'s `buildClient`: a missing factory (registry.ts: no client registered for this provider's type) is a programming-error path here, not a real `ProviderError` — `undefined` is the honest signal, never a fabricated network/auth failure. */
   function buildClient(config: ProviderConfig): ChatProvider | undefined {
     try {
-      return createProviderClient(config);
+      return optionsServices().createProviderClient(config);
     } catch {
       return undefined;
     }
@@ -176,7 +181,7 @@
       staleDefaultReason = undefined;
       return;
     }
-    const resolved = await resolveSelection(providerRegistry, defaultSelection);
+    const resolved = await resolveSelection(optionsServices().providers, defaultSelection);
     if (resolved.status !== "ok") {
       staleDefaultReason = "The provider it points to has been removed.";
       return;
@@ -193,8 +198,9 @@
   }
 
   async function refresh(): Promise<void> {
-    providers = await providerRegistry.listProviders();
-    defaultSelection = await providerRegistry.getDefaultSelection();
+    const registry = optionsServices().providers;
+    providers = await registry.listProviders();
+    defaultSelection = await registry.getDefaultSelection();
 
     // Drop model-option state for providers that no longer exist, so a
     // deleted provider can't leave a stale entry behind if it's ever
@@ -215,26 +221,22 @@
     // Keep the "Permission needed" / "Permission granted" badges live if the
     // user grants or revokes a host permission from chrome://extensions
     // while this page is open, not just right after a Test Connection click.
-    const onPermissionsChanged = () => {
+    // Card 78: the `chrome.permissions.onAdded`/`onRemoved` pair behind this
+    // is the port's `onChanged`, which hands back one teardown.
+    return optionsServices().permissions.onChanged(() => {
       refreshPermissions();
-    };
-    chrome.permissions.onAdded.addListener(onPermissionsChanged);
-    chrome.permissions.onRemoved.addListener(onPermissionsChanged);
-    return () => {
-      chrome.permissions.onAdded.removeListener(onPermissionsChanged);
-      chrome.permissions.onRemoved.removeListener(onPermissionsChanged);
-    };
+    });
   });
 
   async function handleAddSubmit(data: Omit<ProviderConfig, "id">): Promise<void> {
-    await providerRegistry.addProvider(data);
+    await optionsServices().providers.addProvider(data);
     addStep = "closed";
     chosenPreset = undefined;
     await refresh();
   }
 
   async function handleEditSubmit(id: string, data: Omit<ProviderConfig, "id">): Promise<void> {
-    await providerRegistry.updateProvider(id, data);
+    await optionsServices().providers.updateProvider(id, data);
     editingId = null;
     await refresh();
   }
@@ -244,7 +246,7 @@
       `Remove "${provider.name}"? Any tab session currently using it will be left with a dangling provider and prompted to pick a replacement.`,
     );
     if (!ok) return;
-    await providerRegistry.removeProvider(provider.id);
+    await optionsServices().providers.removeProvider(provider.id);
     delete testOutcomes[provider.id];
     delete permissionGranted[provider.id];
     await refresh();
@@ -256,7 +258,7 @@
     const next = [...providers];
     [next[index], next[target]] = [next[target], next[index]];
     providers = next; // optimistic reorder while the write lands
-    await providerRegistry.reorderProviders(next.map((p) => p.id));
+    await optionsServices().providers.reorderProviders(next.map((p) => p.id));
   }
 
   /** Whether `provider`'s model options are still loading — the row shows a loading state, no reason yet (card 52). */
@@ -306,13 +308,13 @@
     const options = defaultModelOptionsFor(provider);
     if (!options.some((o) => o.model.id === modelId)) return;
 
-    await providerRegistry.setDefaultSelection({ providerId: provider.id, model: modelId });
+    await optionsServices().providers.setDefaultSelection({ providerId: provider.id, model: modelId });
     defaultSelection = { providerId: provider.id, model: modelId };
     await refreshStaleDefault();
   }
 
   /**
-   * "Test connection" for a saved row — MUST call `chrome.permissions.request`
+   * "Test connection" for a saved row — MUST call `permissions.request`
    * as the first `await` when the grant isn't already known-true
    * (decisions/09): a click handler is the only place the browser honours
    * that request, and any async work ahead of it risks losing the gesture.
@@ -324,7 +326,7 @@
     try {
       let granted = permissionGranted[provider.id];
       if (granted !== true) {
-        granted = await requestHostPermission(provider.baseUrl);
+        granted = await optionsServices().permissions.request(provider.baseUrl);
         permissionGranted = { ...permissionGranted, [provider.id]: granted };
         if (!granted) {
           testOutcomes = {

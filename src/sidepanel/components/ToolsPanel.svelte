@@ -2,7 +2,7 @@
   /**
    * Tools view (card 11): everything the active page has actually
    * published on `document.modelContext`, live — this list is exactly
-   * `panel.tools`, which src/sidepanel/services/activeTab.ts keeps in step
+   * `panel.tools`, which src/infra/chrome-runtime/tab-sync.ts keeps in step
    * with the worker's registry as the page registers/unregisters tools, so
    * nothing here needs its own polling or subscription.
    *
@@ -29,7 +29,7 @@
    * states (the three above, plus the "no MCP server tools" case below)
    * render through shadcn's Empty component now, same copy as before.
    */
-  import type { SerializedTool } from "../../infra/chrome-runtime";
+  import type { SerializedTool } from "../../domain/tools";
   import type { MergedTool } from "../../domain/tools";
   import ToolListItem from "./ToolListItem.svelte";
   import Icon from "./Icon.svelte";

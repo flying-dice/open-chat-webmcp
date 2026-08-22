@@ -17,7 +17,7 @@
 // malformed response — every one of those gets its own outcome kind below,
 // carried straight through with the client's own message, rather than one
 // generic "connection failed". User-facing WORDING for each kind lives in
-// mcpTestResultDisplay.ts, not here — this module only classifies.
+// ./testResultDisplay.ts, not here — this module only classifies.
 
 import type {
   McpCallOptions,
@@ -25,7 +25,7 @@ import type {
   McpServerConfig,
   McpTool,
 } from "../../domain/tools";
-import { mcpToolGateway } from "./mcpClients";
+import { optionsServices } from "../app-services";
 
 export type McpTestOutcome =
   | { kind: "success"; connection: McpConnectionInfo; tools: McpTool[] }
@@ -42,7 +42,7 @@ export type McpTestOutcome =
 /**
  * Run the actual connectivity probe against `config`: a real handshake plus
  * `tools/list`. Assumes the caller has already secured any host permission
- * `config.url` needs (see src/lib/permissions.ts) — this function makes no
+ * `config.url` needs (`HostPermissions`, src/domain/permissions) — this function makes no
  * permission decisions itself, so it can be reused to test an unsaved draft
  * config as easily as a persisted one (mirrors
  * src/options/lib/testConnection.ts's `testProviderConnection` for the same
@@ -52,7 +52,7 @@ export async function testMcpServerConnection(
   config: McpServerConfig,
   opts?: McpCallOptions,
 ): Promise<McpTestOutcome> {
-  const [result] = await mcpToolGateway.discoverAllServerTools([config], opts);
+  const [result] = await optionsServices().mcpTools.discoverAllServerTools([config], opts);
   if (result.status === "ok") {
     return { kind: "success", connection: result.connection, tools: result.tools };
   }

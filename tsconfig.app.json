@@ -21,8 +21,8 @@
     // deprecates it and resolves relative `paths` against this file's
     // directory anyway.
     "paths": {
-      "$lib": ["./src/lib"],
-      "$lib/*": ["./src/lib/*"]
+      "$lib": ["./src/ui"],
+      "$lib/*": ["./src/ui/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]

@@ -23,9 +23,11 @@
 //                              `chrome.storage`, so it lives here
 //   ./ports.ts                 the bundle a composition root builds
 //
-// A composition root builds the bundle (`createChromeStoragePorts`) and the
-// interim `./wiring.ts` holds the one every surface shares until cards 77-79
-// finish threading them through as arguments.
+// A composition root — and, since card 78, ONLY a composition root — builds
+// the bundle with `createChromeStoragePorts()` and hands the ports it needs to
+// its surface's UI. Card 74's interim `./wiring.ts`, the module-level bundle
+// that let a component import `providerRegistry` by name while the UI still
+// took no dependencies, is gone with its last importer.
 
 export { createStorageAreaGateway, type StorageAreaGateway, type StorageAreaName } from "./area";
 export { createChromeStorageChatStore } from "./chat-store";
@@ -39,14 +41,3 @@ export {
 } from "./provider-config-store";
 export { createTracingFlag, type DebugFlag } from "./debug-flags";
 export { createChromeStoragePorts, type ChromeStoragePorts } from "./ports";
-export {
-  chatStore,
-  initChromeStorage,
-  mcpAuthTokenStore,
-  mcpServerRegistry,
-  modelCapabilityCache,
-  providerDefaults,
-  providerRegistry,
-  settingsStore,
-  tracingFlag,
-} from "./wiring";

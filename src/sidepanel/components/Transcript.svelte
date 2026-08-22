@@ -36,7 +36,7 @@
    * properties chat-theme.css/theme.css defined — sheets card 72 has since
    * deleted outright.
    */
-  import Markdown from "../../lib/components/Markdown.svelte";
+  import Markdown from "../../ui/components/Markdown.svelte";
   import ActivityGroup from "./ActivityGroup.svelte";
   import ActivityIndicator from "./ActivityIndicator.svelte";
   import ApprovalCard from "./ApprovalCard.svelte";
@@ -47,7 +47,7 @@
   import { groupTranscript, type TranscriptEntry, type TurnPhase } from "../../domain/chat";
   import { approvals } from "../stores/approvals.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
-  import type { IconName } from "../../lib/icons";
+  import type { IconName } from "../../ui/icons";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -73,7 +73,7 @@
     notices?: Snippet;
     /** Label for the model that produced the replies, shown in each assistant turn's header row. `undefined` when nothing is selected yet. */
     modelLabel?: string;
-    /** Icon for the provider that produced the replies (src/lib/providerIcon.ts's `iconForProvider`, resolving the icon KEY src/domain/providers' preset catalogue names), shown next to `modelLabel`. Falls back to `sparkle` when nothing is resolved yet. */
+    /** Icon for the provider that produced the replies (src/ui/providerIcon.ts's `iconForProvider`, resolving the icon KEY src/domain/providers' preset catalogue names), shown next to `modelLabel`. Falls back to `sparkle` when nothing is resolved yet. */
     modelIcon?: IconName;
   }
 

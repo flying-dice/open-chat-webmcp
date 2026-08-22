@@ -47,7 +47,7 @@ import type {
 // (`ProviderDefaultsStore`, `ModelCapabilityCache`, src/domain/providers),
 // implemented by src/infra/chrome-storage and injected by whichever
 // composition-root wiring builds this client (card 75:
-// src/sidepanel/lib/providerClients.ts, src/options/lib/providerClients.ts).
+// the `createProviderClientFactory` map in each composition root).
 // Nothing below touches storage — an infra adapter importing
 // src/infra/chrome-storage directly would break `adapters-do-not-import-adapters`
 // (.claude/skills/ddd-hexagonal/SKILL.md), so both ports arrive here already

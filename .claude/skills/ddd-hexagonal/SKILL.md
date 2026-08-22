@@ -30,6 +30,7 @@ file is the rulebook for this repo (a Chrome MV3 extension: Vite + Svelte 5
 
   composition roots — the ONLY modules that see concrete types:
     src/sidepanel/main.ts · src/options/main.ts · src/background/sw.ts
+    · src/content/relay.ts
   Each surface wires the infra it needs into the domain ports and owns its
   runtime concerns (message listeners, panel lifecycle, alarms).
 ```
@@ -46,7 +47,8 @@ must run in a bare Node test with zero mocks of platform APIs.
 | Domain | `src/domain/<context>/` | one folder per bounded context (e.g. `chat`, `providers`, `tools`, `settings`); contexts plug together through ports, never by reaching into each other's files |
 | Infrastructure | `src/infra/<tech>/` | named for the technology (`chrome-storage`, `ollama`, `openai`, `mcp`, `webmcp`, `chrome-runtime`), never for the domain; driving and driven adapters alike |
 | UI (driving) | `src/sidepanel/`, `src/options/` | Svelte components + stores; talk to the domain only through injected ports |
-| Composition | the three `main.ts`/`sw.ts` entry points | one per runtime surface; nothing else instantiates infra |
+| Shared UI | `src/ui/` | presentation BOTH Svelte surfaces render through, plus the vendored shadcn-svelte kit; may import `src/domain` and itself, nothing else (decisions/33) |
+| Composition | the four `main.ts`/`sw.ts`/`relay.ts` entry points | one per runtime surface; nothing else instantiates infra |
 
 ## Ports
 
@@ -66,6 +68,13 @@ must run in a bare Node test with zero mocks of platform APIs.
 - Wiring is plain constructor/factory injection: a composition root builds
   the concrete adapter and passes it in. No service locator, no module-level
   singletons holding infra.
+- For the two Svelte surfaces the hand-off is `src/<surface>/app-services.ts`:
+  a module the root fills in once with `init…Services(...)` before
+  `mount(App)`, whose every field is a domain port or a small interface
+  declared there. It constructs nothing and imports no adapter, so neither
+  does anything that reads it. That is the shape a Svelte-5 rune store — which
+  cannot receive a prop — can still be injected through; it is not licence for
+  a registry.
 
 ## Composition root duties (and ONLY its duties)
 
@@ -111,8 +120,10 @@ must run in a bare Node test with zero mocks of platform APIs.
 | "util"/"common"/"helpers" module | it's hiding a layer — name the layer or inline it |
 | one UI surface importing another's modules | shared code lives in domain or infra, or stays duplicated until it earns a home |
 
-`src/lib/components/ui/` (generated shadcn-svelte source) is vendored UI
+`src/ui/components/ui/` (generated shadcn-svelte source) is vendored UI
 kit, not our architecture — exempt from these rules, never imports domain.
+It lives under `src/ui`, the shared UI layer, which is NOT exempt: see
+decisions/33 for why the old `src/lib` was renamed rather than carved out.
 
 ## The lint
 
@@ -120,10 +131,32 @@ kit, not our architecture — exempt from these rules, never imports domain.
 (direction, cross-surface, barrel-only context edges — `.ts` and `.svelte`
 alike) plus `scripts/guard-boundaries.mjs` for the platform GLOBALS
 (`chrome.*`, `fetch`, `document`) that are not imports and so are invisible
-to any import lint. Run it before you claim a move is done. Rules that are
-not yet satisfiable — `src/lib` still holds infra pending cards 75-79 — are
-written out and commented in that config, each naming the card that turns it
-on; uncomment there rather than rewriting.
+to any import lint. Run it before you claim a move is done.
+
+Card 78 closed the DDD phase: NOTHING is deferred any more. The full
+direction is enforced today —
+
+| rule | says |
+| --- | --- |
+| `domain-is-pure` | src/domain imports nothing outside src/domain |
+| `domain-has-no-dependencies` | src/domain takes no npm dependency |
+| `domain-contexts-meet-at-barrels` | one context reaches another only via its `index.ts` |
+| `contexts-are-imported-through-their-barrel` | so does everything outside src/domain |
+| `infra-does-not-import-ui` | an adapter never imports a surface or src/ui |
+| `adapters-do-not-import-adapters` | two adapters meet at a domain port |
+| `only-roots-construct-infra` | only a composition root names src/infra — for an instance, a type, or a constant |
+| `ui-does-not-import-infra` | the same edge, said in UI terms |
+| `no-src-lib` | the grab bag is gone and stays gone |
+| `shared-ui-is-ui-only` | src/ui sees src/domain and itself |
+| `no-cross-surface-imports` | one surface never imports another's modules |
+| `no-circular` (warn) | an import cycle means two modules are really one |
+| `no-unresolvable` | a stale path from a move |
+
+plus three globals containment scans: `chrome.*` only in `src/infra/` and the
+four roots, `chrome.storage` only in `src/infra/chrome-storage/`,
+`chrome.identity` only in `src/infra/mcp/`. All three exception lists are
+empty. A rule that is not true of the tree is a card, not a commented-out
+block.
 
 When a change genuinely needs to break one of these rules, that's a
 decision record (`decisions/`), not a drive-by.

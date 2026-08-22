@@ -25,7 +25,7 @@
   import Icon from "./Icon.svelte";
   import { originLabel } from "../lib/toolOrigin";
   import type { TurnPhase } from "../../domain/chat";
-  import type { IconName } from "../../lib/icons";
+  import type { IconName } from "../../ui/icons";
   import { formatDuration } from "../lib/duration";
 
   /**

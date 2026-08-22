@@ -1,3 +1,15 @@
+// The options page's COMPOSITION ROOT (decisions/29-ddd-hexagonal-typescript-layout.md,
+// .claude/skills/ddd-hexagonal/SKILL.md) — the twin of
+// src/sidepanel/main.ts; read that file's header for the three jobs a root
+// has and the order they happen in.
+//
+// Card 78 is what made this real. Before it, seven of this page's eleven
+// components called `chrome.*` themselves and three of them constructed
+// adapters through interim wiring modules; now every adapter below is built
+// here, once, and handed to the UI as ports through
+// src/options/app-services.ts. `only-roots-construct-infra` in
+// .dependency-cruiser.cjs is what keeps it that way.
+
 import { mount } from "svelte";
 // Card 71 (decisions/28-shadcn-svelte-maia-zinc.md): the options page is
 // fully migrated to shadcn-svelte + Tailwind, so this is its ONLY stylesheet.
@@ -9,29 +21,48 @@ import { mount } from "svelte";
 import "../app.css";
 import App from "./App.svelte";
 
-// CARD 75: the old `registerProviderType`/`createProviderClient` locator
-// (src/lib/providers/clients.ts, deleted) needed a self-registering
-// side-effect import of the OpenAI client on every entry point that could
-// construct one — a latent "unregistered provider type" throw for any new
-// entry point that forgot it. `src/options/lib/providerClients.ts` replaces
-// that with an exhaustive `Record<ProviderType, ...>` built from
-// `src/infra/ollama` and `src/infra/openai` directly; there is nothing left
-// for this root to import just for its side effect.
+import { createProviderClientFactory } from "../domain/providers";
+import { createMcpSignIn } from "../domain/tools";
+import { createChromeHostPermissions } from "../infra/chrome-runtime";
+import { createChromeStoragePorts } from "../infra/chrome-storage";
+import { startDarkModeSync } from "../infra/dom";
+import { createMcpOAuthClient, createMcpToolGateway } from "../infra/mcp";
+import { createOllamaProvider } from "../infra/ollama";
+import { createOpenAiProvider } from "../infra/openai";
 
-// CARD 74 — storage wiring. Every `chrome.storage`-backed port this surface
-// uses (`ChatStore`, `ProviderRegistry`, `McpServerRegistry`,
-// `SettingsStore`, and the two provider-config stores) is built here, once,
-// by the composition root. The bundle is currently ALSO exported as named
-// bindings from `src/infra/chrome-storage/wiring.ts`, which is what the
-// stores and components import while they still take no dependencies — read
-// that file's header for why, and for exactly what cards 77/78 delete to
-// turn this into real injection. Calling it here is what makes "the root
-// constructs the infrastructure" true today rather than aspirational.
-import { initChromeStorage } from "../infra/chrome-storage";
+import { initOptionsServices } from "./app-services";
 
-import { startDarkModeSync } from "../lib/dark-mode";
+const storage = createChromeStoragePorts();
+const permissions = createChromeHostPermissions();
 
-initChromeStorage();
+// Card 75's exhaustive `Record<ProviderType, ...>` dispatcher — see the side
+// panel root for why the old runtime locator went. Both surfaces build their
+// own, from their own storage ports, so neither imports the other's.
+const createProviderClient = createProviderClientFactory({
+  ollama: (config) =>
+    createOllamaProvider(config, {
+      capabilityCache: storage.modelCapabilityCache,
+      defaults: storage.providerDefaults,
+    }),
+  openai: createOpenAiProvider,
+});
+
+// Unlike the side panel, this surface uses the WHOLE OAuth client:
+// McpServerForm.svelte drives discovery, dynamic registration and the
+// interactive sign-in from a click handler (card 63), through the
+// `McpSignIn` service that owns their ORDER (src/domain/tools/sign-in.ts).
+const mcpOAuthClient = createMcpOAuthClient({ tokenStore: storage.mcpAuthTokenStore });
+
+initOptionsServices({
+  providers: storage.providerRegistry,
+  createProviderClient,
+  mcpServers: storage.mcpServerRegistry,
+  mcpTools: createMcpToolGateway({ auth: mcpOAuthClient }),
+  mcpSignIn: createMcpSignIn({ oauth: mcpOAuthClient, permissions }),
+  settings: storage.settingsStore,
+  chats: storage.chatStore,
+  permissions,
+});
 
 // Must run before mount so the first paint is already in the right theme.
 startDarkModeSync();

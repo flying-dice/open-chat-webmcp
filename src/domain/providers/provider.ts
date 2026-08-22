@@ -38,6 +38,22 @@ import type { SerializedTool } from "../tools";
  */
 export type ProviderType = "ollama" | "openai";
 
+/**
+ * The base URL an `openai`-type config falls back to when it doesn't set one.
+ *
+ * A DOMAIN constant rather than an adapter one (card 78): the options page's
+ * provider form pre-fills the field with it while the user is still deciding
+ * what to register, which is well before any wire client exists — and a form
+ * reaching into src/infra/openai for one string was the last thing keeping
+ * `ui-does-not-import-infra` from holding. `baseUrl` is the HOST only: every
+ * request path appends its own `/v1/...` suffix (the same convention Ollama's
+ * client uses for `/api/...`), so an OpenAI-compatible host — OpenRouter's
+ * `https://openrouter.ai/api`, a local proxy — works by pointing this at that
+ * host, never at a pre-built `/v1/chat/completions` URL. src/infra/openai
+ * reads it from here.
+ */
+export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
+
 // ---------------------------------------------------------------------------
 // Custom request headers (decisions/15-custom-headers-are-credentials.md)
 // ---------------------------------------------------------------------------

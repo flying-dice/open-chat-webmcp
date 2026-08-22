@@ -52,8 +52,10 @@ export interface ChromeStoragePorts {
  * The returned `chatStore` owns per-surface mutable state (its debounced
  * write map and its index-write queue), so calling this twice in one surface
  * would give two stores that do not serialize against each other — exactly
- * the interleaving card 55 fixed. One call per surface; see ./wiring.ts for
- * how that is currently guaranteed.
+ * the interleaving card 55 fixed. Exactly one call per surface, from its
+ * composition root: src/sidepanel/main.ts and src/options/main.ts each make
+ * it once and hand the ports on through their `app-services` module, which is
+ * what card 78 replaced ./wiring.ts with.
  */
 export function createChromeStoragePorts(): ChromeStoragePorts {
   const local = createStorageAreaGateway("local");

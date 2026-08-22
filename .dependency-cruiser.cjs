@@ -1,7 +1,8 @@
 /**
  * Boundary guard — the lint half of `npm run guard:boundaries`
  * (decisions/29-ddd-hexagonal-typescript-layout.md,
- * decisions/31-clean-code-guard.md, card 73).
+ * decisions/31-clean-code-guard.md, decisions/33-shared-ui-layer.md,
+ * cards 73-78).
  *
  * The folder graph IS the architecture (.claude/skills/ddd-hexagonal/SKILL.md).
  * TypeScript cannot enforce the dependency direction — there are no crates
@@ -17,43 +18,59 @@
  * What it cannot see is the platform GLOBALS — `chrome.*`, `fetch`,
  * `document`, `window` — because those are not imports at all and so fall
  * outside its model entirely. Yet "no chrome.* in the domain" is the single
- * most load-bearing rule in decisions/29. `scripts/guard-boundaries.mjs`
- * covers exactly that gap by scanning src/domain's source text, and
- * `npm run guard:boundaries` runs both. Neither alone is the guard.
+ * most load-bearing rule in decisions/29, and "chrome.* only in an adapter or
+ * a composition root" is card 78's. `scripts/guard-boundaries.mjs` covers
+ * exactly that gap by scanning source text, and `npm run guard:boundaries`
+ * runs both. Neither alone is the guard.
  *
- * ── Enforced today vs. deferred ──────────────────────────────────────────
+ * ── Nothing is deferred any more ─────────────────────────────────────────
  *
- * Card 73 stood up `src/domain` and `src/infra` and moved only the modules
- * that were ALREADY infrastructure-free. Cards 74-76 then took the four
- * `chrome.storage` repositories, the provider wire clients, and the MCP
- * client with its OAuth flow; card 77 took the chat model, the agent turn and
- * the panel god-store's non-view half — leaving `src/lib` holding
- * permissions.ts (card 78's) and the UI odds and ends. So the full Decision 29
- * direction rule —
- * "composition root → infra → domain, and nothing else" — is not satisfiable
- * by today's tree and would fail on the first run, which would make the guard
- * something people skip rather than something that holds.
+ * Cards 73-78 were the DDD move: card 73 stood up src/domain and src/infra;
+ * cards 74-76 took the four `chrome.storage` repositories, the provider wire
+ * clients, and the MCP client with its OAuth flow; card 77 took the chat
+ * model, the agent turn and the panel god-store's non-view half; card 78 took
+ * the UI's remaining `chrome.*` call sites, deleted the five interim wiring
+ * modules those cards left behind, and renamed the emptied `src/lib` grab bag
+ * to `src/ui` — the shared UI layer, which is all that was left in it
+ * (decisions/33).
  *
- * The rules below are therefore split in two:
+ * Through that sequence this file carried three DEFERRED rules: the finished
+ * rule, commented out, each naming the card that would make it true. All
+ * three are now ENFORCED, and the full Decision 29 direction —
+ * "composition root -> infra -> domain, and nothing else" — holds:
  *
- *   ENFORCED  — true of the tree RIGHT NOW, and a regression in any of them
- *               is a real architectural regression. These have teeth today.
- *   DEFERRED  — the Decision 29 end state. Written out in full, commented,
- *               each with the card that turns it on. They are not aspiration
- *               notes to be rewritten later; they are the finished rule,
- *               parked.
+ *   no-src-lib                 card 78 (via decisions/33's rename)
+ *   ui-does-not-import-infra   card 78
+ *   only-roots-construct-infra card 78
  *
- * Turning a deferred rule on is meant to be a one-line uncomment in the card
- * that makes it true — if it needs rewriting instead, say so in that card.
+ * There is no deferred section below any more, and a new rule should not
+ * start one: a rule that is not true of the tree today is a card, not a
+ * comment. When a change genuinely needs to break one of these, that is a
+ * decision record (`decisions/`), not a drive-by.
  */
 
-/** Every runtime surface that owns a composition root (`main.ts` / `sw.ts`). */
+/** Every runtime surface that owns a composition root. */
 const SURFACES = "sidepanel|options|background|content";
+
+/**
+ * The composition roots themselves — the ONLY modules allowed to name a
+ * concrete adapter.
+ *
+ * `relay.ts` is in this list and belongs in it: decisions/29 counts three
+ * roots because it counts the three modules it happened to name, but the
+ * content script is a fourth runtime surface with its own entry point, its
+ * own bundle and its own lifecycle, and it wires src/infra/chrome-runtime's
+ * protocol and the timeout ladder exactly the way `sw.ts` does. Card 78 found
+ * this the moment `only-roots-construct-infra` was switched on: the rule
+ * failed on relay.ts's two imports, and the honest fix was to admit the
+ * fourth root rather than to grant it an exception.
+ */
+const ROOTS = `^src/(${SURFACES})/(main|sw|relay)\\.ts$`;
 
 module.exports = {
   forbidden: [
     // =====================================================================
-    // ENFORCED — true of the tree today
+    // The domain: pure, dependency-free, and reached through its barrels
     // =====================================================================
 
     {
@@ -62,10 +79,11 @@ module.exports = {
       comment:
         "A module in src/domain may not import anything outside src/domain. " +
         "The domain owns the model, the ports and the error vocabulary; " +
-        "adapters (src/infra/*), UI (src/sidepanel, src/options), entry " +
-        "points and the leftover src/lib all depend on IT, never the other " +
-        "way round. If domain code needs something from the world, declare a " +
-        "port here and let a composition root inject the adapter. " +
+        "adapters (src/infra/*), the surfaces (src/sidepanel, src/options, " +
+        "src/background, src/content) and the shared UI layer (src/ui) all " +
+        "depend on IT, never the other way round. If domain code needs " +
+        "something from the world, declare a port here and let a composition " +
+        "root inject the adapter. " +
         "(.claude/skills/ddd-hexagonal/SKILL.md, decisions/29)",
       from: { path: "^src/domain/" },
       to: { path: "^src/(?!domain/)" },
@@ -89,8 +107,9 @@ module.exports = {
       comment:
         "Bounded contexts plug together through their index barrel, never by " +
         "reaching into each other's files — that barrel is the only thing a " +
-        "context promises to keep stable. src/domain/providers/provider.ts " +
-        "importing `../tools` is fine; importing `../tools/merge` is not.",
+        "context promises to keep stable. src/domain/tools/sign-in.ts " +
+        "importing `../permissions` is fine; importing " +
+        "`../permissions/host-permissions` is not.",
       from: { path: "^src/domain/([^/]+)/" },
       to: {
         path: "^src/domain/",
@@ -101,16 +120,15 @@ module.exports = {
       // Card 77. The OUTWARD-FACING half of `domain-contexts-meet-at-barrels`
       // above, which only ever constrained one context importing another.
       //
-      // Nothing outside src/domain deep-imports a context file today — verified
-      // before enabling this, and verified to FAIL on a planted
+      // Nothing outside src/domain deep-imports a context file today —
+      // verified before enabling this, and verified to FAIL on a planted
       // `src/sidepanel/stores/panel.svelte.ts → src/domain/chat/turn.ts`
-      // import. What makes the rule worth having now rather than earlier is
-      // that card 77 took src/domain/chat from two files to nine: `turn.ts`,
+      // import. What made the rule worth having when it landed is that card
+      // 77 took src/domain/chat from two files to nine: `turn.ts`,
       // `service.ts`, `message.ts`, `ports.ts` and the rest are internal
       // structure, and a UI file reaching past `index.ts` for one of them
-      // would re-establish exactly the coupling this card spent its length
-      // removing — a store typed against a specific file of the domain rather
-      // than against what the context promises to keep stable.
+      // would re-establish exactly the coupling that card spent its length
+      // removing.
       name: "contexts-are-imported-through-their-barrel",
       severity: "error",
       comment:
@@ -124,15 +142,24 @@ module.exports = {
         pathNot: "^src/domain/[^/]+/index\\.[cm]?[jt]s$",
       },
     },
+
+    // =====================================================================
+    // The adapters: driven by a root, never by each other, never by the UI
+    // =====================================================================
+
     {
       name: "infra-does-not-import-ui",
       severity: "error",
       comment:
         "An adapter is driven BY a surface, never the reverse. src/infra/* " +
         "may see src/domain (the port it implements) and nothing of " +
-        `src/{${SURFACES}} — a composition root wires the two together.`,
+        `src/{${SURFACES}} or src/ui — a composition root wires the two ` +
+        "together. Card 78 widened this to src/ui, which subsumes the old " +
+        "`infra-does-not-import-src-lib`: the folder that rule named is gone " +
+        "(decisions/33), and what replaced it is the shared UI layer, which " +
+        "an adapter has even less business importing.",
       from: { path: "^src/infra/" },
-      to: { path: `^src/(${SURFACES})/` },
+      to: { path: `^src/(${SURFACES}|ui)/` },
     },
     {
       name: "adapters-do-not-import-adapters",
@@ -146,49 +173,131 @@ module.exports = {
         "earned its keep: moving oauth.ts into src/infra/mcp with its " +
         "`updateServer` call intact would have failed this rule on the first " +
         "run, which is exactly why that write now goes out through " +
-        "`McpAuthTokenStore` (src/domain/tools), injected at the wiring site.",
+        "`McpAuthTokenStore` (src/domain/tools), injected at the wiring site. " +
+        "Card 78 hit it again from the other side: the MCP sign-in flow needs " +
+        "host permissions, and src/infra/mcp may not reach into " +
+        "src/infra/chrome-runtime for them — hence `HostPermissions` " +
+        "(src/domain/permissions) and the orchestration living in " +
+        "src/domain/tools/sign-in.ts.",
       from: { path: "^src/infra/([^/]+)/" },
       to: { path: "^src/infra/", pathNot: "^src/infra/$1/" },
     },
     {
-      // Card 76. The SCOPED half of the deferred `no-src-lib` rule below.
+      // Card 78 — the last of the three deferred rules, and the one that
+      // makes the other two mean something. `ui-does-not-import-infra` alone
+      // would still let src/ui, or a surface module that is not a component,
+      // construct an adapter; this says only a root ever does.
       //
-      // `no-src-lib` cannot be turned on until src/lib is empty, and it is
-      // not: permissions.ts still calls `chrome.permissions` (card 78's), and
-      // the UI odds and ends (markdown.ts, icons.ts, providerIcon.ts,
-      // dark-mode.ts, utils.ts, components/) have no home decided yet. But
-      // the HALF of it that IS true today — that nothing on the INSIDE of the
-      // architecture may depend on the grab bag — is worth having teeth now
-      // rather than after cards 77-79.
-      //
-      // The domain half is already covered by `domain-is-pure`. This is the
-      // infra half: as of card 76 no adapter imports src/lib at all, and the
-      // one that most plausibly would (src/infra/mcp, whose predecessor lived
-      // in src/lib and imported ../permissions through a shim) is exactly the
-      // one this card moved. Widen to `no-src-lib` when src/lib is gone.
-      name: "infra-does-not-import-src-lib",
+      // `to: "^src/infra/[^/]+/"` matches a module INSIDE a tech folder,
+      // which is what an import of `../infra/chrome-storage` resolves to
+      // (its index.ts). The effect is that no module outside src/infra and
+      // outside the four roots may import an adapter at all — not for an
+      // instance, not for a type, not for a constant. Card 77's note flagged
+      // that last part as the half nobody had answered: activeTab.ts and
+      // chatTurn.ts imported src/infra/chrome-runtime for a TYPE, and the
+      // panel store read the timeout ladder out of src/infra/webmcp. The
+      // answer turned out to be that each of those belonged somewhere else —
+      // `SerializedTool` is a domain type the protocol adapter merely
+      // carries, the ladder's rung is an argument the root injects, and the
+      // tab listeners are an adapter of their own.
+      name: "only-roots-construct-infra",
       severity: "error",
       comment:
-        "src/lib is the pre-DDD grab bag cards 74-79 are emptying. An " +
-        "adapter may not reach into it: whatever it needs is either a domain " +
-        "port (src/domain), its own concern (move the file into " +
-        "src/infra/<tech>), or presentation that does not belong in an " +
-        "adapter at all.",
-      from: { path: "^src/infra/" },
+        "Only a composition root reaches for an adapter — one per runtime " +
+        "surface (src/sidepanel/main.ts, src/options/main.ts, " +
+        "src/background/sw.ts, src/content/relay.ts), and nothing else. This " +
+        "is the rule that keeps 'swap the store' a one-line change. If you " +
+        "need a TYPE from an adapter, the type belongs in src/domain; if you " +
+        "need an INSTANCE, the root builds it and hands it to you.",
+      from: { pathNot: [ROOTS, "^src/infra/"] },
+      to: { path: "^src/infra/[^/]+/" },
+    },
+    {
+      // Card 78. Narrower than `only-roots-construct-infra` above and kept
+      // alongside it deliberately: this one names the UI specifically, so a
+      // component or store that regresses gets the message about ports and
+      // injection rather than the message about composition roots. Both fire
+      // on the same edge; the wording is the point.
+      name: "ui-does-not-import-infra",
+      severity: "error",
+      comment:
+        "A component or store sees domain types and injected ports only. " +
+        "Concrete infrastructure is constructed in the surface's " +
+        "composition root (src/sidepanel/main.ts, src/options/main.ts, " +
+        "src/background/sw.ts, src/content/relay.ts) and handed down — for " +
+        "the two Svelte surfaces, through their `app-services.ts` module, " +
+        "which the root initialises before `mount(App)`.",
+      from: { path: `^src/(${SURFACES}|ui)/`, pathNot: ROOTS },
+      to: { path: "^src/infra/" },
+    },
+
+    // =====================================================================
+    // The UI: one shared layer, and no cross-surface edges
+    // =====================================================================
+
+    {
+      // Cards 74-78 emptied src/lib of everything that was not UI, and
+      // decisions/33 renamed what was left. This rule is the ratchet on that:
+      // the grab bag is gone, and nothing may recreate it under its old name.
+      //
+      // Note it is NOT vacuous by construction — a `mkdir src/lib` plus one
+      // import fails it — and it is deliberately blind to whether the new
+      // file would be "fine": the point of decisions/29 is that a module
+      // wears its layer in its path, and `lib` names no layer.
+      name: "no-src-lib",
+      severity: "error",
+      comment:
+        "src/lib no longer exists (decisions/33): a module is a domain rule " +
+        "(src/domain), an adapter (src/infra), shared UI (src/ui), or one " +
+        "surface's own code. `lib` names no layer, which is how the pre-DDD " +
+        "grab bag ended up holding domain rules, four chrome.storage " +
+        "repositories, three wire clients and the shared UI kit at once.",
+      from: { pathNot: "^src/lib/" },
       to: { path: "^src/lib/" },
+    },
+    {
+      // Card 78 / decisions/33. src/ui is the FOURTH layer: the vendored
+      // shadcn-svelte kit plus the handful of presentation modules both
+      // Svelte surfaces render through (markdown.ts and its Markdown.svelte,
+      // icons.ts, providerIcon.ts, utils.ts). Naming it was only half the
+      // move; this is the other half, and without it "shared UI" would be a
+      // grab bag with a nicer name.
+      //
+      // It may import src/domain — `providerIcon.ts` maps the preset
+      // catalogue's icon KEY (src/domain/providers) onto a glyph, which is
+      // exactly the direction card 73 established when it moved that mapping
+      // out of the domain. It may not import an adapter (that is
+      // `only-roots-construct-infra` too, and this says it in UI terms) and
+      // it may not import a surface, which would invert the dependency that
+      // makes it shareable at all.
+      name: "shared-ui-is-ui-only",
+      severity: "error",
+      comment:
+        "src/ui is the shared UI layer: presentation both Svelte surfaces " +
+        "render through, plus the vendored shadcn-svelte kit. It may see " +
+        "src/domain (types and rules) and itself, and nothing else. A shared " +
+        "UI module that needs an adapter wants a prop; one that needs a " +
+        "surface's own module is not shared code and belongs in that surface.",
+      from: { path: "^src/ui/" },
+      to: { path: "^src/(?!ui/|domain/)" },
     },
     {
       name: "no-cross-surface-imports",
       severity: "error",
       comment:
         "One runtime surface may never import another's modules. Shared code " +
-        "belongs in src/domain (a rule) or src/infra (an adapter), or it " +
-        "stays duplicated until it earns a home. The side panel and the " +
-        "options page ship as separate bundles; a cross-import silently " +
-        "doubles a module into both.",
+        "belongs in src/domain (a rule), src/infra (an adapter) or src/ui " +
+        "(presentation), or it stays duplicated until it earns a home. The " +
+        "side panel and the options page ship as separate bundles; a " +
+        "cross-import silently doubles a module into both.",
       from: { path: `^src/(${SURFACES})/([^/]+)` },
       to: { path: `^src/(${SURFACES})/`, pathNot: "^src/$1/" },
     },
+
+    // =====================================================================
+    // Hygiene
+    // =====================================================================
+
     {
       // WARN, not error, and deliberately so.
       //
@@ -197,9 +306,9 @@ module.exports = {
       // "provider-type registration by side-effect import" inversion
       // decisions/29 calls out — is GONE as of card 74, incidentally rather
       // than by design: `ProviderConfig` moved to src/domain/providers, so
-      // the Ollama adapter no longer imports the module that constructs it,
-      // and what is left of registry.ts is renamed clients.ts. The service
-      // locator itself is still there and is still card 79's to delete.
+      // the Ollama adapter no longer imports the module that constructs it.
+      // The service locator itself went with card 75's exhaustive factory
+      // map.
       //
       // What remains is ToolArgValue.svelte importing ITSELF — it renders a
       // recursive JSON tree, and a self-import is how a Svelte component
@@ -225,106 +334,24 @@ module.exports = {
       severity: "error",
       comment:
         "An import that resolves to nothing. Almost always a path left stale " +
-        "by a move — exactly what card 73 and cards 74-79 do constantly.",
+        "by a move — exactly what cards 73-78 did constantly.",
       from: {},
       to: { couldNotResolve: true },
     },
-
-    // =====================================================================
-    // DEFERRED — the Decision 29 end state, parked until the card named in
-    // each comment makes it true. Uncomment there; do not soften.
-    // =====================================================================
-
-    // Cards 78-79 (the last one to empty src/lib turns this on). src/lib was
-    // the pre-DDD grab bag: domain rules, four chrome.storage repositories,
-    // three wire clients and the shared UI kit all at once. Card 74 took the
-    // repositories, card 75 the provider wire clients, card 76 the MCP client
-    // and its OAuth flow (plus the dead src/lib/protocol.ts and
-    // src/lib/mcp/permissions.ts re-export shims).
-    //
-    // What is left, and why this is STILL parked: permissions.ts calls
-    // `chrome.permissions` and is infrastructure — card 78 moves it to
-    // src/infra/chrome-runtime. The rest (markdown.ts, icons.ts,
-    // providerIcon.ts, dark-mode.ts, utils.ts, components/) is UI-layer or
-    // pure, so it no longer VIOLATES the layering the way an adapter parked
-    // in src/lib did — but "src/lib" is a name for no layer, and both
-    // surfaces import it, so it cannot simply be relabelled shared UI
-    // without a decision. Enabling this rule with a carve-out for those
-    // files would encode "src/lib is fine actually", the opposite of what
-    // decisions/29 concluded. `infra-does-not-import-src-lib` above takes
-    // the half that is true today; this one waits for the rest. When src/lib
-    // is gone, nothing may recreate it.
-    // {
-    //   name: "no-src-lib",
-    //   severity: "error",
-    //   comment:
-    //     "src/lib no longer exists: a module is a domain rule (src/domain), " +
-    //     "an adapter (src/infra), or one surface's own code. The vendored " +
-    //     "shadcn-svelte kit under src/lib/components/ui is excluded from " +
-    //     "this cruise entirely and is not an exception to it.",
-    //   from: { pathNot: "^src/lib/" },
-    //   to: { path: "^src/lib/" },
-    // },
-
-    // Card 78/79 (once the options page's 7-of-11 direct chrome.* components
-    // and the side panel's stores talk to injected ports instead). Card 74
-    // made this edge REAL rather than pending: the UI now imports the port
-    // instances from src/infra/chrome-storage/wiring.ts, the interim shared
-    // bundle whose own header describes exactly what deleting it takes.
-    // Cards 75 and 76 added four more per-surface wiring files on the same
-    // pattern (src/{sidepanel,options}/lib/{providerClients,mcpClients}.ts),
-    // each a two-line factory call carrying the same delete-me header.
-    //
-    // CARD 77 correction: those five wiring files are the whole of the
-    // *deliberate interim wiring*, but they were never the whole of what this
-    // rule reports. A UI module also reaches for an adapter directly wherever
-    // it needs a TYPE or a message helper rather than a port instance —
-    // src/sidepanel/services/activeTab.ts and src/background/sw.ts speak
-    // src/infra/chrome-runtime's protocol, src/sidepanel/services/chatTurn.ts
-    // builds a `PageToolExecutor` from it, and the panel store reads the
-    // timeout ladder's outermost rung out of src/infra/webmcp to inject it
-    // into the domain turn. Card 78 has to answer both halves: pass the port
-    // bundle down, AND decide where a surface's own protocol/ladder constants
-    // are allowed to come from. Card 77 did not reduce this debt, but it did
-    // stop adding to it: everything it moved into src/domain/chat takes its
-    // adapters as arguments.
-    // {
-    //   name: "ui-does-not-import-infra",
-    //   severity: "error",
-    //   comment:
-    //     "A component or store sees domain types and injected ports only. " +
-    //     "Concrete infrastructure is constructed in the surface's " +
-    //     "composition root (src/sidepanel/main.ts, src/options/main.ts, " +
-    //     "src/background/sw.ts) and passed in.",
-    //   from: { path: `^src/(${SURFACES})/`, pathNot: `^src/(${SURFACES})/(main|sw)\\.ts$` },
-    //   to: { path: "^src/infra/" },
-    // },
-
-    // Card 79 (with the provider-type registration rewrite). Today
-    // src/sidepanel/main.ts and src/options/main.ts register the OpenAI
-    // provider by SIDE-EFFECT import, which is why a new entry point that
-    // forgets it hits a runtime "unregistered type" throw (decisions/29).
-    // Explicit wiring is what makes this rule both possible and pointful.
-    // {
-    //   name: "only-roots-construct-infra",
-    //   severity: "error",
-    //   comment:
-    //     "Only a composition root instantiates an adapter — one per runtime " +
-    //     "surface, and nothing else. This is the rule that keeps 'swap the " +
-    //     "store' a one-line change.",
-    //   from: { pathNot: [`^src/(${SURFACES})/(main|sw)\\.ts$`, "^src/infra/"] },
-    //   to: { path: "^src/infra/[^/]+/" },
-    // },
   ],
 
   options: {
     /**
      * The vendored shadcn-svelte kit is generated source, not our
-     * architecture (decisions/31, ddd-hexagonal SKILL.md). Excluded from
-     * BOTH guards — this cruise and scripts/guard-clean-code.mjs.
+     * architecture (decisions/31, decisions/33, ddd-hexagonal SKILL.md).
+     * Excluded from BOTH guards — this cruise and
+     * scripts/guard-clean-code.mjs. It moved with the rest of src/lib in card
+     * 78 and is at src/ui/components/ui/ now; the path is the shadcn CLI's
+     * (`components.json`'s `ui` alias), under the folder that names the
+     * layer.
      */
     exclude: {
-      path: "^src/lib/components/ui/",
+      path: "^src/ui/components/ui/",
     },
     doNotFollow: {
       path: "node_modules",
@@ -332,7 +359,9 @@ module.exports = {
     /**
      * Resolves the `$lib` alias the shadcn-svelte kit imports through. The
      * app config is the one svelte-check uses, so the guard and the
-     * typechecker agree on what a path means.
+     * typechecker agree on what a path means. The alias still spells itself
+     * `$lib` — that is the shadcn CLI's convention and every vendored file
+     * writes it — but it points at src/ui (decisions/33).
      */
     tsConfig: {
       fileName: "tsconfig.app.json",

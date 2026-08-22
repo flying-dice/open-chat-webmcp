@@ -22,7 +22,7 @@
   // description instead, so nothing is deleted with less warning than before.
   import { onMount } from "svelte";
   import type { ChatSummary } from "../../domain/chat";
-  import { chatStore } from "../../infra/chrome-storage";
+  import { optionsServices } from "../app-services";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import * as Alert from "$lib/components/ui/alert";
   import * as Card from "$lib/components/ui/card";
@@ -34,11 +34,11 @@
   let sessions = $state<ChatSummary[]>([]);
   let sessionsLoading = $state(true);
   let clearingHistory = $state(false);
-  /** The AlertDialog replacing the old `confirm()` — closed explicitly once `chatStore.clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
+  /** The AlertDialog replacing the old `confirm()` — closed explicitly once `chats.clearAllChats()` settles so the dialog can't disappear before the work it authorised is done. */
   let confirmOpen = $state(false);
 
   async function refreshSessions(): Promise<void> {
-    sessions = await chatStore.listChatSummaries();
+    sessions = await optionsServices().chats.listChatSummaries();
   }
 
   onMount(() => {
@@ -59,7 +59,7 @@
     if (sessions.length === 0) return;
     clearingHistory = true;
     try {
-      await chatStore.clearAllChats();
+      await optionsServices().chats.clearAllChats();
       sessions = [];
     } finally {
       clearingHistory = false;

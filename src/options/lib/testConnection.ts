@@ -1,9 +1,9 @@
 // "Test connection" for the provider registry UI (card 22). Resolves
-// through the provider's own `ChatProvider` client — built via
-// `createProviderClient` (./providerClients.ts, card 75) exactly the way
-// the side panel would — never a bespoke fetch of our own, so a client's
-// auth headers, wire quirks, and error classification are exercised for
-// real rather than approximated here.
+// through the provider's own `ChatProvider` client — built via the
+// `createProviderClient` dispatcher this surface's composition root wired
+// (card 75, card 78) exactly the way the side panel would — never a bespoke
+// fetch of our own, so a client's auth headers, wire quirks, and error
+// classification are exercised for real rather than approximated here.
 //
 // The point of this module: collapse nothing. `ProviderError` (src/domain/providers/provider.ts)
 // already distinguishes auth failures, unreachable-or-CORS, "this endpoint
@@ -12,7 +12,7 @@
 // "connection failed".
 
 import type { ProviderConfig } from "../../domain/providers";
-import { createProviderClient } from "./providerClients";
+import { optionsServices } from "../app-services";
 
 export type TestOutcome =
   | { kind: "success"; modelCount: number }
@@ -25,9 +25,9 @@ export type TestOutcome =
        * Carried straight through from `ProviderError`'s `unreachable-or-cors`
        * kind (src/domain/providers/provider.ts) when the client supplied one — e.g.
        * Ollama's copyable `OLLAMA_ORIGINS`/`launchctl setenv` fix
-       * (src/lib/ollama.ts's `originRejectedError`). `undefined` when
+       * (src/infra/ollama's `originRejectedError`). `undefined` when
        * there's no single command to hand back. UI built on this should
-       * render `fix.command` verbatim (see testResultDisplay.ts's sibling
+       * render `fix.command` verbatim (see testResultDisplay.ts's
        * doc), the same rule `ProviderError.fix` documents.
        */
       fix?: { label: string; command: string };
@@ -41,7 +41,7 @@ export type TestOutcome =
 /**
  * Run the actual connectivity probe: `listModels()` on a real client bound
  * to `config`. Assumes the caller has already secured any host permission
- * `config.baseUrl` needs (see src/options/lib/permissions.ts) — this
+ * `config.baseUrl` needs (`HostPermissions`, src/domain/permissions) — this
  * function makes no permission decisions itself, so it can be reused to
  * test an unsaved draft config as easily as a persisted one.
  */
@@ -54,7 +54,7 @@ export async function testProviderConnection(
   // try/catch around client construction. `"unexpected"` stays on
   // `TestOutcome` for genuinely unanticipated failures elsewhere in this
   // module's callers.
-  const client = createProviderClient(config);
+  const client = optionsServices().createProviderClient(config);
   const result = await client.listModels();
   if (result.ok) {
     return { kind: "success", modelCount: result.value.length };

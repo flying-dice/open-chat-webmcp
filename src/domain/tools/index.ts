@@ -16,6 +16,12 @@
 // implementation is the `src/infra/mcp` adapter; no surface names that
 // module, only these interfaces.
 //
+// Card 78 added ./sign-in.ts: the discovery -> permissions -> registration ->
+// authorize ORDER an MCP OAuth sign-in must happen in, lifted out of
+// src/options/components/McpServerForm.svelte's click handler. It composes
+// `McpOAuthClient` with `HostPermissions` (src/domain/permissions) and knows
+// no platform API, so the options form keeps only its form state machine.
+//
 // Pure TypeScript — no `chrome.*`, no `fetch`, no DOM, no Svelte. The WebMCP
 // page bridge that also FEEDS this context is an adapter (src/infra/webmcp)
 // and lands in cards 77-79; the `chrome.storage` implementation of
@@ -29,3 +35,4 @@ export * from "./types";
 export * from "./merge";
 export * from "./servers";
 export * from "./gateway";
+export * from "./sign-in";

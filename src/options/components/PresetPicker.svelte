@@ -13,8 +13,8 @@
   // element that gives that keyboard and screen-reader semantics for free.
   //
   // `PROVIDER_PRESETS` entries also carry an `icon`, which since card 73 is
-  // an opaque KEY the UI resolves (src/lib/providerIcon.ts) rather than an
-  // `IconName` the catalogue imported from src/lib/icons.ts. This picker has
+  // an opaque KEY the UI resolves (src/ui/providerIcon.ts) rather than an
+  // `IconName` the catalogue imported from src/ui/icons.ts. This picker has
   // never rendered it and still doesn't, so that change was invisible here.
   import { PROVIDER_PRESETS, type ProviderPreset } from "../../domain/providers";
   import * as Alert from "$lib/components/ui/alert";

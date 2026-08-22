@@ -36,4 +36,4 @@ Nothing here reads `package.json`: the `clientInfo` announced in the handshake c
 
 Every function that crosses the boundary returns an `McpResult` and throws for nothing — including a storage failure while persisting a refreshed token, which is swallowed as best-effort rather than turned into a failed request. The `McpError`/`McpResult` vocabulary lives in `src/domain/tools`; nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or a `fetch` rejection.
 
-Only a composition root — or the interim per-surface wiring it owns (`src/sidepanel/lib/mcpClients.ts`, `src/options/lib/mcpClients.ts`) — constructs what lives here.
+Only a composition root constructs what lives here (`src/sidepanel/main.ts`, `src/options/main.ts`). Card 78 deleted the interim per-surface wiring modules that used to share that job and made `only-roots-construct-infra` enforce it.

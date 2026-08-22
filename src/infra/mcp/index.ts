@@ -7,10 +7,10 @@
 //   createMcpToolGateway({ auth })        ->  McpToolGateway
 //
 // Both port interfaces live in src/domain/tools; a service or component
-// imports the TYPE from there and receives the instance from its surface's
-// wiring (src/sidepanel/lib/mcpClients.ts, src/options/lib/mcpClients.ts),
-// never from this barrel. Only a composition root or that interim wiring
-// imports this file.
+// imports the TYPE from there and receives the instance through its surface's
+// `app-services.ts`, never from this barrel. Only a composition root
+// (src/sidepanel/main.ts, src/options/main.ts) imports this file — card 78's
+// `only-roots-construct-infra` is what says so.
 
 export { createMcpToolGateway, type McpToolGatewayOptions } from "./gateway";
 export { createMcpOAuthClient, type McpOAuthClientOptions } from "./oauth";
