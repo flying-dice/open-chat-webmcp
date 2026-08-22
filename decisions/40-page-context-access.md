@@ -16,17 +16,34 @@ single biggest product capability gap.
 
 ## Decision
 
-Page context becomes a first-class, **explicitly indicated** input:
+Page context becomes a first-class, **explicitly indicated** input,
+governed by a single **sharing gate** (revised 2026-08-24, same day,
+pre-implementation, per Jonathan's direction to match the Gemini panel's
+principle exactly):
 
-- **Selected text**: when the user has a selection in the active tab, the
-  composer offers it as a dismissible chip (pulled on demand — at panel
-  focus and at send — never streamed continuously). Sending with the chip
-  attaches the selection to that turn.
-- **Page content**: a per-chat "Share page" affordance (context-chip
-  action) includes a text extraction of the page with the turn. Extraction
-  is a dependency-free DOM walk in the relay (readability-lite: main text,
+- **The sharing gate**: the context chip's "Sharing <page>" state is a
+  real, dismissible consent control, not a label. While sharing is ON
+  (the default, always visible), the assistant may receive that page's
+  tools, its content on request, and the user's selection. **Dismissing
+  it makes the assistant fully blind to the page**: its tools are hidden
+  from the panel and never attached to a turn, and no content or
+  selection can be pulled, until the user re-enables sharing (scope of
+  the dismissal — per origin, per tab, until navigation — is the
+  implementing card's journalled call; the principle is that re-enabling
+  is as visible as dismissing was).
+- **Selected text**: while sharing is on and the active tab has a
+  selection, the composer offers it as its own dismissible chip (pulled
+  on demand — at panel focus and at send — never streamed continuously).
+  Selection is subordinate to the gate: with sharing dismissed the chip
+  never appears and no selection is attached.
+- **Page content**: a "Share page content" action on the sharing chip
+  includes a text extraction of the page with the turn. Extraction is a
+  dependency-free DOM walk in the relay (readability-lite: main text,
   headings, links' text — no scripts/styles), size-capped with a visible
   truncation note.
+- The background worker's internal tool-registry cache is unaffected by
+  the gate (local discovery only, nothing reaches the model or the UI
+  from it while dismissed) — documented in docs/03.
 - **Transport**: two new pull messages over the existing relay/worker
   protocol (single-sourced message list per card 79's mechanism). The
   relay stays the only page-touching code.
