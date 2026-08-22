@@ -77,6 +77,7 @@
   import { capabilityReason } from "../../ui/capabilityMessage";
   import type { ProviderConfig } from "../../domain/providers";
   import { m } from "../../paraglide/messages.js";
+  import { uiTextDirection } from "../../ui/direction";
 
   /**
    * Wrap a copy-pasteable command as a fenced code block so it renders
@@ -399,6 +400,7 @@
 
     <Popover.Content
       side="top"
+      dir={uiTextDirection()}
       align="end"
       sideOffset={8}
       aria-label={m.providerPicker_choosePopoverAriaLabel()}

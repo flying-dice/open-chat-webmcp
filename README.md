@@ -53,6 +53,12 @@ themes: 11 PNGs — to gitignored `verify/output/screenshots/`. See
   [UI and styling](docs/01-architecture.md#ui-and-styling) section of the
   architecture doc.
 
+- Speaks **ten languages** — English, 简体中文, 日本語, Deutsch, Français,
+  Español, Português (Brasil), 한국어, Русский and العربية — switchable from
+  the options page, with Arabic laid out right-to-left. English is the source
+  copy; the other nine are machine-produced and have not had a native review
+  yet, so corrections are welcome. See [docs/06-i18n.md](docs/06-i18n.md).
+
 It does **not** phone home. There is no telemetry, no bundled server, and no
 account system — see [Privacy and trust](docs/03-privacy-and-trust.md).
 
@@ -137,7 +143,7 @@ service worker aren't hot-reloadable.
 | `guard:clean-code` | a `TODO: clean-code` marker scores **> 0.5**, or its score can't be parsed |
 | `guard:return-types` | an exported function under `src/` has no declared return type |
 | `guard:throws` | a `throw`/`Promise.reject` under `src/` isn't on `scripts/throw-allowlist.json` with its invariant named |
-| `guard:i18n` | a locale under `messages/` is missing a key the base locale has, carries one it doesn't, declares a plural as a flat string, or has no file at all |
+| `guard:i18n` | a locale under `messages/` is missing a key the base locale has, carries one it doesn't, declares a plural as a flat string, renames or drops a `{placeholder}`, loses a `<code>`/`<a>` tag, matches on English's plural categories instead of its own, or has no file at all |
 
 **The release gate is all five of** `check`, `test`, `build`, `guard`,
 `verify` **green** — see [docs/05-testing.md](docs/05-testing.md).
@@ -437,6 +443,9 @@ layer that runs against a real browser; everything below it is `npm test`.
   failure modes and their actual fixes.
 - [docs/05-testing.md](docs/05-testing.md) — the test pyramid, the shared
   storage fixture, the screenshot matrix, and the release gate.
+- [docs/06-i18n.md](docs/06-i18n.md) — the ten languages, how to add a string
+  and how to add a locale, the plural-category rules per language, and the
+  RTL notes.
 
 ## Project status
 

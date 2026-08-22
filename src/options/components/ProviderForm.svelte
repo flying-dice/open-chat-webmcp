@@ -58,6 +58,7 @@
   import HeadersEditor from "./HeadersEditor.svelte";
   import Markdown from "../../ui/components/Markdown.svelte";
   import { m } from "../../paraglide/messages.js";
+  import { uiTextDirection } from "../../ui/direction";
   import * as Alert from "$lib/components/ui/alert";
   import * as Field from "$lib/components/ui/field";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -356,7 +357,7 @@
         onValueChange={(next) => (type = next as ProviderType)}
       >
         <Select.Trigger id="pf-type" class="w-full">{typeLabel}</Select.Trigger>
-        <Select.Content>
+        <Select.Content dir={uiTextDirection()}>
           {#each PROVIDER_TYPES as t (t.value)}
             <Select.Item value={t.value} label={t.label} />
           {/each}

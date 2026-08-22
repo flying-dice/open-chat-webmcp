@@ -41,6 +41,8 @@
   import type { Result } from "../../domain/result";
   import type { StorageError } from "../../domain/storage";
   import { copyText } from "../../ui/clipboard";
+  import { formatDateTime } from "../../ui/datetime";
+  import { uiTextDirection } from "../../ui/direction";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { mcpReservedHeaderMessage } from "../../ui/reservedHeaderMessage";
   import {
@@ -200,7 +202,7 @@
     }
     if (oauthAuth.expiresAt !== undefined) {
       return m.mcpServerForm_oauthConnectedUntil({
-        date: new Date(oauthAuth.expiresAt).toLocaleString(),
+        date: formatDateTime(oauthAuth.expiresAt),
       });
     }
     return m.mcpServerForm_oauthConnectedNoExpiry();
@@ -485,7 +487,7 @@
         onValueChange={(next) => (transport = next as McpTransportPreference)}
       >
         <Select.Trigger id="mf-transport" class="w-full">{transportLabel}</Select.Trigger>
-        <Select.Content>
+        <Select.Content dir={uiTextDirection()}>
           {#each TRANSPORT_OPTIONS as t (t.value)}
             <Select.Item value={t.value} label={t.label} />
           {/each}
@@ -525,7 +527,7 @@
       onValueChange={(next) => (authMode = next as AuthMode)}
     >
       <Select.Trigger id="mf-auth-mode" class="w-full">{authModeLabel}</Select.Trigger>
-      <Select.Content>
+      <Select.Content dir={uiTextDirection()}>
         {#each AUTH_MODE_OPTIONS as option (option.value)}
           <Select.Item value={option.value} label={option.label} />
         {/each}

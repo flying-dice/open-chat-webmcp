@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "OpenChat (WebMCP)",
+    "description": "The extension name. A proper noun, deliberately identical in every locale."
+  },
+  "extDescription": {
+    "message": "Chatten Sie in der Seitenleiste mit einem lokalen Ollama- oder OpenAI-kompatiblen Modell, das die Seite über WebMCP-Tools bedient.",
+    "description": "The extension description, shown in chrome://extensions and the Web Store listing. Source: public/_locales/en/messages.json. Machine-translated, pending native review (card 105)."
+  },
+  "extActionTitle": {
+    "message": "OpenChat-Seitenleiste öffnen",
+    "description": "The toolbar button tooltip (manifest action.default_title). Machine-translated, pending native review (card 105)."
+  }
+}

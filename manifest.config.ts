@@ -89,6 +89,12 @@ export default defineManifest({
   // (decisions/01-side-panel-as-primary-ui.md), wired in src/background/sw.ts
   // via chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).
   action: {
+    // The toolbar button's tooltip. Without it Chrome falls back to the
+    // extension NAME, which is a proper noun and therefore identical in all
+    // ten locales — it tells a first-time user nothing about what the button
+    // does. Localized through `_locales` like `name`/`description`, because
+    // this file is read before any of our code exists (card 105).
+    default_title: "__MSG_extActionTitle__",
     default_icon: {
       16: "icons/icon-16.png",
       32: "icons/icon-32.png",

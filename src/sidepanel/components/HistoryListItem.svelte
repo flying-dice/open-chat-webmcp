@@ -22,6 +22,8 @@
   import type { ChatSummary } from "../../domain/chat";
   import { titleFromSummary } from "../../domain/chat";
   import { isolateLtr } from "../../ui/bidi";
+  import { formatDateTime } from "../../ui/datetime";
+  import { uiTextDirection } from "../../ui/direction";
   import {
     Item,
     ItemActions,
@@ -55,10 +57,6 @@
   // bidi-isolation pass).
   function formatOrigin(origin: string): string {
     return origin ? isolateLtr(origin) : m.historyListItem_unknownOrigin();
-  }
-
-  function formatTime(ms: number): string {
-    return new Date(ms).toLocaleString();
   }
 
   function handleDeleteClick(event: MouseEvent): void {
@@ -98,7 +96,7 @@
       </ItemTitle>
 
       <ItemDescription class="line-clamp-1">
-        {formatOrigin(summary.origin)} · {formatTime(summary.updatedAt)} ·
+        {formatOrigin(summary.origin)} · {formatDateTime(summary.updatedAt)} ·
         {m.historyListItem_messageCount({ count: summary.messageCount })}
         {#if summary.toolCallCount > 0}
           · {m.historyListItem_toolCallCount({ count: summary.toolCallCount })}
@@ -143,7 +141,7 @@
               </Button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content side="top">
+          <Tooltip.Content side="top" dir={uiTextDirection()}>
             {deleteLabel}
           </Tooltip.Content>
         </Tooltip.Root>

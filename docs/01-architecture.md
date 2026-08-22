@@ -451,7 +451,16 @@ time, and inlang's own lint rule for that is deprecated in the 2.x line. So
 this diffs every `messages/<locale>.json` against the base locale declared in
 `project.inlang/settings.json` and fails on missing keys, orphan keys, a plural
 downgraded to a flat string, and a declared locale with no file at all — each
-printed with its file and key. The generated output under `src/paraglide/` is
+printed with its file and key. Card 105 widened it to the rest of what a
+translation can silently break: a renamed or dropped `{placeholder}`, a literal
+`{` the message format reads as a placeholder, a lost `<code>`/`<a>` tag in the
+ten rich-copy keys, and — the one that only appears once real locales exist — a
+plural whose `match` categories are English's rather than its own. Paraglide
+compiles one branch per category and returns *the key name* for a number that
+selects a category with no branch, so the categories are checked against
+`Intl.PluralRules(locale)`: one branch for `zh-CN`/`ja`/`ko`, two for `de`,
+three for `fr`/`es`/`pt-BR`, four for `ru`, six for `ar`. See
+[docs/06-i18n](06-i18n.md). The generated output under `src/paraglide/` is
 excluded from every other guard (`biome.jsonc`'s `linter.includes`, the
 `VENDORED` list in `scripts/lib/source-scan.mjs`, `tsconfig.app.json`'s
 `exclude`) on the same grounds as the vendored shadcn kit; who may *import* it

@@ -30,6 +30,7 @@
   import { untrack } from "svelte";
   import type { ToolCallLogEntry } from "../../domain/chat";
   import { copyText } from "../../ui/clipboard";
+  import { formatTimeOfDay } from "../../ui/datetime";
   import { originLabel } from "../presentation/toolOrigin";
   import { formatDuration } from "../presentation/duration";
   import ToolArgs from "./ToolArgs.svelte";
@@ -67,7 +68,7 @@
     return formatDuration(entry.endedAt - entry.startedAt);
   });
 
-  const timeLabel = $derived(new Date(entry.startedAt).toLocaleTimeString());
+  const timeLabel = $derived(formatTimeOfDay(entry.startedAt));
 
   let copied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;

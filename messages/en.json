@@ -453,6 +453,7 @@
   "historySection_emptyTitle": "No chats yet",
   "historySection_emptyDescription": "Nothing to delete yet. Open the side panel on any site and start chatting.",
   "historySection_unknownOrigin": "(unknown origin)",
+  "historySection_updatedAt": "updated {when}",
   "historySection_clearingLabel": "Deleting…",
   "historySection_deleteEverythingAction": "Delete everything",
   "historySection_clearConfirmDescription": [

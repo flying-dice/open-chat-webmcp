@@ -6,5 +6,9 @@
   "extDescription": {
     "message": "Chat in a side panel with a local Ollama or any OpenAI-compatible model, and let it act on the page through WebMCP tools.",
     "description": "The extension description, as shown in chrome://extensions and the Web Store listing. Referenced from manifest.config.ts as __MSG_extDescription__. Kept in step with package.json's \"description\", which is what it was hardcoded from before card 100."
+  },
+  "extActionTitle": {
+    "message": "Open the OpenChat side panel",
+    "description": "The toolbar button's tooltip. Referenced from manifest.config.ts as __MSG_extActionTitle__. Chrome's fallback is the extension name, which is a proper noun in every locale and says nothing about what the button does."
   }
 }

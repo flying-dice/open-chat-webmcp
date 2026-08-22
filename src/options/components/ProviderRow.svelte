@@ -17,6 +17,7 @@
   import type { TestOutcome } from "../forms/testConnection";
   import { providerTestResultClass, providerTestResultMessage } from "../forms/testResultDisplay";
   import { m } from "../../paraglide/messages.js";
+  import { uiTextDirection } from "../../ui/direction";
   import Markdown from "../../ui/components/Markdown.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import * as Select from "$lib/components/ui/select";
@@ -191,7 +192,7 @@
             <Select.Trigger size="sm" aria-label={m.providerRow_defaultModelAriaLabel({ name: provider.name })}>
               {selectedModelLabel}
             </Select.Trigger>
-            <Select.Content>
+            <Select.Content dir={uiTextDirection()}>
               {#each defaultModelOptions as model (model.id)}
                 <Select.Item value={model.id} label={model.name} />
               {/each}

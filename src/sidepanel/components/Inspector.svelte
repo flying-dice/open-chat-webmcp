@@ -21,7 +21,7 @@
   import CallLogPanel from "./CallLogPanel.svelte";
   import * as Tabs from "$lib/components/ui/tabs";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import { getLocale, getTextDirection } from "../../paraglide/runtime.js";
+  import { uiTextDirection } from "../../ui/direction";
   import { m } from "../../paraglide/messages.js";
 
   interface Props {
@@ -70,7 +70,7 @@
          auto-mirroring, …) silently reverts to LTR behaviour under it
          unless told otherwise. Passed explicitly rather than left to the
          default for exactly that reason. -->
-    <ScrollArea class="min-h-0 flex-1" dir={getTextDirection(getLocale())}>
+    <ScrollArea class="min-h-0 flex-1" dir={uiTextDirection()}>
       <Tabs.Content value="tools" class="px-3 pb-3">
         <ToolsPanel {tools} {serverTools} {webmcpAvailable} {restricted} />
       </Tabs.Content>

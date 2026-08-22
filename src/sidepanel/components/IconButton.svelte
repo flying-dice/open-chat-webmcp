@@ -24,6 +24,7 @@
    * specificity.
    */
   import Icon from "./Icon.svelte";
+  import { uiTextDirection } from "../../ui/direction";
   import { Button } from "$lib/components/ui/button";
   import * as Tooltip from "$lib/components/ui/tooltip";
   import { cn } from "$lib/utils";
@@ -113,7 +114,7 @@
           </Button>
         {/snippet}
       </Tooltip.Trigger>
-      <Tooltip.Content side={tooltipPlacement}>
+      <Tooltip.Content side={tooltipPlacement} dir={uiTextDirection()}>
         {label}
       </Tooltip.Content>
     </Tooltip.Root>

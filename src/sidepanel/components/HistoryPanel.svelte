@@ -22,7 +22,7 @@
   import type { ChatSummary } from "../../domain/chat";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { isolateLtr } from "../../ui/bidi";
-  import { getLocale, getTextDirection } from "../../paraglide/runtime.js";
+  import { uiTextDirection } from "../../ui/direction";
   import { chat, sidePanelServices } from "../app-services";
   import { panel } from "../stores/panel.svelte";
   import HistoryListItem from "./HistoryListItem.svelte";
@@ -149,7 +149,7 @@
      matching comment (card 104's RTL pass): ScrollArea stamps its OWN `dir`
      attribute on the element it renders, which overrides `<html dir>`'s
      inherited direction for every row scrolled inside it. -->
-<ScrollArea class="min-h-0 min-w-0 flex-1" dir={getTextDirection(getLocale())}>
+<ScrollArea class="min-h-0 min-w-0 flex-1" dir={uiTextDirection()}>
   <div class="min-w-0 p-3">
     {#if failure}
       <!-- Card 95: above the list, not instead of it — whatever is listed

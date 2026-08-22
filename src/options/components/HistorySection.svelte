@@ -33,6 +33,7 @@
   import { onMount } from "svelte";
   import type { ChatSummary } from "../../domain/chat";
   import { m } from "../../paraglide/messages.js";
+  import { formatDateTime } from "../../ui/datetime";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { optionsServices } from "../app-services";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
@@ -73,10 +74,6 @@
 
   function formatOrigin(origin: string): string {
     return origin || m.historySection_unknownOrigin();
-  }
-
-  function formatUpdatedAt(ms: number): string {
-    return new Date(ms).toLocaleString();
   }
 
   let totalMessages = $derived(sessions.reduce((sum, s) => sum + s.messageCount, 0));
@@ -148,8 +145,8 @@
               <span class="font-medium break-all" dir="ltr">{formatOrigin(session.origin)}</span>
               <span class="text-xs text-muted-foreground">
                 {m.historyListItem_messageCount({ count: session.messageCount })} ·
-                {m.historyListItem_toolCallCount({ count: session.toolCallCount })} · updated
-                {formatUpdatedAt(session.updatedAt)}
+                {m.historyListItem_toolCallCount({ count: session.toolCallCount })} ·
+                {m.historySection_updatedAt({ when: formatDateTime(session.updatedAt) })}
               </span>
             </div>
           {/each}

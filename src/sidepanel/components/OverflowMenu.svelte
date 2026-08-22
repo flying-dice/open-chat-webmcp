@@ -40,6 +40,7 @@
   import { titleFromSummary } from "../../domain/chat";
   import { connectionStatusLabel } from "../presentation/connectionStatus";
   import { m } from "../../paraglide/messages.js";
+  import { uiTextDirection } from "../../ui/direction";
 
   interface Props {
     /** Open the full history view. */
@@ -90,7 +91,10 @@
   }
 </script>
 
-<DropdownMenu.Root onOpenChange={handleOpenChange}>
+<!-- `dir` sits on the ROOT here, not on Content: the bits-ui menu family
+     declares it there and passes it down itself, unlike Select/Popover/
+     Tooltip. See src/ui/direction.ts. -->
+<DropdownMenu.Root onOpenChange={handleOpenChange} dir={uiTextDirection()}>
   <DropdownMenu.Trigger>
     {#snippet child({ props })}
       <Button

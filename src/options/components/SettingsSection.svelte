@@ -40,6 +40,7 @@
   import { onDestroy, onMount } from "svelte";
   import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
   import { storageFailureMessage } from "../../ui/storageMessage";
+  import { uiTextDirection } from "../../ui/direction";
   import { optionsServices } from "../app-services";
   import { m } from "../../paraglide/messages.js";
   import { getLocale, locales, setLocale, type Locale } from "../../paraglide/runtime.js";
@@ -132,31 +133,46 @@
   // decisions/37 chose this over Paraglide's `{ reload: false }` escape hatch,
   // which needs a hand-rolled reactivity layer around every `m.someKey()`.
   //
-  // ONE locale ships today (`en`), so this Select currently offers a single
-  // option — card 105 is what fills the list out. It renders anyway rather
-  // than hiding until there are two: an empty-looking control is honest about
-  // where the feature is, and it is the thing card 105 will exercise.
+  // Ten locales as of card 105 (decisions/37). The Select is populated from
+  // Paraglide's own compiled `locales` tuple, so adding one to
+  // project.inlang/settings.json is all it takes to make it appear here.
   const currentLocale = getLocale();
 
   /**
-   * A locale's name IN ITS OWN LANGUAGE — "Deutsch", not "German". That is the
-   * convention a language picker is read by: someone who has landed in the
+   * Each locale's name IN ITS OWN LANGUAGE — "Deutsch", not "German". That is
+   * the convention a language picker is read by: someone who has landed in the
    * wrong locale needs to recognise their own language in the list, which they
    * cannot do if the list is written in the language they are trying to leave.
    *
-   * `Intl.DisplayNames` throws a RangeError on a tag it cannot parse. That
-   * cannot happen here — the input is one of the compiled `locales`, a
-   * `readonly ["en"]` tuple the compiler produced from
-   * project.inlang/settings.json — but the tag is still echoed as a fallback
-   * rather than left to take the page down over a label
-   * (decisions/34-errors-as-values.md).
+   * Spelled out rather than derived from `Intl.DisplayNames`, which card 105
+   * measured against this list and found gives the wrong ANSWER for a picker
+   * three times over: `zh-CN` comes back as "中文（中国）" where the endonym a
+   * Simplified-Chinese reader looks for is "简体中文", and `fr`/`es`/`ru` come
+   * back lowercase ("français", "español", "русский") because CLDR stores
+   * them the way they are written mid-sentence, not the way a list item is.
+   * A hand-written table is also the only form that can be READ in review,
+   * which for the one control a lost user has to navigate by matters more
+   * than saving ten lines.
+   *
+   * Typed `Record<Locale, string>` against the compiled tuple on purpose: a
+   * locale added to settings.json with no endonym here is a `npm run check`
+   * failure, not a picker row reading "pt-BR".
    */
+  const LOCALE_ENDONYMS: Record<Locale, string> = {
+    en: "English",
+    "zh-CN": "简体中文",
+    ja: "日本語",
+    de: "Deutsch",
+    fr: "Français",
+    es: "Español",
+    "pt-BR": "Português (Brasil)",
+    ko: "한국어",
+    ru: "Русский",
+    ar: "العربية",
+  };
+
   function localeLabel(locale: Locale): string {
-    try {
-      return new Intl.DisplayNames([locale], { type: "language" }).of(locale) ?? locale;
-    } catch {
-      return locale;
-    }
+    return LOCALE_ENDONYMS[locale];
   }
 
   const LOCALE_OPTIONS: { value: Locale; label: string }[] = locales.map((locale) => ({
@@ -277,7 +293,7 @@
 </script>
 
 <!-- Interface language — first, because it changes how every other section on
-     this page reads. Card 100; card 105 adds the other nine locales. -->
+     this page reads. Card 100 built it; card 105 filled it out to ten. -->
 <section aria-labelledby="language-heading">
   <Card.Root>
     <Card.Header>
@@ -298,7 +314,7 @@
           <Select.Trigger id="interface-locale" class="w-full">
             {localeLabel(currentLocale)}
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content dir={uiTextDirection()}>
             {#each LOCALE_OPTIONS as option (option.value)}
               <Select.Item value={option.value} label={option.label} />
             {/each}
