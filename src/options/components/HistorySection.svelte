@@ -72,7 +72,7 @@
 <section aria-labelledby="history-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="history-heading" class="text-base font-medium">Chat history</h2>
+      <h2 id="history-heading" class="text-base font-medium tracking-tight">Chat history</h2>
       <Card.Description>
         Every chat is listed here, newest first, no matter which tab or site it happened on — a chat
         is its own thing now, not tied to a tab (decisions/13-global-tab-aware-chat-history.md). Open

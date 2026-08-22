@@ -162,18 +162,15 @@
   }
 
   .markdown-body :global(h1) {
-    font-size: 1.125rem;
+    font-size: 0.9375rem;
   }
 
-  .markdown-body :global(h2) {
-    font-size: 1rem;
-  }
-
+  .markdown-body :global(h2),
   .markdown-body :global(h3),
   .markdown-body :global(h4),
   .markdown-body :global(h5),
   .markdown-body :global(h6) {
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
   }
 
   .markdown-body :global(p:last-child) {
@@ -183,7 +180,7 @@
   /* Inline code */
   .markdown-body :global(code) {
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: var(--text-code);
     background: var(--muted);
     border-radius: var(--radius-sm);
     padding: 1px 0.25rem;
@@ -206,7 +203,7 @@
     gap: 0.5rem;
     padding: 0.25rem 0.5rem;
     border-bottom: 1px solid var(--border);
-    font-size: 0.8125rem;
+    font-size: var(--text-code);
     color: var(--muted-foreground);
   }
 
@@ -221,7 +218,7 @@
 
   .markdown-body :global(.md-copy-btn) {
     flex: 0 0 auto;
-    font-size: 0.8125rem;
+    font-size: var(--text-code);
     line-height: 1.6;
     padding: 0 0.5rem;
     border-radius: 9999px;
@@ -259,7 +256,7 @@
     overflow-x: auto;
     border-collapse: collapse;
     margin: 0 0 0.5rem 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-code);
   }
 
   .markdown-body :global(th),

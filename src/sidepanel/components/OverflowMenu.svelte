@@ -88,7 +88,7 @@
         class="rounded-full"
         aria-label="More options"
       >
-        <Icon name="more_vert" size={18} />
+        <Icon name="more_vert" class="size-4" />
       </Button>
     {/snippet}
   </DropdownMenu.Trigger>
@@ -108,7 +108,7 @@
           class={cn(summary.id === panel.activeChatId && "bg-accent text-accent-foreground")}
           onSelect={() => void handleOpenChat(summary.id)}
         >
-          <Icon name="subject" size={20} />
+          <Icon name="subject" class="size-4" />
           <span class="min-w-0 flex-1 truncate">{titleFromSummary(summary)}</span>
         </DropdownMenu.Item>
       {/each}
@@ -116,30 +116,30 @@
 
     {#if hasMore || recent.length > 0}
       <DropdownMenu.Item onSelect={onOpenHistory}>
-        <Icon name="more_horiz" size={20} />
+        <Icon name="more_horiz" class="size-4" />
         <span class="min-w-0 flex-1 truncate">More</span>
-        <Icon name="chevron_right" size={20} />
+        <Icon name="chevron_right" class="size-4" />
       </DropdownMenu.Item>
     {/if}
 
     <DropdownMenu.Separator />
 
     <DropdownMenu.Item onSelect={onOpenTools}>
-      <Icon name="build" size={20} />
+      <Icon name="build" class="size-4" />
       <span class="min-w-0 flex-1 truncate">Tools &amp; call log</span>
     </DropdownMenu.Item>
 
     <DropdownMenu.Item onSelect={openOptionsPage}>
-      <Icon name="settings" size={20} />
+      <Icon name="settings" class="size-4" />
       <span class="min-w-0 flex-1 truncate">Open options</span>
-      <Icon name="open_in_new" size={20} />
+      <Icon name="open_in_new" class="size-4" />
     </DropdownMenu.Item>
 
     <!-- Not a control: the connection state has no action attached to it,
          it is just the one place in the menu you can read it. -->
     <DropdownMenu.Label>
       <span class="flex items-center gap-2.5">
-        <Icon name="info" size={20} />
+        <Icon name="info" class="size-4" />
         {statusLabel[connectionStatus]}
       </span>
     </DropdownMenu.Label>

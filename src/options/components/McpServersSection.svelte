@@ -144,7 +144,7 @@
 <section aria-labelledby="mcp-servers-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="mcp-servers-heading" class="text-base font-medium">MCP servers</h2>
+      <h2 id="mcp-servers-heading" class="text-base font-medium tracking-tight">MCP servers</h2>
       <Card.Description>
         An MCP server exposes tools the model can call that have nothing to do with the current page
         — a ticket tracker, a search index, an internal service. Its tools are merged into the same

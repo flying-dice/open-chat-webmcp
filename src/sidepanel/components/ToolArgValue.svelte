@@ -45,16 +45,16 @@
     <dl class="mt-1 flex flex-col gap-1 border-l-2 border-border pl-2">
       {#each Object.entries(value) as [key, entryValue] (key)}
         <div class="flex flex-col">
-          <dt class="font-mono text-xs text-muted-foreground">{key}</dt>
+          <dt class="font-mono text-code font-medium text-muted-foreground">{key}</dt>
           <dd class="m-0 min-w-0"><Self value={entryValue} /></dd>
         </div>
       {/each}
     </dl>
   {/if}
 {:else if typeof value === "string"}
-  <span class="font-mono break-words whitespace-pre-wrap">{value === "" ? '""  (empty string)' : value}</span>
+  <span class="font-mono text-code break-words whitespace-pre-wrap">{value === "" ? '""  (empty string)' : value}</span>
 {:else if typeof value === "boolean"}
-  <span class="font-mono">{value ? "true" : "false"}</span>
+  <span class="font-mono text-code">{value ? "true" : "false"}</span>
 {:else}
-  <span class="font-mono">{String(value)}</span>
+  <span class="font-mono text-code">{String(value)}</span>
 {/if}

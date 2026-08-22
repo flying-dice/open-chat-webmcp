@@ -150,7 +150,7 @@
     </div>
 
     <div class="min-w-0">
-      <div class="font-semibold">{provider.name}</div>
+      <div class="text-sm font-medium">{provider.name}</div>
       <div class="text-xs break-all text-muted-foreground">{provider.baseUrl}</div>
     </div>
 

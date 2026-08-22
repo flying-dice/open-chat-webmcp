@@ -96,7 +96,7 @@
         onerror={() => (iconFailed = true)}
       />
     {:else}
-      <Icon name="public" size={16} />
+      <Icon name="public" class="size-4" />
     {/if}
     <!-- Connection state rides on the favicon rather than taking its own
          row: it is a property of the thing the row is already about. -->
@@ -128,7 +128,7 @@
     aria-label={`${detail}. Open tools and call log`}
   >
     {@render body()}
-    <span class="flex-none"><Icon name="chevron_right" size={18} /></span>
+    <span class="flex-none"><Icon name="chevron_right" class="size-4" /></span>
   </button>
 {:else}
   <div

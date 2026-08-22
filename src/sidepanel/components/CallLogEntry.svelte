@@ -97,7 +97,7 @@
         class:rotate-90={expanded}
         aria-hidden="true">▸</span
       >
-      <span class="min-w-0 truncate font-mono text-sm">{entry.name}</span>
+      <span class="min-w-0 truncate font-mono text-code">{entry.name}</span>
       {#if entry.origin}
         <Badge variant="outline" class={entry.origin.kind === "server" ? "border-primary text-primary" : ""}>
           {originLabel(entry.origin)}
@@ -124,18 +124,18 @@
   <Collapsible.Content>
     <div class="flex flex-col gap-2 border-t p-2">
       <div>
-        <h3 class="mb-1 text-sm font-medium">Arguments</h3>
+        <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Arguments</h3>
         <ToolArgs args={entry.arguments} />
       </div>
 
       {#if entry.error !== undefined}
         <div>
-          <h3 class="mb-1 text-sm font-medium">Error</h3>
+          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Error</h3>
           <p class="m-0 text-sm break-words whitespace-pre-wrap text-destructive">{entry.error}</p>
         </div>
       {:else if entry.result !== undefined}
         <div>
-          <h3 class="mb-1 text-sm font-medium">Result</h3>
+          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Result</h3>
           <ToolArgValue value={entry.result} />
         </div>
       {:else}

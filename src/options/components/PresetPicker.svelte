@@ -44,11 +44,11 @@
   </Alert.Root>
 
   <div class="flex flex-col gap-2">
-    <h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Local</h3>
+    <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Local</h3>
     <div class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
       {#each localPresets as preset (preset.id)}
         <button type="button" class={TILE} onclick={() => onChoose(preset)}>
-          <span class="text-sm font-semibold">{preset.label}</span>
+          <span class="text-sm font-medium">{preset.label}</span>
           <span class="text-xs text-muted-foreground">No API key</span>
         </button>
       {/each}
@@ -56,11 +56,11 @@
   </div>
 
   <div class="flex flex-col gap-2">
-    <h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Hosted</h3>
+    <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Hosted</h3>
     <div class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
       {#each hostedPresets as preset (preset.id)}
         <button type="button" class={TILE} onclick={() => onChoose(preset)}>
-          <span class="text-sm font-semibold">{preset.label}</span>
+          <span class="text-sm font-medium">{preset.label}</span>
           <span class="text-xs text-muted-foreground">API key required</span>
         </button>
       {/each}
@@ -69,7 +69,7 @@
         class="{TILE} border-dashed bg-transparent"
         onclick={() => onChoose(undefined)}
       >
-        <span class="text-sm font-semibold">Custom (OpenAI-compatible)</span>
+        <span class="text-sm font-medium">Custom (OpenAI-compatible)</span>
         <span class="text-xs text-muted-foreground">Any other OpenAI-compatible endpoint</span>
       </button>
     </div>

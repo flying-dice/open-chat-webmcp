@@ -43,10 +43,12 @@
     /** Renders a filled container instead of a bare glyph (the send button). */
     variant?: "plain" | "filled";
     /**
-     * "compact" shrinks the hit target and glyph together (32px / 18px)
-     * for secondary actions sitting inline with body text — e.g. the
-     * per-reply copy/regenerate row — where the default 40px/24px pairing
-     * reads as oversized against the surrounding content.
+     * "compact" shrinks the hit target alone, 36px -> 32px, for secondary
+     * actions sitting inline with body text — e.g. the per-reply copy/
+     * regenerate row. The glyph itself stays the scale's one `glyph` role
+     * (16px, decisions/36-type-and-icon-scale.md) either way: Button forces
+     * every icon inside it to `size-4` regardless of the button's own size
+     * variant, so there never was a second, smaller glyph size to have.
      */
     size?: "default" | "compact";
     title?: string;
@@ -84,12 +86,11 @@
   );
 
   const buttonSize = $derived(size === "compact" ? "icon-sm" : "icon");
-  const glyphSize = $derived(size === "compact" ? 18 : undefined);
   const titleAttr = $derived(title ?? (tooltip ? undefined : label));
 </script>
 
 {#snippet glyph()}
-  <Icon name={icon} size={glyphSize} />
+  <Icon name={icon} />
 {/snippet}
 
 {#if tooltip && !disabled}

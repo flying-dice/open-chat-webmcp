@@ -98,3 +98,15 @@
 		@apply font-sans;
 	}
 }
+
+/*
+ * HAND-AUTHORED — NOT part of the shadcn-svelte-generated block above.
+ * decisions/36-type-and-icon-scale.md's `code` role: tool names, identifiers,
+ * inline code, payload dumps (`font-mono text-code`). Kept in its own
+ * `@theme` block, separate from the generated one, so a future
+ * `npx shadcn-svelte apply` regeneration of that block doesn't eat this.
+ */
+@theme {
+	--text-code: 0.8125rem; /* 13px */
+	--text-code--line-height: 1.25rem; /* matches text-sm's line-height, so inline code doesn't disturb a body line */
+}

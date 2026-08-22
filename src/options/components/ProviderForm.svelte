@@ -296,7 +296,7 @@
   <div class="flex flex-wrap gap-4">
     <Field.Field class="flex-1 basis-50">
       <Field.Label for="pf-name">Display name</Field.Label>
-      <Input id="pf-name" type="text" bind:value={name} placeholder="e.g. Local Ollama" required />
+      <Input id="pf-name" type="text" bind:value={name} placeholder="e.g. Local Ollama" required class="text-sm" />
     </Field.Field>
     <Field.Field class="flex-1 basis-50">
       <Field.Label for="pf-type">Provider type</Field.Label>
@@ -326,6 +326,7 @@
       bind:value={baseUrl}
       placeholder={typeInfo.defaultBaseUrl}
       required
+      class="text-sm"
     />
     {#if hostPermission.granted === false}
       <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
@@ -346,6 +347,7 @@
           bind:value={apiKey}
           placeholder="sk-…"
           autocomplete="off"
+          class="text-sm"
         />
         <InputGroup.Addon align="inline-end">
           <InputGroup.Button onclick={() => (showApiKey = !showApiKey)}>

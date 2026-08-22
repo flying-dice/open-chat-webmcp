@@ -168,11 +168,11 @@
 
     {#if messages.length === 0}
       <div class="m-auto flex flex-col gap-2 text-center">
-        <p class="m-0 text-center text-xs text-muted-foreground">
+        <p class="m-0 text-center text-sm text-muted-foreground">
           No messages yet. Ask something about this page, or just say hello.
         </p>
         {#if toolsNotice}
-          <p class="m-0 text-center text-xs text-muted-foreground">{toolsNotice}</p>
+          <p class="m-0 text-center text-sm text-muted-foreground">{toolsNotice}</p>
         {/if}
       </div>
     {/if}
@@ -198,7 +198,7 @@
                cheapest way to say "you said this" without a label or an
                avatar. -->
           <div
-            class="max-w-[85%] min-w-0 rounded-xl bg-muted px-5 py-3 text-foreground whitespace-pre-wrap [overflow-wrap:anywhere]"
+            class="max-w-[85%] min-w-0 rounded-xl bg-muted px-4 py-2.5 text-sm text-foreground whitespace-pre-wrap [overflow-wrap:anywhere]"
           >
             {group.message.content}
           </div>
@@ -213,7 +213,7 @@
                  actually true instead: which model is answering. -->
             <div class="mb-2 flex items-center gap-2">
               <span class="inline-flex text-primary" aria-hidden="true"
-                ><Icon name={modelIcon ?? "sparkle"} size={20} /></span
+                ><Icon name={modelIcon ?? "sparkle"} class="size-5" /></span
               >
               {#if modelLabel}
                 <span class="min-w-0 truncate text-xs text-muted-foreground">{modelLabel}</span>

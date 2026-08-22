@@ -56,8 +56,10 @@
     {#if restricted}
       <Empty.Root class="p-6 text-left md:p-6">
         <Empty.Header class="max-w-none items-start text-left">
-          <Empty.Media variant="icon"><Icon name="close" size={20} /></Empty.Media>
-          <Empty.Title>This page can't run extension scripts at all.</Empty.Title>
+          <Empty.Media variant="icon" class="size-9">
+            <Icon name="close" class="size-5" />
+          </Empty.Media>
+          <Empty.Title class="text-base font-medium tracking-tight">Extensions can't reach this page</Empty.Title>
           <Empty.Description>
             Chrome blocks content scripts on <code class="font-mono text-xs">chrome://</code> pages, other
             extensions' pages, the Chrome Web Store, and its built-in PDF viewer —
@@ -70,8 +72,10 @@
     {:else if !webmcpAvailable}
       <Empty.Root class="p-6 text-left md:p-6">
         <Empty.Header class="max-w-none items-start text-left">
-          <Empty.Media variant="icon"><Icon name="info" size={20} /></Empty.Media>
-          <Empty.Title>WebMCP isn't available in this browser (or on this page).</Empty.Title>
+          <Empty.Media variant="icon" class="size-9">
+            <Icon name="info" class="size-5" />
+          </Empty.Media>
+          <Empty.Title class="text-base font-medium tracking-tight">WebMCP is off in this browser</Empty.Title>
           <Empty.Description>
             <code class="font-mono text-xs">document.modelContext</code> doesn't exist here — WebMCP is
             off by default in Chrome and needs
@@ -86,17 +90,18 @@
     {:else if tools.length === 0}
       <Empty.Root class="p-6 text-left md:p-6">
         <Empty.Header class="max-w-none items-start text-left">
-          <Empty.Media variant="icon"><Icon name="build" size={20} /></Empty.Media>
-          <Empty.Title>
-            This page hasn't published any WebMCP tools, which is expected — most sites don't yet.
-          </Empty.Title>
+          <Empty.Media variant="icon" class="size-9">
+            <Icon name="build" class="size-5" />
+          </Empty.Media>
+          <Empty.Title class="text-base font-medium tracking-tight">No page tools here</Empty.Title>
           <Empty.Description>
-            WebMCP is a proposed web standard that lets a page expose specific
-            actions and page-state readers — "add a note", "read the cart
-            total" — on <code class="font-mono text-xs">document.modelContext</code>, so an AI agent can
-            call them directly instead of a human clicking through the UI. It's
-            the same idea as MCP, but for what a <em>website</em> itself
-            chooses to offer, rather than a separate server.
+            This is expected — most sites don't speak WebMCP yet. It's a
+            proposed web standard that lets a page expose specific actions and
+            page-state readers — "add a note", "read the cart total" — on
+            <code class="font-mono text-xs">document.modelContext</code>, so an AI agent can call them
+            directly instead of a human clicking through the UI. It's the same
+            idea as MCP, but for what a <em>website</em> itself chooses to
+            offer, rather than a separate server.
           </Empty.Description>
           <Empty.Description>
             A site opts in by calling <code class="font-mono text-xs">registerTool()</code> in its own
@@ -120,12 +125,14 @@
     {#if serverTools.length === 0}
       <Empty.Root class="p-6 text-left md:p-6">
         <Empty.Header class="max-w-none items-start text-left">
-          <Empty.Media variant="icon"><Icon name="terminal" size={20} /></Empty.Media>
+          <Empty.Media variant="icon" class="size-9">
+            <Icon name="terminal" class="size-5" />
+          </Empty.Media>
+          <Empty.Title class="text-base font-medium tracking-tight">No server tools connected</Empty.Title>
           <Empty.Description>
-            No MCP server tools are available right now. Add and enable a
-            server from the options page's MCP Servers section — a slow,
-            unreachable, or not-yet-permitted server simply contributes no
-            tools here rather than blocking anything.
+            Add and enable a server from the options page's MCP Servers
+            section — a slow, unreachable, or not-yet-permitted server simply
+            contributes no tools here rather than blocking anything.
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>

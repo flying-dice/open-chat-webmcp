@@ -69,7 +69,7 @@
 
 <div class="min-w-0">
   <div class="flex min-w-0 flex-wrap items-baseline gap-1">
-    <span class="font-mono font-semibold break-all">{name}</span>
+    <span class="font-mono text-code font-semibold break-all">{name}</span>
     <span class="font-mono text-xs text-muted-foreground">{typeLabel}</span>
     {#if required}<span class="text-xs font-medium text-destructive">required</span>{/if}
   </div>

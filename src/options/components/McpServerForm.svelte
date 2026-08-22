@@ -435,6 +435,7 @@
         bind:value={name}
         placeholder="e.g. Internal ticket tracker"
         required
+        class="text-sm"
       />
     </Field.Field>
     <Field.Field class="flex-1 basis-50">
@@ -456,7 +457,7 @@
 
   <Field.Field>
     <Field.Label for="mf-url">MCP endpoint URL</Field.Label>
-    <Input id="mf-url" type="text" bind:value={url} placeholder="https://mcp.example.com/mcp" required />
+    <Input id="mf-url" type="text" bind:value={url} placeholder="https://mcp.example.com/mcp" required class="text-sm" />
     {#if hostPermission.granted === false}
       <Badge variant="destructive" class="w-fit!">Permission needed for this host</Badge>
     {:else if hostPermission.granted === true}
@@ -498,6 +499,7 @@
           bind:value={authToken}
           placeholder="Sent as Authorization: Bearer …"
           autocomplete="off"
+          class="text-sm"
         />
         <InputGroup.Addon align="inline-end">
           <InputGroup.Button onclick={() => (showAuthToken = !showAuthToken)}>
@@ -524,7 +526,7 @@
 
         <Field.Label for="mf-oauth-redirect">Callback / redirect URL</Field.Label>
         <InputGroup.Root>
-          <InputGroup.Input id="mf-oauth-redirect" type="text" value={redirectUri()} readonly />
+          <InputGroup.Input id="mf-oauth-redirect" type="text" value={redirectUri()} readonly class="text-sm" />
           <InputGroup.Addon align="inline-end">
             <InputGroup.Button onclick={copyRedirectUri}>
               {redirectUriCopied ? "Copied" : "Copy"}
@@ -533,7 +535,7 @@
         </InputGroup.Root>
 
         <Field.Label for="mf-oauth-client-id">Client ID</Field.Label>
-        <Input id="mf-oauth-client-id" type="text" bind:value={manualClientId} autocomplete="off" />
+        <Input id="mf-oauth-client-id" type="text" bind:value={manualClientId} autocomplete="off" class="text-sm" />
 
         <Field.Label for="mf-oauth-client-secret">Client secret (optional)</Field.Label>
         <InputGroup.Root>
@@ -542,6 +544,7 @@
             type={showManualClientSecret ? "text" : "password"}
             bind:value={manualClientSecret}
             autocomplete="off"
+            class="text-sm"
           />
           <InputGroup.Addon align="inline-end">
             <InputGroup.Button onclick={() => (showManualClientSecret = !showManualClientSecret)}>

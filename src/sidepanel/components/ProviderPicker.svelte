@@ -323,18 +323,18 @@
         <span class="text-xs text-muted-foreground">{row.providerName}</span>
       {/if}
       {#if reason}
-        <span class="text-sm break-words text-muted-foreground">{reason}</span>
+        <span class="text-xs break-words text-muted-foreground">{reason}</span>
       {/if}
     </span>
     {#if row.isActive}
       <!-- The selected row is marked by a filled check, not only by its
            outline: a 1px border is easy to miss in a list where every row
            is a box. -->
-      <span class="flex-none text-primary"><Icon name="check_circle" size={20} /></span>
+      <span class="flex-none text-primary"><Icon name="check_circle" class="size-4" /></span>
     {:else if badge}
       <span
         class={cn(
-          "flex-none text-sm whitespace-nowrap text-muted-foreground",
+          "flex-none text-xs whitespace-nowrap text-muted-foreground",
           row.capability?.status === "tool-capable" && "text-primary",
         )}
       >
@@ -363,7 +363,7 @@
       aria-label={triggerInfo.label}
     >
       <span class="min-w-0 truncate">{triggerText}</span>
-      <Icon name="expand_more" size={18} />
+      <Icon name="expand_more" class="size-4" />
     </Popover.Trigger>
 
     <Popover.Content
@@ -374,7 +374,7 @@
       class="flex max-h-[60vh] w-80 max-w-[calc(100vw-1rem)] flex-col gap-2 overflow-hidden"
       onOpenAutoFocus={handleOpenAutoFocus}
     >
-      <p class="px-1 text-base font-medium text-muted-foreground">Choose your model</p>
+      <p class="px-1 text-base font-medium tracking-tight text-foreground">Choose your model</p>
       {#if selection.providersStatus === "loading"}
         <p class="px-1 text-sm text-muted-foreground">Loading providers…</p>
       {:else if selection.providers.length === 0}
@@ -450,7 +450,7 @@
                       type="text"
                       placeholder="Model id, e.g. gpt-4o-mini"
                       aria-label={`Model id for ${group.provider.name}`}
-                      class="min-w-0 flex-1"
+                      class="min-w-0 flex-1 text-sm"
                       value={manualModelInputs[group.provider.id] ?? ""}
                       oninput={(e) =>
                         (manualModelInputs[group.provider.id] = (e.currentTarget as HTMLInputElement).value)}

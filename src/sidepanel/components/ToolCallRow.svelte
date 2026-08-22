@@ -160,7 +160,7 @@
   <Collapsible.Root bind:open class="flex min-w-0 flex-col gap-1">
     <Collapsible.Trigger class="row-head group flex w-full min-w-0 items-center gap-2 py-1 text-left">
       <span
-        class="min-w-0 flex-1 truncate font-mono text-xs group-hover:underline"
+        class="min-w-0 flex-1 truncate font-mono text-code group-hover:underline"
         title={message.toolName}>{message.toolName}</span
       >
 
@@ -189,7 +189,7 @@
           "flex-none text-muted-foreground transition-transform duration-150",
           open && "rotate-90",
         )}
-        aria-hidden="true"><Icon name="chevron_right" size={16} /></span
+        aria-hidden="true"><Icon name="chevron_right" class="size-4" /></span
       >
     </Collapsible.Trigger>
 
@@ -216,13 +216,13 @@
     {#if showErrorLine}
       <!-- Never hidden behind the payload toggle — this is precisely why
            the payload below can default closed. -->
-      <p class="m-0 text-xs text-destructive [overflow-wrap:anywhere]">{message.content}</p>
+      <p class="m-0 text-sm text-destructive [overflow-wrap:anywhere]">{message.content}</p>
     {/if}
 
     <Collapsible.Content>
       <div class="mt-1 flex flex-col gap-2 rounded-lg bg-muted p-2">
         <div>
-          <h3 class="mb-1 text-xs font-semibold text-foreground">Arguments</h3>
+          <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Arguments</h3>
           <ToolArgs args={message.toolArgs} />
         </div>
 
@@ -234,7 +234,7 @@
 
         {#if message.content}
           <div>
-            <h3 class={cn("mb-1 text-xs font-semibold", resultIsError ? "text-destructive" : "text-foreground")}>
+            <h3 class="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {resultIsError ? "Error" : "Result"}
               {#if untrustedContent && displayStatus === "success"}
                 <span class="font-normal text-destructive"
@@ -248,7 +248,7 @@
                  themselves (see src/domain/chat/message.ts's `fenceUntrustedContent`). -->
             <div
               class={cn(
-                "rounded-lg bg-background p-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]",
+                "rounded-lg bg-background p-2 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]",
                 resultIsError && "text-destructive",
                 untrustedContent && displayStatus === "success" && "border border-dashed border-destructive",
               )}

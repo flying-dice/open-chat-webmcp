@@ -1,5 +1,5 @@
 ---
-status: Proposed
+status: Accepted
 date: 2026-08-23
 ---
 # Decision 36 — One type and icon scale for both surfaces

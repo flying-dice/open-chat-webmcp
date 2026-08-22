@@ -30,7 +30,7 @@
   <dl class="m-0 flex flex-col gap-2">
     {#each entries as [key, value] (key)}
       <div class="min-w-0 rounded-lg bg-muted/50 p-2">
-        <dt class="font-mono text-xs font-semibold text-muted-foreground">{key}</dt>
+        <dt class="font-mono text-code font-medium text-muted-foreground">{key}</dt>
         <dd class="mt-1 min-w-0 break-words">
           <ToolArgValue {value} />
         </dd>

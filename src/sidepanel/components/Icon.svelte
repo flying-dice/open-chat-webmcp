@@ -14,6 +14,20 @@
    * Hugeicons render with `fill: none` + `stroke: currentColor` (outline
    * icons); the two custom paths are solid marks (`fill: currentColor`) —
    * Icon.svelte just picks the right branch per name, callers never care.
+   *
+   * Sizing is CLASS-based only (decisions/36-type-and-icon-scale.md), not a
+   * numeric `size` prop: `HugeiconsIcon` renders width/height as SVG
+   * *presentation attributes*, which CSS always beats — including any
+   * ancestor kit component's `[&_svg:not([class*='size-'])]:size-N` rule
+   * (Button, Command.Item, DropdownMenu.Item, Empty.Media, Badge, Alert, …).
+   * A numeric `size` prop was therefore a coin flip: authoritative inside a
+   * bare span, silently overridden inside almost every kit component. A
+   * literal `size-*` class on the glyph itself always wins — over both the
+   * width/height attributes AND a forcing ancestor rule, since the class
+   * makes the `:not([class*='size-'])` guard skip the icon entirely. Callers
+   * pick a role off the icon scale: `size-4` (16px, `glyph` — the workhorse,
+   * everything inside a button/menu item/tab/badge/chip/line of body text)
+   * or `size-5` (20px, `mark` — identity glyphs and the empty-state icon).
    */
   import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/svelte";
   import {
@@ -49,6 +63,7 @@
     Wrench01Icon,
   } from "@hugeicons/core-free-icons";
   import { ICON_VIEW_BOX, iconPaths, type IconName, type StandardIconName } from "../../ui/icons";
+  import { cn } from "$lib/utils";
 
   /** old Material Symbols name -> Hugeicons free icon (card 66's mapping). */
   const hugeicons: Record<StandardIconName, IconSvgElement> = {
@@ -88,22 +103,25 @@
 
   interface Props {
     name: IconName;
-    /** Rendered size in px. Defaults to 24. */
-    size?: number | string;
+    /**
+     * A `size-*` Tailwind utility off the icon scale — `size-4` (16px,
+     * `glyph`) or `size-5` (20px, `mark`); see the doc comment above.
+     * Defaults to `size-4`, the workhorse role, for any call site that
+     * doesn't need to say otherwise.
+     */
+    class?: string;
   }
 
-  const { name, size }: Props = $props();
+  const { name, class: className = "size-4" }: Props = $props();
 
   const isCustom = $derived(name === "sparkle" || name === "ollama");
-  const dimension = $derived(size === undefined ? 24 : size);
+  const svgClass = $derived(cn("block shrink-0", className));
 </script>
 
 {#if isCustom}
   <svg
-    class="block shrink-0"
+    class={svgClass}
     viewBox={ICON_VIEW_BOX}
-    style:width={typeof dimension === "number" ? `${dimension}px` : dimension}
-    style:height={typeof dimension === "number" ? `${dimension}px` : dimension}
     fill="currentColor"
     aria-hidden="true"
     focusable="false"
@@ -113,9 +131,8 @@
 {:else}
   <HugeiconsIcon
     icon={hugeicons[name as StandardIconName]}
-    size={dimension}
     strokeWidth={2}
-    class="block shrink-0"
+    class={svgClass}
     aria-hidden="true"
     focusable="false"
   />

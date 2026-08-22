@@ -85,9 +85,9 @@
 
 <div class="flex min-w-0 items-center gap-2">
   <span class="inline-flex flex-none text-primary" aria-hidden="true">
-    <Icon name={phase.kind === "waiting" ? (modelIcon ?? "sparkle") : "build"} size={16} />
+    <Icon name={phase.kind === "waiting" ? (modelIcon ?? "sparkle") : "build"} class="size-4" />
   </span>
-  <span class="shimmer min-w-0 flex-1 truncate" aria-live="polite">{sentence}</span>
+  <span class="shimmer min-w-0 flex-1 truncate text-sm" aria-live="polite">{sentence}</span>
   {#if elapsedLabel}
     <span class="flex-none text-xs whitespace-nowrap text-muted-foreground" aria-hidden="true"
       >{elapsedLabel}</span

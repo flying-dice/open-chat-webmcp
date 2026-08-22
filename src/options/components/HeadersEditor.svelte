@@ -75,6 +75,7 @@
             placeholder="Header name, e.g. x-api-key"
             autocomplete="off"
             aria-invalid={err ? "true" : undefined}
+            class="text-sm"
           />
           <Input
             type={showValues ? "text" : "password"}
@@ -82,6 +83,7 @@
             placeholder="Value"
             autocomplete="off"
             aria-invalid={err ? "true" : undefined}
+            class="text-sm"
           />
           <Button
             variant="ghost"

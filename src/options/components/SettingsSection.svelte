@@ -157,7 +157,7 @@
 <section aria-labelledby="approval-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="approval-heading" class="text-base font-medium">Tool approval</h2>
+      <h2 id="approval-heading" class="text-base font-medium tracking-tight">Tool approval</h2>
       <Card.Description>
         Controls when a tool call from the page's own WebMCP tools runs immediately versus waiting
         for you to approve it first (decisions/05-tool-approval-policy.md).
@@ -211,7 +211,7 @@
 <section aria-labelledby="mcp-approval-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="mcp-approval-heading" class="text-base font-medium">MCP server tool approval</h2>
+      <h2 id="mcp-approval-heading" class="text-base font-medium tracking-tight">MCP server tool approval</h2>
       <Card.Description>
         A SEPARATE setting from "Tool approval" above
         (decisions/20-approval-policy-is-per-tool-source.md) — controls when a call to one of your

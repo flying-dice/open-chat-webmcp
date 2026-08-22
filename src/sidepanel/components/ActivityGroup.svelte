@@ -84,13 +84,13 @@
   <Collapsible.Trigger
     class="summary group flex w-full min-w-0 items-center gap-2 py-1 text-left text-xs text-muted-foreground"
   >
-    <span class="inline-flex flex-none" aria-hidden="true"><Icon name="build" size={16} /></span>
+    <span class="inline-flex flex-none" aria-hidden="true"><Icon name="build" class="size-4" /></span>
     <span class="min-w-0 flex-1 truncate group-hover:underline">{summaryText}</span>
     <span
       class={cn("inline-flex flex-none transition-transform duration-150", expanded && "rotate-90")}
       aria-hidden="true"
     >
-      <Icon name="chevron_right" size={16} />
+      <Icon name="chevron_right" class="size-4" />
     </span>
   </Collapsible.Trigger>
 

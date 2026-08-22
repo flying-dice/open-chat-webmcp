@@ -92,7 +92,7 @@
         <AnnotationBadges annotations={tool?.annotations} mcpAnnotations={tool?.mcpAnnotations} />
       </div>
     </div>
-    <Card.Title class="font-mono text-base font-semibold break-words">{request.call.name}</Card.Title>
+    <Card.Title class="font-mono text-sm font-semibold break-words">{request.call.name}</Card.Title>
   </Card.Header>
 
   <Card.Content class="flex flex-col gap-3">

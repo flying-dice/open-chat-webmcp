@@ -190,7 +190,7 @@
       disabled={busy}
       aria-label="Message"
       aria-describedby="composer-hint"
-      class="min-h-0 max-h-[8lh] resize-none border-0 bg-transparent p-0 px-2 text-base shadow-none focus-visible:ring-0"
+      class="min-h-0 max-h-[8lh] resize-none border-0 bg-transparent p-0 px-2 text-sm shadow-none focus-visible:ring-0"
     />
     <!-- The Enter/Shift+Enter hint used to live in the placeholder, where it
          pushed the actual prompt off the end of a 320px panel. It is still

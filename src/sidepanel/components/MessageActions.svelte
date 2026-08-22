@@ -65,7 +65,7 @@
          doesn't jump when the copy button swaps to this. -->
     <Tooltip label="Copied">
       <span role="status" class="inline-flex size-8 items-center justify-center text-primary">
-        <Icon name="check" size={18} />
+        <Icon name="check" class="size-4" />
       </span>
     </Tooltip>
   {:else}

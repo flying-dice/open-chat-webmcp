@@ -17,7 +17,7 @@
 <section aria-labelledby="attribution-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="attribution-heading" class="text-base font-medium">Attribution</h2>
+      <h2 id="attribution-heading" class="text-base font-medium tracking-tight">Attribution</h2>
       <Card.Description>Third-party content used under its original license.</Card.Description>
     </Card.Header>
 

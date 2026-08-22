@@ -356,7 +356,7 @@
 <section aria-labelledby="providers-heading">
   <Card.Root>
     <Card.Header>
-      <h2 id="providers-heading" class="text-base font-medium">Chat providers</h2>
+      <h2 id="providers-heading" class="text-base font-medium tracking-tight">Chat providers</h2>
       <Card.Description>
         Register the Ollama or OpenAI-compatible endpoints the side panel can chat through. Exactly
         one provider (and model) is the default the panel opens with.

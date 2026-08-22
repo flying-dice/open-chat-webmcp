@@ -74,7 +74,7 @@
     </div>
 
     <div class="min-w-0">
-      <div class="font-semibold">{server.name}</div>
+      <div class="text-sm font-medium">{server.name}</div>
       <div class="text-xs break-all text-muted-foreground">{server.url}</div>
     </div>
 
