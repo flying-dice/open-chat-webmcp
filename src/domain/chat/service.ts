@@ -57,6 +57,7 @@ import {
   MAX_CHAT_PREVIEW_LENGTH,
   type ChatSession,
 } from "./session";
+import { newId } from "./id";
 import type { ChatStore } from "./store";
 import { normalizeChatTitle } from "./title";
 import type {
@@ -231,13 +232,6 @@ const headlessPresenter: ChatPresenter = {
   modelContact: () => undefined,
   waitUntilVisible: () => Promise.resolve(),
 };
-
-// TODO: clean-code - 0.4 - DRY: byte-for-byte identical crypto.randomUUID/fallback id-generation pattern as session.ts's makeChatId, differing only in the fallback string prefix.
-function makeMessageId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 // TODO: clean-code - 0.25 - SRP: createChatService bundles four related-but-distinct responsibilities (tab->chat resolution/navigation, provider/model selection state, transcript mutation, turn lifecycle/stop-handling) into one port — a deliberate consolidation per the module header, but still a wide surface.
 export function createChatService(deps: ChatServiceDeps): ChatService {
@@ -487,7 +481,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
     addUserMessage(content) {
       if (!session) return "";
-      const id = makeMessageId();
+      const id = newId();
       session.messages.push(userEntry(id, content, Date.now()));
       save(session, { immediate: true });
       return id;
@@ -495,7 +489,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
     beginAssistantMessage(target = session) {
       if (!target) return "";
-      const id = makeMessageId();
+      const id = newId();
       target.messages.push(assistantEntry(id, Date.now()));
       save(target, { immediate: true });
       return id;
@@ -526,7 +520,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // against the first's. `toolEntry` and `logToolCall` are given the
       // SAME minted id so `ToolCallRow.svelte`'s `entry.id === message.id`
       // lookup between the two views keeps working.
-      const id = makeMessageId();
+      const id = newId();
       target.messages.push(toolEntry(id, call, snapshot, Date.now()));
       // The transcript's display copy and the inspector's call log (card 11)
       // are two views of the SAME call, kept in step by this mutator and

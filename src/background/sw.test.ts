@@ -482,4 +482,196 @@ describe("sw.ts message router", () => {
       expect(tab2).toMatchObject({ tools: [{ name: "y" }, { name: "z" }] });
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Card 118 (decisions/40-page-context-access.md)
+  //
+  // The worker's role here is pure brokerage — it holds no page-context state
+  // at all, because a snapshot is only valid at the instant it was taken. So
+  // what these pin is the routing and the CLASSIFICATION of the two failure
+  // shapes, which is the part the panel branches on.
+  // -------------------------------------------------------------------------
+  describe("runtime:get-page-context routing", () => {
+    const SNAPSHOT = {
+      mode: "extract",
+      text: "# Title\n\nThe page body.",
+      url: "https://a.example/post",
+      title: "Title",
+      truncated: false,
+      bytes: 23,
+    };
+
+    it("forwards the request to the tab's relay verbatim — mode included — and returns the relay's response", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      fake.setTabsSendMessageImpl((tabId, message, callback) => {
+        expect(tabId).toBe(5);
+        expect(message).toEqual({ type: "runtime:get-page-context", tabId: 5, mode: "extract" });
+        callback({
+          type: "runtime:get-page-context-response",
+          tabId: 5,
+          ok: true,
+          restricted: false,
+          context: SNAPSHOT,
+        });
+      });
+      await loadSw();
+
+      const response = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 5,
+        mode: "extract",
+      });
+      expect(response).toEqual({
+        type: "runtime:get-page-context-response",
+        tabId: 5,
+        ok: true,
+        restricted: false,
+        context: SNAPSHOT,
+      });
+    });
+
+    it("an EMPTY selection round-trips as a success — nothing selected is an answer, not a failure", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      const empty = {
+        mode: "selection",
+        text: "",
+        url: "https://a.example/",
+        title: "A",
+        truncated: false,
+        bytes: 0,
+      };
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) =>
+        callback({
+          type: "runtime:get-page-context-response",
+          tabId: 5,
+          ok: true,
+          restricted: false,
+          context: empty,
+        }),
+      );
+      await loadSw();
+
+      const response = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 5,
+        mode: "selection",
+      });
+      expect(response).toMatchObject({ ok: true, restricted: false, context: empty });
+    });
+
+    it("a tab with no relay at all reports restricted: true — the terminal case, distinct from a slow page", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) => {
+        fake.setLastError({
+          message: "Could not establish connection. Receiving end does not exist.",
+        });
+        callback(undefined);
+      });
+      await loadSw();
+
+      const response = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 9,
+        mode: "extract",
+      });
+      expect(response).toMatchObject({
+        type: "runtime:get-page-context-response",
+        tabId: 9,
+        ok: false,
+        restricted: true,
+      });
+      expect((response as { error?: string }).error).toContain("No WebMCP relay is available");
+    });
+
+    it("a messaging error that is NOT the no-relay pattern reports restricted: false — the page may simply be busy", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) => {
+        fake.setLastError({ message: "The message port closed before a response was received." });
+        callback(undefined);
+      });
+      await loadSw();
+
+      const response = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 9,
+        mode: "selection",
+      });
+      expect(response).toMatchObject({ ok: false, restricted: false });
+    });
+
+    it("a relay answering with an unexpected shape is a clean failure, never passed through raw", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) =>
+        callback({ type: "runtime:get-page-context-response", tabId: 5, ok: true }),
+      ); // ok, but no context at all
+      await loadSw();
+
+      const response = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 5,
+        mode: "extract",
+      });
+      expect(response).toMatchObject({ ok: false, restricted: false });
+      expect((response as { error?: string }).error).toContain("unexpected response");
+    });
+
+    it("a context payload with a wrong-typed field is rejected — the relay's output derives from page-authored DOM", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) =>
+        callback({
+          type: "runtime:get-page-context-response",
+          tabId: 5,
+          ok: true,
+          restricted: false,
+          context: { ...SNAPSHOT, text: { not: "a string" } },
+        }),
+      );
+      await loadSw();
+
+      const response = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 5,
+        mode: "extract",
+      });
+      expect(response).toMatchObject({ ok: false });
+    });
+
+    it("holds NO page-context state: two pulls for the same tab each go to the relay", async () => {
+      const fake = createFakeChrome();
+      vi.stubGlobal("chrome", fake.chrome);
+      let calls = 0;
+      fake.setTabsSendMessageImpl((_tabId, _message, callback) => {
+        calls += 1;
+        callback({
+          type: "runtime:get-page-context-response",
+          tabId: 5,
+          ok: true,
+          restricted: false,
+          context: { ...SNAPSHOT, text: `pull ${calls}` },
+        });
+      });
+      await loadSw();
+
+      const first = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 5,
+        mode: "extract",
+      });
+      const second = await fake.deliver({
+        type: "runtime:get-page-context",
+        tabId: 5,
+        mode: "extract",
+      });
+
+      expect(calls).toBe(2);
+      expect(first).toMatchObject({ context: { text: "pull 1" } });
+      expect(second).toMatchObject({ context: { text: "pull 2" } });
+    });
+  });
 });

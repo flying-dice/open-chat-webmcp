@@ -116,7 +116,7 @@ const GET_TOOLS_TIMEOUT_MS = 1500;
 /** Distinguishes "the timer won the race" from "the worker actually replied" below — a plain `undefined` sentinel would be ambiguous with a genuinely malformed (but present) response, and the trace needs to log the timeout specifically, not just infer it from an empty-looking result. */
 const TOOLS_LOOKUP_TIMED_OUT = Symbol("tools-lookup-timed-out");
 
-// TODO: clean-code - 0.25 - SRP: createTabToolsLookup (a standalone per-turn tool lookup used by chatTurn.ts) and the full active-tab-tracking/session-swap engine (startTabSync) share this file and this helper — two different callers' concerns bundled together.
+// TODO: clean-code - 0.25 - SRP: createTabToolsLookup (a standalone per-turn tool lookup used by chatTurn.ts) and the full active-tab-tracking/session-swap engine (startTabSync) share this file and this helper — two different callers' concerns bundled together. STAYS: both answer "what does chrome.tabs say about the active tab right now", and the helper they share is that single query. Splitting them duplicates the query into two adapter modules that may not import each other (guard:boundaries), which trades one shared helper for two copies of the thing actually worth having once.
 async function getToolsAndAvailabilityForTab(
   tabId: number,
   trace: (...args: unknown[]) => void,

@@ -21,13 +21,19 @@ import {
   isRuntimeMessage,
   type RuntimeCallToolRequest,
   type RuntimeCallToolResponse,
+  type RuntimeGetPageContextRequest,
+  type RuntimeGetPageContextResponse,
   type RuntimeGetToolsRequest,
   type RuntimeGetToolsResponse,
   type RuntimeRefreshToolsRequest,
   type RuntimeToolsUpdatedMessage,
   type SerializedTool,
 } from "../infra/chrome-runtime";
-import { SW_CALL_TIMEOUT_MS, SW_PULL_TIMEOUT_MS } from "../infra/webmcp";
+import {
+  SW_CALL_TIMEOUT_MS,
+  SW_PAGE_CONTEXT_TIMEOUT_MS,
+  SW_PULL_TIMEOUT_MS,
+} from "../infra/webmcp";
 
 console.log("[webmcp][sw] background service worker starting");
 
@@ -216,6 +222,32 @@ function isCallToolResponse(v: unknown): v is RuntimeCallToolResponse {
   );
 }
 
+/**
+ * Card 118. Same treatment as the two guards above and for the same reason:
+ * the sender is a content script on an untrusted page, so every field it
+ * fills in is checked at RUNTIME even though the discriminated union already
+ * narrows them at compile time. The `context` payload is checked field by
+ * field — a page cannot reach this listener directly, but the relay's own
+ * output is derived from page-authored DOM, and "the text is a string" is
+ * exactly the claim the panel will act on.
+ */
+function isPageContextResponse(v: unknown): v is RuntimeGetPageContextResponse {
+  if (!isRuntimeMessage(v) || v.type !== "runtime:get-page-context-response") return false;
+  if (typeof v.ok !== "boolean") return false;
+  if (!v.ok) return true;
+  const ctx = v.context;
+  return (
+    typeof ctx === "object" &&
+    ctx !== null &&
+    (ctx.mode === "selection" || ctx.mode === "extract") &&
+    typeof ctx.text === "string" &&
+    typeof ctx.url === "string" &&
+    typeof ctx.title === "string" &&
+    typeof ctx.truncated === "boolean" &&
+    typeof ctx.bytes === "number"
+  );
+}
+
 // The worker's two rungs of the shared timeout ladder
 // (src/infra/webmcp/timeouts.mjs, card 79 —
 // boards/project-backlog/79-protocol-and-timeout-ladder-cleanup.md). Call
@@ -372,6 +404,49 @@ async function handleCallTool(req: RuntimeCallToolRequest): Promise<RuntimeCallT
   return result.response;
 }
 
+/**
+ * Card 118 (decisions/40-page-context-access.md). Pure brokerage: the worker
+ * holds NO page-context state — no cache, no registry entry, nothing to
+ * invalidate on navigation — because a snapshot is only ever valid at the
+ * instant it was taken. Every pull goes to the relay.
+ *
+ * That is also why there is no cache-miss/rebuild path here of the kind
+ * `handleGetTools` has: there is nothing to miss. The only two outcomes are
+ * the relay's own answer and an unreachable tab, and the second one carries
+ * the same `restricted` distinction card 31 established — "no content script
+ * in this tab at all" (chrome://, the Web Store, the PDF viewer, where
+ * decisions/40 says behaviour is unchanged) versus "the relay is there and
+ * did not answer in time", which is a retryable condition and not a claim
+ * about the page.
+ */
+async function handleGetPageContext(
+  req: RuntimeGetPageContextRequest,
+): Promise<RuntimeGetPageContextResponse> {
+  const result = await sendToRelay(req.tabId, req, SW_PAGE_CONTEXT_TIMEOUT_MS);
+
+  if (!result.ok) {
+    return {
+      type: "runtime:get-page-context-response",
+      tabId: req.tabId,
+      ok: false,
+      restricted: result.reason === "no-relay",
+      error: describeUnreachable(req.tabId, result),
+    };
+  }
+
+  if (!isPageContextResponse(result.response)) {
+    return {
+      type: "runtime:get-page-context-response",
+      tabId: req.tabId,
+      ok: false,
+      restricted: false,
+      error: `Tab ${req.tabId} returned an unexpected response to the page-context request.`,
+    };
+  }
+
+  return result.response;
+}
+
 // ---------------------------------------------------------------------------
 // Message router
 //
@@ -413,6 +488,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "runtime:call-tool": {
       handleCallTool(message).then(sendResponse);
+      return true;
+    }
+
+    case "runtime:get-page-context": {
+      handleGetPageContext(message).then(sendResponse);
       return true;
     }
 

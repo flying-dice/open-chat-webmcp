@@ -7,7 +7,7 @@
 // This is the single source of truth for cross-context messages (see
 // decisions/03-vite-svelte-build.md). Other cards build *on* this file —
 // extend it as new message kinds are needed, but do not change the shape of
-// an existing message without updating every consumer, and keep the `Msg`
+// an existing message without updating every consumer, and keep the
 // union exhaustive so a mismatch is a compile error rather than a silent
 // no-op at runtime.
 //
@@ -40,6 +40,18 @@
 export type { SerializedTool, ToolAnnotations } from "../../domain/tools";
 
 import type { SerializedTool } from "../../domain/tools";
+
+// The same arrangement for page context (card 118,
+// decisions/40-page-context-access.md): `PageContextSnapshot` and
+// `PageContextMode` are the `chat` context's vocabulary
+// (src/domain/chat/page-context.ts) and this file is the messaging adapter
+// that carries them across the relay -> worker -> panel hop. Re-exported so
+// the relay and the worker can name the payload without either of them
+// importing a domain context directly.
+
+export type { PageContextMode, PageContextSnapshot } from "../../domain/chat";
+
+import type { PageContextMode, PageContextSnapshot } from "../../domain/chat";
 
 // ---------------------------------------------------------------------------
 // Relay / side panel <-> background service worker (chrome.runtime messaging)
@@ -132,6 +144,60 @@ export interface RuntimeCallToolResponse {
   error?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Page context (card 118, decisions/40-page-context-access.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Panel -> Worker (-> Relay): give me what the user chose to share from this
+ * tab, right now.
+ *
+ * ONE request type with a `mode` field rather than two message types, and
+ * that was a judgement call worth writing down. `selection` and `extract`
+ * differ ONLY in which DOM read the relay performs; the routing, the timeout
+ * rung, the restricted/unreachable handling and the response shape are
+ * identical down to the field. Two message types would be two identical
+ * routes through `sw.ts` and two identical branches in the relay's
+ * `onMessage`, kept in step by hand — the exact drift `RUNTIME_MESSAGE_TYPES`
+ * exists to prevent elsewhere. If a third mode ever needs a genuinely
+ * different response (structured DOM, say), that is when it earns its own
+ * message.
+ *
+ * PULL-ONLY. There is no `runtime:page-context-updated` notification and
+ * there must not be one: decisions/40's privacy posture is that page content
+ * moves only on an explicit user gesture, and the absence of a push message
+ * is what makes "no background reads" a property of the protocol rather than
+ * a promise about how the panel behaves.
+ */
+export interface RuntimeGetPageContextRequest {
+  type: "runtime:get-page-context";
+  tabId: number;
+  mode: PageContextMode;
+}
+
+/** Worker -> Panel: response to {@link RuntimeGetPageContextRequest}. */
+export interface RuntimeGetPageContextResponse {
+  type: "runtime:get-page-context-response";
+  tabId: number;
+  ok: boolean;
+  /**
+   * Present exactly when `ok`. A snapshot with EMPTY text is a perfectly
+   * ordinary success — the common answer to a `selection` pull, since most of
+   * the time nothing is selected — and must never be reported as a failure
+   * (see `PageContextSnapshot.text` in src/domain/chat/page-context.ts).
+   */
+  context?: PageContextSnapshot;
+  /**
+   * See {@link RuntimeGetToolsResponse.restricted} — the same worker-only,
+   * authoritative "there is no relay in this tab at all" claim, and the same
+   * distinction from a relay that merely did not answer in time. Always
+   * `false` when `ok`.
+   */
+  restricted: boolean;
+  /** Present when `!ok`: a developer-facing description of why. The panel maps the error KIND to user copy, never this string (decisions/34, decisions/37). */
+  error?: string;
+}
+
 /** One-way notifications sent over `chrome.runtime.sendMessage` / `onMessage`. */
 export type RuntimeNotification = RuntimeToolsUpdatedMessage;
 
@@ -139,8 +205,12 @@ export type RuntimeNotification = RuntimeToolsUpdatedMessage;
 export type RuntimeRequest =
   | RuntimeGetToolsRequest
   | RuntimeCallToolRequest
-  | RuntimeRefreshToolsRequest;
-export type RuntimeResponse = RuntimeGetToolsResponse | RuntimeCallToolResponse;
+  | RuntimeRefreshToolsRequest
+  | RuntimeGetPageContextRequest;
+export type RuntimeResponse =
+  | RuntimeGetToolsResponse
+  | RuntimeCallToolResponse
+  | RuntimeGetPageContextResponse;
 
 export type RuntimeMessage = RuntimeNotification | RuntimeRequest | RuntimeResponse;
 
@@ -153,9 +223,6 @@ export type RuntimeMessage = RuntimeNotification | RuntimeRequest | RuntimeRespo
 // literal makes forgetting to register a new message type here a compile
 // error, not a silent runtime gap.
 // ---------------------------------------------------------------------------
-
-// TODO: clean-code - 0.4 - DEAD: this Msg alias is exported and re-exported through the barrel, but nothing imports it by name and it isn't used to type anything else in this file — every real consumer (background/sw.ts, content/relay.ts) imports RuntimeRequest/RuntimeResponse/individual message types instead.
-export type Msg = RuntimeMessage;
 
 // ---------------------------------------------------------------------------
 // Type guards
@@ -181,6 +248,8 @@ const RUNTIME_MESSAGE_TYPES: Record<RuntimeMessage["type"], true> = {
   "runtime:call-tool": true,
   "runtime:call-tool-response": true,
   "runtime:refresh-tools": true,
+  "runtime:get-page-context": true,
+  "runtime:get-page-context-response": true,
 };
 
 export function isRuntimeMessage(v: unknown): v is RuntimeMessage {

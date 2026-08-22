@@ -7,6 +7,7 @@
 // extension's own chrome — each now the ONLY implementation of a port a
 // composition root injects.
 
+export { createPageContextSource } from "./page-context-source";
 export { createPageToolExecutor } from "./page-tool-executor";
 export { createChromeHostPermissions } from "./permissions";
 export { createExtensionShell, type ExtensionShell } from "./extension-shell";
@@ -21,8 +22,11 @@ export {
 
 export {
   isRuntimeMessage,
-  type Msg,
+  type PageContextMode,
+  type PageContextSnapshot,
   type RuntimeCallToolRequest,
+  type RuntimeGetPageContextRequest,
+  type RuntimeGetPageContextResponse,
   type RuntimeCallToolResponse,
   type RuntimeGetToolsRequest,
   type RuntimeGetToolsResponse,

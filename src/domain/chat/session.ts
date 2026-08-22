@@ -15,7 +15,9 @@
 
 import type { ProviderSelection } from "../providers";
 import type { ToolOrigin } from "../tools";
+import { newId } from "./id";
 import type { ToolCallMode, TranscriptEntry } from "./message";
+import { truncateWithEllipsis } from "./text";
 
 // Re-exported for continuity: `ToolCallMode` is the transcript vocabulary
 // (./message.ts) AND the tool-call log's, and every existing importer takes
@@ -134,18 +136,11 @@ export const MAX_RETAINED_CHATS = 400;
 /** Longest preview/derived-title text a chat summary carries — keeps a chat's index footprint bounded regardless of how long its first message is. */
 export const MAX_CHAT_PREVIEW_LENGTH = 120;
 
-// TODO: clean-code - 0.4 - DRY: byte-for-byte identical crypto.randomUUID/fallback id-generation pattern as service.ts's makeMessageId, differing only in the fallback string prefix.
-function makeChatId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 /** Build a brand-new, empty chat for `origin`. Pure — touches no storage; pass the result to `ChatStore.save` once it has content worth keeping. */
 export function createChat(origin: string, selection?: ProviderSelection): ChatSession {
   const now = Date.now();
   return {
-    id: makeChatId(),
+    id: newId("chat-"),
     origin,
     messages: [],
     selection,
@@ -155,15 +150,12 @@ export function createChat(origin: string, selection?: ProviderSelection): ChatS
   };
 }
 
-// TODO: clean-code - 0.35 - DRY: "truncate text to N chars, append an ellipsis" is hand-rolled here (inline), and separately in turn.ts's truncate and title.ts's truncate, with three slightly different ellipsis markers, instead of one shared helper.
 /** Trims and shortens the first user message into a history-list preview. `undefined` if there is no user message with any content yet. */
 export function chatPreview(messages: readonly TranscriptEntry[]): string | undefined {
   const firstUser = messages.find((m) => m.role === "user");
   const trimmed = firstUser?.content.trim();
   if (!trimmed) return undefined;
-  return trimmed.length > MAX_CHAT_PREVIEW_LENGTH
-    ? `${trimmed.slice(0, MAX_CHAT_PREVIEW_LENGTH)}…`
-    : trimmed;
+  return truncateWithEllipsis(trimmed, MAX_CHAT_PREVIEW_LENGTH);
 }
 
 /** The `ChatSummary` view of a chat — what a history list shows, derived here so the index an adapter writes and the list a caller reads can never disagree. */

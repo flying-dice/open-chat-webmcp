@@ -7,6 +7,10 @@
 //   ./message.ts           the persisted transcript entry, and the ONE
 //                          mapping from it to a provider's `ChatMessage`
 //                          (fencing untrusted tool results on the way out)
+//   ./page-context.ts      what the user explicitly shared FROM the page — a
+//                          selection or a capped text extract — and the
+//                          pull-only port that fetches it (card 118,
+//                          decisions/40)
 //   ./session.ts           the `ChatSession` aggregate, its tool-call log,
 //                          the retention cap, the summary/preview derivation
 //   ./title.ts             what a chat is called (explicit name, else derived)
@@ -32,6 +36,7 @@
 // layers import `src/domain/chat`, never a file inside it.
 
 export * from "./message";
+export * from "./page-context";
 export * from "./ports";
 export * from "./service";
 export * from "./session";

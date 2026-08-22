@@ -41,12 +41,20 @@
 
 import {
   isRuntimeMessage,
+  type PageContextSnapshot,
   type RuntimeCallToolRequest,
+  type RuntimeGetPageContextRequest,
   type RuntimeMessage,
   type RuntimeToolsUpdatedMessage,
   type SerializedTool,
   type ToolAnnotations,
 } from "../infra/chrome-runtime";
+// The page-context extraction (card 118, decisions/40-page-context-access.md).
+// A pure pair of functions over a `Document` — this root passes it the real
+// one; ../infra/dom/page-extraction.test.ts passes jsdom ones. Everything
+// about WHICH document, WHEN, and WHO ASKED stays here, in the relay, which
+// is the only code in this extension that touches a visited page.
+import { extractPageText, extractSelection, PAGE_EXTRACT_CAP_BYTES } from "../infra/dom";
 import { RELAY_EXECUTE_TIMEOUT_MS } from "../infra/webmcp";
 // The shared result kernel (decisions/34-errors-as-values.md). A content
 // script is a runtime surface like any other, and this is the one place in it
@@ -446,6 +454,62 @@ async function handleRefreshToolsRequest(
 }
 
 // ---------------------------------------------------------------------------
+// Handling a page-context pull (card 118, decisions/40-page-context-access.md)
+//
+// The relay is the ONLY code in this extension with a visited page's DOM in
+// scope, and decisions/40 keeps it that way: the panel never touches a page,
+// it asks for a snapshot and gets plain text back.
+//
+// Note what is NOT here. There is no listener on `selectionchange`, no
+// `MutationObserver`, no cached last-selection, and no unsolicited push of
+// any of this to the worker. A snapshot is produced only when a
+// `runtime:get-page-context` request arrives — which the panel only ever
+// sends on a user gesture — so nothing about a page leaves it without the
+// user having done something to ask for that (decisions/40's privacy
+// posture, amending docs/03).
+//
+// Synchronous and unwrapped by `callWithTimeout`, unlike a tool call: both
+// reads are bounded by construction (`PAGE_EXTRACT_CAP_BYTES` and the walk's
+// own node ceiling, src/infra/dom/page-extraction.ts) and neither can await
+// anything page-authored, so there is nothing here for a timeout to rescue.
+// The worker still applies SW_PAGE_CONTEXT_TIMEOUT_MS on its side, which
+// covers the case this file cannot: a page whose main thread is wedged so
+// hard that this listener never runs at all.
+// ---------------------------------------------------------------------------
+
+function buildPageContext(mode: RuntimeGetPageContextRequest["mode"]): PageContextSnapshot {
+  const extracted =
+    mode === "selection"
+      ? extractSelection(document, PAGE_EXTRACT_CAP_BYTES)
+      : extractPageText(document, PAGE_EXTRACT_CAP_BYTES);
+
+  return {
+    mode,
+    text: extracted.text,
+    // Read at extraction time, alongside the text, and never re-read later:
+    // a snapshot is a value, and the page it names must be the page the text
+    // came from even if the tab navigates a moment afterwards.
+    url: location.href,
+    title: document.title,
+    truncated: extracted.truncated,
+    bytes: extracted.bytes,
+  };
+}
+
+function handleGetPageContext(
+  req: RuntimeGetPageContextRequest,
+  sendResponse: (response: RuntimeMessage) => void,
+): void {
+  safeRespond(sendResponse, {
+    type: "runtime:get-page-context-response",
+    tabId: req.tabId,
+    ok: true,
+    restricted: false,
+    context: buildPageContext(req.mode),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // chrome.runtime.onMessage: worker -> relay
 // ---------------------------------------------------------------------------
 
@@ -460,6 +524,16 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   if (message.type === "runtime:refresh-tools") {
     void handleRefreshToolsRequest(sendResponse);
     return true;
+  }
+
+  if (message.type === "runtime:get-page-context") {
+    // Answered SYNCHRONOUSLY — `sendResponse` has already been called by the
+    // time this returns, so the channel does not need to stay open and this
+    // returns `false`, not `true`. (Returning `true` here would be harmless
+    // but wrong: it tells Chrome to keep a port alive for a reply that has
+    // already been sent.)
+    handleGetPageContext(message, sendResponse);
+    return false;
   }
 
   // Not ours (e.g. runtime:get-tools is answered by the worker itself).

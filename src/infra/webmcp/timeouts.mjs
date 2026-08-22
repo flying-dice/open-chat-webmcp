@@ -16,7 +16,7 @@
 //
 //   side panel (chatTurn.ts) -> worker (sw.ts) -> relay (relay.ts) -> document.modelContext
 //
-// TODO: clean-code - 0.3 - COUPLING: the three-rung timeout ladder ordering below is a cross-file value invariant enforced only by this comment — nothing checks it at compile time if one rung changes independently.
+// TODO: clean-code - 0.3 - COUPLING: the three-rung timeout ladder ordering below is a cross-file value invariant enforced only by this comment — nothing checks it at compile time if one rung changes independently. STAYS: an ordering assertion is expressible (a module-scope check that throws), but this file is a plain .mjs shared with the build and injected into the page — a throw here fails the page, not the build, which is a worse failure mode than the comment. The right home is a guard script over the three literals; that is a scripts/ change, and scripts/ is another card's territory.
 // ORDERING INVARIANT: each layer's budget must exceed the one it wraps, with
 // a comfortable margin, so the innermost, most specific timeout error wins
 // the race under real scheduling jitter instead of being masked by an outer
@@ -50,6 +50,33 @@ export const SW_CALL_TIMEOUT_MS = 30_000;
  * call-timeout ordering invariant above.
  */
 export const SW_PULL_TIMEOUT_MS = 3_000;
+
+/**
+ * src/background/sw.ts — a second budget in the same PULL TIER as
+ * {@link SW_PULL_TIMEOUT_MS}, and deliberately not part of the call-timeout
+ * ordering invariant above. How long the worker waits for a
+ * `runtime:get-page-context` reply from the relay (card 118,
+ * decisions/40-page-context-access.md).
+ *
+ * WHY THE PULL TIER AND NOT THE CALL TIER. A tool call is arbitrary
+ * page-authored code doing arbitrary work — a network request, a form
+ * submission, an animation — which is why its rung is 20s. A page-context
+ * pull is neither: it is `document.getSelection()`, or one bounded,
+ * synchronous DOM walk that stops at
+ * `PAGE_EXTRACT_CAP_BYTES`/`MAX_NODES_VISITED`
+ * (src/infra/dom/page-extraction.ts). Measured on the fixture pages that walk
+ * is single-digit milliseconds; the only thing that can make it slow is a
+ * page whose main thread is already busy, which is exactly the condition
+ * `SW_PULL_TIMEOUT_MS` was sized for. Giving it a 20s budget would mean a
+ * user pressing Send on a hung page waits 20 seconds to be told the page
+ * could not be read.
+ *
+ * It is its OWN constant rather than a reuse of `SW_PULL_TIMEOUT_MS` because
+ * the two bound different work — a `getTools()` await versus a DOM walk — and
+ * a future change to the cap should be able to move this one without
+ * silently changing how long a registry rebuild is allowed to take.
+ */
+export const SW_PAGE_CONTEXT_TIMEOUT_MS = 3_000;
 
 /**
  * src/domain/chat/turn.ts (injected via src/sidepanel/services/chatTurn.ts)

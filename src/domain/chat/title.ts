@@ -16,6 +16,7 @@
 
 import type { TranscriptEntry } from "./message";
 import type { ChatSummary } from "./session";
+import { collapseWhitespace, truncateWithEllipsis } from "./text";
 
 // UNTITLED_CHAT REMOVED (card 102, decisions/37-i18n-paraglide.md):
 // decisions/34 keeps copy out of the domain layer, and "New chat" was the
@@ -34,15 +35,10 @@ import type { ChatSummary } from "./session";
  */
 export const TITLE_MAX_LENGTH = 48;
 
-/** Collapse newlines and runs of whitespace — a pasted multi-line prompt still has to render as one header line. */
-function firstLine(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-// TODO: clean-code - 0.35 - DRY: "truncate text to N chars, append an ellipsis" is hand-rolled here, and separately in session.ts's chatPreview and turn.ts's truncate, with three slightly different ellipsis markers, instead of one shared helper.
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
-}
+// Card 113: "collapse a pasted multi-line prompt into one header line" and
+// "cut to N characters with an ellipsis" are both ./text.ts now — this file
+// had its own copy of each, and `normalizeChatTitle` below had a SECOND copy
+// of the collapse.
 
 /**
  * Title for the chat currently loaded in the panel. `explicitTitle` — the
@@ -56,10 +52,11 @@ export function titleFromMessages(
   untitled: string,
   explicitTitle?: string,
 ): string {
-  if (explicitTitle) return truncate(firstLine(explicitTitle), TITLE_MAX_LENGTH);
+  if (explicitTitle)
+    return truncateWithEllipsis(collapseWhitespace(explicitTitle), TITLE_MAX_LENGTH);
   const firstUser = messages.find((m) => m.role === "user");
-  const text = firstUser ? firstLine(firstUser.content) : "";
-  return text ? truncate(text, TITLE_MAX_LENGTH) : untitled;
+  const text = firstUser ? collapseWhitespace(firstUser.content) : "";
+  return text ? truncateWithEllipsis(text, TITLE_MAX_LENGTH) : untitled;
 }
 
 /**
@@ -75,10 +72,10 @@ export function titleFromSummary(
   untitled: string,
   max = TITLE_MAX_LENGTH,
 ): string {
-  const title = summary.title ? firstLine(summary.title) : "";
-  if (title) return truncate(title, max);
-  const preview = summary.preview ? firstLine(summary.preview) : "";
-  if (preview) return truncate(preview, max);
+  const title = summary.title ? collapseWhitespace(summary.title) : "";
+  if (title) return truncateWithEllipsis(title, max);
+  const preview = summary.preview ? collapseWhitespace(summary.preview) : "";
+  if (preview) return truncateWithEllipsis(preview, max);
   return summary.origin || untitled;
 }
 
@@ -90,9 +87,8 @@ export function titleFromSummary(
  * name UNSETS `ChatSession.title` and reverts to the derived title, rather
  * than storing `""` (decisions/24 §4).
  */
-// TODO: clean-code - 0.3 - DRY: the same text.replace(/\s+/g, " ").trim() whitespace-collapse as firstLine (above, in this file) is written a second time here instead of normalizeChatTitle calling firstLine.
 export function normalizeChatTitle(title: string, maxStored: number): string | undefined {
-  const collapsed = title.replace(/\s+/g, " ").trim();
+  const collapsed = collapseWhitespace(title);
   if (!collapsed) return undefined;
   return collapsed.length > maxStored ? collapsed.slice(0, maxStored) : collapsed;
 }

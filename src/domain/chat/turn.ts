@@ -51,6 +51,7 @@ import {
 } from "../tools";
 import type { ApprovalPolicyGate } from "../settings";
 import type { ChatSession } from "./session";
+import { truncateWithEllipsis } from "./text";
 import {
   toModelConversation,
   UNTRUSTED_CONTENT_END,
@@ -573,8 +574,7 @@ function stringifyResult(result: unknown): string {
   }
 }
 
-// TODO: clean-code - 0.35 - DRY: "truncate text to N chars, append an ellipsis" is hand-rolled here, and separately in session.ts's chatPreview and title.ts's truncate, with three slightly different ellipsis markers, instead of one shared helper.
+/** A clipped tool result has to SAY it was clipped — the model is reading this, and a bare "…" would read as the tool's own output. Everything else about the cut is ./text.ts's shared rule (card 113). */
 function truncate(text: string): string {
-  if (text.length <= MAX_TOOL_RESULT_CHARS) return text;
-  return `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n… (truncated)`;
+  return truncateWithEllipsis(text, MAX_TOOL_RESULT_CHARS, "\n… (truncated)");
 }
