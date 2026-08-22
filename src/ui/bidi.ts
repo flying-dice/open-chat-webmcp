@@ -22,3 +22,26 @@
 export function isolateLtr(text: string): string {
   return `⁦${text}⁩`;
 }
+
+/**
+ * Direction-NEUTRAL isolation, for a run whose direction is not ours to
+ * decide (card 119): an excerpt of the user's selection on a page, which may
+ * be Arabic inside an English UI or English inside an Arabic one.
+ *
+ * Wraps the value in U+2068 FIRST STRONG ISOLATE / U+2069 POP DIRECTIONAL
+ * ISOLATE, so the run takes its own direction from its first strong character
+ * — Hebrew text reads right-to-left even when quoted into an English
+ * sentence — while still being sealed off from the sentence around it, which
+ * is what keeps the punctuation of the surrounding message on the correct
+ * side of it. {@link isolateLtr} is the right choice only where the value is
+ * KNOWN to be left-to-right (a URL, a model id); using it on natural-language
+ * text would force an RTL excerpt to render backwards.
+ *
+ * Same caveat as above: this is for a value interpolated INSIDE an assembled
+ * message string (a tooltip, an `aria-label`). Where the excerpt has its own
+ * element, `dir="auto"` on that element is the equivalent and more
+ * inspectable fix.
+ */
+export function isolateAuto(text: string): string {
+  return `⁨${text}⁩`;
+}

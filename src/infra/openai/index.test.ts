@@ -1,35 +1,37 @@
 // Tests for the OpenAI(-compatible) wire client: SSE parsing (chunk
 // boundaries, [DONE], comment/keepalive lines, malformed events), tool-call
 // delta assembly, error mapping, and custom/reserved headers (card 83).
+//
+// Card 111 (boards/project-backlog/111-realistic-adapter-tests.md): most of
+// this suite now runs against a REAL `node:http` server
+// (../testing/http-test-server.ts) rather than a hand-built `Response` over
+// a stubbed `fetch` — real per-event chunking, a real CRLF-terminated event
+// (RFC-legal, some proxies rewrite line endings), a real chunk boundary that
+// splits an SSE event, real header round-trips (reserved-header protection
+// actually crossing a socket), and a real `AbortController` torn down
+// against a real socket. Only the pure JSON-envelope normalization test for
+// `listModels` stays on the fetch-stub — there's no wire behaviour left to
+// be more real about once the array-mapping is the only thing under test.
+// Ported vs. kept is noted per test; see the card's journal for the summary.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOpenAiProvider } from "./index";
 import type { ChatParams } from "../../domain/providers";
 import { fail, ok } from "../../domain/result";
+import { jsonResponse as stubJsonResponse } from "../testing/fetch-stub";
+import {
+  destroySocket,
+  startHttpTestServer,
+  useHttpTestServer,
+  writeChunks,
+} from "../testing/http-test-server";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function jsonResponse(body: unknown, init?: ResponseInit): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-}
-
-function sseResponse(chunks: Uint8Array[], init?: ResponseInit): Response {
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const c of chunks) controller.enqueue(c);
-      controller.close();
-    },
-  });
-  return new Response(stream, { status: 200, ...init });
-}
-
 const enc = new TextEncoder();
+const server = useHttpTestServer();
 
 function sseEvent(json: unknown): string {
   return `data: ${JSON.stringify(json)}\n\n`;
@@ -45,7 +47,9 @@ async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
   return out;
 }
 
-function provider(opts: { apiKey?: string; headers?: { key: string; value: string }[] } = {}) {
+function provider(
+  opts: { apiKey?: string; headers?: { key: string; value: string }[]; baseUrl?: string } = {},
+) {
   // `ProviderConfig.apiKey`/`.headers` (src/domain/providers, not this
   // folder's to widen) are optional without `| undefined` — conditional
   // spread so an omitted option omits the key instead of assigning it
@@ -54,7 +58,7 @@ function provider(opts: { apiKey?: string; headers?: { key: string; value: strin
     id: "p1",
     type: "openai",
     name: "OpenAI",
-    baseUrl: "https://api.openai.com",
+    baseUrl: opts.baseUrl ?? "https://api.openai.com",
     ...(opts.apiKey !== undefined && { apiKey: opts.apiKey }),
     ...(opts.headers !== undefined && { headers: opts.headers }),
   });
@@ -65,21 +69,24 @@ function provider(opts: { apiKey?: string; headers?: { key: string; value: strin
 // ---------------------------------------------------------------------------
 
 describe("listModels", () => {
+  // KEPT: pure JSON-envelope normalization (dropping an id-less entry) — no
+  // wire behaviour involved.
   it("normalizes /v1/models, dropping entries with no id", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse({ data: [{ id: "gpt-4o" }, { no: "id" }] })),
+      vi.fn(async () => stubJsonResponse({ data: [{ id: "gpt-4o" }, { no: "id" }] })),
     );
     const result = await provider().listModels();
     expect(result).toEqual(ok([{ id: "gpt-4o", name: "gpt-4o" }]));
   });
 
+  // PORTED: a real 404 off the wire.
   it("404/405 map to not-supported (no /v1/models-equivalent)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("", { status: 404 })),
-    );
-    const result = await provider().listModels();
+    server().route("GET", "/v1/models", ({ res }) => {
+      res.writeHead(404);
+      res.end();
+    });
+    const result = await provider({ baseUrl: server().baseUrl }).listModels();
     expect(result).toEqual(
       fail({
         kind: "not-supported",
@@ -94,17 +101,15 @@ describe("listModels", () => {
 // ---------------------------------------------------------------------------
 
 describe("error mapping", () => {
+  // PORTED: a real 401 with an OpenAI-shaped error body.
   it("401 maps to kind 'auth', message extracted from {error:{message}}", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ error: { message: "Invalid API key provided" } }), {
-            status: 401,
-          }),
-      ),
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Invalid API key provided" } }));
+    });
+    const events = await collect(
+      provider({ apiKey: "sk-bad", baseUrl: server().baseUrl }).chat(baseParams()),
     );
-    const events = await collect(provider({ apiKey: "sk-bad" }).chat(baseParams()));
     expect(events).toEqual([
       {
         type: "error",
@@ -114,22 +119,20 @@ describe("error mapping", () => {
   });
 
   it("403 also maps to kind 'auth' (treated the same as 401 here)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("{}", { status: 403 })),
-    );
-    const events = await collect(provider().chat(baseParams()));
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end("{}");
+    });
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events[0]).toMatchObject({ type: "error", error: { kind: "auth", status: 403 } });
   });
 
   it("429 maps to kind 'http' (no special-casing for rate limits)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () => new Response("rate limited", { status: 429, statusText: "Too Many Requests" }),
-      ),
-    );
-    const events = await collect(provider().chat(baseParams()));
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(429, "Too Many Requests");
+      res.end("rate limited");
+    });
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events).toEqual([
       {
         type: "error",
@@ -138,34 +141,35 @@ describe("error mapping", () => {
     ]);
   });
 
-  it("a bare TypeError (unreachable / no host permission) maps to unreachable-or-cors", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("Failed to fetch");
-      }),
-    );
-    const events = await collect(provider().chat(baseParams()));
+  // PORTED: a genuinely dead host (nothing listening) rather than a
+  // hand-thrown TypeError — the real ECONNREFUSED path `fetch` takes.
+  it("a real dead-host connection failure maps to unreachable-or-cors", async () => {
+    const dead = await startHttpTestServer();
+    const baseUrl = dead.baseUrl;
+    await dead.close();
+    const events = await collect(provider({ baseUrl }).chat(baseParams()));
     expect(events[0]).toMatchObject({ type: "error", error: { kind: "unreachable-or-cors" } });
   });
 
-  it("an AbortError maps to kind 'aborted'", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new DOMException("aborted", "AbortError");
-      }),
+  it("aborting before the request is even sent maps to kind 'aborted'", async () => {
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: [DONE]\n\n");
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const events = await collect(
+      provider({ baseUrl: server().baseUrl }).chat(baseParams({ signal: controller.signal })),
     );
-    const events = await collect(provider().chat(baseParams()));
     expect(events).toEqual([{ type: "error", error: { kind: "aborted" } }]);
   });
 
-  it("a response with no body maps to invalid-response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 200 })),
-    );
-    const events = await collect(provider().chat(baseParams()));
+  it("a response with no body (real 204) maps to invalid-response", async () => {
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(204);
+      res.end();
+    });
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events).toEqual([
       {
         type: "error",
@@ -175,11 +179,11 @@ describe("error mapping", () => {
   });
 
   it("a non-JSON error body falls back to the raw body text", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("plain text failure", { status: 500 })),
-    );
-    const events = await collect(provider().chat(baseParams()));
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(500);
+      res.end("plain text failure");
+    });
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events[0]).toMatchObject({
       type: "error",
       error: { kind: "http", status: 500, body: "plain text failure" },
@@ -188,11 +192,52 @@ describe("error mapping", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Real abort — AbortController torn down against a real socket (card 111
+// checklist: "Abort propagation asserted against real sockets").
+// ---------------------------------------------------------------------------
+
+describe("chat() — real AbortController against a real socket", () => {
+  it("an abort fired mid-stream (after some content already arrived) yields 'aborted' without dropping the partial content already yielded, and the SERVER observes the socket tear down", async () => {
+    let triggerNext: () => void = () => undefined;
+    const releaseServer = new Promise<void>((resolve) => {
+      triggerNext = resolve;
+    });
+    server().route("POST", "/v1/chat/completions", async ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      await writeChunks(
+        res,
+        [enc.encode(sseEvent({ choices: [{ delta: { content: "partial" } }] }))],
+        {
+          end: false,
+        },
+      );
+      res.once("close", () => triggerNext());
+    });
+
+    const controller = new AbortController();
+    const iterator = provider({ baseUrl: server().baseUrl }).chat(
+      baseParams({ signal: controller.signal }),
+    );
+
+    const first = await iterator.next();
+    expect(first.value).toEqual({ type: "content", delta: "partial" });
+
+    controller.abort();
+    const second = await iterator.next();
+    expect(second.value).toEqual({ type: "error", error: { kind: "aborted" } });
+    await releaseServer;
+
+    const [request] = server().requests;
+    expect(request?.aborted).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // SSE parsing / tool-call assembly
 // ---------------------------------------------------------------------------
 
-describe("chat() — SSE parsing", () => {
-  it("parses content deltas, respects [DONE], and reports finish_reason + usage", async () => {
+describe("chat() — SSE parsing (real server)", () => {
+  it("parses content deltas sent as real per-event chunks, respects [DONE], and reports finish_reason + usage", async () => {
     const body =
       sseEvent({ choices: [{ delta: { content: "Hel" } }] }) +
       sseEvent({ choices: [{ delta: { content: "lo" } }] }) +
@@ -201,12 +246,12 @@ describe("chat() — SSE parsing", () => {
         usage: { prompt_tokens: 5, completion_tokens: 2 },
       }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", async ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      await writeChunks(res, [enc.encode(body)]);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "Hel" });
     expect(events[1]).toEqual({ type: "content", delta: "lo" });
     const done = events[events.length - 1] as {
@@ -219,17 +264,34 @@ describe("chat() — SSE parsing", () => {
     expect(done.stats).toMatchObject({ doneReason: "stop", promptTokens: 5, completionTokens: 2 });
   });
 
-  it("reassembles an SSE event split across an arbitrary chunk boundary", async () => {
+  it("reassembles an SSE event split across an arbitrary real chunk boundary", async () => {
     const body = `${sseEvent({ choices: [{ delta: { content: "Hello" } }] })}data: [DONE]\n\n`;
     const bytes = enc.encode(body);
     const splitAt = Math.floor(bytes.length / 2);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([bytes.slice(0, splitAt), bytes.slice(splitAt)])),
-    );
+    server().route("POST", "/v1/chat/completions", async ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      await writeChunks(res, [bytes.slice(0, splitAt), bytes.slice(splitAt)]);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "Hello" });
+  });
+
+  // NEW (card 111): CRLF line endings. Some proxies/load balancers rewrite
+  // `\n` to `\r\n` on the way through; `extractSseEvents` strips a trailing
+  // `\r` per line specifically for this. The pre-card-111 suite only ever
+  // sent `\n` — real transport realism means this can finally be exercised.
+  it("handles CRLF-terminated SSE lines", async () => {
+    const body =
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "crlf-ok" } }] })}\r\n\r\n` +
+      "data: [DONE]\r\n\r\n";
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(body);
+    });
+
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
+    expect(events[0]).toEqual({ type: "content", delta: "crlf-ok" });
   });
 
   it("ignores comment/keepalive lines (leading ':') without breaking parsing", async () => {
@@ -237,12 +299,12 @@ describe("chat() — SSE parsing", () => {
       ": keepalive\n\n" +
       sseEvent({ choices: [{ delta: { content: "hi" } }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(body);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "hi" });
   });
 
@@ -252,12 +314,12 @@ describe("chat() — SSE parsing", () => {
       "data: {not valid json\n\n" +
       sseEvent({ choices: [{ delta: { content: "still-ok" } }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(body);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     const contentEvents = events.filter((e) => e.type === "content");
     expect(contentEvents).toEqual([
       { type: "content", delta: "ok-" },
@@ -268,17 +330,17 @@ describe("chat() — SSE parsing", () => {
   it("handles the final event arriving with no trailing blank line (stream just closes)", async () => {
     // No trailing \n\n after the last data: line, and no [DONE] at all.
     const body = sseEvent({ choices: [{ delta: { content: "tail" } }] }).slice(0, -1);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(body);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     expect(events[0]).toEqual({ type: "content", delta: "tail" });
     expect(events[events.length - 1]).toMatchObject({ type: "done" });
   });
 
-  it("assembles a tool call whose name/arguments stream as fragments across many events, keyed by index", async () => {
+  it("assembles a tool call whose name/arguments stream as fragments across many real events, keyed by index", async () => {
     const body =
       sseEvent({
         choices: [
@@ -301,12 +363,12 @@ describe("chat() — SSE parsing", () => {
       }) +
       sseEvent({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", async ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      await writeChunks(res, [enc.encode(body)]);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
       type: string;
       toolCalls: { id: string; name: string; arguments: Record<string, unknown> }[];
@@ -332,12 +394,12 @@ describe("chat() — SSE parsing", () => {
       }) +
       sseEvent({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(body);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
       toolCalls: { id: string; name: string }[];
     };
@@ -357,12 +419,12 @@ describe("chat() — SSE parsing", () => {
       }) +
       sseEvent({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) +
       "data: [DONE]\n\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(body);
+    });
 
-    const events = await collect(provider().chat(baseParams()));
+    const events = await collect(provider({ baseUrl: server().baseUrl }).chat(baseParams()));
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
       toolCalls: { arguments: Record<string, unknown> }[];
     };
@@ -371,35 +433,74 @@ describe("chat() — SSE parsing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Chaos: a forcibly reset connection mid-stream (card 111 — the same
+// clean-close-vs-reset distinction ../ollama/client.test.ts's chaos suite
+// makes; unlike Ollama's NDJSON parser this one finalizes normally on any
+// clean stream end, so the interesting real-transport case here is
+// specifically the ABRUPT one).
+// ---------------------------------------------------------------------------
+
+describe("chaos: a forcibly reset connection mid-stream", () => {
+  it("a connection reset after a content event but before [DONE] surfaces a network error, not a synthesized 'done'", async () => {
+    let triggerDestroy: () => void = () => undefined;
+    const destroySignal = new Promise<void>((resolve) => {
+      triggerDestroy = resolve;
+    });
+    server().route("POST", "/v1/chat/completions", async ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      await writeChunks(
+        res,
+        [enc.encode(sseEvent({ choices: [{ delta: { content: "partial" } }] }))],
+        {
+          end: false,
+        },
+      );
+      await destroySignal;
+      destroySocket(res);
+    });
+
+    const iterator = provider({ baseUrl: server().baseUrl }).chat(baseParams());
+    const first = await iterator.next();
+    expect(first.value).toEqual({ type: "content", delta: "partial" });
+
+    triggerDestroy();
+    const second = await iterator.next();
+    expect(second.value).toMatchObject({ type: "error" });
+    expect((second.value as { error: { kind: string } }).error.kind).not.toBe("aborted");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Headers: custom + reserved-header protection
 // ---------------------------------------------------------------------------
 
-describe("headers actually applied to the request", () => {
+describe("headers actually applied to the request (real server)", () => {
   it("sends custom headers, plus Content-Type/Accept/Authorization set by the client", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      sseResponse([enc.encode("data: [DONE]\n\n")]),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: [DONE]\n\n");
+    });
 
     await collect(
-      provider({ apiKey: "sk-real", headers: [{ key: "X-Tenant", value: "acme" }] }).chat(
-        baseParams(),
-      ),
+      provider({
+        apiKey: "sk-real",
+        headers: [{ key: "X-Tenant", value: "acme" }],
+        baseUrl: server().baseUrl,
+      }).chat(baseParams()),
     );
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("X-Tenant")).toBe("acme");
-    expect(headers.get("Content-Type")).toBe("application/json");
-    expect(headers.get("Accept")).toBe("text/event-stream");
-    expect(headers.get("Authorization")).toBe("Bearer sk-real");
+    const [request] = server().requests;
+    expect(request?.headers["x-tenant"]).toBe("acme");
+    expect(request?.headers["content-type"]).toBe("application/json");
+    expect(request?.headers.accept).toBe("text/event-stream");
+    expect(request?.headers.authorization).toBe("Bearer sk-real");
   });
 
   it("a custom Content-Type/Accept cannot override the client-controlled values (reserved-header protection)", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      sseResponse([enc.encode("data: [DONE]\n\n")]),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: [DONE]\n\n");
+    });
 
     await collect(
       provider({
@@ -407,59 +508,60 @@ describe("headers actually applied to the request", () => {
           { key: "Content-Type", value: "text/plain" },
           { key: "Accept", value: "application/json" },
         ],
+        baseUrl: server().baseUrl,
       }).chat(baseParams()),
     );
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("Content-Type")).toBe("application/json");
-    expect(headers.get("Accept")).toBe("text/event-stream");
+    const [request] = server().requests;
+    expect(request?.headers["content-type"]).toBe("application/json");
+    expect(request?.headers.accept).toBe("text/event-stream");
   });
 
   it("when an API key is configured, a custom Authorization header cannot override it", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      sseResponse([enc.encode("data: [DONE]\n\n")]),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: [DONE]\n\n");
+    });
 
     await collect(
       provider({
         apiKey: "sk-real",
         headers: [{ key: "Authorization", value: "Bearer user-supplied" }],
+        baseUrl: server().baseUrl,
       }).chat(baseParams()),
     );
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer sk-real");
+    const [request] = server().requests;
+    expect(request?.headers.authorization).toBe("Bearer sk-real");
   });
 
   it("with no API key configured, a custom Authorization header survives untouched (decision 15)", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      sseResponse([enc.encode("data: [DONE]\n\n")]),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    server().route("POST", "/v1/chat/completions", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end("data: [DONE]\n\n");
+    });
 
     await collect(
-      provider({ headers: [{ key: "Authorization", value: "Bearer user-supplied" }] }).chat(
-        baseParams(),
-      ),
+      provider({
+        headers: [{ key: "Authorization", value: "Bearer user-supplied" }],
+        baseUrl: server().baseUrl,
+      }).chat(baseParams()),
     );
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer user-supplied");
+    const [request] = server().requests;
+    expect(request?.headers.authorization).toBe("Bearer user-supplied");
   });
 
   it("listModels sends Accept:application/json and the bearer Authorization", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ data: [] }));
-    vi.stubGlobal("fetch", fetchMock);
+    server().route("GET", "/v1/models", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [] }));
+    });
 
-    await provider({ apiKey: "sk-real" }).listModels();
+    await provider({ apiKey: "sk-real", baseUrl: server().baseUrl }).listModels();
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("Accept")).toBe("application/json");
-    expect(headers.get("Authorization")).toBe("Bearer sk-real");
+    const [request] = server().requests;
+    expect(request?.headers.accept).toBe("application/json");
+    expect(request?.headers.authorization).toBe("Bearer sk-real");
   });
 });

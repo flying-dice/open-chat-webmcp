@@ -1,6 +1,19 @@
 // Tests for the raw Ollama wire client: NDJSON stream parsing (chunk
 // boundaries, garbage lines, abort), capability probing over /api/show, and
 // error mapping (including the 403 origin-rejection special case) (card 83).
+//
+// Card 111 (boards/project-backlog/111-realistic-adapter-tests.md): most of
+// this suite now runs against a REAL `node:http` server
+// (../testing/http-test-server.ts) instead of a hand-built `Response` over a
+// stubbed `fetch` — real chunk boundaries (including one split mid multibyte
+// UTF-8 character), a real mid-stream socket destruction for the "connection
+// closed without done:true" chaos case, and a real `AbortController` torn
+// down against a real socket rather than a fake reader that rejects on cue.
+// A few tests deliberately stay on the fetch-stub: pure JSON-envelope shape
+// (listModels' normalization) and pure cache logic (getCapabilities' cache
+// hit / no-tools / forceRefresh paths never touch the network at all, so
+// there is no wire behaviour to be more real about) — ported vs. kept is
+// noted per section below and in the card's journal.
 
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type {
@@ -10,6 +23,13 @@ import type {
 } from "../../domain/providers";
 import { fail, ok, type Result } from "../../domain/result";
 import { createFakeChromeStorage } from "../chrome-storage/testing/fake-chrome-storage";
+import { jsonResponse as stubJsonResponse } from "../testing/fetch-stub";
+import {
+  destroySocket,
+  startHttpTestServer,
+  useHttpTestServer,
+  writeChunks,
+} from "../testing/http-test-server";
 import {
   chat,
   getCapabilities,
@@ -22,34 +42,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function jsonResponse(body: unknown, init?: ResponseInit): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-}
-
-function streamResponse(chunks: Uint8Array[], init?: ResponseInit): Response {
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks) controller.enqueue(chunk);
-      controller.close();
-    },
-  });
-  return new Response(stream, { status: 200, ...init });
-}
-
 const enc = new TextEncoder();
+const server = useHttpTestServer();
 
 // ---------------------------------------------------------------------------
 // listModels
 // ---------------------------------------------------------------------------
 
 describe("listModels", () => {
+  // KEPT on the fetch-stub: pure JSON-envelope normalization (dropping a
+  // malformed model entry, mapping snake_case fields) — no wire behaviour
+  // involved, a hand-built Response is exactly as sharp a test as a real one.
   it("normalizes the /api/tags response, GET with no body", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      jsonResponse({
+      stubJsonResponse({
         models: [
           {
             name: "llama3.1:8b",
@@ -83,21 +89,24 @@ describe("listModels", () => {
     expect(init.method).toBe("GET");
   });
 
-  it("applies custom headers (decisions/15) on top of no Content-Type for a GET", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      jsonResponse({ models: [] }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  // PORTED: proves a custom header set via decisions/15's `Headers` API
+  // actually arrives on a real socket, and that no Content-Type is invented
+  // for a bodyless GET — a stubbed `Response` can't tell a header that was
+  // set from one that was merely intended.
+  it("applies custom headers (decisions/15) on top of no Content-Type for a GET, against a real server", async () => {
+    server().route("GET", "/api/tags", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [] }));
+    });
 
     await listModels({
-      baseUrl: "http://localhost:11434",
+      baseUrl: server().baseUrl,
       headers: [{ key: "X-Gateway-Key", value: "secret" }],
     });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("X-Gateway-Key")).toBe("secret");
-    expect(headers.get("Content-Type")).toBeNull();
+    const [request] = server().requests;
+    expect(request?.headers["x-gateway-key"]).toBe("secret");
+    expect(request?.headers["content-type"]).toBeUndefined();
   });
 });
 
@@ -106,15 +115,18 @@ describe("listModels", () => {
 // ---------------------------------------------------------------------------
 
 describe("error mapping", () => {
+  // PORTED: a real 403 with no body/extra headers, matching what the doc
+  // comment on `originRejectedError` says was confirmed against a live
+  // Ollama server.
   it("maps a 403 to unreachable-or-cors with the origin-rejection message and a copyable fix (decisions/33)", async () => {
     const fake = createFakeChromeStorage();
     vi.stubGlobal("chrome", fake.chrome);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("", { status: 403, statusText: "Forbidden" })),
-    );
+    server().route("GET", "/api/tags", ({ res }) => {
+      res.writeHead(403);
+      res.end();
+    });
 
-    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    const [, err] = await listModels({ baseUrl: server().baseUrl });
     expect(err?.kind).toBe("unreachable-or-cors");
     if (err?.kind !== "unreachable-or-cors") return;
     expect(err.message).toContain("rejected this request because of its");
@@ -125,15 +137,17 @@ describe("error mapping", () => {
     });
   });
 
+  // PORTED: a real non-2xx status/statusText/body, straight off the wire.
   it("maps a non-403 HTTP error to kind 'http' with status/statusText/body", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () => new Response("server exploded", { status: 500, statusText: "Internal Error" }),
-      ),
-    );
+    server().route("GET", "/api/tags", ({ res }) => {
+      // Node's http server always sends its own default statusText for a
+      // given code unless overridden — set it explicitly so the assertion
+      // below is exercising the client's passthrough, not Node's default.
+      res.writeHead(500, "Internal Error");
+      res.end("server exploded");
+    });
 
-    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    const [, err] = await listModels({ baseUrl: server().baseUrl });
     expect(err).toEqual({
       kind: "http",
       status: 500,
@@ -142,26 +156,28 @@ describe("error mapping", () => {
     });
   });
 
-  it("maps a bare TypeError (dead server or blocked CORS preflight) to unreachable-or-cors with the OLLAMA_ORIGINS fix", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("Failed to fetch");
-      }),
-    );
+  // PORTED: a genuinely dead server (nothing listening on the port anymore)
+  // rather than a hand-thrown TypeError — this is the real ECONNREFUSED path
+  // `fetch` takes, proving `toOllamaError` classifies undici's actual
+  // rejection, not a fabricated stand-in for it.
+  it("maps a real dead-server connection failure to unreachable-or-cors with the OLLAMA_ORIGINS fix", async () => {
+    const dead = await startHttpTestServer();
+    const baseUrl = dead.baseUrl;
+    await dead.close(); // nothing listens on this port from here on
 
-    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    const [, err] = await listModels({ baseUrl });
     expect(err?.kind).toBe("unreachable-or-cors");
     if (err?.kind !== "unreachable-or-cors") return;
     expect(err.fix?.command).toBe("OLLAMA_ORIGINS=chrome-extension://*");
   });
 
+  // PORTED: a real 200 whose body is not JSON.
   it("maps a malformed JSON body to invalid-response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("not json", { status: 200 })),
-    );
-    const [, err] = await listModels({ baseUrl: "http://localhost:11434" });
+    server().route("GET", "/api/tags", ({ res }) => {
+      res.writeHead(200);
+      res.end("not json");
+    });
+    const [, err] = await listModels({ baseUrl: server().baseUrl });
     expect(err?.kind).toBe("invalid-response");
   });
 });
@@ -192,6 +208,9 @@ describe("getCapabilities", () => {
     };
   }
 
+  // KEPT: a cache hit never reaches the network at all — nothing here is
+  // wire behaviour, so a fetch spy that must never fire is exactly as sharp
+  // as it gets.
   it("a cache hit never calls fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -206,40 +225,45 @@ describe("getCapabilities", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("a cache miss POSTs /api/show, maps 'tools' capability to tool-capable, and files the answer", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      jsonResponse({ capabilities: ["completion", "tools"] }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  // PORTED: proves the POST really carries `model` as JSON, and that the
+  // real response body drives caching — a stubbed fetch can assert the same
+  // shape but can't prove the bytes actually round-tripped a socket.
+  it("a cache miss POSTs /api/show, maps 'tools' capability to tool-capable, and files the answer, against a real server", async () => {
+    server().route("POST", "/api/show", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ capabilities: ["completion", "tools"] }));
+    });
     const cache = fakeCache();
 
     const result = await getCapabilities(
       { name: "llama3.1:8b", digest: "d1" },
-      { baseUrl: "http://localhost:11434", capabilityCache: cache },
+      { baseUrl: server().baseUrl, capabilityCache: cache },
     );
 
     expect(result).toEqual(ok({ status: "tool-capable", detail: ["completion", "tools"] }));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:11434/api/show");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ model: "llama3.1:8b" });
+    const [request] = server().requests;
+    expect(request?.method).toBe("POST");
+    expect(JSON.parse(request?.body.toString() ?? "")).toEqual({ model: "llama3.1:8b" });
     expect(cache.set).toHaveBeenCalledWith("ollama", "d1", {
       status: "tool-capable",
       detail: ["completion", "tools"],
     });
   });
 
+  // KEPT: same reasoning as the cache-hit test above — no capability besides
+  // the tool-mapping switch is exercised here that the ported test doesn't
+  // already cover on the wire.
   it("no 'tools' entry maps to no-tools", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse({ capabilities: ["completion"] })),
+      vi.fn(async () => stubJsonResponse({ capabilities: ["completion"] })),
     );
     const result = await getCapabilities({ name: "m", digest: "d2" }, { baseUrl: "http://x" });
     expect(result).toEqual(ok({ status: "no-tools", detail: ["completion"] }));
   });
 
   it("forceRefresh bypasses a cache hit and still calls fetch", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ capabilities: ["tools"] }));
+    const fetchMock = vi.fn(async () => stubJsonResponse({ capabilities: ["tools"] }));
     vi.stubGlobal("fetch", fetchMock);
     const cache = fakeCache();
     await cache.set("ollama", "d1", { status: "no-tools", detail: [] });
@@ -251,20 +275,23 @@ describe("getCapabilities", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("Content-Type is applied for the POST and wins over a conflicting custom header", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      jsonResponse({ capabilities: [] }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  // PORTED: header precedence (`Content-Type` always wins, decisions/15) is
+  // exactly the kind of thing worth proving on a real request — the
+  // `Headers` object's own case-insensitive `.set` semantics could mask a
+  // bug that only shows up once the request is actually serialized.
+  it("Content-Type is applied for the POST and wins over a conflicting custom header, against a real server", async () => {
+    server().route("POST", "/api/show", ({ res }) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ capabilities: [] }));
+    });
 
     await getCapabilities(
       { name: "m", digest: "d1" },
-      { baseUrl: "http://x", headers: [{ key: "Content-Type", value: "text/plain" }] },
+      { baseUrl: server().baseUrl, headers: [{ key: "Content-Type", value: "text/plain" }] },
     );
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("Content-Type")).toBe("application/json");
+    const [request] = server().requests;
+    expect(request?.headers["content-type"]).toBe("application/json");
   });
 });
 
@@ -287,12 +314,16 @@ function baseParams(overrides: Partial<OllamaChatParams> = {}): OllamaChatParams
   };
 }
 
-describe("chat() — NDJSON stream parsing", () => {
-  it("parses a well-formed stream: content deltas, tool-calls, then done with stats", async () => {
+function ndjsonLine(obj: unknown): string {
+  return `${JSON.stringify(obj)}\n`;
+}
+
+describe("chat() — NDJSON stream parsing (real server)", () => {
+  it("parses a well-formed stream sent as one real chunk per NDJSON line: content deltas, tool-calls, then done with stats", async () => {
     const lines = [
-      JSON.stringify({ message: { role: "assistant", content: "Hel" }, done: false }),
-      JSON.stringify({ message: { role: "assistant", content: "lo" }, done: false }),
-      JSON.stringify({
+      ndjsonLine({ message: { role: "assistant", content: "Hel" }, done: false }),
+      ndjsonLine({ message: { role: "assistant", content: "lo" }, done: false }),
+      ndjsonLine({
         message: {
           role: "assistant",
           content: "",
@@ -300,20 +331,22 @@ describe("chat() — NDJSON stream parsing", () => {
         },
         done: false,
       }),
-      JSON.stringify({
+      ndjsonLine({
         message: { role: "assistant", content: "" },
         done: true,
         done_reason: "stop",
         eval_count: 42,
       }),
     ];
-    const body = lines.map((l) => `${l}\n`).join("");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => streamResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/api/chat", async ({ res }) => {
+      res.writeHead(200);
+      await writeChunks(
+        res,
+        lines.map((l) => enc.encode(l)),
+      );
+    });
 
-    const events = await collect(chat(baseParams()));
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events[0]).toEqual({ type: "content", delta: "Hel" });
     expect(events[1]).toEqual({ type: "content", delta: "lo" });
     expect(events[2]).toMatchObject({
@@ -330,24 +363,47 @@ describe("chat() — NDJSON stream parsing", () => {
     expect(done.type).toBe("done");
     expect(done.stats.doneReason).toBe("stop");
     expect(done.stats.evalCount).toBe(42);
-    // The tool call id on "done"'s message matches the one synthesized for the "tool-calls" event.
     expect(done.message.tool_calls as { id?: string }[] | undefined).toBeUndefined();
   });
 
-  it("reassembles a NDJSON line split across an arbitrary chunk boundary", async () => {
-    const line = `${JSON.stringify({ message: { role: "assistant", content: "Hello" }, done: false })}\n`;
-    const doneLine = `${JSON.stringify({ message: { role: "assistant", content: "" }, done: true })}\n`;
-    const full = line + doneLine;
-    const bytes = enc.encode(full);
+  it("reassembles a NDJSON line split across an arbitrary real chunk boundary", async () => {
+    const line = ndjsonLine({ message: { role: "assistant", content: "Hello" }, done: false });
+    const doneLine = ndjsonLine({ message: { role: "assistant", content: "" }, done: true });
+    const bytes = enc.encode(line + doneLine);
     // Split mid-line at an arbitrary byte offset, not aligned to `\n`.
     const splitAt = Math.floor(line.length / 2);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => streamResponse([bytes.slice(0, splitAt), bytes.slice(splitAt)])),
-    );
+    server().route("POST", "/api/chat", async ({ res }) => {
+      res.writeHead(200);
+      await writeChunks(res, [bytes.slice(0, splitAt), bytes.slice(splitAt)]);
+    });
 
-    const events = await collect(chat(baseParams()));
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events[0]).toEqual({ type: "content", delta: "Hello" });
+    expect(events[1]).toMatchObject({ type: "done" });
+  });
+
+  // NEW (card 111 explicitly asks for this case): the split lands INSIDE a
+  // multibyte UTF-8 character's byte sequence, not just at an arbitrary text
+  // offset — 'é' (U+00E9) encodes as two bytes (0xC3 0xA9); the split below
+  // separates them into different chunks. Only catches a real bug because
+  // `TextDecoder.decode(chunk, { stream: true })` is what's responsible for
+  // buffering a dangling lead byte across chunks — a chunk boundary chosen in
+  // JS-string-space (as the pre-card-111 stub did) can never land here.
+  it("reassembles a NDJSON line split mid multibyte UTF-8 character", async () => {
+    const line = ndjsonLine({ message: { role: "assistant", content: "café" }, done: false });
+    const doneLine = ndjsonLine({ message: { role: "assistant", content: "" }, done: true });
+    const bytes = enc.encode(line + doneLine);
+    const eIndex = line.indexOf("é");
+    const prefixByteLength = enc.encode(line.slice(0, eIndex)).length;
+    // Split after just the FIRST of 'é'\'s two UTF-8 bytes.
+    const splitAt = prefixByteLength + 1;
+    server().route("POST", "/api/chat", async ({ res }) => {
+      res.writeHead(200);
+      await writeChunks(res, [bytes.slice(0, splitAt), bytes.slice(splitAt)]);
+    });
+
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
+    expect(events[0]).toEqual({ type: "content", delta: "café" });
     expect(events[1]).toMatchObject({ type: "done" });
   });
 
@@ -357,31 +413,28 @@ describe("chat() — NDJSON stream parsing", () => {
       done: true,
       done_reason: "stop",
     });
-    // No trailing \n at all — server closed the stream mid-line-terminator.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => streamResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      // No trailing \n at all — server closed the stream mid-line-terminator.
+      res.end(body);
+    });
 
-    const events = await collect(chat(baseParams()));
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: "done" });
   });
 
   it("a garbage (non-JSON) line mid-stream terminates the generator with a single invalid-response error event", async () => {
     const body =
-      JSON.stringify({ message: { role: "assistant", content: "ok" }, done: false }) +
-      "\n" +
-      "{not valid json at all" +
-      "\n" +
-      JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) +
-      "\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => streamResponse([enc.encode(body)])),
-    );
+      ndjsonLine({ message: { role: "assistant", content: "ok" }, done: false }) +
+      "{not valid json at all\n" +
+      ndjsonLine({ message: { role: "assistant", content: "" }, done: true });
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      res.end(body);
+    });
 
-    const events = await collect(chat(baseParams()));
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events[0]).toEqual({ type: "content", delta: "ok" });
     expect(events[1]).toMatchObject({ type: "error", error: { kind: "invalid-response" } });
     // The generator terminates on the parse failure — the later, valid
@@ -389,32 +442,12 @@ describe("chat() — NDJSON stream parsing", () => {
     expect(events).toHaveLength(2);
   });
 
-  it("an aborted stream (reader.read() rejects with AbortError) yields a single 'aborted' error event", async () => {
-    const abortingResponse = {
-      ok: true,
-      status: 200,
-      body: {
-        getReader: () => ({
-          read: () => Promise.reject(new DOMException("The operation was aborted.", "AbortError")),
-          releaseLock: () => undefined,
-        }),
-      },
-    } as unknown as Response;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => abortingResponse),
-    );
-
-    const events = await collect(chat(baseParams()));
-    expect(events).toEqual([{ type: "error", error: { kind: "aborted" } }]);
-  });
-
-  it("a response with no body yields invalid-response and never hangs", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 200 })),
-    );
-    const events = await collect(chat(baseParams()));
+  it("a response with no body (real 204) yields invalid-response and never hangs", async () => {
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(204);
+      res.end();
+    });
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events).toEqual([
       {
         type: "error",
@@ -426,24 +459,25 @@ describe("chat() — NDJSON stream parsing", () => {
   it("maps a 403 mid-chat the same way as listModels (origin rejection)", async () => {
     const fake = createFakeChromeStorage();
     vi.stubGlobal("chrome", fake.chrome);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("", { status: 403 })),
-    );
-    const events = await collect(chat(baseParams()));
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(403);
+      res.end();
+    });
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: "error", error: { kind: "unreachable-or-cors" } });
   });
 
-  it("sends tools when provided and omits the field when not", async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      streamResponse([enc.encode(`${JSON.stringify({ done: true })}\n`)]),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("sends tools when provided, with the real request body carrying the converted schema", async () => {
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      res.end(ndjsonLine({ done: true }));
+    });
 
     await collect(
       chat(
         baseParams({
+          baseUrl: server().baseUrl,
           tools: [
             { name: "search", description: "search the web", inputSchema: { type: "object" } },
           ],
@@ -451,8 +485,8 @@ describe("chat() — NDJSON stream parsing", () => {
       ),
     );
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const sentBody = JSON.parse(init.body as string);
+    const [request] = server().requests;
+    const sentBody = JSON.parse(request?.body.toString() ?? "");
     expect(sentBody.tools).toEqual([
       {
         type: "function",
@@ -460,15 +494,96 @@ describe("chat() — NDJSON stream parsing", () => {
       },
     ]);
   });
+
+  it("omits the tools field entirely when none are provided", async () => {
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      res.end(ndjsonLine({ done: true }));
+    });
+
+    await collect(chat(baseParams({ baseUrl: server().baseUrl })));
+
+    const [request] = server().requests;
+    const sentBody = JSON.parse(request?.body.toString() ?? "");
+    expect(sentBody).not.toHaveProperty("tools");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real abort — AbortController torn down against a real socket (card 111
+// checklist: "Abort propagation asserted against real sockets").
+// ---------------------------------------------------------------------------
+
+describe("chat() — real AbortController against a real socket", () => {
+  it("aborting before the request is even sent yields a single 'aborted' error event", async () => {
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      res.end(ndjsonLine({ done: true }));
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    const events = await collect(
+      chat(baseParams({ baseUrl: server().baseUrl, signal: controller.signal })),
+    );
+    expect(events).toEqual([{ type: "error", error: { kind: "aborted" } }]);
+  });
+
+  it("an abort fired mid-stream (after some content already arrived) yields 'aborted' without dropping the partial content already yielded, and the SERVER observes the socket tear down", async () => {
+    let releaseServer: () => void = () => undefined;
+    const serverSawClose = new Promise<void>((resolve) => {
+      releaseServer = resolve;
+    });
+    server().route("POST", "/api/chat", async ({ res, captured }) => {
+      res.writeHead(200);
+      await writeChunks(
+        res,
+        [
+          enc.encode(
+            ndjsonLine({ message: { role: "assistant", content: "partial" }, done: false }),
+          ),
+        ],
+        { end: false },
+      );
+      res.once("close", () => {
+        releaseServer();
+      });
+      void captured; // aborted flag is asserted below once the close event settles
+    });
+
+    const controller = new AbortController();
+    const events: unknown[] = [];
+    const iterator = chat(baseParams({ baseUrl: server().baseUrl, signal: controller.signal }));
+
+    const first = await iterator.next();
+    expect(first.value).toEqual({ type: "content", delta: "partial" });
+    events.push(first.value);
+
+    controller.abort();
+    const second = await iterator.next();
+    events.push(second.value);
+    await serverSawClose;
+
+    expect(events).toEqual([
+      { type: "content", delta: "partial" },
+      { type: "error", error: { kind: "aborted" } },
+    ]);
+    const [request] = server().requests;
+    expect(request?.aborted).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
 // Chaos: unhappy paths the suites above don't cover (card 85,
-// .claude/skills/chaos-monkey/SKILL.md).
+// .claude/skills/chaos-monkey/SKILL.md). Card 111 ported both of these onto
+// a real socket teardown rather than a `ReadableStream.close()`/hand-built
+// reader — a clean `close()` and an actual dropped connection are different
+// wire events, and the production code has to react correctly to the latter
+// too.
 // ---------------------------------------------------------------------------
 
-describe("chaos: stream faults", () => {
-  it("a connection that closes after content but WITHOUT ever sending a done:true line surfaces a terminal invalid-response error, after the content already streamed", async () => {
+describe("chaos: stream faults (real server)", () => {
+  it("a connection that DIES after content but WITHOUT ever sending a done:true line surfaces a terminal invalid-response error, after the content already streamed", async () => {
     // A real-world truncation: the model server crashes, or a proxy in
     // front of it drops the connection, after streaming some tokens but
     // before writing the final `{"done":true,...}` line. Decided card 90:
@@ -480,15 +595,21 @@ describe("chaos: stream faults", () => {
     // treated as one: the partial content already streamed stays (never
     // discarded), but the generator's last event is a terminal error rather
     // than ending silently as though the reply were complete.
-    const body =
-      JSON.stringify({ message: { role: "assistant", content: "The answer is" }, done: false }) +
-      "\n";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => streamResponse([enc.encode(body)])),
-    );
+    // A CLEAN close (the server writes content then `res.end()`s normally,
+    // no RST) with no `done:true` line ever sent — the real-server analog
+    // of the old hand-built `ReadableStream.close()`. `reader.read()`
+    // resolves `{done:true}` with no exception, so `chat()`'s own
+    // `if (!sawDone)` check is what synthesizes the terminal error, not a
+    // caught exception (see the distinct forcible-reset case right below,
+    // which DOES throw and is handled by a different branch entirely).
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      res.end(
+        ndjsonLine({ message: { role: "assistant", content: "The answer is" }, done: false }),
+      );
+    });
 
-    const events = await collect(chat(baseParams()));
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events).toEqual([
       { type: "content", delta: "The answer is" },
       {
@@ -502,61 +623,67 @@ describe("chaos: stream faults", () => {
     ]);
   });
 
+  // NEW (card 111): distinct from the clean-close-without-done case above —
+  // here the connection is forcibly RESET (`destroySocket`) mid-body rather
+  // than ending normally, which makes `reader.read()` itself REJECT. That
+  // takes chat()'s OUTER catch (the same `toOllamaError` mapping a dead
+  // `fetch()` call uses), not the `if (!sawDone)` synthesized-truncation
+  // branch above — a real difference in the production code path a
+  // hand-built `ReadableStream` has no way to exercise, since cancelling one
+  // is always a clean, exception-free close.
+  it("a connection FORCIBLY RESET mid-stream (not a clean close) surfaces as a network error, a different path than the clean-close-without-done case above", async () => {
+    // Coordinated with the client below: the socket is only destroyed once
+    // the client has actually received and parsed the first chunk — a
+    // destroy fired too early can race the response's own headers/first
+    // bytes off the wire and produce a connection-establishment failure
+    // instead of the mid-body reset this test means to exercise.
+    let triggerDestroy: () => void = () => undefined;
+    const destroySignal = new Promise<void>((resolve) => {
+      triggerDestroy = resolve;
+    });
+    server().route("POST", "/api/chat", async ({ res }) => {
+      res.writeHead(200);
+      await writeChunks(
+        res,
+        [
+          enc.encode(
+            ndjsonLine({ message: { role: "assistant", content: "The answer is" }, done: false }),
+          ),
+        ],
+        { end: false },
+      );
+      await destroySignal;
+      destroySocket(res);
+    });
+
+    const iterator = chat(baseParams({ baseUrl: server().baseUrl }));
+    const first = await iterator.next();
+    expect(first.value).toEqual({ type: "content", delta: "The answer is" });
+
+    triggerDestroy();
+    const second = await iterator.next();
+    expect(second.value).toMatchObject({ type: "error", error: { kind: "unreachable-or-cors" } });
+
+    const third = await iterator.next();
+    expect(third.done).toBe(true);
+  });
+
   it("garbage JSON on the final, newline-less line (flush path) still yields a single invalid-response error, not a thrown exception", async () => {
-    // Distinct from the existing "garbage line mid-stream" case: this one
+    // Distinct from the mid-stream garbage-line case above: this one
     // exercises `chat()`'s POST-loop flush of a trailing partial line (no
     // `\n` at all), the other code path that calls `parseNdjsonLine`.
     const body =
-      JSON.stringify({ message: { role: "assistant", content: "ok" }, done: false }) +
-      "\n" +
+      ndjsonLine({ message: { role: "assistant", content: "ok" }, done: false }) +
       "{not json, no newline";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => streamResponse([enc.encode(body)])),
-    );
+    server().route("POST", "/api/chat", ({ res }) => {
+      res.writeHead(200);
+      res.end(body);
+    });
 
-    const events = await collect(chat(baseParams()));
+    const events = await collect(chat(baseParams({ baseUrl: server().baseUrl })));
     expect(events[0]).toEqual({ type: "content", delta: "ok" });
     expect(events[1]).toMatchObject({ type: "error", error: { kind: "invalid-response" } });
     expect(events).toHaveLength(2);
-  });
-
-  it("an abort that fires mid-stream (after some content already arrived) yields 'aborted' without dropping the partial content already yielded", async () => {
-    let reads = 0;
-    const abortingResponse = {
-      ok: true,
-      status: 200,
-      body: {
-        getReader: () => ({
-          read: () => {
-            reads += 1;
-            if (reads === 1) {
-              return Promise.resolve({
-                done: false,
-                value: enc.encode(
-                  `${JSON.stringify({
-                    message: { role: "assistant", content: "partial" },
-                    done: false,
-                  })}\n`,
-                ),
-              });
-            }
-            return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
-          },
-          releaseLock: () => undefined,
-        }),
-      },
-    } as unknown as Response;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => abortingResponse),
-    );
-
-    const events = await collect(chat(baseParams()));
-    expect(events).toEqual([
-      { type: "content", delta: "partial" },
-      { type: "error", error: { kind: "aborted" } },
-    ]);
   });
 });
 
@@ -570,7 +697,8 @@ describe("chaos: stream faults", () => {
 // in its error member, which is why ./adapter.ts's `listModels` can pass a
 // failure straight through with nothing to map. If `Result` ever stopped
 // being readonly, the first case would break and the adapter would silently
-// need a translation layer.
+// need a translation layer. Pure type-level assertions — no network, no
+// server, nothing card 111's realism upgrade touches.
 // ---------------------------------------------------------------------------
 
 describe("OllamaError widens into ProviderError", () => {

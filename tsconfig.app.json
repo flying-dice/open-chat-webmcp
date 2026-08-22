@@ -12,7 +12,27 @@
     // augmentation if something in ITS OWN program pulls the declaration in,
     // and vitest.setup.ts lives outside src/ (tsconfig.app.json's own
     // include), so it's named here too for the type side.
-    "types": ["svelte", "vite/client", "chrome", "@testing-library/jest-dom/vitest"],
+    //
+    // "node" (card 111): src/infra/testing/http-test-server.ts — a
+    // *test-only* helper (never imported by production code; excluded from
+    // .dependency-cruiser.cjs's adapter-boundary rules the same way
+    // ./fetch-stub.ts already is) — talks to `node:http`/`node:net` for real
+    // in-process servers. With `"types"` explicitly listed (rather than
+    // left unset), TypeScript never auto-includes @types/node's ambient
+    // declarations, and those are what make a bare `node:http` import
+    // resolve at all under `moduleResolution: "bundler"` — without this,
+    // `npm run check` fails on that one file with "Cannot find name
+    // 'node:http'" (and `Buffer`, `setImmediate`, ...). This does not grant
+    // real Node APIs to anything — the bundle only ever ships browser code,
+    // and `guard:boundaries` (dependency-cruiser) is what actually stops a
+    // production adapter from reaching into `src/infra/testing/`, not this
+    // file — it only widens what TYPE-CHECKS. The one latent risk is a
+    // *different* file accidentally referencing `Buffer`/`process`/etc. and
+    // now type-checking instead of failing loudly; none currently does
+    // (verified via `npm run check` after adding this), and the guard
+    // scripts (scripts/guard-*.mjs) are the place to add a check against
+    // that regression if it ever bites.
+    "types": ["svelte", "vite/client", "chrome", "@testing-library/jest-dom/vitest", "node"],
     "allowArbitraryExtensions": true,
     "noEmit": true,
     /**
