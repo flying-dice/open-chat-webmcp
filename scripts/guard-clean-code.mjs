@@ -26,15 +26,9 @@
 // guard's (.dependency-cruiser.cjs).
 
 import { readFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-
-const ROOT = path.resolve(import.meta.dirname, "..");
-const SRC = path.join(ROOT, "src");
-
-/** Vendored/generated source that is not ours to keep clean (decisions/31). */
-const EXCLUDED = [path.join("src", "ui", "components", "ui")];
+import { ROOT, SRC, VENDORED, sourceFiles } from "./lib/source-scan.mjs";
 
 /** The threshold decision 31 fixes: strictly above this fails. */
 const FAIL_ABOVE = 0.5;
@@ -47,19 +41,10 @@ const FAIL_ABOVE = 0.5;
  */
 const MARKER = /TODO:\s*clean-code\s*-\s*([^\s-]+)\s*-\s*(.*)$/;
 
-async function sourceFiles(dir) {
-  const out = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    const rel = path.relative(ROOT, full);
-    if (EXCLUDED.some((e) => rel === e || rel.startsWith(e + path.sep))) continue;
-    if (entry.isDirectory()) out.push(...(await sourceFiles(full)));
-    else if (/\.(ts|js|mjs|cjs|svelte|css|html)$/.test(entry.name)) out.push(full);
-  }
-  return out.sort();
-}
-
-const files = await sourceFiles(SRC);
+// The walk, and the vendored/generated exclusion decision 31 calls for, moved
+// to scripts/lib/source-scan.mjs in card 91 — one copy, shared with the
+// boundary and throw guards.
+const files = await sourceFiles(SRC, ["ts", "js", "mjs", "cjs", "svelte", "css", "html"]);
 const failures = [];
 const accepted = [];
 const malformed = [];
@@ -86,7 +71,7 @@ for (const file of files) {
 const total = failures.length + accepted.length + malformed.length;
 console.log(
   `guard:clean-code — scanned ${files.length} file(s) under src/` +
-    ` (excluding ${EXCLUDED.join(", ")}); ${total} marker(s) found`,
+    ` (excluding ${VENDORED.join(", ")}); ${total} marker(s) found`,
 );
 
 if (accepted.length > 0) {

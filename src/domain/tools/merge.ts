@@ -180,8 +180,8 @@ function disambiguateName(name: string, used: ReadonlySet<string>): string {
 export interface ToolDescriptor {
   /** The name presented to the model — bare for a page tool, namespaced for a server tool. */
   name: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
+  description?: string | undefined;
+  inputSchema?: Record<string, unknown> | undefined;
   /**
    * NORMALISED annotations — exactly the two fields decisions/17 defines,
    * with `readOnlyHint` carrying the same meaning (and the same effect on
@@ -194,7 +194,7 @@ export interface ToolDescriptor {
    */
   annotations: ToolAnnotations;
   /** The ORIGINAL MCP annotations (title/destructiveHint/idempotentHint/openWorldHint), for display only — `undefined` for a page tool. Decision 19 §2: these never relax or escalate approval; `destructiveHint` may only affect UI prominence. */
-  mcpAnnotations?: McpToolAnnotations;
+  mcpAnnotations?: McpToolAnnotations | undefined;
   origin: ToolOrigin;
 }
 

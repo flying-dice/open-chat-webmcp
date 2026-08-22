@@ -130,7 +130,8 @@ export async function discoverAuthorizationServer(
             (s): s is string => typeof s === "string" && s.length > 0,
           )
         : [];
-    if (servers.length > 0) issuerCandidate = servers[0];
+    const [firstServer] = servers;
+    if (firstServer !== undefined) issuerCandidate = firstServer;
     if (isRecord(body)) resourceScopes = parseScopes(body.scopes_supported);
   }
   // else: no RFC 9728 document at either location (common for servers that
@@ -158,15 +159,21 @@ export async function discoverAuthorizationServer(
     };
   }
 
+  // `McpAuthorizationServerInfo`'s `registrationEndpoint`/`scopesSupported`
+  // (src/domain/tools, not this folder's to widen) are optional without
+  // `| undefined` — conditional spread so an absent value omits the key
+  // instead of assigning it `undefined`.
+  const registrationEndpoint =
+    typeof body.registration_endpoint === "string" ? body.registration_endpoint : undefined;
+  const scopesSupported = resourceScopes ?? parseScopes(body.scopes_supported);
   return {
     ok: true,
     value: {
       issuer: body.issuer,
       authorizationEndpoint: body.authorization_endpoint,
       tokenEndpoint: body.token_endpoint,
-      registrationEndpoint:
-        typeof body.registration_endpoint === "string" ? body.registration_endpoint : undefined,
-      scopesSupported: resourceScopes ?? parseScopes(body.scopes_supported),
+      ...(registrationEndpoint !== undefined && { registrationEndpoint }),
+      ...(scopesSupported !== undefined && { scopesSupported }),
     },
   };
 }
@@ -233,11 +240,15 @@ export async function registerClient(
     };
   }
 
+  // `McpDynamicClientRegistration.clientSecret` (src/domain/tools, not this
+  // folder's to widen) is optional without `| undefined` — same
+  // conditional-spread treatment.
+  const clientSecret = typeof json.client_secret === "string" ? json.client_secret : undefined;
   return {
     ok: true,
     value: {
       clientId: json.client_id,
-      clientSecret: typeof json.client_secret === "string" ? json.client_secret : undefined,
+      ...(clientSecret !== undefined && { clientSecret }),
     },
   };
 }

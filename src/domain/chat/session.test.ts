@@ -134,17 +134,17 @@ describe("logToolCall / completeToolCall", () => {
     const session = freshSession();
     logToolCall(session, { id: "call-1", name: "read_page", arguments: {}, mode: "auto" });
     completeToolCall(session, "call-1", { result: "page content" });
-    expect(session.toolCalls[0].result).toBe("page content");
-    expect(session.toolCalls[0].error).toBeUndefined();
-    expect(session.toolCalls[0].endedAt).toBeGreaterThan(0);
+    expect(session.toolCalls[0]!.result).toBe("page content");
+    expect(session.toolCalls[0]!.error).toBeUndefined();
+    expect(session.toolCalls[0]!.endedAt).toBeGreaterThan(0);
   });
 
   it("completeToolCall records an error on the matching entry by id", () => {
     const session = freshSession();
     logToolCall(session, { id: "call-1", name: "read_page", arguments: {}, mode: "auto" });
     completeToolCall(session, "call-1", { error: "boom" });
-    expect(session.toolCalls[0].error).toBe("boom");
-    expect(session.toolCalls[0].result).toBeUndefined();
+    expect(session.toolCalls[0]!.error).toBe("boom");
+    expect(session.toolCalls[0]!.result).toBeUndefined();
   });
 
   it("completeToolCall is a no-op for an id that was never logged", () => {

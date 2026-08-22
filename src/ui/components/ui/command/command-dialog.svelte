@@ -32,10 +32,13 @@
 		<Dialog.Title>{title}</Dialog.Title>
 		<Dialog.Description>{description}</Dialog.Description>
 	</Dialog.Header>
+	<!-- Local edit (card 91): portalProps is spread only when present, because
+	     bits-ui declares `portalProps?: PortalProps` and exactOptionalPropertyTypes
+	     refuses an explicitly-undefined value for an optional prop. -->
 	<Dialog.Content
 		class={cn("rounded-4xl! p-0 top-1/3 translate-y-0 overflow-hidden p-0", className)}
 		{showCloseButton}
-		{portalProps}
+		{...(portalProps ? { portalProps } : {})}
 	>
 		<Command {...restProps} bind:value bind:ref {children} />
 	</Dialog.Content>

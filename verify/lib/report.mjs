@@ -38,7 +38,7 @@ export function createReport() {
     },
     print() {
       const line = "=".repeat(78);
-      console.log("\n" + line);
+      console.log(`\n${line}`);
       console.log("VERIFICATION REPORT");
       console.log(line);
       for (const r of results) {
@@ -50,7 +50,7 @@ export function createReport() {
           for (const ln of text.split("\n")) console.log(`    ${ln}`);
         }
       }
-      console.log("\n" + line);
+      console.log(`\n${line}`);
       const required = results.filter((r) => !r.bestEffort);
       const failed = required.filter((r) => r.status === "FAIL");
       const passed = required.filter((r) => r.status === "PASS");
@@ -62,7 +62,7 @@ export function createReport() {
       for (const be of bestEffort) {
         console.log(`Best-effort: ${be.claim} -> ${be.status}`);
       }
-      console.log(line + "\n");
+      console.log(`${line}\n`);
       return failed.length === 0;
     },
   };

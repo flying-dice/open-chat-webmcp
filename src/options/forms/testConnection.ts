@@ -31,7 +31,7 @@ export type TestOutcome =
        * render `fix.command` verbatim (see testResultDisplay.ts's
        * doc), the same rule `ProviderError.fix` documents.
        */
-      fix?: { label: string; command: string };
+      fix?: { label: string; command: string } | undefined;
     }
   | { kind: "http"; message: string }
   | { kind: "invalid-response"; message: string }

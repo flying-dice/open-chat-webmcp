@@ -74,7 +74,8 @@ function createArea(notify: (changes: Record<string, chrome.storage.StorageChang
   function takeFailure(op: FakeStorageOp): Error | undefined {
     const index = pending.findIndex((p) => p.op === op);
     if (index === -1) return undefined;
-    return pending.splice(index, 1)[0].error;
+    // splice(index, 1) with a valid index always returns a one-element array.
+    return pending.splice(index, 1)[0]!.error;
   }
 
   async function get(

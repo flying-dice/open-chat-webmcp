@@ -39,5 +39,5 @@ import type { ToolOrigin } from "../tools";
 export type TurnPhase =
   | { kind: "waiting" }
   | { kind: "streaming" }
-  | { kind: "awaiting-approval"; toolName: string; origin?: ToolOrigin }
-  | { kind: "calling"; toolName: string; origin?: ToolOrigin; startedAt: number };
+  | { kind: "awaiting-approval"; toolName: string; origin?: ToolOrigin | undefined }
+  | { kind: "calling"; toolName: string; origin?: ToolOrigin | undefined; startedAt: number };

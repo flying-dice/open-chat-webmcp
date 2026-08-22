@@ -82,7 +82,7 @@
    * (card 14: "make the fix copyable, not just described").
    */
   function fenceOf(command: string): string {
-    return "```\n" + command + "\n```";
+    return `\`\`\`\n${command}\n\`\`\``;
   }
 
   // Card 35/36: the popover's open/close state lives in the store
@@ -286,7 +286,7 @@
         if (g.filteredSelectable.length > 0) return true;
         const q = normalizedQuery();
         if (q && !providerNameMatches(g.provider.name)) return false;
-        return !g.state || g.state.status !== "loaded" || g.state.entries.length === 0;
+        return g.state?.status !== "loaded" || g.state.entries.length === 0;
       }),
   );
 

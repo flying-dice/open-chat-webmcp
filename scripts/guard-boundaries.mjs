@@ -22,12 +22,17 @@
 // mocks of platform APIs (decisions/30's test pyramid is built on that).
 
 import { readFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import {
+  ROOT,
+  SRC,
+  isCommentOnly,
+  isVendored,
+  scriptLinesOnly,
+  sourceFiles,
+} from "./lib/source-scan.mjs";
 
-const ROOT = path.resolve(import.meta.dirname, "..");
-const SRC = path.join(ROOT, "src");
 const DOMAIN = path.join(SRC, "domain");
 
 /**
@@ -49,32 +54,11 @@ const FORBIDDEN_GLOBALS = [
   { name: "$state/$derived (Svelte runes)", re: /(?<![\w$.])\$(?:state|derived|effect|props)\b/g },
 ];
 
-/**
- * A line that is entirely a comment is documentation, not code. Domain
- * modules explain WHY a concern was pushed out to an adapter, and saying
- * "this used to call chrome.storage" must not fail the guard that made it
- * true. Only real code is checked.
- *
- * Block-comment bodies are handled by tracking `/* ... *\/` state as we go,
- * so a multi-line module header naming `chrome.permissions` is fine too.
- */
-function isCommentOnly(line) {
-  const t = line.trim();
-  return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
-}
+// `isCommentOnly`, `sourceFiles` and `scriptLinesOnly` moved to
+// scripts/lib/source-scan.mjs in card 91, where the two new guards
+// (guard-throws, guard-return-types) need exactly the same three things.
 
-/** Every .ts/.js/.svelte file under `dir`, recursively. */
-async function sourceFiles(dir) {
-  const out = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...(await sourceFiles(full)));
-    else if (/\.(ts|js|svelte)$/.test(entry.name)) out.push(full);
-  }
-  return out.sort();
-}
-
-const files = await sourceFiles(DOMAIN);
+const files = await sourceFiles(DOMAIN, ["ts", "js", "svelte"]);
 const violations = [];
 
 for (const file of files) {
@@ -152,34 +136,10 @@ if (violations.length === 0) {
 // whichever adapter happened to want one.
 // ---------------------------------------------------------------------------
 
-/**
- * A `.svelte` file's `<script>` bodies, with every other line blanked out so
- * line numbers still line up (card 78).
- *
- * MARKUP IS COPY, NOT CODE. Five components tell the user, in rendered prose,
- * that their API key is kept in `chrome.storage.local` — and that sentence is
- * syntactically indistinguishable from a call. The old `chrome.storage` scan
- * dodged it with a second regex requiring a member access one level deeper;
- * the repo-wide `chrome.*` scan card 78 adds cannot, because at that width
- * every mention looks like a call. Scanning only the script blocks is both
- * more precise and easier to explain than a cleverer regex, and it applies to
- * all three scans.
- */
-function scriptLinesOnly(source) {
-  const lines = source.split("\n");
-  const out = new Array(lines.length).fill("");
-  const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
-  let match;
-  while ((match = re.exec(source)) !== null) {
-    const startLine = source.slice(0, match.index).split("\n").length - 1;
-    const openLines = match[0].slice(0, match[0].indexOf(">") + 1).split("\n").length - 1;
-    const body = match[1].split("\n");
-    body.forEach((line, i) => {
-      out[startLine + openLines + i] = line;
-    });
-  }
-  return out;
-}
+// `scriptLinesOnly` — the "markup is copy, not code" rule card 78 added —
+// now lives in scripts/lib/source-scan.mjs alongside the rest of the scanning
+// primitives; see its doc comment there for why markup is blanked rather than
+// scanned.
 
 /**
  * Run one containment scan over src/.
@@ -198,7 +158,7 @@ function scriptLinesOnly(source) {
  */
 function containmentScan({ api, homes, exceptions, detect, fixHint }, allFiles) {
   const files = allFiles.filter(
-    (f) => !path.relative(ROOT, f).replaceAll(path.sep, "/").startsWith("src/ui/components/ui/"),
+    (f) => !isVendored(path.relative(ROOT, f).replaceAll(path.sep, "/")),
   );
   const found = [];
 
@@ -255,7 +215,10 @@ const COMPOSITION_ROOTS = [
   "src/content/relay.ts",
 ];
 
-const allSourceFiles = await sourceFiles(SRC);
+// The same extension set this guard has always scanned. (The shared walker's
+// default also picks up .mjs; widening what the boundary rules cover is a
+// change of its own, not a side effect of card 91's refactor.)
+const allSourceFiles = await sourceFiles(SRC, ["ts", "js", "svelte"]);
 
 const containmentViolations =
   // Card 78 — the widest of the three, and this card's own success criterion:

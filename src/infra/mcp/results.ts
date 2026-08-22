@@ -14,19 +14,23 @@ import type { McpWireSession } from "./session";
 
 function normalizeTool(raw: unknown): McpTool | null {
   if (!isRecord(raw) || typeof raw.name !== "string" || raw.name.length === 0) return null;
+  // `McpTool.outputSchema` (src/domain/tools, not this folder's to widen)
+  // is optional without `| undefined` — conditional spread so a missing
+  // schema omits the key instead of assigning it `undefined`.
+  const outputSchema = isRecord(raw.outputSchema) ? raw.outputSchema : undefined;
   return {
     name: raw.name,
     title: typeof raw.title === "string" ? raw.title : undefined,
     description: typeof raw.description === "string" ? raw.description : undefined,
     inputSchema: isRecord(raw.inputSchema) ? raw.inputSchema : undefined,
-    outputSchema: isRecord(raw.outputSchema) ? raw.outputSchema : undefined,
+    ...(outputSchema !== undefined && { outputSchema }),
     annotations: isRecord(raw.annotations) ? raw.annotations : undefined,
   };
 }
 
 function parseToolsListResult(
   value: unknown,
-): McpResult<{ tools: McpTool[]; nextCursor?: string }> {
+): McpResult<{ tools: McpTool[]; nextCursor?: string | undefined }> {
   if (!isRecord(value) || !Array.isArray(value.tools)) {
     return {
       ok: false,
@@ -57,25 +61,33 @@ function normalizeContent(raw: unknown): McpToolContent {
         ? { type: "audio", data: raw.data, mimeType: raw.mimeType }
         : fallback();
     case "resource_link":
+      // `McpResourceLinkContent.name`/`.mimeType` (src/domain/tools, not
+      // this folder's to widen) are optional without `| undefined` —
+      // conditional spread so an absent value omits the key instead of
+      // assigning it `undefined`.
       return typeof raw.uri === "string"
         ? {
             type: "resource_link",
             uri: raw.uri,
-            name: typeof raw.name === "string" ? raw.name : undefined,
+            ...(typeof raw.name === "string" && { name: raw.name }),
             description: typeof raw.description === "string" ? raw.description : undefined,
-            mimeType: typeof raw.mimeType === "string" ? raw.mimeType : undefined,
+            ...(typeof raw.mimeType === "string" && { mimeType: raw.mimeType }),
           }
         : fallback();
     case "resource":
+      // `McpEmbeddedResourceContent.resource`'s `mimeType`/`text`/`blob`
+      // (src/domain/tools, not this folder's to widen) are optional without
+      // `| undefined` — same conditional-spread treatment.
       return isRecord(raw.resource) && typeof raw.resource.uri === "string"
         ? {
             type: "resource",
             resource: {
               uri: raw.resource.uri,
-              mimeType:
-                typeof raw.resource.mimeType === "string" ? raw.resource.mimeType : undefined,
-              text: typeof raw.resource.text === "string" ? raw.resource.text : undefined,
-              blob: typeof raw.resource.blob === "string" ? raw.resource.blob : undefined,
+              ...(typeof raw.resource.mimeType === "string" && {
+                mimeType: raw.resource.mimeType,
+              }),
+              ...(typeof raw.resource.text === "string" && { text: raw.resource.text }),
+              ...(typeof raw.resource.blob === "string" && { blob: raw.resource.blob }),
             },
           }
         : fallback();
@@ -94,11 +106,16 @@ function parseToolCallResult(value: unknown): McpResult<McpToolCallResult> {
       },
     };
   }
+  // `McpToolCallResult.structuredContent` (src/domain/tools, not this
+  // folder's to widen) is optional without `| undefined` — conditional
+  // spread so an absent value omits the key instead of assigning it
+  // `undefined`.
+  const structuredContent = isRecord(value.structuredContent) ? value.structuredContent : undefined;
   return {
     ok: true,
     value: {
       content: value.content.map(normalizeContent),
-      structuredContent: isRecord(value.structuredContent) ? value.structuredContent : undefined,
+      ...(structuredContent !== undefined && { structuredContent }),
       isError: typeof value.isError === "boolean" ? value.isError : false,
     },
   };

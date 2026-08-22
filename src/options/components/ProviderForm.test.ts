@@ -137,7 +137,7 @@ describe("ProviderForm", () => {
     await user.click(screen.getByRole("button", { name: /Add provider/ }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    const submitted = onSubmit.mock.calls[0][0];
+    const submitted = onSubmit.mock.calls[0]![0];
     expect(submitted).toMatchObject({
       type: "ollama",
       name: "Local Ollama",
@@ -195,7 +195,7 @@ describe("ProviderForm", () => {
     await user.click(screen.getByRole("button", { name: "Add header" }));
     expect(screen.getAllByPlaceholderText("Header name, e.g. x-api-key")).toHaveLength(2);
 
-    await user.click(screen.getAllByRole("button", { name: /Remove header/ })[0]);
+    await user.click(screen.getAllByRole("button", { name: /Remove header/ })[0]!);
     expect(screen.getAllByPlaceholderText("Header name, e.g. x-api-key")).toHaveLength(1);
   });
 

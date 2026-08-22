@@ -63,7 +63,7 @@
      * states, worded to make clear plain chat still works, never a
      * dead end. `undefined` when there's nothing to add.
      */
-    toolsNotice?: string;
+    toolsNotice?: string | undefined;
     /**
      * Notices that belong at the TOP of the thread (the restricted-page and
      * cross-origin notices App.svelte owns), rendered above the first
@@ -72,9 +72,9 @@
      */
     notices?: Snippet;
     /** Label for the model that produced the replies, shown in each assistant turn's header row. `undefined` when nothing is selected yet. */
-    modelLabel?: string;
+    modelLabel?: string | undefined;
     /** Icon for the provider that produced the replies (src/ui/providerIcon.ts's `iconForProvider`, resolving the icon KEY src/domain/providers' preset catalogue names), shown next to `modelLabel`. Falls back to `sparkle` when nothing is resolved yet. */
-    modelIcon?: IconName;
+    modelIcon?: IconName | undefined;
   }
 
   let {

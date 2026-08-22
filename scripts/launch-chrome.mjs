@@ -114,7 +114,7 @@ function findChrome() {
   const found = candidates.find((p) => p && existsSync(p));
   if (found) return found;
   console.error(
-    `Could not find a real Google Chrome install.${candidates.length ? " Checked:\n" + candidates.map((p) => `  - ${p}`).join("\n") : " No known install locations for this platform (" + process.platform + ")."}\n` +
+    `Could not find a real Google Chrome install.${candidates.length ? ` Checked:\n${candidates.map((p) => `  - ${p}`).join("\n")}` : ` No known install locations for this platform (${process.platform}).`}\n` +
       "Install Chrome, or set CHROME_PATH to its executable, then re-run `npm run launch`.",
   );
   process.exit(1);

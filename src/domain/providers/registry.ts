@@ -26,10 +26,18 @@ export interface ProviderConfig {
   type: ProviderType;
   name: string;
   baseUrl: string;
-  /** CREDENTIAL (decisions/10) — never synced. */
-  apiKey?: string;
-  /** Custom request headers sent on every call (decision 15). Values are CREDENTIALS — see {@link ProviderHeader} — so the whole array is never synced. Empty/absent means none configured. */
-  headers?: ProviderHeader[];
+  /**
+   * CREDENTIAL (decisions/10) — never synced.
+   *
+   * `?: string | undefined`, not `?: string`, and deliberately so under
+   * `exactOptionalPropertyTypes` (card 91): {@link ProviderRegistry.updateProvider}
+   * documents an explicit `undefined` as the way to CLEAR this credential, so
+   * a patch must be able to SAY `{ apiKey: undefined }`. The strict form would
+   * make the documented clearing behaviour unexpressible.
+   */
+  apiKey?: string | undefined;
+  /** Custom request headers sent on every call (decision 15). Values are CREDENTIALS — see {@link ProviderHeader} — so the whole array is never synced. Empty/absent means none configured. Explicitly `| undefined` for the same clear-by-patch reason as `apiKey`. */
+  headers?: ProviderHeader[] | undefined;
   /**
    * The `ProviderPreset.id` (./presets.ts) this provider was added from, if
    * any (decisions/21-provider-presets.md). OPTIONAL, and absence is a valid
@@ -38,7 +46,7 @@ export interface ProviderConfig {
    * backend to label a row as, which preset's fields to re-offer on edit);
    * it never constrains what the other fields can be changed to.
    */
-  presetId?: string;
+  presetId?: string | undefined;
 }
 
 /** The fields of a {@link ProviderConfig} that are NOT credentials — what may be listed, synced, and reordered freely. */

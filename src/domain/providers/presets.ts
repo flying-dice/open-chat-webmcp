@@ -219,7 +219,10 @@ const DEFAULT_PROVIDER_ICON_KEY = "smart_toy";
  * Returns a key, never a glyph: `iconForProvider` in src/ui/providerIcon.ts
  * is the UI-layer resolver that turns it into something Icon.svelte can draw.
  */
-export function iconKeyForProvider(provider: { type: ProviderType; presetId?: string }): string {
+export function iconKeyForProvider(provider: {
+  type: ProviderType;
+  presetId?: string | undefined;
+}): string {
   const preset = getPreset(provider.presetId);
   if (preset) return preset.icon;
   return provider.type === "ollama" ? "ollama" : DEFAULT_PROVIDER_ICON_KEY;

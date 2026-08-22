@@ -69,14 +69,24 @@
 
   let { mode, initial, onSubmit, onCancel }: Props = $props();
 
+  // Named separately (rather than reached via `TRANSPORT_OPTIONS[0]`) so the
+  // fallback used below whenever a lookup misses is a value the compiler can
+  // see is always defined, not an indexed access `noUncheckedIndexedAccess`
+  // has to treat as possibly `undefined` (mirrors ProviderForm.svelte's
+  // `OLLAMA_PROVIDER_TYPE`).
+  const AUTO_TRANSPORT_OPTION: {
+    value: McpTransportPreference;
+    label: string;
+    description: string;
+  } = {
+    value: "auto",
+    label: "Auto (recommended)",
+    description:
+      "Tries the modern Streamable HTTP transport first, falling back to legacy HTTP+SSE.",
+  };
   const TRANSPORT_OPTIONS: { value: McpTransportPreference; label: string; description: string }[] =
     [
-      {
-        value: "auto",
-        label: "Auto (recommended)",
-        description:
-          "Tries the modern Streamable HTTP transport first, falling back to legacy HTTP+SSE.",
-      },
+      AUTO_TRANSPORT_OPTION,
       {
         value: "streamable-http",
         label: "Streamable HTTP",
@@ -211,7 +221,8 @@
    */
   const isReservedHeader: ReservedHeaderCheck = (key, value) => {
     const issues = validateServerHeaders({ [key]: value }, { hasAuthToken: hasConfiguredAuth() });
-    return issues.length > 0 ? issues[0].reason : undefined;
+    const [first] = issues;
+    return first?.reason;
   };
 
   let saving = $state(false);
@@ -228,16 +239,20 @@
   // Card 71: shadcn's `Select` renders whatever the trigger is given, unlike
   // the native `<select>` these replaced, which showed the chosen `<option>`'s
   // own text. Both lists stay the single source of truth for their labels.
+  const NONE_AUTH_MODE_OPTION: { value: AuthMode; label: string } = {
+    value: "none",
+    label: "None",
+  };
   const AUTH_MODE_OPTIONS: { value: AuthMode; label: string }[] = [
-    { value: "none", label: "None" },
+    NONE_AUTH_MODE_OPTION,
     { value: "bearer", label: "Bearer token" },
     { value: "oauth", label: "Sign in with OAuth" },
   ];
   let transportLabel = $derived(
-    TRANSPORT_OPTIONS.find((t) => t.value === transport)?.label ?? TRANSPORT_OPTIONS[0].label,
+    TRANSPORT_OPTIONS.find((t) => t.value === transport)?.label ?? AUTO_TRANSPORT_OPTION.label,
   );
   let authModeLabel = $derived(
-    AUTH_MODE_OPTIONS.find((a) => a.value === authMode)?.label ?? AUTH_MODE_OPTIONS[0].label,
+    AUTH_MODE_OPTIONS.find((a) => a.value === authMode)?.label ?? NONE_AUTH_MODE_OPTION.label,
   );
 
   // TODO: clean-code - 0.15 - NAMING: buildData is a generic name for a well-typed, single-purpose builder — should convey it builds a server config (cf. ProviderForm.svelte's identically-named buildData).
@@ -249,7 +264,7 @@
       if (key.length === 0 && value.length === 0) continue; // an added-but-empty row
       cleanHeaders[key] = value;
     }
-    let auth: McpServerAuth | undefined = undefined;
+    let auth: McpServerAuth | undefined;
     if (authMode === "bearer") {
       auth = authToken.trim().length > 0 ? { type: "bearer", token: authToken.trim() } : undefined;
     } else if (authMode === "oauth") {

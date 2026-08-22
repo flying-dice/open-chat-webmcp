@@ -82,7 +82,8 @@ describe("CRUD and defaults", () => {
   it("reorderServers reorders and drops any id it omits", async () => {
     const { registry } = setup();
     const a = await registry.addServer({ name: "A", url: "https://a" });
-    const b = await registry.addServer({ name: "B", url: "https://b" });
+    // B is created but deliberately left out of the reorder call below.
+    await registry.addServer({ name: "B", url: "https://b" });
     const c = await registry.addServer({ name: "C", url: "https://c" });
 
     await registry.reorderServers([c.id, a.id]);
@@ -102,7 +103,7 @@ describe("credential split (decisions/15) — bearer auth", () => {
     });
 
     expect(JSON.stringify(fake.sync.raw())).not.toContain("tok-super-secret");
-    const storedCore = (fake.sync.raw()["mcp:servers:list"] as Array<Record<string, unknown>>)[0];
+    const storedCore = (fake.sync.raw()["mcp:servers:list"] as Array<Record<string, unknown>>)[0]!;
     expect(storedCore.auth).toBeUndefined();
     expect(fake.local.raw()[`mcp:auth:${added.id}`]).toEqual({
       type: "bearer",

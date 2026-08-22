@@ -93,9 +93,11 @@ export function createFakeProviderRegistry(
     },
     updateProvider: async (id, patch) => {
       const idx = providers.findIndex((p) => p.id === id);
-      if (idx === -1) return undefined;
-      providers[idx] = { ...providers[idx], ...patch };
-      return providers[idx];
+      const current = providers[idx];
+      if (idx === -1 || !current) return undefined;
+      const updated: ProviderConfig = { ...current, ...patch };
+      providers[idx] = updated;
+      return updated;
     },
     removeProvider: async (id) => {
       providers = providers.filter((p) => p.id !== id);
@@ -166,9 +168,11 @@ export function createFakeMcpServerRegistry(
     },
     updateServer: async (id, patch) => {
       const idx = servers.findIndex((s) => s.id === id);
-      if (idx === -1) return undefined;
-      servers[idx] = { ...servers[idx], ...patch };
-      return servers[idx];
+      const current = servers[idx];
+      if (idx === -1 || !current) return undefined;
+      const updated: McpServerConfig = { ...current, ...patch };
+      servers[idx] = updated;
+      return updated;
     },
     removeServer: async (id) => {
       servers = servers.filter((s) => s.id !== id);

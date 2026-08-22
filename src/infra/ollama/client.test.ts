@@ -296,7 +296,7 @@ describe("chat() — NDJSON stream parsing", () => {
         eval_count: 42,
       }),
     ];
-    const body = lines.map((l) => l + "\n").join("");
+    const body = lines.map((l) => `${l}\n`).join("");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => streamResponse([enc.encode(body)])),
@@ -309,7 +309,7 @@ describe("chat() — NDJSON stream parsing", () => {
       type: "tool-calls",
       toolCalls: [{ function: { name: "get_weather", arguments: { city: "NYC" } } }],
     });
-    const toolCallId = (events[2] as { toolCalls: { id?: string }[] }).toolCalls[0].id;
+    const toolCallId = (events[2] as { toolCalls: { id?: string }[] }).toolCalls[0]!.id;
     expect(toolCallId).toBeTruthy();
     const done = events[3] as {
       type: string;
@@ -324,10 +324,8 @@ describe("chat() — NDJSON stream parsing", () => {
   });
 
   it("reassembles a NDJSON line split across an arbitrary chunk boundary", async () => {
-    const line =
-      JSON.stringify({ message: { role: "assistant", content: "Hello" }, done: false }) + "\n";
-    const doneLine =
-      JSON.stringify({ message: { role: "assistant", content: "" }, done: true }) + "\n";
+    const line = `${JSON.stringify({ message: { role: "assistant", content: "Hello" }, done: false })}\n`;
+    const doneLine = `${JSON.stringify({ message: { role: "assistant", content: "" }, done: true })}\n`;
     const full = line + doneLine;
     const bytes = enc.encode(full);
     // Split mid-line at an arbitrary byte offset, not aligned to `\n`.
@@ -428,7 +426,7 @@ describe("chat() — NDJSON stream parsing", () => {
 
   it("sends tools when provided and omits the field when not", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
-      streamResponse([enc.encode(JSON.stringify({ done: true }) + "\n")]),
+      streamResponse([enc.encode(`${JSON.stringify({ done: true })}\n`)]),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -525,10 +523,10 @@ describe("chaos: stream faults", () => {
               return Promise.resolve({
                 done: false,
                 value: enc.encode(
-                  JSON.stringify({
+                  `${JSON.stringify({
                     message: { role: "assistant", content: "partial" },
                     done: false,
-                  }) + "\n",
+                  })}\n`,
                 ),
               });
             }

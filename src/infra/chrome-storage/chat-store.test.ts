@@ -268,7 +268,7 @@ describe("eviction backstop at MAX_RETAINED_CHATS", () => {
       chat.updatedAt = i; // fully controlled ordering — i=0 is the oldest
       chats.push(chat);
     }
-    const oldest = chats[0];
+    const oldest = chats[0]!;
     await store.setCurrentChatForTab(999, oldest.id, oldest.origin);
 
     for (const chat of chats) {
@@ -278,7 +278,7 @@ describe("eviction backstop at MAX_RETAINED_CHATS", () => {
     const summaries = await store.listChatSummaries();
     expect(summaries).toHaveLength(MAX_RETAINED_CHATS);
     expect(summaries.some((s) => s.id === oldest.id)).toBe(false);
-    expect(summaries.some((s) => s.id === chats[chats.length - 1].id)).toBe(true);
+    expect(summaries.some((s) => s.id === chats[chats.length - 1]!.id)).toBe(true);
 
     // The evicted chat's own record and its tab pointer are gone too.
     expect(fake.local.raw()[`chat:${oldest.id}`]).toBeUndefined();

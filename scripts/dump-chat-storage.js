@@ -130,7 +130,7 @@
       key: k,
       origin: c.origin,
       messageCount: messages.length,
-      roles: messages.map((m) => m && m.role),
+      roles: messages.map((m) => m?.role),
       // Card 59 item 5: raw shape flags, reported separately from the
       // coerced `messageCount`/`roles` above so a genuinely missing/corrupt
       // array is visible instead of silently reading as "0 messages".
@@ -151,8 +151,8 @@
     .filter(([k]) => k.startsWith("tabchat:"))
     .map(([k, v]) => ({
       tabId: Number(k.slice("tabchat:".length)),
-      chatId: v && v.chatId,
-      tabOrigin: v && v.tabOrigin,
+      chatId: v?.chatId,
+      tabOrigin: v?.tabOrigin,
     }));
 
   // Live tabs, so a pointer's recorded tabOrigin can be compared against the
@@ -181,7 +181,7 @@
       : null;
 
   const byId = new Map(chats.map((c) => [c.id, c]));
-  const indexIds = new Set(index.map((e) => e && e.id));
+  const indexIds = new Set(index.map((e) => e?.id));
   const tabById = new Map(
     liveTabs.filter((t) => t && t.tabId !== undefined).map((t) => [t.tabId, t]),
   );
@@ -266,10 +266,10 @@
       pointers: pointers.length,
     },
     index: index.map((e) => ({
-      id: e && e.id,
-      origin: e && e.origin,
-      messageCount: e && e.messageCount,
-      updatedAt: e && e.updatedAt ? new Date(e.updatedAt).toISOString() : null,
+      id: e?.id,
+      origin: e?.origin,
+      messageCount: e?.messageCount,
+      updatedAt: e?.updatedAt ? new Date(e.updatedAt).toISOString() : null,
     })),
     chats,
     pointers,

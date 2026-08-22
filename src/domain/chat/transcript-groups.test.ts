@@ -38,15 +38,16 @@ describe("groupTranscript", () => {
   it("groups a non-empty assistant message as prose", () => {
     const groups = groupTranscript([prose("a1")]);
     expect(groups).toHaveLength(1);
-    expect(groups[0].kind).toBe("prose");
+    expect(groups[0]!.kind).toBe("prose");
   });
 
   it("folds consecutive tool-call entries into a single activity group", () => {
     const groups = groupTranscript([user("u1"), carrier("c1"), tool("t1"), tool("t2"), tool("t3")]);
     expect(groups).toHaveLength(2);
-    expect(groups[1].kind).toBe("activity");
-    if (groups[1].kind === "activity") {
-      expect(groups[1].steps.map((s) => s.id)).toEqual(["t1", "t2", "t3"]);
+    const activity = groups[1]!;
+    expect(activity.kind).toBe("activity");
+    if (activity.kind === "activity") {
+      expect(activity.steps.map((s) => s.id)).toEqual(["t1", "t2", "t3"]);
     }
   });
 
@@ -55,9 +56,10 @@ describe("groupTranscript", () => {
     // The carrier must not appear as its own group, and the two tool steps
     // either side of it must land in the SAME activity group.
     expect(groups.map((g) => g.kind)).toEqual(["user", "activity"]);
-    expect(groups[1].kind).toBe("activity");
-    if (groups[1].kind === "activity") {
-      expect(groups[1].steps.map((s) => s.id)).toEqual(["t1", "t2"]);
+    const activity = groups[1]!;
+    expect(activity.kind).toBe("activity");
+    if (activity.kind === "activity") {
+      expect(activity.steps.map((s) => s.id)).toEqual(["t1", "t2"]);
     }
   });
 
@@ -91,9 +93,9 @@ describe("groupTranscript", () => {
     it("keys an activity group off its FIRST step's id, unchanged as more steps are folded in", () => {
       const afterOneStep = groupTranscript([user("u1"), tool("t1")]);
       const afterThreeSteps = groupTranscript([user("u1"), tool("t1"), tool("t2"), tool("t3")]);
-      expect(afterOneStep[1].key).toBe("act:t1");
-      expect(afterThreeSteps[1].key).toBe("act:t1");
-      expect(afterOneStep[1].key).toBe(afterThreeSteps[1].key);
+      expect(afterOneStep[1]!.key).toBe("act:t1");
+      expect(afterThreeSteps[1]!.key).toBe("act:t1");
+      expect(afterOneStep[1]!.key).toBe(afterThreeSteps[1]!.key);
     });
 
     // Card 64 (boards/project-backlog/64-transcript-duplicate-group-key-crash.md):
@@ -122,9 +124,9 @@ describe("groupTranscript", () => {
 
       const activityGroups = groups.filter((g) => g.kind === "activity");
       expect(activityGroups).toHaveLength(2);
-      expect(activityGroups[0].key).toBe(`act:${duplicateId}`);
-      expect(activityGroups[1].key).toBe(`act:${duplicateId}`);
-      expect(activityGroups[0].key).toBe(activityGroups[1].key);
+      expect(activityGroups[0]!.key).toBe(`act:${duplicateId}`);
+      expect(activityGroups[1]!.key).toBe(`act:${duplicateId}`);
+      expect(activityGroups[0]!.key).toBe(activityGroups[1]!.key);
     });
   });
 });

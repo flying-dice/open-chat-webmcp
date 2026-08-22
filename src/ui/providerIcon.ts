@@ -44,6 +44,9 @@ const PROVIDER_ICONS: Record<string, IconName> = {
  * header). Delegates the "which key" question to the domain
  * ({@link iconKeyForProvider}) and answers only "which glyph".
  */
-export function iconForProvider(provider: { type: ProviderType; presetId?: string }): IconName {
+export function iconForProvider(provider: {
+  type: ProviderType;
+  presetId?: string | undefined;
+}): IconName {
   return PROVIDER_ICONS[iconKeyForProvider(provider)] ?? FALLBACK_ICON;
 }

@@ -68,7 +68,6 @@ import type {
   ChatService,
   ChatServiceSnapshot,
   ChatStore,
-  ChatSummary,
   RunTurnRequest,
 } from "../../domain/chat";
 import type {
@@ -165,9 +164,11 @@ export function createFakeProviderRegistry(
     },
     updateProvider: async (id, patch) => {
       const idx = providers.findIndex((p) => p.id === id);
-      if (idx === -1) return undefined;
-      providers[idx] = { ...providers[idx], ...patch };
-      return providers[idx];
+      const existing = providers[idx];
+      if (existing === undefined) return undefined;
+      const updated: ProviderConfig = { ...existing, ...patch, id: existing.id };
+      providers[idx] = updated;
+      return updated;
     },
     removeProvider: async (id) => {
       providers = providers.filter((p) => p.id !== id);
@@ -239,9 +240,11 @@ export function createFakeMcpServerRegistry(
     },
     updateServer: async (id, patch) => {
       const idx = servers.findIndex((s) => s.id === id);
-      if (idx === -1) return undefined;
-      servers[idx] = { ...servers[idx], ...patch };
-      return servers[idx];
+      const existing = servers[idx];
+      if (existing === undefined) return undefined;
+      const updated: McpServerConfig = { ...existing, ...patch, id: existing.id };
+      servers[idx] = updated;
+      return updated;
     },
     removeServer: async (id) => {
       servers = servers.filter((s) => s.id !== id);

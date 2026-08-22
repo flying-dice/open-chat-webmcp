@@ -220,7 +220,11 @@ async function ollamaFetchJson<T>(
         kind: "http",
         status: response.status,
         statusText: response.statusText,
-        body,
+        // `ProviderError`'s `body` is `string | undefined`-less optional
+        // (src/domain/providers/provider.ts, not this folder's to widen) —
+        // conditional spread rather than assigning `body: undefined`
+        // directly, so an absent body omits the key instead of setting it.
+        ...(body !== undefined && { body }),
       },
     };
   }
@@ -284,9 +288,9 @@ export interface OllamaModel {
   digest: string;
   size: number;
   modifiedAt: string;
-  family?: string;
-  parameterSize?: string;
-  quantizationLevel?: string;
+  family?: string | undefined;
+  parameterSize?: string | undefined;
+  quantizationLevel?: string | undefined;
 }
 
 function normalizeModel(raw: unknown): OllamaModel | null {
@@ -310,17 +314,20 @@ function normalizeModel(raw: unknown): OllamaModel | null {
 
 /** List every locally-pulled model via `GET /api/tags`. `headers` carries custom request headers (decisions/15) — e.g. for an Ollama server sitting behind a gateway. */
 export async function listModels(opts?: {
-  signal?: AbortSignal;
-  baseUrl?: string;
-  headers?: ProviderHeader[];
+  signal?: AbortSignal | undefined;
+  baseUrl?: string | undefined;
+  headers?: ProviderHeader[] | undefined;
   /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
-  defaults?: ProviderDefaultsStore;
+  defaults?: ProviderDefaultsStore | undefined;
 }): Promise<ProviderResult<OllamaModel[]>> {
   const baseUrl = await resolveBaseUrl(opts?.baseUrl, opts?.defaults);
   const result = await ollamaFetchJson<{ models?: unknown }>(baseUrl, "/api/tags", {
     method: "GET",
     headers: buildHeaders(opts?.headers),
-    signal: opts?.signal,
+    // `RequestInit.signal` (lib.dom.d.ts) is `AbortSignal | null`, not
+    // `| undefined` — conditional spread so an absent signal omits the key
+    // instead of assigning it `undefined`.
+    ...(opts?.signal !== undefined && { signal: opts.signal }),
   });
   if (!result.ok) return result;
 
@@ -336,14 +343,14 @@ export async function listModels(opts?: {
 
 /** Everything `getCapabilities` accepts, shared with its bulk wrapper so the two can never drift. */
 interface OllamaCapabilityOptions {
-  signal?: AbortSignal;
-  baseUrl?: string;
-  forceRefresh?: boolean;
-  headers?: ProviderHeader[];
+  signal?: AbortSignal | undefined;
+  baseUrl?: string | undefined;
+  forceRefresh?: boolean | undefined;
+  headers?: ProviderHeader[] | undefined;
   /** Where a previous answer for this model's digest is looked up and filed. Omit and every call hits the network — correct, just slower. */
-  capabilityCache?: ModelCapabilityCache;
+  capabilityCache?: ModelCapabilityCache | undefined;
   /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
-  defaults?: ProviderDefaultsStore;
+  defaults?: ProviderDefaultsStore | undefined;
 }
 
 /**
@@ -376,7 +383,8 @@ export async function getCapabilities(
     method: "POST",
     headers: buildHeaders(opts?.headers, "application/json"),
     body: JSON.stringify({ model: model.name }),
-    signal: opts?.signal,
+    // See listModels' matching comment on RequestInit.signal.
+    ...(opts?.signal !== undefined && { signal: opts.signal }),
   });
   if (!result.ok) return result;
 
@@ -463,13 +471,13 @@ export interface OllamaToolCall {
 
 /** Final generation stats, present on the terminal `"done"` stream event. */
 export interface OllamaChatStats {
-  doneReason?: string;
-  totalDuration?: number;
-  loadDuration?: number;
-  promptEvalCount?: number;
-  promptEvalDuration?: number;
-  evalCount?: number;
-  evalDuration?: number;
+  doneReason?: string | undefined;
+  totalDuration?: number | undefined;
+  loadDuration?: number | undefined;
+  promptEvalCount?: number | undefined;
+  promptEvalDuration?: number | undefined;
+  evalCount?: number | undefined;
+  evalDuration?: number | undefined;
 }
 
 /**
@@ -487,14 +495,14 @@ export interface OllamaChatParams {
   model: string;
   messages: OllamaChatMessage[];
   /** Page tools to offer the model; converted via {@link toOllamaTool}. Omit or pass `[]` for no tools. */
-  tools?: SerializedTool[];
+  tools?: SerializedTool[] | undefined;
   /** Tied to the panel's lifetime — aborting mid-stream ends the generator with a "aborted" error event. */
-  signal?: AbortSignal;
-  baseUrl?: string;
+  signal?: AbortSignal | undefined;
+  baseUrl?: string | undefined;
   /** Custom request headers (decisions/15-custom-headers-are-credentials.md) — e.g. for an Ollama server sitting behind a gateway. */
-  headers?: ProviderHeader[];
+  headers?: ProviderHeader[] | undefined;
   /** Fallback base-URL source when `baseUrl` is omitted — see {@link resolveBaseUrl}. */
-  defaults?: ProviderDefaultsStore;
+  defaults?: ProviderDefaultsStore | undefined;
 }
 
 function normalizeToolCall(raw: unknown, nextId: () => string): OllamaToolCall | null {
@@ -632,7 +640,8 @@ export async function* chat(
       method: "POST",
       headers: buildHeaders(headers, "application/json"),
       body: JSON.stringify(requestBody),
-      signal,
+      // See listModels' matching comment on RequestInit.signal.
+      ...(signal !== undefined && { signal }),
     });
   } catch (err) {
     yield { type: "error", error: toOllamaError(err) };
@@ -653,7 +662,8 @@ export async function* chat(
         kind: "http",
         status: response.status,
         statusText: response.statusText,
-        body,
+        // See ollamaFetchJson's matching comment on ProviderError's `body`.
+        ...(body !== undefined && { body }),
       },
     };
     return;
@@ -682,8 +692,9 @@ export async function* chat(
 
       buffer += decoder.decode(value, { stream: true });
 
-      let newlineIndex: number;
-      while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+      while (true) {
+        const newlineIndex = buffer.indexOf("\n");
+        if (newlineIndex < 0) break;
         const line = buffer.slice(0, newlineIndex);
         buffer = buffer.slice(newlineIndex + 1);
         const parsed = parseNdjsonLine(line);

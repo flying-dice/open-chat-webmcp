@@ -20,12 +20,12 @@
 // Both areas are unencrypted at rest (decisions/07, decisions/10) — saying
 // so next to the API-key field is the options UI's job, not this module's.
 
-import {
-  type ProviderConfigCore,
-  type ProviderHeader,
-  type ProviderRegistry,
-  type ProviderSelection,
-  type ProviderType,
+import type {
+  ProviderConfigCore,
+  ProviderHeader,
+  ProviderRegistry,
+  ProviderSelection,
+  ProviderType,
 } from "../../domain/providers";
 import { isRecord, type StorageAreaGateway } from "./area";
 import { createKeyedRecordStore, credentialPart } from "./keyed-record-store";
@@ -39,8 +39,8 @@ const PROVIDER_TYPES: readonly ProviderType[] = ["ollama", "openai"];
 
 /** The credential fields of a `ProviderConfig`, as the keyed-record store's `parts`. */
 interface ProviderCredentials {
-  apiKey?: string;
-  headers?: ProviderHeader[];
+  apiKey?: string | undefined;
+  headers?: ProviderHeader[] | undefined;
 }
 
 // TODO: clean-code - 0.2 - DRY: decodeProviderCore follows the identical isRecord(v) && typeof v.id === "string" && v.id.length > 0 && ... defensive-cast pattern as mcp-server-registry.ts's decodeServerCore, and generateProviderId below mirrors generateServerId (same crypto.randomUUID + fallback, differing only in the prefix literal) — per-record-shape leftovers around keyed-record-store.ts's shared mechanic.

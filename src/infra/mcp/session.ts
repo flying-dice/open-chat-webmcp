@@ -29,10 +29,14 @@ export function initializeParams(clientInfo: McpClientInfo): Record<string, unkn
 
 function normalizeServerInfo(raw: unknown): McpServerInfo | undefined {
   if (!isRecord(raw) || typeof raw.name !== "string") return undefined;
+  // `McpServerInfo.version` (src/domain/tools, not this folder's to widen)
+  // is optional without `| undefined` — conditional spread so a missing
+  // version omits the key instead of assigning it `undefined`.
+  const version = typeof raw.version === "string" ? raw.version : undefined;
   return {
     name: raw.name,
     title: typeof raw.title === "string" ? raw.title : undefined,
-    version: typeof raw.version === "string" ? raw.version : undefined,
+    ...(version !== undefined && { version }),
   };
 }
 
@@ -62,12 +66,18 @@ export function validateInitializeResult(
       },
     };
   }
+  // `McpConnectionInfo.serverInfo`/`.instructions` (src/domain/tools, not
+  // this folder's to widen) are optional without `| undefined` —
+  // conditional spread so an absent value omits the key instead of
+  // assigning it `undefined`.
+  const serverInfo = normalizeServerInfo(result.serverInfo);
+  const instructions = typeof result.instructions === "string" ? result.instructions : undefined;
   return {
     ok: true,
     value: {
       protocolVersion: result.protocolVersion,
-      serverInfo: normalizeServerInfo(result.serverInfo),
-      instructions: typeof result.instructions === "string" ? result.instructions : undefined,
+      ...(serverInfo !== undefined && { serverInfo }),
+      ...(instructions !== undefined && { instructions }),
     },
   };
 }

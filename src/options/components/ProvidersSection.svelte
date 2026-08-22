@@ -132,8 +132,8 @@
    */
   // TODO: clean-code - 0.45 - DRY: duplicates at length the same per-provider-token-guarded "listModels -> branch on error kind -> resolveCapabilities -> filter selectable" sequence as src/sidepanel/stores/selection.svelte.ts's loadModelsForProvider, instead of sharing an extracted helper.
   async function loadDefaultModelOptions(provider: ProviderConfig): Promise<void> {
-    const token = (defaultModelOptionsTokens[provider.id] =
-      (defaultModelOptionsTokens[provider.id] ?? 0) + 1);
+    const token = (defaultModelOptionsTokens[provider.id] ?? 0) + 1;
+    defaultModelOptionsTokens[provider.id] = token;
     defaultModelOptionsState[provider.id] = { status: "loading" };
 
     const client = buildClient(provider);
@@ -265,8 +265,12 @@
   async function handleMove(index: number, direction: -1 | 1): Promise<void> {
     const target = index + direction;
     if (target < 0 || target >= providers.length) return;
+    const current = providers[index];
+    const swapped = providers[target];
+    if (!current || !swapped) return; // both indices are in-range, checked above — this can't actually miss
     const next = [...providers];
-    [next[index], next[target]] = [next[target], next[index]];
+    next[index] = swapped;
+    next[target] = current;
     providers = next; // optimistic reorder while the write lands
     await optionsServices().providers.reorderProviders(next.map((p) => p.id));
   }

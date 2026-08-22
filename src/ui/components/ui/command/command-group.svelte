@@ -26,5 +26,8 @@
 			{heading}
 		</CommandPrimitive.GroupHeading>
 	{/if}
-	<CommandPrimitive.GroupItems {children} />
+	<!-- Local edit (card 91): bits-ui declares `children?: Snippet`, which under
+	     exactOptionalPropertyTypes refuses an explicitly-undefined value. Rendering
+	     the snippet inside is equivalent and type-clean. -->
+	<CommandPrimitive.GroupItems>{@render children?.()}</CommandPrimitive.GroupItems>
 </CommandPrimitive.Group>

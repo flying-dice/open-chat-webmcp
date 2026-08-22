@@ -45,13 +45,17 @@ async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
 }
 
 function provider(opts: { apiKey?: string; headers?: { key: string; value: string }[] } = {}) {
+  // `ProviderConfig.apiKey`/`.headers` (src/domain/providers, not this
+  // folder's to widen) are optional without `| undefined` — conditional
+  // spread so an omitted option omits the key instead of assigning it
+  // `undefined`.
   return createOpenAiProvider({
     id: "p1",
     type: "openai",
     name: "OpenAI",
     baseUrl: "https://api.openai.com",
-    apiKey: opts.apiKey,
-    headers: opts.headers,
+    ...(opts.apiKey !== undefined && { apiKey: opts.apiKey }),
+    ...(opts.headers !== undefined && { headers: opts.headers }),
   });
 }
 
@@ -216,7 +220,7 @@ describe("chat() — SSE parsing", () => {
   });
 
   it("reassembles an SSE event split across an arbitrary chunk boundary", async () => {
-    const body = sseEvent({ choices: [{ delta: { content: "Hello" } }] }) + "data: [DONE]\n\n";
+    const body = `${sseEvent({ choices: [{ delta: { content: "Hello" } }] })}data: [DONE]\n\n`;
     const bytes = enc.encode(body);
     const splitAt = Math.floor(bytes.length / 2);
     vi.stubGlobal(
@@ -362,7 +366,7 @@ describe("chat() — SSE parsing", () => {
     const toolCallsEvent = events.find((e) => e.type === "tool-calls") as {
       toolCalls: { arguments: Record<string, unknown> }[];
     };
-    expect(toolCallsEvent.toolCalls[0].arguments).toEqual({});
+    expect(toolCallsEvent.toolCalls[0]!.arguments).toEqual({});
   });
 });
 

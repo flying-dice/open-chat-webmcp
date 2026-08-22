@@ -102,9 +102,9 @@ function makePresenter(): {
  */
 function makeTranscript(defaultTarget: ChatSession): {
   transcript: TurnTranscript;
-  notes: { content: string; actions?: NoteAction[] }[];
+  notes: { content: string; actions?: NoteAction[] | undefined }[];
 } {
-  const notes: { content: string; actions?: NoteAction[] }[] = [];
+  const notes: { content: string; actions?: NoteAction[] | undefined }[] = [];
   let counter = 0;
 
   const transcript: TurnTranscript = {
@@ -230,7 +230,7 @@ describe("runTurn — plain streaming reply", () => {
 
     const assistantMessages = session.messages.filter((m) => m.role === "assistant");
     expect(assistantMessages).toHaveLength(1);
-    expect(assistantMessages[0].content).toBe("Hello, world");
+    expect(assistantMessages[0]!.content).toBe("Hello, world");
     expect(gateway.requests).toHaveLength(1);
   });
 });
@@ -285,7 +285,7 @@ describe("runTurn — read-only tool auto-run", () => {
     expect(toolResult?.content).toBe("Example Domain");
     expect(toolResult?.toolMode).toBe("auto");
 
-    const secondRoundMessages = gateway.requests[1].messages;
+    const secondRoundMessages = gateway.requests[1]!.messages;
     expect(
       secondRoundMessages.some((m) => m.role === "tool" && m.content === "Example Domain"),
     ).toBe(true);
@@ -342,7 +342,7 @@ describe("runTurn — denied tool call", () => {
     // A denial is NOT a dead end — the model gets a second round and can
     // read the denial back as a normal tool result.
     expect(gateway.requests).toHaveLength(2);
-    const secondRoundMessages = gateway.requests[1].messages;
+    const secondRoundMessages = gateway.requests[1]!.messages;
     expect(
       secondRoundMessages.some(
         (m) => m.role === "tool" && m.content === "The user denied this tool call.",
@@ -394,7 +394,7 @@ describe("runTurn — untrusted-content fencing", () => {
     expect(storedEntry?.content).toBe("attacker-controlled text");
 
     // The copy sent to the model on the next round is fenced.
-    const secondRoundMessages = gateway.requests[1].messages;
+    const secondRoundMessages = gateway.requests[1]!.messages;
     const modelToolMessage = secondRoundMessages.find((m) => m.role === "tool")!;
     expect(modelToolMessage.content.startsWith(UNTRUSTED_CONTENT_START)).toBe(true);
     expect(modelToolMessage.content).toContain("attacker-controlled text");
@@ -449,7 +449,7 @@ describe("runTurn — MAX_ITERATIONS cap", () => {
 
     expect(gateway.requests).toHaveLength(MAX_ITERATIONS);
     expect(notes).toHaveLength(1);
-    expect(notes[0].content).toContain(`Stopped after ${MAX_ITERATIONS} tool-call rounds`);
+    expect(notes[0]!.content).toContain(`Stopped after ${MAX_ITERATIONS} tool-call rounds`);
   });
 });
 
@@ -567,8 +567,8 @@ describe("runTurn — a ModelGateway that violates its never-throw contract", ()
     ).resolves.toBeUndefined();
 
     expect(notes).toHaveLength(1);
-    expect(notes[0].content).toContain("connection reset");
-    expect(notes[0].actions).toEqual([{ kind: "retry" }]);
+    expect(notes[0]!.content).toContain("connection reset");
+    expect(notes[0]!.actions).toEqual([{ kind: "retry" }]);
   });
 });
 
@@ -676,7 +676,7 @@ describe("runTurn — stop mid-turn", () => {
 
     const assistantMessages = session.messages.filter((m) => m.role === "assistant");
     expect(assistantMessages).toHaveLength(1);
-    expect(assistantMessages[0].content).toBe("Partial reply");
+    expect(assistantMessages[0]!.content).toBe("Partial reply");
     expect(notes).toHaveLength(0);
   });
 });
@@ -788,7 +788,7 @@ describe("runTurn — further tool-call edge cases", () => {
     expect(secondCall).not.toHaveBeenCalled();
     const toolResults = session.messages.filter((m) => m.role === "tool");
     expect(toolResults).toHaveLength(1);
-    expect(toolResults[0].toolName).toBe("a");
+    expect(toolResults[0]!.toolName).toBe("a");
   });
 
   it("also picks up tool calls carried on the terminal 'done' event, not just a separate 'tool-calls' event", async () => {
@@ -902,9 +902,9 @@ describe("runTurn — terminal stream error note wording", () => {
       ...baseOpts(),
     });
 
-    expect(notes[0].content).toContain("Could not reach the server.");
-    expect(notes[0].content).toContain("OLLAMA_ORIGINS=* ollama serve");
-    expect(notes[0].actions).toEqual([{ kind: "retry" }]);
+    expect(notes[0]!.content).toContain("Could not reach the server.");
+    expect(notes[0]!.content).toContain("OLLAMA_ORIGINS=* ollama serve");
+    expect(notes[0]!.actions).toEqual([{ kind: "retry" }]);
   });
 
   it("offers an 'open options' action chip alongside retry for an auth failure", async () => {
@@ -926,7 +926,7 @@ describe("runTurn — terminal stream error note wording", () => {
       ...baseOpts(),
     });
 
-    expect(notes[0].actions).toEqual([
+    expect(notes[0]!.actions).toEqual([
       { kind: "retry" },
       { kind: "open-options", label: "Open options to check the API key" },
     ]);
@@ -1284,7 +1284,7 @@ describe("chaos: stream dies immediately after a successful tool round, before a
     const toolResult = session.messages.find((m) => m.role === "tool");
     expect(toolResult).toMatchObject({ toolStatus: "success", content: "found it" });
     expect(notes).toHaveLength(1);
-    expect(notes[0].actions).toEqual([{ kind: "retry" }]);
+    expect(notes[0]!.actions).toEqual([{ kind: "retry" }]);
     // Round 2's own (empty) assistant bubble stays empty rather than being
     // dropped or fused with the note — endAssistantMessage already closed it.
     const assistantEntries = session.messages.filter((m) => m.role === "assistant");

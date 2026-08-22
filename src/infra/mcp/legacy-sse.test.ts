@@ -354,7 +354,7 @@ describe("connectLegacySse", () => {
         return jsonResponse({ ok: true });
       });
       vi.stubGlobal("fetch", fetchMock);
-      push(ENDPOINT_EVENT + "data: {not valid json\n\n");
+      push(`${ENDPOINT_EVENT}data: {not valid json\n\n`);
       const budget = createBudget(1000, undefined);
 
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
@@ -379,7 +379,7 @@ describe("connectLegacySse", () => {
         return jsonResponse({ ok: true });
       });
       vi.stubGlobal("fetch", fetchMock);
-      push(ENDPOINT_EVENT + "event: endpoint\ndata: /other/path\n\n");
+      push(`${ENDPOINT_EVENT}event: endpoint\ndata: /other/path\n\n`);
       const budget = createBudget(1000, undefined);
 
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);

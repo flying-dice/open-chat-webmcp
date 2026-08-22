@@ -41,7 +41,7 @@ export interface ToolCallLogEntry {
    * this turn's tool list at all — the UI treats an absent origin as
    * unknown, never as "the page" by default.
    */
-  origin?: ToolOrigin;
+  origin?: ToolOrigin | undefined;
   result?: unknown;
   error?: string;
   startedAt: number;
@@ -72,7 +72,7 @@ export interface ChatSession {
    */
   messages: TranscriptEntry[];
   /** `{providerId, model}` — same shape as the global default (decisions/10). Absent until the user picks one. */
-  selection?: ProviderSelection;
+  selection?: ProviderSelection | undefined;
   /**
    * Whether {@link ChatSession.selection} was set by a DELIBERATE user action
    * rather than silently seeded from the stored global default (card 35).
@@ -100,7 +100,7 @@ export interface ChatSession {
    * empty/whitespace-only rename UNSETS this field rather than storing `""`,
    * so clearing the name reverts to the derived title.
    */
-  title?: string;
+  title?: string | undefined;
 }
 
 /** Lightweight view of a chat for a history list (the panel's History view and the options page's "clear history" section) — no message bodies, so listing every chat stays cheap even at a high retention cap. */
@@ -112,9 +112,9 @@ export interface ChatSummary {
   messageCount: number;
   toolCallCount: number;
   /** The first user message's content, trimmed and truncated — enough to recognise the chat in a list. `undefined` if the chat has no user message yet (an empty or assistant-only chat). */
-  preview?: string;
+  preview?: string | undefined;
   /** Explicit user-set name, mirrored from `ChatSession.title` (decisions/24) — see that field's doc comment. `undefined` means derived. */
-  title?: string;
+  title?: string | undefined;
 }
 
 /**

@@ -66,7 +66,7 @@ describe("baseline: one pending request settles exactly once", () => {
     const decision = requestApproval(req);
     expect(approvals.pending).toHaveLength(1);
 
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
     approve(id, false);
 
     await expect(decision).resolves.toBe("approved");
@@ -76,7 +76,7 @@ describe("baseline: one pending request settles exactly once", () => {
   it("deny() resolves the request's promise as 'denied' and removes it from pending", async () => {
     const req = pageRequest();
     const decision = requestApproval(req);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     deny(id);
 
@@ -89,7 +89,7 @@ describe("chaos: a decision delivered twice for the same request", () => {
   it("a second approve() for an id already approved is a silent no-op — the decision stays what it was, nothing throws", async () => {
     const req = pageRequest();
     const decision = requestApproval(req);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     approve(id, false);
     expect(() => approve(id, false)).not.toThrow();
@@ -101,7 +101,7 @@ describe("chaos: a decision delivered twice for the same request", () => {
   it("deny() after approve() for the same id does not flip the already-settled decision", async () => {
     const req = pageRequest();
     const decision = requestApproval(req);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     approve(id, false);
     expect(() => deny(id)).not.toThrow();
@@ -112,7 +112,7 @@ describe("chaos: a decision delivered twice for the same request", () => {
   it("approve() after deny() for the same id does not flip the already-settled decision", async () => {
     const req = pageRequest();
     const decision = requestApproval(req);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     deny(id);
     expect(() => approve(id, false)).not.toThrow();
@@ -123,7 +123,7 @@ describe("chaos: a decision delivered twice for the same request", () => {
   it("a duplicate approve(id, remember: true) delivery is safe — no throw, no duplicate pendingList entry left behind", async () => {
     const { request } = serverRequest();
     const decision = requestApproval(request);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     approve(id, true);
     expect(() => approve(id, true)).not.toThrow(); // delivered twice — the second finds no resolver left and must not re-add to the skip list or crash
@@ -156,7 +156,7 @@ describe("chaos: a decision for a dismissed request", () => {
   it("approve() for an id dismissAllPending() already denied is a no-op — the decision stays 'denied'", async () => {
     const req = pageRequest();
     const decision = requestApproval(req);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     dismissAllPending();
     expect(approvals.pending).toHaveLength(0);
@@ -168,7 +168,7 @@ describe("chaos: a decision for a dismissed request", () => {
   it("deny() for an already-dismissed id is a no-op — no throw, no re-adding to pending", async () => {
     const req = pageRequest();
     const decision = requestApproval(req);
-    const id = approvals.pending[0].id;
+    const id = approvals.pending[0]!.id;
 
     dismissAllPending();
 

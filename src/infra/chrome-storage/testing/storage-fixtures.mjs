@@ -135,6 +135,12 @@ export const FIXTURE_MCP_SERVER = {
  * the single source of that number — {@link FIXTURE_CHAT_COUNT} and
  * {@link FIXTURE_CHAT_IDS} both derive from it, so adding a prompt cannot
  * leave a chat with an `undefined` message.
+ *
+ * Typed as a fixed 6-tuple (rather than `string[]`) so every in-bounds
+ * `FIXTURE_CHAT_PROMPTS[i]` access below — literal or looped — is a plain
+ * `string` under `noUncheckedIndexedAccess`, matching the guarantee this
+ * comment already describes.
+ * @type {readonly [string, string, string, string, string, string]}
  */
 export const FIXTURE_CHAT_PROMPTS = [
   "Summarise the pricing table and check the contact form",
@@ -549,8 +555,12 @@ export function buildLocalSeed({ now = Date.now(), tabId = FIXTURE_TAB_ID } = {}
   const seed = {};
   for (const chat of chats) seed[`${CHAT_KEY_PREFIX}${chat.id}`] = chat;
   seed[CHAT_INDEX_KEY] = chats.map(summarizeFixtureChat);
+  // `chats` always has FIXTURE_CHAT_COUNT (6) entries, so this is always the
+  // newest chat's real id — `?? ""` only satisfies `noUncheckedIndexedAccess`
+  // (a plain `!` isn't valid syntax in this no-build-step `.mjs`, see the
+  // module doc's "WHY PLAIN .mjs").
   seed[`${TAB_POINTER_PREFIX}${tabId}`] = {
-    chatId: chats[0].id,
+    chatId: chats[0]?.id ?? "",
     tabOrigin: FIXTURE_ORIGIN,
   };
   return seed;

@@ -112,7 +112,11 @@ async function* adaptChatStream(
           type: "done",
           message: toChatMessage(event.message),
           stats: {
-            doneReason: event.stats.doneReason,
+            // `ChatStats.doneReason` (src/domain/providers/provider.ts, not
+            // this folder's to widen) is optional without `| undefined` —
+            // conditional spread so an absent reason omits the key instead
+            // of assigning it `undefined`.
+            ...(event.stats.doneReason !== undefined && { doneReason: event.stats.doneReason }),
             // Ollama's duration breakdown has no cross-provider equivalent
             // (decisions/09) — surfaced as-is for diagnostics under `raw`
             // rather than forced into `promptTokens`/`completionTokens`.

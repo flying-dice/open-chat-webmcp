@@ -34,7 +34,7 @@
     /** Accessible name, and the tooltip text unless `tooltip` is false. */
     label: string;
     onclick?: (event: MouseEvent) => void;
-    disabled?: boolean;
+    disabled?: boolean | undefined;
     /** Set false for buttons whose meaning is already obvious in context. */
     tooltip?: boolean;
     tooltipPlacement?: "top" | "bottom";

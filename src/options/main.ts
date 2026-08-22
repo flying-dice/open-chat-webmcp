@@ -68,8 +68,15 @@ initOptionsServices({
 // Must run before mount so the first paint is already in the right theme.
 startDarkModeSync();
 
+// `#app` is in this surface's own index.html, so its absence is a packaging
+// bug, not a runtime condition — decisions/34-errors-as-values.md's "throw
+// means the code is wrong" case. Asserting with `!` instead would hand
+// `mount()` a null target and fail further from the cause.
+const target = document.getElementById("app");
+if (target === null) throw new Error("options/index.html is missing its #app mount point.");
+
 const app = mount(App, {
-  target: document.getElementById("app")!,
+  target,
 });
 
 export default app;

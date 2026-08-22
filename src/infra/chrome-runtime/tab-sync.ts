@@ -50,7 +50,7 @@ export interface ResolvedPage {
   tabId: number;
   title: string;
   origin: string;
-  favIconUrl?: string;
+  favIconUrl?: string | undefined;
   tools: SerializedTool[];
   /** Whether `document.modelContext` exists on this tab at all — see `RuntimeToolsUpdatedMessage.available` in ./protocol.ts. */
   available: boolean;
@@ -68,7 +68,7 @@ export interface TabSyncView {
    * established this is the active tab, and the pre-card-78 code merged these
    * two fields into whatever page it was displaying.
    */
-  pageMetaChanged(meta: { title: string; favIconUrl?: string }): void;
+  pageMetaChanged(meta: { title: string; favIconUrl?: string | undefined }): void;
   /** The worker pushed a new tool list for `tabId` (its `runtime:tools-updated` broadcast). */
   toolsChanged(tabId: number, tools: SerializedTool[], available: boolean): void;
 }

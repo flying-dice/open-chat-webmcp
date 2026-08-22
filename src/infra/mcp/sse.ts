@@ -71,8 +71,9 @@ export function extractSseMessages(
     // a previous event id to resume from.
   };
 
-  let newlineIndex: number;
-  while ((newlineIndex = state.buffer.indexOf("\n")) >= 0) {
+  while (true) {
+    const newlineIndex = state.buffer.indexOf("\n");
+    if (newlineIndex < 0) break;
     const line = state.buffer.slice(0, newlineIndex);
     state.buffer = state.buffer.slice(newlineIndex + 1);
     consumeLine(line);

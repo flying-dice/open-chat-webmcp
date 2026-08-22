@@ -23,7 +23,20 @@ function serverConfig(auth?: McpOAuthAuth): McpServerConfig {
   };
 }
 
-function oauthAuth(overrides: Partial<McpOAuthAuth> = {}): McpOAuthAuth {
+// `McpOAuthAuth.expiresAt` (src/domain/tools, not this folder's to widen) is
+// optional without `| undefined`, so a plain `Partial<McpOAuthAuth>` can't
+// express "clear expiresAt" the way this suite's "unset expiresAt" test
+// needs — widened locally, just for this helper's parameter, rather than at
+// the domain type.
+function oauthAuth(
+  overrides: Partial<Omit<McpOAuthAuth, "expiresAt">> & { expiresAt?: number | undefined } = {},
+): McpOAuthAuth {
+  // `expiresAt` is pulled out and re-added conditionally: an explicit
+  // `expiresAt: undefined` override must OMIT the key from the returned
+  // object (McpOAuthAuth's documented "unknown expiry"), which `...rest`
+  // alone can't express since `overrides` may carry the key with an
+  // `undefined` value.
+  const { expiresAt, ...rest } = overrides;
   return {
     type: "oauth",
     accessToken: "at-current",
@@ -34,7 +47,8 @@ function oauthAuth(overrides: Partial<McpOAuthAuth> = {}): McpOAuthAuth {
       authorizationEndpoint: "https://as.example/authorize",
       tokenEndpoint: "https://as.example/token",
     },
-    ...overrides,
+    ...rest,
+    ...(expiresAt !== undefined && { expiresAt }),
   };
 }
 

@@ -1,0 +1,96 @@
+{
+  "$doc": [
+    "Every `throw` and `Promise.reject(` in production src/, named and reasoned.",
+    "Enforced by scripts/guard-throws.mjs (`npm run guard:throws`), per",
+    "decisions/34-errors-as-values.md: a KNOWN failure mode belongs in the",
+    "signature as a Result<T, E>; `throw` is reserved for a violated invariant —",
+    "a state that cannot exist unless the code is wrong.",
+    "",
+    "Each entry is { match, count, reason }. `match` is a substring of the throw's",
+    "own source line (text, not a line number, so it survives edits above it);",
+    "`count` is EXACT — the guard fails if the real count is higher or lower, so",
+    "removing a throw means removing its entry in the same diff.",
+    "",
+    "`reason` must name the invariant. 'defensive' is not an invariant.",
+    "",
+    "Seeded by card 91 with the full inventory as it stood: 15 sites in 9 files.",
+    "Test code (*.test.ts, testing/) is out of scope — see the guard's header.",
+    "Entries tagged `migrates:` are known errors-as-values debt owned by a card."
+  ],
+
+  "files": {
+    "src/infra/chrome-storage/area.ts": [
+      {
+        "match": "throw wrap(area,",
+        "count": 4,
+        "reason": "migrates: card 92. Decision 32 chose throwing StorageError here because every caller already rejected; decision 34 supersedes that. Until card 92 turns StorageAreaGateway's four methods into Result<T, StorageError>, these are the repo's only throws that carry an EXPECTED failure (chrome.storage quota/unavailable) rather than a bug."
+      }
+    ],
+    "src/infra/mcp/budget.ts": [
+      {
+        "match": "return Promise.reject(new DOMException(",
+        "count": 1,
+        "reason": "migrates: card 93. `raceWithBudget` deliberately mirrors the platform's own abort contract — an already-aborted signal rejects with a DOMException named AbortError, exactly as `fetch` does — so its callers can use one catch for both. It becomes a Result when the MCP transport stack moves onto the shared tuple."
+      }
+    ],
+    "src/content/relay.ts": [
+      {
+        "match": "throw err;",
+        "count": 1,
+        "reason": "Rethrow, not a new failure: the catch exists only to retry `executeTool` with the JSON-string argument form Chrome 152 wants (the 'Failed to parse input' path above). Any OTHER error is not this handler's to interpret, and swallowing it would hide a native WebMCP fault from the caller that does map it."
+      }
+    ],
+    "src/options/app-services.ts": [
+      {
+        "match": "\"[webmcp] options services were already initialised",
+        "count": 1,
+        "reason": "Invariant: src/options/main.ts calls initOptionsServices exactly once, before mount(). A second call means two service bundles exist in one surface — two stores, two debounce maps — which is a wiring bug with no correct recovery."
+      },
+      {
+        "match": "\"[webmcp] options services are not initialised",
+        "count": 1,
+        "reason": "Invariant: the composition root has run before any component reads a service. Reachable only from a module imported outside main.ts's graph — a structural mistake, and far better reported than papered over with an undefined port."
+      }
+    ],
+    "src/sidepanel/app-services.ts": [
+      {
+        "match": "\"[webmcp] side panel services were already initialised",
+        "count": 1,
+        "reason": "Invariant: src/sidepanel/main.ts calls initSidePanelServices exactly once. Two chat stores in one panel each hold their own debounce map and index-write queue and stop serialising against each other — the interleaving card 55 fixed."
+      },
+      {
+        "match": "\"[webmcp] side panel services are not initialised",
+        "count": 1,
+        "reason": "Invariant: the composition root has run before any component reads a service. Same structural-mistake case as the options twin."
+      }
+    ],
+    "src/options/main.ts": [
+      {
+        "match": "\"options/index.html is missing its #app mount point.\"",
+        "count": 1,
+        "reason": "Invariant: #app is in this surface's OWN index.html, so its absence is a packaging bug. Card 91 introduced this in place of a `document.getElementById(\"app\")!`, which handed mount() a null target and failed further from the cause."
+      }
+    ],
+    "src/sidepanel/main.ts": [
+      {
+        "match": "\"sidepanel/index.html is missing its #app mount point.\"",
+        "count": 1,
+        "reason": "Invariant: #app is in this surface's OWN index.html — same packaging-bug case as the options twin, same card-91 replacement of a non-null assertion."
+      }
+    ],
+    "src/options/forms/mcpTestConnection.ts": [
+      {
+        "match": "\"discoverAllServerTools returned no result for a single config\"",
+        "count": 1,
+        "reason": "Invariant: discoverAllServerTools returns exactly one entry per config passed in (src/domain/tools/gateway.ts). A single-element input coming back empty violates that port's contract; it is not a reachable outcome of testing a connection."
+      }
+    ],
+    "src/options/components/SettingsSection.svelte": [
+      {
+        "match": "throw err;",
+        "count": 2,
+        "reason": "migrates: card 95. Rethrows after rolling the optimistic toggle back, so the failure still surfaces rather than leaving the UI silently out of step with storage. Becomes a Result check once the settings port stops throwing (card 92) and this component renders the error instead of rethrowing it."
+      }
+    ]
+  }
+}

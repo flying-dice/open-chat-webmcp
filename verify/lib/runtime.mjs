@@ -43,7 +43,7 @@ export async function sendRuntimeMessage(extPage, msg) {
  * tools-only convenience wrapper for checks that don't. */
 export async function getToolsResponse(extPage, tabId) {
   const res = await sendRuntimeMessage(extPage, { type: "runtime:get-tools", tabId });
-  if (!res || res.type !== "runtime:get-tools-response") {
+  if (res?.type !== "runtime:get-tools-response") {
     throw new Error(`unexpected response to runtime:get-tools: ${JSON.stringify(res)}`);
   }
   return res;
@@ -56,7 +56,7 @@ export async function getTools(extPage, tabId) {
 
 export async function callTool(extPage, tabId, name, args = {}) {
   const res = await sendRuntimeMessage(extPage, { type: "runtime:call-tool", tabId, name, args });
-  if (!res || res.type !== "runtime:call-tool-response") {
+  if (res?.type !== "runtime:call-tool-response") {
     throw new Error(`unexpected response to runtime:call-tool: ${JSON.stringify(res)}`);
   }
   return res;

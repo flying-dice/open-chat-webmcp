@@ -70,7 +70,7 @@
    * the side panel's).
    */
   function fenceOf(command: string): string {
-    return "```\n" + command + "\n```";
+    return `\`\`\`\n${command}\n\`\`\``;
   }
 
   interface Props {
@@ -85,7 +85,7 @@
      * below), since re-editing shouldn't require the caller to look that up
      * itself.
      */
-    preset?: ProviderPreset;
+    preset?: ProviderPreset | undefined;
     /** "add" mode only: lets the user back out to the picker and choose a different backend without cancelling the whole flow. */
     onChangeBackend?: () => void;
     onSubmit: (data: Omit<ProviderConfig, "id">) => Promise<void>;
@@ -106,18 +106,28 @@
    */
   let activePreset = $derived(mode === "add" ? preset : getPreset(initial?.presetId));
 
+  // Named separately (rather than reached via `PROVIDER_TYPES[0]`) so the
+  // fallback used below whenever a lookup misses is a value the compiler
+  // can see is always defined, not an indexed access `noUncheckedIndexedAccess`
+  // has to treat as possibly `undefined`.
+  const OLLAMA_PROVIDER_TYPE: {
+    value: ProviderType;
+    label: string;
+    needsApiKey: boolean;
+    defaultBaseUrl: string;
+  } = {
+    value: "ollama",
+    label: "Ollama",
+    needsApiKey: false,
+    defaultBaseUrl: "http://localhost:11434",
+  };
   const PROVIDER_TYPES: {
     value: ProviderType;
     label: string;
     needsApiKey: boolean;
     defaultBaseUrl: string;
   }[] = [
-    {
-      value: "ollama",
-      label: "Ollama",
-      needsApiKey: false,
-      defaultBaseUrl: "http://localhost:11434",
-    },
+    OLLAMA_PROVIDER_TYPE,
     {
       value: "openai",
       label: "OpenAI-compatible",
@@ -133,7 +143,7 @@
   let name = $state(untrack(() => initial?.name ?? preset?.label ?? ""));
   let type = $state<ProviderType>(untrack(() => initial?.type ?? preset?.type ?? "ollama"));
   let baseUrl = $state(
-    untrack(() => initial?.baseUrl ?? preset?.baseUrl ?? PROVIDER_TYPES[0].defaultBaseUrl),
+    untrack(() => initial?.baseUrl ?? preset?.baseUrl ?? OLLAMA_PROVIDER_TYPE.defaultBaseUrl),
   );
   let apiKey = $state(untrack(() => initial?.apiKey ?? ""));
   let showApiKey = $state(false);
@@ -155,7 +165,7 @@
   let saving = $state(false);
   let formError = $state<string | undefined>(undefined);
 
-  let typeInfo = $derived(PROVIDER_TYPES.find((t) => t.value === type) ?? PROVIDER_TYPES[0]);
+  let typeInfo = $derived(PROVIDER_TYPES.find((t) => t.value === type) ?? OLLAMA_PROVIDER_TYPE);
 
   /**
    * Whether to show the API key field at all — hidden by default for a

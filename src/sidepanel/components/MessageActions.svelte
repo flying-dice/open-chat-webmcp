@@ -27,7 +27,7 @@
      * — regenerating anything earlier would append a reply at the bottom
      * that appears to answer a message far above it.
      */
-    onRegenerate?: () => void;
+    onRegenerate?: (() => void) | undefined;
   }
 
   const { content, onRegenerate }: Props = $props();

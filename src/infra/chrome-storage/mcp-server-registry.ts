@@ -18,12 +18,12 @@
 // trade-off than decision 15 strictly requires, and the simplest way to
 // guarantee no VALUE ever reaches sync.
 
-import {
-  type McpServerAuth,
-  type McpServerConfigCore,
-  type McpServerRegistry,
-  type McpOAuthAuth,
-  type McpTransportPreference,
+import type {
+  McpServerAuth,
+  McpServerConfigCore,
+  McpServerRegistry,
+  McpOAuthAuth,
+  McpTransportPreference,
 } from "../../domain/tools";
 import { isRecord, type StorageAreaGateway } from "./area";
 import { createKeyedRecordStore, credentialPart } from "./keyed-record-store";
@@ -36,8 +36,8 @@ const TRANSPORT_PREFERENCES: readonly McpTransportPreference[] = ["auto", "strea
 
 /** The credential fields of an `McpServerConfig`, as the keyed-record store's `parts`. */
 interface McpServerCredentials {
-  auth?: McpServerAuth;
-  headers?: Record<string, string>;
+  auth?: McpServerAuth | undefined;
+  headers?: Record<string, string> | undefined;
 }
 
 // TODO: clean-code - 0.2 - DRY: decodeServerCore follows the identical isRecord(v) && typeof v.id === "string" && v.id.length > 0 && ... defensive-cast pattern as provider-registry.ts's decodeProviderCore, and generateServerId below mirrors generateProviderId (same crypto.randomUUID + fallback, differing only in the prefix literal) — per-record-shape leftovers around keyed-record-store.ts's shared mechanic.

@@ -69,9 +69,16 @@ export interface McpServerConfig {
   /** Discovery/calls skip a disabled server entirely — it contributes nothing to a merged tool list and its host permission is not requested. */
   enabled: boolean;
   transport: McpTransportPreference;
-  auth?: McpServerAuth;
-  /** Custom request headers sent on every call to this server (decisions/15). Values are CREDENTIALS, so the whole map is never synced. Header names `authorization`, `content-type` and `accept` (case-insensitive) are reserved by the client and never sent from here — see {@link validateServerHeaders}. */
-  headers?: Record<string, string>;
+  /**
+   * `?: McpServerAuth | undefined`, not `?: McpServerAuth`, and deliberately
+   * so under `exactOptionalPropertyTypes` (card 91): {@link McpServerRegistry.updateServer}
+   * documents an explicit `undefined` as the way to CLEAR this credential, so
+   * a patch must be able to SAY `{ auth: undefined }`. The strict form would
+   * make the documented clearing behaviour unexpressible.
+   */
+  auth?: McpServerAuth | undefined;
+  /** Custom request headers sent on every call to this server (decisions/15). Values are CREDENTIALS, so the whole map is never synced. Header names `authorization`, `content-type` and `accept` (case-insensitive) are reserved by the client and never sent from here — see {@link validateServerHeaders}. Explicitly `| undefined` for the same clear-by-patch reason as `auth`. */
+  headers?: Record<string, string> | undefined;
 }
 
 /** The fields of an {@link McpServerConfig} that are NOT credentials — what may be listed, synced and reordered freely. */

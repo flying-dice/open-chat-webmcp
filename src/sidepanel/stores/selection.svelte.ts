@@ -342,7 +342,8 @@ function buildClient(config: ProviderConfig): ChatProvider | undefined {
  */
 // TODO: clean-code - 0.45 - DRY: duplicates at length the same per-provider-token-guarded "listModels -> branch on error kind -> resolveCapabilities -> filter selectable" sequence as src/options/components/ProvidersSection.svelte's loadDefaultModelOptions, instead of sharing an extracted helper.
 async function loadModelsForProvider(config: ProviderConfig): Promise<void> {
-  const token = (providerTokens[config.id] = (providerTokens[config.id] ?? 0) + 1);
+  const token = (providerTokens[config.id] ?? 0) + 1;
+  providerTokens[config.id] = token;
   providerModelsState[config.id] = { status: "loading" };
 
   const client = buildClient(config);
@@ -403,7 +404,7 @@ export async function enterManualModel(providerId: string, modelId: string): Pro
   const trimmed = modelId.trim();
   if (!trimmed) return;
   const state = providerModelsState[providerId];
-  if (!state || state.status !== "not-supported") return;
+  if (state?.status !== "not-supported") return;
 
   const config = findProvider(providerId);
   const client = config ? buildClient(config) : undefined;
@@ -415,7 +416,7 @@ export async function enterManualModel(providerId: string, modelId: string): Pro
   if (providerTokens[providerId] !== token) return;
 
   const current = providerModelsState[providerId];
-  if (!current || current.status !== "not-supported") return;
+  if (current?.status !== "not-supported") return;
   providerModelsState[providerId] = { ...current, manualEntry: { model, capability } };
 }
 

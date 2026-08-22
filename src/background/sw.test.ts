@@ -47,7 +47,7 @@ type MessageListener = (
   message: unknown,
   sender: FakeSender,
   sendResponse: (response?: unknown) => void,
-) => boolean | void;
+) => boolean | undefined;
 type TabsUpdatedListener = (tabId: number, changeInfo: { url?: string }) => void;
 type TabsRemovedListener = (tabId: number) => void;
 

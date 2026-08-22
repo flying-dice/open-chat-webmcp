@@ -44,7 +44,7 @@
      * handed the VIEW's name when not in chat, so editing must be opt-in
      * per render from App.svelte, never inferred from `title` itself.
      */
-    onRename?: (title: string) => void;
+    onRename?: ((title: string) => void) | undefined;
   }
 
   let { title, onNewChat, newChatDisabled, menu, onRename }: Props = $props();

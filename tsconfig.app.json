@@ -31,7 +31,30 @@
     "paths": {
       "$lib": ["./src/ui"],
       "$lib/*": ["./src/ui/*"]
-    }
+    },
+    // Maximal strictness on top of the `strict: true` inherited from
+    // @tsconfig/svelte (decisions/35-biome-and-maximal-strictness.md, card 91).
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    // `noPropertyAccessFromIndexSignature` is the one flag decision 35 lists
+    // that is NOT adopted. Measured on this tree (card 91): 357 errors across
+    // 21 files, ~96% of them in the twelve JSON-parsing modules
+    // (src/infra/mcp/results.ts, chrome-storage/chat-store.ts,
+    // ollama/client.ts, openai/index.ts, ...). Every one of those sites reads
+    // a `Record<string, unknown>` handed back by a local `isRecord()` guard
+    // over untrusted JSON — a type with NO declared properties, where `x.foo`
+    // and `x["foo"]` are equally unchecked, so the flag cannot surface a bug
+    // there; it only rewrites notation. The two types in the repo where it
+    // WOULD carry signal — ToolAnnotations (src/domain/tools/tool.ts:35) and
+    // McpToolAnnotations (src/domain/tools/types.ts:118), which declare hints
+    // alongside `[key: string]: unknown` — produce zero errors, because every
+    // current access is to a declared member. So it buys nothing today at the
+    // cost of 357 rewrites in precisely the files cards 92-95 are about to
+    // migrate. Revisit if a mixed declared+index type ever gets read
+    // dynamically.
+    "noPropertyAccessFromIndexSignature": false
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
 }

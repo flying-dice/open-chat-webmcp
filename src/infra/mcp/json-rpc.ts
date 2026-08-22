@@ -44,10 +44,7 @@ export interface JsonRpcResponseMsg {
 
 export function isJsonRpcResponse(v: unknown): v is JsonRpcResponseMsg {
   return (
-    isRecord(v) &&
-    v.jsonrpc === "2.0" &&
-    (Object.prototype.hasOwnProperty.call(v, "result") ||
-      Object.prototype.hasOwnProperty.call(v, "error"))
+    isRecord(v) && v.jsonrpc === "2.0" && (Object.hasOwn(v, "result") || Object.hasOwn(v, "error"))
   );
 }
 
@@ -91,7 +88,16 @@ export function classifyRpcError(err: JsonRpcErrorObject): McpError {
         : undefined;
     const requested =
       data && typeof data.requested === "string" ? data.requested : PROTOCOL_VERSION;
-    return { kind: "protocol-mismatch", requested, supported, message: err.message };
+    // `McpError`'s `"protocol-mismatch".supported` (src/domain/tools, not
+    // this folder's to widen) is optional without `| undefined` —
+    // conditional spread so an absent list omits the key instead of
+    // assigning it `undefined`.
+    return {
+      kind: "protocol-mismatch",
+      requested,
+      ...(supported !== undefined && { supported }),
+      message: err.message,
+    };
   }
   return { kind: "rpc-error", code: err.code, message: err.message, data: err.data };
 }

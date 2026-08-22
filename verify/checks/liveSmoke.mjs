@@ -29,7 +29,7 @@ import { buildExtension } from "../lib/build.mjs";
 import { startDemoServer, stopDemoServer, DEMO_INDEX_URL } from "../lib/demoServer.mjs";
 import { launchExtension, sidepanelUrl } from "../lib/browser.mjs";
 import { createReport } from "../lib/report.mjs";
-import { assert, pollUntil } from "../lib/assert.mjs";
+import { assert } from "../lib/assert.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const SCREENSHOT_DIR = path.join(ROOT, "verify", "output", "screenshots");

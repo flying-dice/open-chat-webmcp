@@ -21,7 +21,7 @@
  * never reaches us, it isn't merely unused. Do not re-add it.
  */
 export interface ToolAnnotations {
-  readOnlyHint?: boolean;
+  readOnlyHint?: boolean | undefined;
   /**
    * True when this tool's results may contain attacker-influenced content
    * (e.g. text authored by another user of the page) that gets fed straight
@@ -31,7 +31,7 @@ export interface ToolAnnotations {
    * decisions/17. Like `readOnlyHint`, this is page-supplied and not a
    * security guarantee: a hostile page can omit it.
    */
-  untrustedContentHint?: boolean;
+  untrustedContentHint?: boolean | undefined;
   [key: string]: unknown;
 }
 
@@ -52,7 +52,7 @@ export interface ToolAnnotations {
  */
 export interface SerializedTool {
   name: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
-  annotations?: ToolAnnotations;
+  description?: string | undefined;
+  inputSchema?: Record<string, unknown> | undefined;
+  annotations?: ToolAnnotations | undefined;
 }

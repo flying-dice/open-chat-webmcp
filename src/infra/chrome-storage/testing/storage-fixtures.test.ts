@@ -85,19 +85,19 @@ describe("chat records round-trip through ChatStore", () => {
 
   it("the transcript's tool entries carry the four shapes the activity timeline renders", async () => {
     const { chats } = seeded();
-    const chat = await chats.getChat(FIXTURE_CHAT_IDS[0]);
+    const chat = await chats.getChat(FIXTURE_CHAT_IDS[0]!);
     const tools = chat?.messages.filter((m) => m.role === "tool") ?? [];
 
     expect(tools.map((t) => t.toolStatus)).toEqual(["success", "success", "denied", "error"]);
     // The untrusted server result, the denial, and the unknown-origin error
     // are the three the group's summary and badges branch on.
-    expect(tools[1].toolAnnotations?.untrustedContentHint).toBe(true);
-    expect(tools[1].toolOrigin).toEqual({
+    expect(tools[1]!.toolAnnotations?.untrustedContentHint).toBe(true);
+    expect(tools[1]!.toolOrigin).toEqual({
       kind: "server",
       serverId: FIXTURE_MCP_SERVER.id,
       serverName: FIXTURE_MCP_SERVER.name,
     });
-    expect(tools[3].toolOrigin).toBeUndefined();
+    expect(tools[3]!.toolOrigin).toBeUndefined();
     // The `toolCalls`-only carrier must survive the round trip too: it is
     // what keeps the four calls reading as ONE activity group (decisions/26).
     const carrier = chat?.messages.find((m) => m.role === "assistant" && m.content === "");
@@ -106,7 +106,7 @@ describe("chat records round-trip through ChatStore", () => {
 
   it("chat 1 is an all-success run, so its activity group is the collapsed contrast to chat 0's", async () => {
     const { chats } = seeded();
-    const chat = await chats.getChat(FIXTURE_CHAT_IDS[1]);
+    const chat = await chats.getChat(FIXTURE_CHAT_IDS[1]!);
     const statuses = (chat?.messages ?? [])
       .filter((m) => m.role === "tool")
       .map((m) => m.toolStatus);
@@ -204,7 +204,7 @@ describe("provider, settings and MCP records round-trip through their own adapte
 
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject(FIXTURE_MCP_SERVER);
-    expect(servers[0].enabled).toBe(false);
-    expect(servers[0].auth).toBeUndefined();
+    expect(servers[0]!.enabled).toBe(false);
+    expect(servers[0]!.auth).toBeUndefined();
   });
 });

@@ -18,7 +18,16 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // The same maximal-strictness set tsconfig.app.json adopts (card 91,
+    // decisions/35), minus noPropertyAccessFromIndexSignature for the reason
+    // documented there. This program is four build-config files, so the flags
+    // cost nothing here — but they are what stops the build config drifting
+    // looser than the code it builds.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true
   },
   "include": ["vite.config.ts", "manifest.config.ts", "vitest.config.ts", "vitest.setup.ts"]
 }

@@ -86,7 +86,7 @@ describe("chaos: renderMarkdown encoding — unicode, RTL, and extreme length", 
   });
 
   it("does not throw on a very long single-paragraph input (10k characters) and still sanitises it", () => {
-    const source = "a".repeat(10_000) + " <script>alert(1)</script>";
+    const source = `${"a".repeat(10_000)} <script>alert(1)</script>`;
     expect(() => renderMarkdown(source)).not.toThrow();
     const html = renderMarkdown(source);
     expect(html).not.toContain("<script");

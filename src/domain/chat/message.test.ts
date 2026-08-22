@@ -140,8 +140,8 @@ describe("toModelConversation", () => {
     const entries: TranscriptEntry[] = [userEntry("u1", "hi", 0)];
     const convo = toModelConversation("SYSTEM PROMPT", entries);
     expect(convo[0]).toEqual({ role: "system", content: "SYSTEM PROMPT" });
-    expect(convo[1].role).toBe("user");
-    expect(convo[1].content).toBe("hi");
+    expect(convo[1]!.role).toBe("user");
+    expect(convo[1]!.content).toBe("hi");
     expect(convo).toHaveLength(2);
   });
 
@@ -156,7 +156,7 @@ describe("toModelConversation", () => {
     const entries: TranscriptEntry[] = [userEntry("u1", "check the page", 0), toolMsg];
 
     const convo = toModelConversation("SYSTEM", entries);
-    expect(convo[2].content.startsWith(UNTRUSTED_CONTENT_START)).toBe(true);
-    expect(entries[1].content).toBe("attacker-controlled text");
+    expect(convo[2]!.content.startsWith(UNTRUSTED_CONTENT_START)).toBe(true);
+    expect(entries[1]!.content).toBe("attacker-controlled text");
   });
 });

@@ -25,9 +25,9 @@
 
   interface Props {
     /** The tool's normalised WebMCP annotations, absent when the tool declared none — or when the tool itself is unknown. */
-    annotations?: ToolAnnotations;
+    annotations?: ToolAnnotations | undefined;
     /** A server tool's raw MCP annotations (decisions/19 §2), absent for a page tool. */
-    mcpAnnotations?: McpToolAnnotations;
+    mcpAnnotations?: McpToolAnnotations | undefined;
   }
 
   let { annotations, mcpAnnotations }: Props = $props();

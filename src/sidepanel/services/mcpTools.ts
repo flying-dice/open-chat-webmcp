@@ -188,21 +188,29 @@ export function getMergedToolsForTab(
 
 /** Joins every text-bearing content part of an MCP tool result into one display/model-readable string — mirrors src/domain/chat/turn.ts's own `stringifyResult`'s "always produce plain text/JSON, never anything evaluated" discipline, extended to MCP's richer content-part shape. Non-text parts (image/audio/resource) are summarized by kind + mimeType rather than dropped silently, so nothing about what the tool returned disappears without a trace. */
 function contentToText(content: McpToolContent[]): string {
-  const parts = content.map((part) => {
-    switch (part.type) {
-      case "text":
-        return part.text;
-      case "resource":
-        return part.resource.text ?? `[resource: ${part.resource.uri}]`;
-      case "resource_link":
-        return `[resource link: ${part.name ?? part.uri}]`;
-      case "image":
-        return `[image: ${part.mimeType}]`;
-      case "audio":
-        return `[audio: ${part.mimeType}]`;
-    }
-  });
-  return parts.join("\n\n");
+  return content.map(partToText).join("\n\n");
+}
+
+/**
+ * One content part rendered as text. Named rather than inlined as a `map`
+ * callback so the exhaustive switch is checked by its declared `: string`
+ * return type — adding a content-part kind without a case here becomes a
+ * compile error ("lacks ending return statement"), which an inline callback
+ * would swallow as `string | undefined`.
+ */
+function partToText(part: McpToolContent): string {
+  switch (part.type) {
+    case "text":
+      return part.text;
+    case "resource":
+      return part.resource.text ?? `[resource: ${part.resource.uri}]`;
+    case "resource_link":
+      return `[resource link: ${part.name ?? part.uri}]`;
+    case "image":
+      return `[image: ${part.mimeType}]`;
+    case "audio":
+      return `[audio: ${part.mimeType}]`;
+  }
 }
 
 /** The display/model-facing payload for a successful (`isError: false`) call — structured content when the tool declared one, else the joined text content. */
@@ -244,7 +252,9 @@ async function executeServerTool(
     };
   }
 
-  const result = await gateway.callServerTool(config, toolName, args, { signal: opts.signal });
+  const result = await gateway.callServerTool(config, toolName, args, {
+    ...(opts.signal !== undefined && { signal: opts.signal }),
+  });
   if (!result.ok) {
     return { ok: false, error: describeMcpError(result.error) };
   }

@@ -57,7 +57,8 @@ describe("tryStreamableHttp", () => {
     });
     // initialize + notifications/initialized
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const secondBody = JSON.parse((fetchMock.mock.calls[1]?.[1] as RequestInit).body as string);
+    const secondInit = fetchMock.mock.calls[1]![1] as RequestInit;
+    const secondBody = JSON.parse(secondInit.body as string);
     expect(secondBody).toMatchObject({ method: "notifications/initialized" });
   });
 

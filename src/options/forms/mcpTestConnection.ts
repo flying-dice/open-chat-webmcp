@@ -52,7 +52,15 @@ export async function testMcpServerConnection(
   config: McpServerConfig,
   opts?: McpCallOptions,
 ): Promise<McpTestOutcome> {
-  const [result] = await optionsServices().mcpTools.discoverAllServerTools([config], opts);
+  const results = await optionsServices().mcpTools.discoverAllServerTools([config], opts);
+  const result = results[0];
+  if (!result) {
+    // `discoverAllServerTools` returns one entry per config passed in
+    // (src/domain/tools/gateway.ts) — a single-element input array that
+    // comes back empty would be a bug in that contract, not a reachable
+    // outcome of testing a connection.
+    throw new Error("discoverAllServerTools returned no result for a single config");
+  }
   if (result.status === "ok") {
     return { kind: "success", connection: result.connection, tools: result.tools };
   }

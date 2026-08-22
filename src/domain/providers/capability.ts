@@ -65,8 +65,9 @@ export async function resolveCapabilities(
   client: ChatProvider,
   models: ProviderModel[],
 ): Promise<{ model: ProviderModel; capability: ModelCapabilities }[]> {
-  const capabilities = await Promise.all(models.map((model) => resolveCapability(client, model)));
-  return models.map((model, i) => ({ model, capability: capabilities[i] }));
+  return Promise.all(
+    models.map(async (model) => ({ model, capability: await resolveCapability(client, model) })),
+  );
 }
 
 /**

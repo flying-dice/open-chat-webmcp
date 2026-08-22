@@ -107,9 +107,9 @@ export interface McpOAuthFlowConfig {
   /** The MCP server's own URL — the RFC 8707 `resource` on both the authorization and token requests, and stored on the resulting auth so a refresh can re-send it. */
   serverUrl: string;
   clientId: string;
-  clientSecret?: string;
+  clientSecret?: string | undefined;
   /** Space-separated scopes to request. Omitted asks for whatever the authorization server defaults to. */
-  scope?: string;
+  scope?: string | undefined;
 }
 
 /**

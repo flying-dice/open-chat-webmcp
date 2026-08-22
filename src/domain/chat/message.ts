@@ -86,11 +86,11 @@ export interface TranscriptEntry {
   content: string;
   createdAt: number;
   /** Set on an assistant entry whose turn ended by requesting tool calls — replayed to the provider on the next round. */
-  toolCalls?: ToolCall[];
+  toolCalls?: ToolCall[] | undefined;
   /** Set on a `role:"tool"` entry: which call this answers. */
-  toolCallId?: string;
+  toolCallId?: string | undefined;
   /** Set on a `role:"tool"` entry: the tool's name. */
-  toolName?: string;
+  toolName?: string | undefined;
   /** Set on a `role:"tool"` entry: the arguments the call was made with. */
   toolArgs?: Record<string, unknown>;
   toolStatus?: ToolCallStatus;
@@ -112,16 +112,16 @@ export interface TranscriptEntry {
    * since-changed) tool list. Per decisions/05 this is display metadata
    * reported by the page — never treated as a security guarantee.
    */
-  toolAnnotations?: ToolAnnotations;
+  toolAnnotations?: ToolAnnotations | undefined;
   /**
    * Set on a `role:"tool"` entry — where this call actually ran (decisions/19
    * §6). `undefined` for a call whose tool wasn't in the turn's merged list at
    * all; never defaulted to `"page"`. A snapshot at call time, same rationale
    * as {@link TranscriptEntry.toolAnnotations}.
    */
-  toolOrigin?: ToolOrigin;
+  toolOrigin?: ToolOrigin | undefined;
   /** Set on a SERVER-origin `role:"tool"` entry only — the original MCP annotations, display-only per decisions/19 §2. `undefined` for a page tool, which has no MCP annotation vocabulary to show. */
-  toolMcpAnnotations?: McpToolAnnotations;
+  toolMcpAnnotations?: McpToolAnnotations | undefined;
   /** Set on a plain assistant note (never on a live stream) that offers one or more action chips — see {@link NoteAction}. */
   actions?: NoteAction[];
 }
@@ -145,9 +145,9 @@ export function assistantEntry(id: string, now: number): TranscriptEntry {
 /** Details a {@link toolEntry} snapshots from the matching merged tool at call time — all four `undefined` for a tool the model named that isn't in the turn's list. */
 export interface ToolCallSnapshot {
   mode: ToolCallMode;
-  annotations?: ToolAnnotations;
-  origin?: ToolOrigin;
-  mcpAnnotations?: McpToolAnnotations;
+  annotations?: ToolAnnotations | undefined;
+  origin?: ToolOrigin | undefined;
+  mcpAnnotations?: McpToolAnnotations | undefined;
 }
 
 /**

@@ -5,7 +5,7 @@
 // extension's side panel inspector — the live tool list, and every call with
 // its arguments and result. If the two disagree, that's a relay bug.
 
-import type { CallToolResult, ToolAnnotations, ToolDescriptor } from "@mcp-b/webmcp-types";
+import type { CallToolResult, ToolAnnotations } from "@mcp-b/webmcp-types";
 import type { Fixture } from "./tools";
 
 export type StatusKind = "pending" | "ok" | "error";

@@ -240,7 +240,12 @@ describe("McpServerForm", () => {
 
     expect(await screen.findByRole("button", { name: "Signing in…" })).toBeDisabled();
 
-    resolveBegin({ status: "signed-in", auth: fakeOAuthAuth({ expiresAt: undefined }) });
+    // No `expiresAt` override needed — `fakeOAuthAuth()`'s base object never
+    // sets it, which is already "no expiry known": passing `expiresAt:
+    // undefined` explicitly would require `McpOAuthAuth.expiresAt` to accept
+    // literal `undefined` under `exactOptionalPropertyTypes`, which it
+    // (deliberately, per src/domain/tools/servers.ts) does not.
+    resolveBegin({ status: "signed-in", auth: fakeOAuthAuth() });
 
     expect(await screen.findByRole("button", { name: "Reconnect" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeInTheDocument();

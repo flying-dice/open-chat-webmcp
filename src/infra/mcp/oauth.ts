@@ -88,16 +88,23 @@ function parseTokenResponse(
     };
   }
   const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
+  const refreshToken = typeof raw.refresh_token === "string" ? raw.refresh_token : undefined;
+  const expiresAt = expiresIn !== undefined ? Date.now() + expiresIn * 1000 : undefined;
+  const scope = typeof raw.scope === "string" ? raw.scope : config.scope;
+  // `McpOAuthAuth`'s `refreshToken`/`expiresAt`/`scope`/`clientSecret`
+  // (src/domain/tools, not this folder's to widen) are optional without
+  // `| undefined` — conditional spread so an absent value omits the key
+  // instead of assigning it `undefined`.
   return {
     ok: true,
     value: {
       type: "oauth",
       accessToken: raw.access_token,
-      refreshToken: typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
-      expiresAt: expiresIn !== undefined ? Date.now() + expiresIn * 1000 : undefined,
-      scope: typeof raw.scope === "string" ? raw.scope : config.scope,
+      ...(refreshToken !== undefined && { refreshToken }),
+      ...(expiresAt !== undefined && { expiresAt }),
+      ...(scope !== undefined && { scope }),
       clientId: config.clientId,
-      clientSecret: config.clientSecret,
+      ...(config.clientSecret !== undefined && { clientSecret: config.clientSecret }),
       authorizationServer,
       resource: config.serverUrl,
     },
@@ -115,19 +122,23 @@ function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): McpResult<Mc
     };
   }
   const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
-  return {
-    ok: true,
-    value: {
-      ...previous,
-      accessToken: raw.access_token,
-      // RFC 6749 §6: the server MAY issue a new refresh token; if it
-      // doesn't, the existing one remains valid and must be kept.
-      refreshToken:
-        typeof raw.refresh_token === "string" ? raw.refresh_token : previous.refreshToken,
-      expiresAt: expiresIn !== undefined ? Date.now() + expiresIn * 1000 : undefined,
-      scope: typeof raw.scope === "string" ? raw.scope : previous.scope,
-    },
-  };
+  // `McpOAuthAuth`'s optional fields (src/domain/tools, not this folder's to
+  // widen) have no `| undefined` in their declared type, so this builds the
+  // refreshed record by mutating a copy rather than assigning `undefined`
+  // explicitly — `delete` is how `expiresAt` gets cleared below when the
+  // response carries no `expires_in`, since a plain spread can't remove a
+  // key `...previous` already set.
+  const refreshed: McpOAuthAuth = { ...previous, accessToken: raw.access_token };
+  // RFC 6749 §6: the server MAY issue a new refresh token; if it
+  // doesn't, the existing one remains valid and must be kept.
+  if (typeof raw.refresh_token === "string") refreshed.refreshToken = raw.refresh_token;
+  if (expiresIn !== undefined) {
+    refreshed.expiresAt = Date.now() + expiresIn * 1000;
+  } else {
+    delete refreshed.expiresAt;
+  }
+  if (typeof raw.scope === "string") refreshed.scope = raw.scope;
+  return { ok: true, value: refreshed };
 }
 
 async function exchangeCodeForToken(
@@ -295,7 +306,7 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
    */
   async function getValidAuth(config: McpServerConfig): Promise<McpResult<McpOAuthAuth>> {
     const auth = config.auth;
-    if (!auth || auth.type !== "oauth") {
+    if (auth?.type !== "oauth") {
       return {
         ok: false,
         error: {

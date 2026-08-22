@@ -303,7 +303,7 @@ describe("ProviderPicker", () => {
       a: {
         status: "error",
         message: "Could not reach Alpha.",
-        error: { kind: "unreachable-or-cors", message: "Could not reach Alpha.", fix: undefined },
+        error: { kind: "unreachable-or-cors", message: "Could not reach Alpha." },
       },
     };
 

@@ -68,10 +68,12 @@ class LegacySsePump {
   private readonly waiters = new Map<number, (msg: JsonRpcResponseMsg) => void>();
   private stopped = false;
 
-  constructor(response: Response, baseUrl: string) {
-    // `connectLegacySse` already checked `response.body` is present before
-    // constructing this.
-    this.reader = response.body!.getReader();
+  // Takes the body STREAM rather than the Response: `connectLegacySse` has
+  // already narrowed `response.body` to non-null by the time it constructs
+  // this, and passing the narrowed value keeps that fact in the type instead
+  // of re-asserting it here.
+  constructor(body: ReadableStream<Uint8Array>, baseUrl: string) {
+    this.reader = body.getReader();
     this.baseUrl = baseUrl;
     void this.pump();
   }
@@ -220,7 +222,7 @@ export async function connectLegacySse(
     };
   }
 
-  const pump = new LegacySsePump(response, config.url);
+  const pump = new LegacySsePump(response.body, config.url);
 
   let postEndpoint: string;
   try {

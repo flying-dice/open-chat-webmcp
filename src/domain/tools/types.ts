@@ -110,22 +110,22 @@ export type McpResult<T> = { ok: true; value: T } | { ok: false; error: McpError
 
 /** Tool behavior hints per the MCP spec, read the same way page tool annotations are (decisions/14: "MCP tool annotations are used the same way page annotations are"). Per spec these are untrusted metadata the server asserts about itself, not a security boundary. */
 export interface McpToolAnnotations {
-  title?: string;
-  readOnlyHint?: boolean;
-  destructiveHint?: boolean;
-  idempotentHint?: boolean;
-  openWorldHint?: boolean;
+  title?: string | undefined;
+  readOnlyHint?: boolean | undefined;
+  destructiveHint?: boolean | undefined;
+  idempotentHint?: boolean | undefined;
+  openWorldHint?: boolean | undefined;
   [key: string]: unknown;
 }
 
 /** A tool as offered by one MCP server's `tools/list`. */
 export interface McpTool {
   name: string;
-  title?: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
+  title?: string | undefined;
+  description?: string | undefined;
+  inputSchema?: Record<string, unknown> | undefined;
   outputSchema?: Record<string, unknown>;
-  annotations?: McpToolAnnotations;
+  annotations?: McpToolAnnotations | undefined;
 }
 
 export interface McpTextContent {
@@ -149,7 +149,7 @@ export interface McpResourceLinkContent {
   type: "resource_link";
   uri: string;
   name?: string;
-  description?: string;
+  description?: string | undefined;
   mimeType?: string;
 }
 
@@ -191,7 +191,7 @@ export interface McpToolCallResult {
 
 export interface McpServerInfo {
   name: string;
-  title?: string;
+  title?: string | undefined;
   version?: string;
 }
 

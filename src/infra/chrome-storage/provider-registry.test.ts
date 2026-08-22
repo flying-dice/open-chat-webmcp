@@ -69,7 +69,8 @@ describe("CRUD", () => {
   it("reorderProviders reorders and drops any id it omits", async () => {
     const { registry } = setup();
     const a = await registry.addProvider({ type: "ollama", name: "A", baseUrl: "http://a" });
-    const b = await registry.addProvider({ type: "ollama", name: "B", baseUrl: "http://b" });
+    // B is created but deliberately left out of the reorder call below.
+    await registry.addProvider({ type: "ollama", name: "B", baseUrl: "http://b" });
     const c = await registry.addProvider({ type: "ollama", name: "C", baseUrl: "http://c" });
 
     await registry.reorderProviders([c.id, a.id]); // b omitted on purpose
@@ -129,7 +130,7 @@ describe("credential split (decisions/10, decisions/15)", () => {
     const syncRaw = fake.sync.raw();
     expect(JSON.stringify(syncRaw)).not.toContain("sk-super-secret");
     expect(syncRaw["providers:list"]).toBeDefined();
-    const storedCore = (syncRaw["providers:list"] as Array<Record<string, unknown>>)[0];
+    const storedCore = (syncRaw["providers:list"] as Array<Record<string, unknown>>)[0]!;
     expect(storedCore.apiKey).toBeUndefined();
 
     expect(fake.local.raw()[`providers:apiKey:${added.id}`]).toBe("sk-super-secret");

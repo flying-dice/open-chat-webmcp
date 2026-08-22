@@ -184,9 +184,5 @@ const RUNTIME_MESSAGE_TYPES: Record<RuntimeMessage["type"], true> = {
 };
 
 export function isRuntimeMessage(v: unknown): v is RuntimeMessage {
-  return (
-    isRecord(v) &&
-    typeof v.type === "string" &&
-    Object.prototype.hasOwnProperty.call(RUNTIME_MESSAGE_TYPES, v.type)
-  );
+  return isRecord(v) && typeof v.type === "string" && Object.hasOwn(RUNTIME_MESSAGE_TYPES, v.type);
 }

@@ -39,9 +39,9 @@
 
   interface Props {
     phase: RenderablePhase;
-    modelLabel?: string;
+    modelLabel?: string | undefined;
     /** Icon for the provider being waited on — same as Transcript.svelte's turn-header icon, so "waiting" and "answered" show the same glyph for the same provider. */
-    modelIcon?: IconName;
+    modelIcon?: IconName | undefined;
   }
 
   let { phase, modelLabel, modelIcon }: Props = $props();

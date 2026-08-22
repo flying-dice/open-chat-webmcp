@@ -46,17 +46,16 @@ describe("createOllamaProvider", () => {
   });
 
   it("chat() adapts an inbound tool call and a 'done' event's stats into the shared shape", async () => {
-    const line =
-      JSON.stringify({
-        message: {
-          role: "assistant",
-          content: "",
-          tool_calls: [{ function: { name: "search", arguments: { q: "x" } } }],
-        },
-        done: true,
-        done_reason: "stop",
-        eval_count: 10,
-      }) + "\n";
+    const line = `${JSON.stringify({
+      message: {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ function: { name: "search", arguments: { q: "x" } } }],
+      },
+      done: true,
+      done_reason: "stop",
+      eval_count: 10,
+    })}\n`;
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(line));

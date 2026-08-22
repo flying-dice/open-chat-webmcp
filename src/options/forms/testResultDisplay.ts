@@ -143,7 +143,7 @@ export function mcpTestResultMessage(outcome: McpTestOutcome): string {
 /** Discovered tool names+descriptions to list under the banner, or `undefined` when there's nothing to list (any non-success outcome, or a success with zero tools — already worded distinctly by {@link mcpTestResultMessage}). */
 export function mcpTestResultTools(
   outcome: McpTestOutcome,
-): { name: string; description?: string }[] | undefined {
+): { name: string; description?: string | undefined }[] | undefined {
   if (outcome.kind !== "success" || outcome.tools.length === 0) return undefined;
   return outcome.tools.map((t) => ({ name: t.title ?? t.name, description: t.description }));
 }

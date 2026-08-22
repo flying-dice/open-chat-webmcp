@@ -1,0 +1,164 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+
+  // Biome 2.5.10 — linter + formatter (decisions/35-biome-and-maximal-strictness.md,
+  // card 91). `npm run lint` (check, no writes), `npm run lint:fix`,
+  // `npm run format` (write), `npm run format:check`; `npm run guard` runs the
+  // check-only pass so the release gate never rewrites your tree.
+  //
+  // -- What Biome actually does to .svelte files (verified against
+  //    biomejs.dev/internals/language-support and by probing 2.5.10 directly,
+  //    2026-08-23; the docs grade Svelte "experimental" for both format and
+  //    lint, and that grading is accurate) --------------------------------
+  //
+  //   FORMATS:  the `<script>` / `<script module>` block only, as TypeScript,
+  //             with `html.formatter.indentScriptAndStyle: true` below keeping
+  //             our one-level indent inside the tag (Biome's default flattens
+  //             every script block to column 0 — a whole-tree no-value diff).
+  //   LINTS:    the `<script>` block only, with the normal JS/TS rule set.
+  //             Verified: noExplicitAny, noDuplicateObjectKeys and friends all
+  //             fire inside .svelte scripts.
+  //   DOES NOT TOUCH: the template markup or the `<style>` block. Probed with
+  //             deliberately mangled markup (`<div    class="a"     id="b"`
+  //             split over three lines) and CSS (`.a{color:red}`) — both came
+  //             back byte for byte. Attribute wrapping, `{#if}` indentation,
+  //             Tailwind class-list layout and component `<style>` CSS stay a
+  //             review-discipline concern, exactly as before Biome.
+  //   `html.experimentalFullSupportEnabled: true` (the flag meant to extend
+  //             formatting into the markup) makes 2.5.10 skip .svelte files
+  //             entirely — "No files were processed in the specified paths" —
+  //             so it is NOT enabled. Revisit when it leaves experimental.
+  //   SCOPE GAP we work around: Biome resolves .svelte identifiers against the
+  //             script block alone and never reads the template, so a variable
+  //             or function used only from markup reads as unused. The
+  //             `overrides` block at the bottom turns the three unused-symbol
+  //             rules off for .svelte; svelte-check (`npm run check`) is what
+  //             covers those files for real.
+  //
+  // Decision 35 also asks for an explicit return type on every exported
+  // function. Biome's `useExplicitType` is NURSERY (experimental, behaviour may
+  // change at any time) and much broader than the decision — it demands
+  // annotations on every function including inline callbacks, plus on
+  // variables — so it is not enabled here. `npm run guard:return-types`
+  // (scripts/guard-return-types.mjs) implements exactly the decision's rule
+  // instead. Re-evaluate when the rule stabilises.
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+
+  "files": {
+    "includes": [
+      "src/**",
+      "scripts/**",
+      "verify/**",
+      "demo/**",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "vitest.setup.ts",
+      "manifest.config.ts",
+      "svelte.config.js",
+      "components.json",
+      "package.json",
+      "tsconfig.json",
+      "tsconfig.app.json",
+      "tsconfig.node.json",
+      ".dependency-cruiser.cjs",
+      "!verify/output"
+    ]
+  },
+
+  // 100 columns, measured against the repo before adopting: the one-time format
+  // commit is 353 files / +12694 -7329 at width 80 and 304 files / +7903 -6341
+  // at width 100 — i.e. 100 is the width this code was already hand-wrapped to.
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always",
+      "bracketSpacing": true
+    }
+  },
+
+  // Svelte/Vue/Astro inherit the HTML formatter's options; see the header for
+  // what that does and does not reach.
+  "html": {
+    "formatter": {
+      "indentScriptAndStyle": true
+    }
+  },
+
+  // src/app.css is Tailwind 4 (`@theme`, `@custom-variant`, `@apply`), which
+  // Biome's CSS parser rejects as a syntax error unless this is on.
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+
+  "linter": {
+    "enabled": true,
+    // src/ui/components/ui/ is the vendored shadcn-svelte kit — regenerable,
+    // not ours to keep clean (same exclusion as .dependency-cruiser.cjs and
+    // scripts/guard-clean-code.mjs). src/ui/utils.ts is the same generator's
+    // output under a different alias (components.json: "utils": "$lib/utils")
+    // — it still carries the CLI's own eslint-disable comments — so it is
+    // excluded on the same grounds. Both are still FORMATTED, so a
+    // regenerated file lands in house style. src/paraglide/ is the future
+    // i18n codegen output (cards 100-105), excluded ahead of time so
+    // generated message functions can never gate a build.
+    "includes": ["**", "!src/ui/components/ui/**", "!src/ui/utils.ts", "!src/paraglide/**"],
+    "rules": {
+      // `preset` replaces the deprecated `recommended: true` in 2.5.
+      "preset": "recommended"
+    }
+  },
+
+  // Import sorting is deliberately off: import order in this repo carries
+  // meaning (domain before infra reads as the dependency direction) and the
+  // boundary guard already polices what may import what.
+  "assist": {
+    "enabled": false
+  },
+
+  "overrides": [
+    {
+      // See "SCOPE GAP" in the header — Biome cannot see template usage.
+      "includes": ["**/*.svelte"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off",
+            "noUnusedFunctionParameters": "off"
+          }
+        }
+      }
+    },
+    {
+      // Tests and fakes. `foo!` on a fixture lookup the test itself just built
+      // is clearer than a narrowing dance around a value the test controls, and
+      // a `function*` stub with no `yield` is how you fake an async iterable
+      // that yields nothing. Neither says anything about production safety, and
+      // 42 of the 46 `!` sites in the tree are here — production has 4, and
+      // those are held to the rule.
+      "includes": ["**/*.test.ts", "**/testing/**", "verify/**", "demo/**"],
+      "linter": {
+        "rules": {
+          "style": { "noNonNullAssertion": "off" },
+          "correctness": { "useYield": "off" }
+        }
+      }
+    }
+  ]
+}

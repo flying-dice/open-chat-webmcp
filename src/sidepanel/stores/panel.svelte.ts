@@ -82,7 +82,7 @@ export interface PageInfo {
    * Often absent (a tab that hasn't loaded one, a restricted page) — the chip
    * falls back to a generic globe glyph, never to a broken image.
    */
-  favIconUrl?: string;
+  favIconUrl?: string | undefined;
   toolCount: number;
   /**
    * True when the background worker could not reach ANY content relay in this

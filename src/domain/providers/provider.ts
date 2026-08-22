@@ -238,19 +238,19 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   /** Set on an assistant message that requested tool calls. */
-  toolCalls?: ToolCall[];
+  toolCalls?: ToolCall[] | undefined;
   /**
    * Set on a `role:"tool"` message: which call this answers (matches a
    * {@link ToolCall.id}). Required on the wire for OpenAI; Ollama's client
    * ignores it when sending, since Ollama has no call ids to correlate.
    */
-  toolCallId?: string;
+  toolCallId?: string | undefined;
   /**
    * Set on a `role:"tool"` message: the tool's name. Ollama's `/api/chat`
    * wants this on the tool message; OpenAI infers it from `toolCallId` and
    * its client ignores this field when sending.
    */
-  toolName?: string;
+  toolName?: string | undefined;
 }
 
 /**
@@ -284,7 +284,7 @@ export interface ChatParams {
   model: string;
   messages: ChatMessage[];
   /** Page tools to offer the model; each client converts to its own wire tool-def shape. Omit or pass `[]` for no tools. */
-  tools?: SerializedTool[];
+  tools?: SerializedTool[] | undefined;
   /** Tied to the panel's lifetime — aborting mid-stream ends the generator with a terminal `{type:"error", error:{kind:"aborted"}}` event, never a throw. */
   signal?: AbortSignal;
 }

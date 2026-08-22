@@ -100,8 +100,12 @@
   async function handleMove(index: number, direction: -1 | 1): Promise<void> {
     const target = index + direction;
     if (target < 0 || target >= servers.length) return;
+    const current = servers[index];
+    const swapped = servers[target];
+    if (!current || !swapped) return; // both indices are in-range, checked above — this can't actually miss
     const next = [...servers];
-    [next[index], next[target]] = [next[target], next[index]];
+    next[index] = swapped;
+    next[target] = current;
     servers = next; // optimistic reorder while the write lands
     await optionsServices().mcpServers.reorderServers(next.map((s) => s.id));
   }

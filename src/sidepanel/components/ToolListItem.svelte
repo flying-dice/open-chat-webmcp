@@ -44,8 +44,8 @@
 
   interface Props {
     tool: Pick<SerializedTool, "name" | "description" | "inputSchema"> & {
-      annotations?: ToolAnnotations;
-      mcpAnnotations?: McpToolAnnotations;
+      annotations?: ToolAnnotations | undefined;
+      mcpAnnotations?: McpToolAnnotations | undefined;
       origin: ToolOrigin;
     };
   }

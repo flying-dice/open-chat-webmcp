@@ -180,11 +180,15 @@ async function toHttpError(
     };
   }
 
+  // `ProviderError`'s `"http".body` (src/domain/providers/provider.ts, not
+  // this folder's to widen) is optional without `| undefined` — conditional
+  // spread so an absent message omits the key instead of assigning it
+  // `undefined`.
   return {
     kind: "http",
     status: response.status,
     statusText: response.statusText,
-    body: message,
+    ...(message !== undefined && { body: message }),
   };
 }
 
@@ -213,7 +217,10 @@ async function listModels(
     response = await fetch(`${baseUrl}/v1/models`, {
       method: "GET",
       headers: buildHeaders(apiKey, headers, { Accept: "application/json" }),
-      signal: opts?.signal,
+      // `RequestInit.signal` (lib.dom.d.ts) is `AbortSignal | null`, not
+      // `| undefined` — conditional spread so an absent signal omits the
+      // key instead of assigning it `undefined`.
+      ...(opts?.signal !== undefined && { signal: opts.signal }),
     });
   } catch (err) {
     return { ok: false, error: toOpenAiError(err) };
@@ -471,8 +478,9 @@ function extractSseEvents(state: SseParseState, opts?: { flush?: boolean }): str
     // intentionally ignored — OpenAI's format never sends them.
   };
 
-  let newlineIndex: number;
-  while ((newlineIndex = state.buffer.indexOf("\n")) >= 0) {
+  while (true) {
+    const newlineIndex = state.buffer.indexOf("\n");
+    if (newlineIndex < 0) break;
     const line = state.buffer.slice(0, newlineIndex);
     state.buffer = state.buffer.slice(newlineIndex + 1);
     consumeLine(line);
@@ -527,7 +535,8 @@ async function* chat(
         Accept: "text/event-stream",
       }),
       body: JSON.stringify(requestBody),
-      signal,
+      // See listModels' matching comment on RequestInit.signal.
+      ...(signal !== undefined && { signal }),
     });
   } catch (err) {
     yield { type: "error", error: toOpenAiError(err) };
@@ -638,11 +647,17 @@ async function* chat(
 
   function buildStats(): ChatStats {
     const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+    const promptTokens = usage ? num(usage.prompt_tokens) : undefined;
+    const completionTokens = usage ? num(usage.completion_tokens) : undefined;
+    // `ChatStats`'s fields (src/domain/providers/provider.ts, not this
+    // folder's to widen) are optional without `| undefined` — conditional
+    // spread so an absent value omits the key instead of assigning it
+    // `undefined`.
     return {
-      doneReason: finishReason,
-      promptTokens: usage ? num(usage.prompt_tokens) : undefined,
-      completionTokens: usage ? num(usage.completion_tokens) : undefined,
-      raw: usage,
+      ...(finishReason !== undefined && { doneReason: finishReason }),
+      ...(promptTokens !== undefined && { promptTokens }),
+      ...(completionTokens !== undefined && { completionTokens }),
+      ...(usage !== undefined && { raw: usage }),
     };
   }
 
