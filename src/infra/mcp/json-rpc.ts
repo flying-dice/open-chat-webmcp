@@ -7,7 +7,8 @@
 // status, a JSON-RPC `error` object and a malformed body all become an
 // `McpError` here, and nothing above this layer looks at a `Response` again.
 
-import type { McpError, McpResult } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError } from "../../domain/tools";
 import { PROTOCOL_VERSION } from "./protocol";
 
 // TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently at least nine times across src/ (area.ts, ollama/client.ts, openai/index.ts, relay.ts, sw.ts, SchemaProperty.svelte, ToolSchema.svelte, ToolArgValue.svelte).
@@ -102,9 +103,9 @@ export function classifyRpcError(err: JsonRpcErrorObject): McpError {
   return { kind: "rpc-error", code: err.code, message: err.message, data: err.data };
 }
 
-export function toResultFromJsonRpc(msg: JsonRpcResponseMsg): McpResult<unknown> {
-  if (msg.error) return { ok: false, error: classifyRpcError(msg.error) };
-  return { ok: true, value: msg.result };
+export function toResultFromJsonRpc(msg: JsonRpcResponseMsg): Result<unknown, McpError> {
+  if (msg.error) return fail(classifyRpcError(msg.error));
+  return ok(msg.result);
 }
 
 export async function classifyHttpErrorResponse(response: Response): Promise<McpError> {

@@ -1,6 +1,12 @@
 // Tests for `validateInitializeResult`/`initializeParams` — the `initialize`
 // handshake validation shared by both HTTP transports (card 88,
 // boards/project-backlog/88-close-remaining-test-gaps.md).
+//
+// Card 94 (decisions/34-errors-as-values.md): `validateInitializeResult`
+// resolves the shared `Result<McpConnectionInfo, McpError>` tuple rather
+// than the old `{ok:true,value}|{ok:false,error}` record — assertions below
+// match src/domain/result.test.ts's own tuple-literal style
+// (`toEqual([value, undefined])` / `toEqual([undefined, error])`).
 
 import { describe, expect, it } from "vitest";
 import { initializeParams, validateInitializeResult } from "./session";
@@ -32,24 +38,24 @@ describe("validateInitializeResult", () => {
         },
       }),
     );
-    expect(result).toEqual({
-      ok: true,
-      value: {
+    expect(result).toEqual([
+      {
         protocolVersion: "2025-06-18",
         serverInfo: { name: "Acme MCP", title: "Acme", version: "9.9" },
         instructions: "Be nice.",
       },
-    });
+      undefined,
+    ]);
   });
 
   it.each([["2025-03-26"], ["2024-11-05"]])(
     "a server negotiating down to a supported earlier version (%s) still resolves ok",
     (version) => {
       const result = validateInitializeResult(response({ result: { protocolVersion: version } }));
-      expect(result).toEqual({
-        ok: true,
-        value: { protocolVersion: version, serverInfo: undefined, instructions: undefined },
-      });
+      expect(result).toEqual([
+        { protocolVersion: version, serverInfo: undefined, instructions: undefined },
+        undefined,
+      ]);
     },
   );
 
@@ -57,10 +63,10 @@ describe("validateInitializeResult", () => {
     const result = validateInitializeResult(
       response({ error: { code: -32601, message: "Method not found" } }),
     );
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "rpc-error", code: -32601, message: "Method not found", data: undefined },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "rpc-error", code: -32601, message: "Method not found", data: undefined },
+    ]);
   });
 
   it("the spec's documented unsupported-protocol-version error shape is classified as protocol-mismatch, not a generic rpc-error", () => {
@@ -73,82 +79,73 @@ describe("validateInitializeResult", () => {
         },
       }),
     );
-    expect(result).toEqual({
-      ok: false,
-      error: {
+    expect(result).toEqual([
+      undefined,
+      {
         kind: "protocol-mismatch",
         requested: "1999-01-01",
         supported: ["2025-06-18"],
         message: "Unsupported protocol version",
       },
-    });
+    ]);
   });
 
   describe("chaos: malformed result payloads", () => {
     it("a result that isn't an object at all is invalid-response", () => {
-      const result = validateInitializeResult(response({ result: "not an object" }));
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const [, err] = validateInitializeResult(response({ result: "not an object" }));
+      expect(err?.kind).toBe("invalid-response");
     });
 
     it("a result missing protocolVersion entirely is invalid-response", () => {
-      const result = validateInitializeResult(response({ result: { serverInfo: { name: "x" } } }));
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const [, err] = validateInitializeResult(response({ result: { serverInfo: { name: "x" } } }));
+      expect(err?.kind).toBe("invalid-response");
     });
 
     it("protocolVersion present but the wrong type is invalid-response, not silently coerced", () => {
-      const result = validateInitializeResult(response({ result: { protocolVersion: 20250618 } }));
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const [, err] = validateInitializeResult(response({ result: { protocolVersion: 20250618 } }));
+      expect(err?.kind).toBe("invalid-response");
     });
 
     it("a protocolVersion this client does not recognize at all is protocol-mismatch, naming what it requested and what it supports", () => {
       const result = validateInitializeResult(
         response({ result: { protocolVersion: "1999-01-01" } }),
       );
-      expect(result).toEqual({
-        ok: false,
-        error: {
+      expect(result).toEqual([
+        undefined,
+        {
           kind: "protocol-mismatch",
           requested: "2025-06-18",
           supported: ["2025-06-18", "2025-03-26", "2024-11-05"],
           message:
             'Server negotiated protocol version "1999-01-01", which this client does not support (supports 2025-06-18, 2025-03-26, 2024-11-05).',
         },
-      });
+      ]);
     });
 
     it("a malformed serverInfo (missing name) is dropped rather than failing the whole handshake", () => {
-      const result = validateInitializeResult(
+      const [value, err] = validateInitializeResult(
         response({
           result: { protocolVersion: "2025-06-18", serverInfo: { title: "no name here" } },
         }),
       );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.serverInfo).toBeUndefined();
+      expect(err).toBeUndefined();
+      expect(value?.serverInfo).toBeUndefined();
     });
 
     it("a non-object serverInfo is dropped, not thrown on", () => {
-      const result = validateInitializeResult(
+      const [value, err] = validateInitializeResult(
         response({ result: { protocolVersion: "2025-06-18", serverInfo: "Acme" } }),
       );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.serverInfo).toBeUndefined();
+      expect(err).toBeUndefined();
+      expect(value?.serverInfo).toBeUndefined();
     });
 
     it("an instructions field of the wrong type is dropped, not coerced to a string", () => {
-      const result = validateInitializeResult(
+      const [value, err] = validateInitializeResult(
         response({ result: { protocolVersion: "2025-06-18", instructions: 12345 } }),
       );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.instructions).toBeUndefined();
+      expect(err).toBeUndefined();
+      expect(value?.instructions).toBeUndefined();
     });
   });
 });

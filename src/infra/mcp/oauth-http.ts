@@ -7,7 +7,8 @@
 // vocabulary differs from a JSON-RPC endpoint's (notably RFC 6749 §5.2's
 // `error`/`error_description` body becoming `kind: "auth"`).
 
-import type { McpError, McpResult } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError } from "../../domain/tools";
 import { isRecord } from "./json-rpc";
 import { OAUTH_REQUEST_TIMEOUT_MS } from "./timeouts";
 
@@ -29,40 +30,34 @@ export function classifyFetchError(err: unknown): McpError {
 }
 
 /** GET `url` and parse the body as JSON. Used for the two well-known metadata documents — never a POST, never form-encoded. */
-export async function fetchJson(url: string): Promise<McpResult<unknown>> {
+export async function fetchJson(url: string): Promise<Result<unknown, McpError>> {
   let response: Response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS) });
   } catch (err) {
-    return { ok: false, error: classifyFetchError(err) };
+    return fail(classifyFetchError(err));
   }
   if (!response.ok) {
-    return {
-      ok: false,
-      error: {
-        kind: "not-mcp-endpoint",
-        message: `${url} responded ${response.status} ${response.statusText}.`,
-      },
-    };
+    return fail({
+      kind: "not-mcp-endpoint",
+      message: `${url} responded ${response.status} ${response.statusText}.`,
+    });
   }
   try {
-    return { ok: true, value: await response.json() };
+    return ok(await response.json());
   } catch (err) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `${url} did not return valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: `${url} did not return valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 }
 
-/** POST `application/x-www-form-urlencoded` `body` to a token endpoint and parse the JSON response, classifying a non-2xx per RFC 6749 §5.2's standard `error`/`error_description` shape as `kind: "auth"` (the same kind an expired bearer token produces) rather than the generic HTTP-failure kinds {@link fetchJson} uses for metadata GETs. */
+/** POST `application/x-www-form-urlencoded` `body` to a token endpoint and parse the JSON response, classifying a non-2xx per RFC 6749 §5.2's standard `error`/`error_description` shape as `kind: "auth"` (the same kind an expired bearer token produces) rather than the generic HTTP-failure kinds {@link fetchJson} uses for metadata GETs. Card 94: the caller (./oauth.ts's `getValidAuth`) is the one that knows whether this particular POST is the RFC 6749 §6 refresh grant, and remaps this `"auth"` to the more specific `"refresh-expired"` for that case — this function itself has no way to tell a first sign-in from a refresh apart. */
 export async function postToken(
   tokenEndpoint: string,
   body: URLSearchParams,
-): Promise<McpResult<unknown>> {
+): Promise<Result<unknown, McpError>> {
   let response: Response;
   try {
     response = await fetch(tokenEndpoint, {
@@ -72,7 +67,7 @@ export async function postToken(
       signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
-    return { ok: false, error: classifyFetchError(err) };
+    return fail(classifyFetchError(err));
   }
 
   let json: unknown;
@@ -88,24 +83,18 @@ export async function postToken(
       isRecord(json) && typeof json.error_description === "string"
         ? json.error_description
         : undefined;
-    return {
-      ok: false,
-      error: {
-        kind: "auth",
-        status: response.status,
-        message:
-          description ??
-          (errCode
-            ? `Token request failed: ${errCode}`
-            : `Token endpoint responded ${response.status} ${response.statusText}.`),
-      },
-    };
+    return fail({
+      kind: "auth",
+      status: response.status,
+      message:
+        description ??
+        (errCode
+          ? `Token request failed: ${errCode}`
+          : `Token endpoint responded ${response.status} ${response.statusText}.`),
+    });
   }
   if (json === undefined) {
-    return {
-      ok: false,
-      error: { kind: "invalid-response", message: "Token endpoint did not return valid JSON." },
-    };
+    return fail({ kind: "invalid-response", message: "Token endpoint did not return valid JSON." });
   }
-  return { ok: true, value: json };
+  return ok(json);
 }

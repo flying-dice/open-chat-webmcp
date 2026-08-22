@@ -6,7 +6,8 @@
 // the transport layer itself).
 
 import { describe, expect, it, vi } from "vitest";
-import type { McpResult } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError } from "../../domain/tools";
 import { callToolViaSession, listToolsViaSession } from "./results";
 import type { McpWireSession } from "./session";
 
@@ -22,9 +23,8 @@ function fakeSession(request: McpWireSession["request"]): McpWireSession {
 describe("listToolsViaSession", () => {
   it("returns every normalized tool from a single-page result", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: true,
-        value: {
+      async (): Promise<Result<unknown, McpError>> =>
+        ok({
           tools: [
             {
               name: "search",
@@ -34,13 +34,11 @@ describe("listToolsViaSession", () => {
             },
             { name: "fetch" },
           ],
-        },
-      }),
+        }),
     );
     const result = await listToolsViaSession(fakeSession(request));
-    expect(result).toEqual({
-      ok: true,
-      value: [
+    expect(result).toEqual([
+      [
         {
           name: "search",
           title: "Search",
@@ -58,67 +56,55 @@ describe("listToolsViaSession", () => {
           annotations: undefined,
         },
       ],
-    });
+      undefined,
+    ]);
   });
 
   it("follows nextCursor across multiple pages and concatenates them in order", async () => {
     const request = vi.fn(
-      async (_method: string, params?: unknown): Promise<McpResult<unknown>> => {
+      async (_method: string, params?: unknown): Promise<Result<unknown, McpError>> => {
         const cursor = (params as { cursor?: string } | undefined)?.cursor;
-        if (!cursor) return { ok: true, value: { tools: [{ name: "a" }], nextCursor: "page2" } };
-        if (cursor === "page2")
-          return { ok: true, value: { tools: [{ name: "b" }], nextCursor: "page3" } };
-        return { ok: true, value: { tools: [{ name: "c" }] } };
+        if (!cursor) return ok({ tools: [{ name: "a" }], nextCursor: "page2" });
+        if (cursor === "page2") return ok({ tools: [{ name: "b" }], nextCursor: "page3" });
+        return ok({ tools: [{ name: "c" }] });
       },
     );
-    const result = await listToolsViaSession(fakeSession(request));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.map((t) => t.name)).toEqual(["a", "b", "c"]);
+    const [value, error] = await listToolsViaSession(fakeSession(request));
+    expect(error).toBeUndefined();
+    expect(value?.map((t) => t.name)).toEqual(["a", "b", "c"]);
     expect(request).toHaveBeenCalledTimes(3);
   });
 
   it("a request-level failure (e.g. rpc-error) short-circuits pagination and is returned as-is", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: false,
-        error: { kind: "rpc-error", code: -32601, message: "Method not found" },
-      }),
+      async (): Promise<Result<unknown, McpError>> =>
+        fail({ kind: "rpc-error", code: -32601, message: "Method not found" }),
     );
     const result = await listToolsViaSession(fakeSession(request));
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "rpc-error", code: -32601, message: "Method not found" },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "rpc-error", code: -32601, message: "Method not found" },
+    ]);
     expect(request).toHaveBeenCalledTimes(1);
   });
 
   describe("chaos: malformed tools/list results", () => {
     it("a result missing the tools array entirely is invalid-response", async () => {
-      const request = vi.fn(
-        async (): Promise<McpResult<unknown>> => ({ ok: true, value: { notTools: [] } }),
-      );
-      const result = await listToolsViaSession(fakeSession(request));
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const request = vi.fn(async (): Promise<Result<unknown, McpError>> => ok({ notTools: [] }));
+      const [, error] = await listToolsViaSession(fakeSession(request));
+      expect(error?.kind).toBe("invalid-response");
     });
 
     it("a non-object result is invalid-response", async () => {
-      const request = vi.fn(
-        async (): Promise<McpResult<unknown>> => ({ ok: true, value: "not an object" }),
-      );
-      const result = await listToolsViaSession(fakeSession(request));
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const request = vi.fn(async (): Promise<Result<unknown, McpError>> => ok("not an object"));
+      const [, error] = await listToolsViaSession(fakeSession(request));
+      expect(error?.kind).toBe("invalid-response");
     });
 
     it("individual malformed tool entries (missing/empty name, non-object) are dropped, valid ones kept", async () => {
       const request = vi.fn(
-        async (): Promise<McpResult<unknown>> => ({
-          ok: true,
-          value: {
+        async (): Promise<Result<unknown, McpError>> =>
+          ok({
             tools: [
               { name: "good" },
               { title: "no name field" },
@@ -127,35 +113,30 @@ describe("listToolsViaSession", () => {
               null,
               42,
             ],
-          },
-        }),
+          }),
       );
-      const result = await listToolsViaSession(fakeSession(request));
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.map((t) => t.name)).toEqual(["good"]);
+      const [value, error] = await listToolsViaSession(fakeSession(request));
+      expect(error).toBeUndefined();
+      expect(value?.map((t) => t.name)).toEqual(["good"]);
     });
 
     it("a server whose nextCursor never terminates is bounded at MAX_PAGES rather than looping forever", async () => {
       let calls = 0;
-      const request = vi.fn(async (): Promise<McpResult<unknown>> => {
+      const request = vi.fn(async (): Promise<Result<unknown, McpError>> => {
         calls++;
-        return { ok: true, value: { tools: [{ name: `t${calls}` }], nextCursor: "always-more" } };
+        return ok({ tools: [{ name: `t${calls}` }], nextCursor: "always-more" });
       });
-      const result = await listToolsViaSession(fakeSession(request));
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      const [value, error] = await listToolsViaSession(fakeSession(request));
+      expect(error).toBeUndefined();
       expect(calls).toBe(50); // MAX_PAGES
-      expect(result.value).toHaveLength(50);
+      expect(value).toHaveLength(50);
     });
   });
 });
 
 describe("callToolViaSession", () => {
   it("sends the tool name and arguments, defaulting arguments to {} when omitted", async () => {
-    const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({ ok: true, value: { content: [] } }),
-    );
+    const request = vi.fn(async (): Promise<Result<unknown, McpError>> => ok({ content: [] }));
     await callToolViaSession(fakeSession(request), "myTool", undefined);
     expect(request).toHaveBeenCalledWith("tools/call", { name: "myTool", arguments: {} });
 
@@ -165,89 +146,69 @@ describe("callToolViaSession", () => {
 
   it("a request-level failure is returned as-is, never reaching result parsing", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: false,
-        error: { kind: "auth", status: 401, message: "expired" },
-      }),
+      async (): Promise<Result<unknown, McpError>> =>
+        fail({ kind: "auth", status: 401, message: "expired" }),
     );
     const result = await callToolViaSession(fakeSession(request), "myTool", {});
-    expect(result).toEqual({ ok: false, error: { kind: "auth", status: 401, message: "expired" } });
+    expect(result).toEqual([undefined, { kind: "auth", status: 401, message: "expired" }]);
   });
 
-  it("isError: true is a TOOL-level failure, still resolved ok:true per the spec's two-tier error model", async () => {
+  it("isError: true is a TOOL-level failure, still resolved as a value per the spec's two-tier error model", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: true,
-        value: { content: [{ type: "text", text: "boom" }], isError: true },
-      }),
+      async (): Promise<Result<unknown, McpError>> =>
+        ok({ content: [{ type: "text", text: "boom" }], isError: true }),
     );
     const result = await callToolViaSession(fakeSession(request), "myTool", {});
-    expect(result).toEqual({
-      ok: true,
-      value: {
+    expect(result).toEqual([
+      {
         content: [{ type: "text", text: "boom" }],
         structuredContent: undefined,
         isError: true,
       },
-    });
+      undefined,
+    ]);
   });
 
   it("a non-boolean isError is coerced to false rather than propagated", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: true,
-        value: { content: [], isError: "yes" },
-      }),
+      async (): Promise<Result<unknown, McpError>> => ok({ content: [], isError: "yes" }),
     );
-    const result = await callToolViaSession(fakeSession(request), "myTool", {});
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.isError).toBe(false);
+    const [value, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+    expect(error).toBeUndefined();
+    expect(value?.isError).toBe(false);
   });
 
   it("structuredContent, when a record, is carried through untouched", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: true,
-        value: { content: [], structuredContent: { rows: [1, 2, 3] } },
-      }),
+      async (): Promise<Result<unknown, McpError>> =>
+        ok({ content: [], structuredContent: { rows: [1, 2, 3] } }),
     );
-    const result = await callToolViaSession(fakeSession(request), "myTool", {});
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.structuredContent).toEqual({ rows: [1, 2, 3] });
+    const [value, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+    expect(error).toBeUndefined();
+    expect(value?.structuredContent).toEqual({ rows: [1, 2, 3] });
   });
 
   it("a non-object structuredContent is dropped rather than passed through", async () => {
     const request = vi.fn(
-      async (): Promise<McpResult<unknown>> => ({
-        ok: true,
-        value: { content: [], structuredContent: "not an object" },
-      }),
+      async (): Promise<Result<unknown, McpError>> =>
+        ok({ content: [], structuredContent: "not an object" }),
     );
-    const result = await callToolViaSession(fakeSession(request), "myTool", {});
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.structuredContent).toBeUndefined();
+    const [value, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+    expect(error).toBeUndefined();
+    expect(value?.structuredContent).toBeUndefined();
   });
 
   describe("chaos: malformed tools/call results", () => {
     it("a result missing the content array entirely is invalid-response", async () => {
-      const request = vi.fn(
-        async (): Promise<McpResult<unknown>> => ({ ok: true, value: { isError: false } }),
-      );
-      const result = await callToolViaSession(fakeSession(request), "myTool", {});
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const request = vi.fn(async (): Promise<Result<unknown, McpError>> => ok({ isError: false }));
+      const [, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+      expect(error?.kind).toBe("invalid-response");
     });
 
     it("a non-object result is invalid-response", async () => {
-      const request = vi.fn(async (): Promise<McpResult<unknown>> => ({ ok: true, value: null }));
-      const result = await callToolViaSession(fakeSession(request), "myTool", {});
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      const request = vi.fn(async (): Promise<Result<unknown, McpError>> => ok(null));
+      const [, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+      expect(error?.kind).toBe("invalid-response");
     });
   });
 
@@ -304,13 +265,10 @@ describe("callToolViaSession", () => {
         },
       ],
     ])("a well-formed %s content item is normalized as-is", async (_label, raw, expected) => {
-      const request = vi.fn(
-        async (): Promise<McpResult<unknown>> => ({ ok: true, value: { content: [raw] } }),
-      );
-      const result = await callToolViaSession(fakeSession(request), "myTool", {});
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.content).toEqual([expected]);
+      const request = vi.fn(async (): Promise<Result<unknown, McpError>> => ok({ content: [raw] }));
+      const [value, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+      expect(error).toBeUndefined();
+      expect(value?.content).toEqual([expected]);
     });
 
     describe("chaos: malformed content items fall back to a raw-JSON text item, never dropped", () => {
@@ -326,12 +284,11 @@ describe("callToolViaSession", () => {
         ["null", null],
       ])("%s", async (_label, raw) => {
         const request = vi.fn(
-          async (): Promise<McpResult<unknown>> => ({ ok: true, value: { content: [raw] } }),
+          async (): Promise<Result<unknown, McpError>> => ok({ content: [raw] }),
         );
-        const result = await callToolViaSession(fakeSession(request), "myTool", {});
-        expect(result.ok).toBe(true);
-        if (!result.ok) return;
-        expect(result.value.content).toEqual([{ type: "text", text: JSON.stringify(raw) }]);
+        const [value, error] = await callToolViaSession(fakeSession(request), "myTool", {});
+        expect(error).toBeUndefined();
+        expect(value?.content).toEqual([{ type: "text", text: JSON.stringify(raw) }]);
       });
     });
   });

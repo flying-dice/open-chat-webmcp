@@ -3,31 +3,23 @@
     "Every `throw` and `Promise.reject(` in production src/, named and reasoned.",
     "Enforced by scripts/guard-throws.mjs (`npm run guard:throws`), per",
     "decisions/34-errors-as-values.md: a KNOWN failure mode belongs in the",
-    "signature as a Result<T, E>; `throw` is reserved for a violated invariant —",
+    "signature as a Result<T, E>; `throw` is reserved for a violated invariant \u2014",
     "a state that cannot exist unless the code is wrong.",
     "",
     "Each entry is { match, count, reason }. `match` is a substring of the throw's",
     "own source line (text, not a line number, so it survives edits above it);",
-    "`count` is EXACT — the guard fails if the real count is higher or lower, so",
+    "`count` is EXACT \u2014 the guard fails if the real count is higher or lower, so",
     "removing a throw means removing its entry in the same diff.",
     "",
     "`reason` must name the invariant. 'defensive' is not an invariant.",
     "",
     "Seeded by card 91 with the full inventory as it stood: 15 sites in 9 files.",
-    "Card 92 removed the four src/infra/chrome-storage/area.ts entries — the only",
-    "throws in the tree that carried an EXPECTED failure — leaving 11 in 8 files.",
-    "Test code (*.test.ts, testing/) is out of scope — see the guard's header.",
+    "Card 92 removed the four src/infra/chrome-storage/area.ts entries \u2014 the only",
+    "throws in the tree that carried an EXPECTED failure \u2014 leaving 11 in 8 files.",
+    "Test code (*.test.ts, testing/) is out of scope \u2014 see the guard's header.",
     "Entries tagged `migrates:` are known errors-as-values debt owned by a card."
   ],
-
   "files": {
-    "src/infra/mcp/budget.ts": [
-      {
-        "match": "return Promise.reject(new DOMException(",
-        "count": 1,
-        "reason": "migrates: card 93. `raceWithBudget` deliberately mirrors the platform's own abort contract — an already-aborted signal rejects with a DOMException named AbortError, exactly as `fetch` does — so its callers can use one catch for both. It becomes a Result when the MCP transport stack moves onto the shared tuple."
-      }
-    ],
     "src/content/relay.ts": [
       {
         "match": "throw err;",
@@ -39,19 +31,19 @@
       {
         "match": "\"[webmcp] options services were already initialised",
         "count": 1,
-        "reason": "Invariant: src/options/main.ts calls initOptionsServices exactly once, before mount(). A second call means two service bundles exist in one surface — two stores, two debounce maps — which is a wiring bug with no correct recovery."
+        "reason": "Invariant: src/options/main.ts calls initOptionsServices exactly once, before mount(). A second call means two service bundles exist in one surface \u2014 two stores, two debounce maps \u2014 which is a wiring bug with no correct recovery."
       },
       {
         "match": "\"[webmcp] options services are not initialised",
         "count": 1,
-        "reason": "Invariant: the composition root has run before any component reads a service. Reachable only from a module imported outside main.ts's graph — a structural mistake, and far better reported than papered over with an undefined port."
+        "reason": "Invariant: the composition root has run before any component reads a service. Reachable only from a module imported outside main.ts's graph \u2014 a structural mistake, and far better reported than papered over with an undefined port."
       }
     ],
     "src/sidepanel/app-services.ts": [
       {
         "match": "\"[webmcp] side panel services were already initialised",
         "count": 1,
-        "reason": "Invariant: src/sidepanel/main.ts calls initSidePanelServices exactly once. Two chat stores in one panel each hold their own debounce map and index-write queue and stop serialising against each other — the interleaving card 55 fixed."
+        "reason": "Invariant: src/sidepanel/main.ts calls initSidePanelServices exactly once. Two chat stores in one panel each hold their own debounce map and index-write queue and stop serialising against each other \u2014 the interleaving card 55 fixed."
       },
       {
         "match": "\"[webmcp] side panel services are not initialised",
@@ -70,7 +62,7 @@
       {
         "match": "\"sidepanel/index.html is missing its #app mount point.\"",
         "count": 1,
-        "reason": "Invariant: #app is in this surface's OWN index.html — same packaging-bug case as the options twin, same card-91 replacement of a non-null assertion."
+        "reason": "Invariant: #app is in this surface's OWN index.html \u2014 same packaging-bug case as the options twin, same card-91 replacement of a non-null assertion."
       }
     ],
     "src/options/forms/mcpTestConnection.ts": [

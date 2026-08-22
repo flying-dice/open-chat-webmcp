@@ -7,7 +7,8 @@
 // only when the modern transport answered 404/405 to a config on `"auto"`, or
 // when a config pins `"sse"` outright (./connect.ts).
 
-import type { McpResult, McpServerConfig } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError, McpServerConfig } from "../../domain/tools";
 import { raceWithBudget, type Budget } from "./budget";
 import {
   classifyHttpErrorResponse,
@@ -152,7 +153,7 @@ async function postLegacyMessage(
   baseHeaders: Record<string, string>,
   msg: Record<string, unknown>,
   budget: Budget,
-): Promise<McpResult<void>> {
+): Promise<Result<void, McpError>> {
   let response: Response;
   try {
     response = await fetch(endpoint, {
@@ -162,20 +163,21 @@ async function postLegacyMessage(
       signal: budget.signal,
     });
   } catch (err) {
-    return { ok: false, error: budget.classify(err) };
+    return fail(budget.classify(err));
   }
   // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in streamable-http.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
   if (response.status === 401 || response.status === 403) {
-    return {
-      ok: false,
-      error: { kind: "auth", status: response.status, message: await safeAuthMessage(response) },
-    };
+    return fail({
+      kind: "auth",
+      status: response.status,
+      message: await safeAuthMessage(response),
+    });
   }
   // The spec mandates 202 for an accepted notification/response; be
   // lenient and accept any 2xx here too, since some legacy servers reply
   // 200 to the initial POST instead.
-  if (response.ok) return { ok: true, value: undefined };
-  return { ok: false, error: await classifyHttpErrorResponse(response) };
+  if (response.ok) return ok();
+  return fail(await classifyHttpErrorResponse(response));
 }
 
 export async function connectLegacySse(
@@ -183,7 +185,7 @@ export async function connectLegacySse(
   baseHeaders: Record<string, string>,
   clientInfo: McpClientInfo,
   budget: Budget,
-): Promise<McpResult<McpWireSession>> {
+): Promise<Result<McpWireSession, McpError>> {
   let response: Response;
   try {
     response = await fetch(config.url, {
@@ -192,49 +194,44 @@ export async function connectLegacySse(
       signal: budget.signal,
     });
   } catch (err) {
-    return { ok: false, error: budget.classify(err) };
+    return fail(budget.classify(err));
   }
 
   // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in streamable-http.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
   if (response.status === 401 || response.status === 403) {
-    return {
-      ok: false,
-      error: { kind: "auth", status: response.status, message: await safeAuthMessage(response) },
-    };
+    return fail({
+      kind: "auth",
+      status: response.status,
+      message: await safeAuthMessage(response),
+    });
   }
   if (!response.ok) {
-    return {
-      ok: false,
-      error: {
-        kind: "not-mcp-endpoint",
-        message: `Server responded ${response.status} to both the Streamable HTTP and legacy SSE handshake attempts — this doesn't look like an MCP endpoint.`,
-      },
-    };
+    return fail({
+      kind: "not-mcp-endpoint",
+      message: `Server responded ${response.status} to both the Streamable HTTP and legacy SSE handshake attempts — this doesn't look like an MCP endpoint.`,
+    });
   }
   const contentType = response.headers.get("Content-Type") ?? "";
   if (!contentType.includes("text/event-stream") || !response.body) {
-    return {
-      ok: false,
-      error: {
-        kind: "not-mcp-endpoint",
-        message: "Server did not open an SSE stream for the legacy MCP transport either.",
-      },
-    };
+    return fail({
+      kind: "not-mcp-endpoint",
+      message: "Server did not open an SSE stream for the legacy MCP transport either.",
+    });
   }
 
   const pump = new LegacySsePump(response.body, config.url);
 
-  let postEndpoint: string;
-  try {
-    postEndpoint = await raceWithBudget(pump.endpoint(), budget);
-  } catch (err) {
+  const [postEndpoint, postEndpointErr] = await raceWithBudget(pump.endpoint(), budget);
+  if (postEndpointErr) {
     pump.close();
-    return {
-      ok: false,
-      error: budget.timedOut()
+    return fail(
+      postEndpointErr === "timeout"
         ? { kind: "timeout", message: 'Timed out waiting for the legacy SSE "endpoint" event.' }
-        : { kind: "not-mcp-endpoint", message: err instanceof Error ? err.message : String(err) },
-    };
+        : {
+            kind: "not-mcp-endpoint",
+            message: "SSE stream ended before an endpoint event arrived.",
+          },
+    );
   }
 
   let nextId = 2; // id 1 is used for initialize, below.
@@ -245,60 +242,55 @@ export async function connectLegacySse(
     params: initializeParams(clientInfo),
   };
   const waitForInit = pump.waitForResponse(1);
-  const posted = await postLegacyMessage(postEndpoint, baseHeaders, initMsg, budget);
-  if (!posted.ok) {
+  const [, postedErr] = await postLegacyMessage(postEndpoint, baseHeaders, initMsg, budget);
+  if (postedErr) {
     pump.close();
-    return posted;
+    return fail(postedErr);
   }
 
-  let initResponse: JsonRpcResponseMsg;
-  try {
-    initResponse = await raceWithBudget(waitForInit, budget);
-  } catch {
+  const [initResponse, initResponseErr] = await raceWithBudget(waitForInit, budget);
+  if (initResponseErr) {
     pump.close();
-    return {
-      ok: false,
-      error: budget.timedOut()
+    return fail(
+      initResponseErr === "timeout"
         ? { kind: "timeout", message: "Timed out waiting for the initialize response." }
         : {
             kind: "invalid-response",
             message: "Legacy SSE stream closed before the initialize response arrived.",
           },
-    };
+    );
   }
 
-  const parsedInit = validateInitializeResult(initResponse);
-  if (!parsedInit.ok) {
+  const [parsedInit, parsedInitErr] = validateInitializeResult(initResponse);
+  if (parsedInitErr) {
     pump.close();
-    return parsedInit;
+    return fail(parsedInitErr);
   }
 
   const session: McpWireSession = {
-    connection: parsedInit.value,
+    connection: parsedInit,
     async request(method, params) {
       const id = nextId++;
       const waiter = pump.waitForResponse(id);
-      const sent = await postLegacyMessage(
+      const [, sentErr] = await postLegacyMessage(
         postEndpoint,
         baseHeaders,
         { jsonrpc: "2.0", id, method, params: params ?? {} },
         budget,
       );
-      if (!sent.ok) return sent;
-      try {
-        const resp = await raceWithBudget(waiter, budget);
-        return toResultFromJsonRpc(resp);
-      } catch {
-        return {
-          ok: false,
-          error: budget.timedOut()
+      if (sentErr) return fail(sentErr);
+      const [resp, respErr] = await raceWithBudget(waiter, budget);
+      if (respErr) {
+        return fail(
+          respErr === "timeout"
             ? { kind: "timeout", message: `Timed out waiting for a response to "${method}".` }
             : {
                 kind: "invalid-response",
                 message: "Legacy SSE stream closed before a response arrived.",
               },
-        };
+        );
       }
+      return toResultFromJsonRpc(resp);
     },
     async notify(method, params) {
       await postLegacyMessage(
@@ -314,5 +306,5 @@ export async function connectLegacySse(
   };
 
   await session.notify("notifications/initialized");
-  return { ok: true, value: session };
+  return ok(session);
 }

@@ -262,17 +262,17 @@ async function executeServerTool(
     };
   }
 
-  const result = await gateway.callServerTool(config, toolName, args, {
+  const [callResult, callErr] = await gateway.callServerTool(config, toolName, args, {
     ...(opts.signal !== undefined && { signal: opts.signal }),
   });
-  if (!result.ok) {
-    return { ok: false, error: describeMcpError(result.error) };
+  if (callErr) {
+    return { ok: false, error: describeMcpError(callErr) };
   }
-  if (result.value.isError) {
+  if (callResult.isError) {
     return {
       ok: false,
-      error: contentToText(result.value.content) || "The server reported an error for this call.",
+      error: contentToText(callResult.content) || "The server reported an error for this call.",
     };
   }
-  return { ok: true, result: successResult(result.value) };
+  return { ok: true, result: successResult(callResult) };
 }

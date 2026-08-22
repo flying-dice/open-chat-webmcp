@@ -6,7 +6,8 @@
 // `transport: "auto"`.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { McpResult, McpServerConfig, McpTokenResolver } from "../../domain/tools";
+import type { Result } from "../../domain/result";
+import type { McpError, McpServerConfig, McpTokenResolver } from "../../domain/tools";
 import { connect } from "./connect";
 import { DEFAULT_CLIENT_INFO } from "./protocol";
 import { createBudget } from "./budget";
@@ -30,7 +31,7 @@ function serverConfig(overrides: Partial<McpServerConfig> = {}): McpServerConfig
 }
 
 const noopAuth: McpTokenResolver = {
-  async getValidAuth(): Promise<McpResult<never>> {
+  async getValidAuth(): Promise<Result<never, McpError>> {
     throw new Error("not an oauth config in these tests");
   },
 };
@@ -49,7 +50,7 @@ describe("connect", () => {
     vi.stubGlobal("fetch", fetchMock);
     const auth: McpTokenResolver = {
       async getValidAuth() {
-        return { ok: false, error: { kind: "auth", message: "no token" } };
+        return [undefined, { kind: "auth", message: "no token" }];
       },
     };
     const config = serverConfig({ auth: { type: "oauth" } as never });
@@ -58,7 +59,7 @@ describe("connect", () => {
     const result = await connect(config, { auth, clientInfo }, budget);
     budget.cleanup();
 
-    expect(result).toEqual({ ok: false, error: { kind: "auth", message: "no token" } });
+    expect(result).toEqual([undefined, { kind: "auth", message: "no token" }]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -71,7 +72,8 @@ describe("connect", () => {
     const result = await connect(config, { auth: noopAuth, clientInfo }, budget);
     budget.cleanup();
 
-    expect(result.ok).toBe(true);
+    const [, error] = result;
+    expect(error).toBeUndefined();
     // One POST for initialize, one for notifications/initialized — both to
     // the same streamable-http endpoint; no GET (legacy transport) ever fired.
     for (const call of fetchMock.mock.calls) {
@@ -126,7 +128,8 @@ describe("connect", () => {
     );
     budget.cleanup();
 
-    expect(result.ok).toBe(false);
+    const [, error] = result;
+    expect(error).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1); // no legacy GET attempted
   });
 
@@ -144,7 +147,8 @@ describe("connect", () => {
     );
     budget.cleanup();
 
-    expect(result.ok).toBe(false);
+    const [, error] = result;
+    expect(error).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
   });
@@ -200,7 +204,8 @@ describe("connect", () => {
 
       // A network-level failure (not a 404/405) is NOT the documented
       // wrong-transport signal — connect must fail outright, not fall back.
-      expect(result.ok).toBe(false);
+      const [, error] = result;
+      expect(error).toBeDefined();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });

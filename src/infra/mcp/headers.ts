@@ -8,12 +8,8 @@
 // this adapter be constructed with its own injected token store instead of
 // importing one.
 
-import type {
-  McpOAuthAuth,
-  McpResult,
-  McpServerConfig,
-  McpTokenResolver,
-} from "../../domain/tools";
+import { ok, type Result } from "../../domain/result";
+import type { McpError, McpServerConfig, McpTokenResolver } from "../../domain/tools";
 import { CLIENT_CONTROLLED_HEADERS } from "../../domain/tools";
 
 /** Whether resolving this config's auth will ever put an `Authorization` header on the wire — true for a non-empty bearer token, and unconditionally true for oauth (once resolved, it always contributes one; see {@link resolveAuthHeader}). Used only to decide whether a custom `authorization` header must be dropped as reserved, below — it does not itself produce the header. */
@@ -59,19 +55,19 @@ function authHeader(config: McpServerConfig): Record<string, string> {
  * injected {@link McpTokenResolver} for a currently-valid token (refreshing
  * it if it is due, and persisting that refresh through ITS own token-store
  * port) and maps success to a `Bearer` header or failure to an early
- * `McpResult` error the connect step returns as-is, before ever attempting a
+ * `Result` error the connect step returns as-is, before ever attempting a
  * request.
  */
 export async function resolveAuthHeader(
   config: McpServerConfig,
   auth: McpTokenResolver,
-): Promise<McpResult<Record<string, string>>> {
+): Promise<Result<Record<string, string>, McpError>> {
   if (config.auth?.type !== "oauth") {
-    return { ok: true, value: authHeader(config) };
+    return ok(authHeader(config));
   }
-  const valid: McpResult<McpOAuthAuth> = await auth.getValidAuth(config);
-  if (!valid.ok) return valid;
-  return { ok: true, value: { Authorization: `Bearer ${valid.value.accessToken}` } };
+  const [valid, err] = await auth.getValidAuth(config);
+  if (err) return [undefined, err];
+  return ok({ Authorization: `Bearer ${valid.accessToken}` });
 }
 
 /** Every header this server's requests carry except the transport-controlled `Content-Type`/`Accept`, which each call site sets itself (GET vs. POST need different values) and which always wins by being spread last. `authHeaderValue` comes from {@link resolveAuthHeader} and is spread last here too. */

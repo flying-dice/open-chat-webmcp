@@ -115,21 +115,25 @@ describe("classifyRpcError", () => {
 });
 
 describe("toResultFromJsonRpc", () => {
-  it("maps an error envelope to ok:false with the classified error", () => {
-    const result = toResultFromJsonRpc({
+  it("maps an error envelope to a failed Result with the classified error", () => {
+    const [value, error] = toResultFromJsonRpc({
       jsonrpc: "2.0",
       id: 1,
       error: { code: -32601, message: "Unknown tool" },
     });
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "rpc-error", code: -32601, message: "Unknown tool", data: undefined },
+    expect(value).toBeUndefined();
+    expect(error).toEqual({
+      kind: "rpc-error",
+      code: -32601,
+      message: "Unknown tool",
+      data: undefined,
     });
   });
 
-  it("maps a result envelope to ok:true with the result payload", () => {
-    const result = toResultFromJsonRpc({ jsonrpc: "2.0", id: 1, result: { tools: [] } });
-    expect(result).toEqual({ ok: true, value: { tools: [] } });
+  it("maps a result envelope to a successful Result with the result payload", () => {
+    const [value, error] = toResultFromJsonRpc({ jsonrpc: "2.0", id: 1, result: { tools: [] } });
+    expect(error).toBeUndefined();
+    expect(value).toEqual({ tools: [] });
   });
 });
 

@@ -103,8 +103,8 @@ describe("tryStreamableHttp", () => {
     const second = await attempt.session.request("tools/list");
     budget.cleanup();
 
-    expect(first).toEqual({ ok: true, value: { echoedId: 2 } });
-    expect(second).toEqual({ ok: true, value: { echoedId: 3 } });
+    expect(first).toEqual([{ echoedId: 2 }, undefined]);
+    expect(second).toEqual([{ echoedId: 3 }, undefined]);
   });
 
   describe("connect-time faults", () => {
@@ -317,11 +317,9 @@ describe("tryStreamableHttp", () => {
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       if (attempt.outcome !== "connected") throw new Error("expected connected");
 
-      const result = await attempt.session.request("tools/list");
+      const [, err] = await attempt.session.request("tools/list");
       budget.cleanup();
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      expect(err?.kind).toBe("invalid-response");
     });
 
     it("an unexpected content type on an in-session request is invalid-response", async () => {
@@ -338,11 +336,9 @@ describe("tryStreamableHttp", () => {
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       if (attempt.outcome !== "connected") throw new Error("expected connected");
 
-      const result = await attempt.session.request("tools/list");
+      const [, err] = await attempt.session.request("tools/list");
       budget.cleanup();
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("invalid-response");
+      expect(err?.kind).toBe("invalid-response");
     });
 
     it("notify() is best-effort — a failing POST doesn't throw or surface", async () => {
@@ -399,10 +395,10 @@ describe("tryStreamableHttp", () => {
       budget.cleanup();
 
       expect(toolCallCount).toBe(1);
-      expect(result).toEqual({
-        ok: false,
-        error: { kind: "auth", status: 401, message: "Access token expired" },
-      });
+      expect(result).toEqual([
+        undefined,
+        { kind: "auth", status: 401, message: "Access token expired" },
+      ]);
     });
 
     it("a 403 mid-call is classified the same way as a 401 mid-call", async () => {
@@ -416,11 +412,9 @@ describe("tryStreamableHttp", () => {
       const attempt = await tryStreamableHttp(serverConfig(), {}, clientInfo, budget);
       if (attempt.outcome !== "connected") throw new Error("expected connected");
 
-      const result = await attempt.session.request("tools/call", { name: "doTheThing" });
+      const [, err] = await attempt.session.request("tools/call", { name: "doTheThing" });
       budget.cleanup();
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("auth");
+      expect(err?.kind).toBe("auth");
     });
   });
 });

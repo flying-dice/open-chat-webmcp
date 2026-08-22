@@ -74,11 +74,9 @@ describe("getValidAuth", () => {
     const tokenStore = fakeTokenStore();
     const client = createMcpOAuthClient({ tokenStore });
 
-    const result = await client.getValidAuth(serverConfig(undefined));
+    const [, error] = await client.getValidAuth(serverConfig(undefined));
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("auth");
+    expect(error?.kind).toBe("auth");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -91,7 +89,7 @@ describe("getValidAuth", () => {
 
     const result = await client.getValidAuth(serverConfig(auth));
 
-    expect(result).toEqual({ ok: true, value: auth });
+    expect(result).toEqual([auth, undefined]);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(tokenStore.saved).toEqual([]);
   });
@@ -104,7 +102,7 @@ describe("getValidAuth", () => {
 
     const result = await client.getValidAuth(serverConfig(auth));
 
-    expect(result).toEqual({ ok: true, value: auth });
+    expect(result).toEqual([auth, undefined]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -116,11 +114,10 @@ describe("getValidAuth", () => {
     const client = createMcpOAuthClient({ tokenStore: fakeTokenStore() });
     const auth = oauthAuth({ expiresAt: Date.now() + 30_000 }); // inside the 60s skew
 
-    const result = await client.getValidAuth(serverConfig(auth));
+    const [value, error] = await client.getValidAuth(serverConfig(auth));
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.accessToken).toBe("at-fresh");
+    expect(error).toBeUndefined();
+    expect(value?.accessToken).toBe("at-fresh");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -134,12 +131,11 @@ describe("getValidAuth", () => {
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
     const config = serverConfig(auth);
 
-    const result = await client.getValidAuth(config);
+    const [value, error] = await client.getValidAuth(config);
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.accessToken).toBe("at-fresh");
-    expect(result.value.refreshToken).toBe("rt-1"); // no new refresh token issued -> keep the old one
+    expect(error).toBeUndefined();
+    expect(value?.accessToken).toBe("at-fresh");
+    expect(value?.refreshToken).toBe("rt-1"); // no new refresh token issued -> keep the old one
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://as.example/token");
@@ -149,7 +145,7 @@ describe("getValidAuth", () => {
     expect(body.get("client_id")).toBe("client-1");
     expect(body.get("resource")).toBe("https://mcp.example");
 
-    expect(tokenStore.saved).toEqual([{ serverId: "s1", auth: result.value }]);
+    expect(tokenStore.saved).toEqual([{ serverId: "s1", auth: value }]);
   });
 
   it("a server-issued replacement refresh token is kept over the old one", async () => {
@@ -162,14 +158,17 @@ describe("getValidAuth", () => {
     const client = createMcpOAuthClient({ tokenStore: fakeTokenStore() });
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
 
-    const result = await client.getValidAuth(serverConfig(auth));
+    const [value, error] = await client.getValidAuth(serverConfig(auth));
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.refreshToken).toBe("rt-new");
+    expect(error).toBeUndefined();
+    expect(value?.refreshToken).toBe("rt-new");
   });
 
-  it("expired with no refresh token: fails with kind 'auth', no fetch attempted", async () => {
+  // Card 94: no refresh token to try means the stored credential is
+  // unusable and the only recovery is an interactive sign-in again — this
+  // used to be the generic `kind: "auth"`, and is now the more specific
+  // `"refresh-expired"` (src/domain/tools.ts's `McpError` doc).
+  it("expired with no refresh token: fails with kind 'refresh-expired', no fetch attempted", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const client = createMcpOAuthClient({ tokenStore: fakeTokenStore() });
@@ -177,15 +176,18 @@ describe("getValidAuth", () => {
       expiresAt: Date.now() - 1000,
     });
 
-    const result = await client.getValidAuth(serverConfig(withoutRefresh));
+    const [, error] = await client.getValidAuth(serverConfig(withoutRefresh));
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("auth");
+    expect(error?.kind).toBe("refresh-expired");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("refresh rejected (RFC 6749 §5.2 error body): the token store is never written", async () => {
+  // Card 94: `postToken`'s generic `kind: "auth"` for a non-2xx response is
+  // remapped by `getValidAuth` to `"refresh-expired"` specifically because
+  // this POST was a refresh grant, not a first sign-in — see oauth.ts's
+  // `getValidAuth` comment above the remap. `"refresh-expired"` carries no
+  // `status` field (src/domain/tools.ts's `McpError`), unlike `"auth"`.
+  it("refresh rejected (RFC 6749 §5.2 error body): reported as refresh-expired, the token store is never written", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -204,10 +206,10 @@ describe("getValidAuth", () => {
 
     const result = await client.getValidAuth(serverConfig(auth));
 
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "auth", status: 400, message: "Refresh token revoked" },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "refresh-expired", message: "Refresh token revoked" },
+    ]);
     expect(tokenStore.saved).toEqual([]);
   });
 
@@ -222,15 +224,13 @@ describe("getValidAuth", () => {
     const client = createMcpOAuthClient({ tokenStore });
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
 
-    const result = await client.getValidAuth(serverConfig(auth));
+    const [, error] = await client.getValidAuth(serverConfig(auth));
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("unreachable");
+    expect(error?.kind).toBe("unreachable");
     expect(tokenStore.saved).toEqual([]);
   });
 
-  it("a successful refresh whose token-store persistence FAILS still resolves ok — the storage error is logged, not surfaced through the never-throws McpResult", async () => {
+  it("a successful refresh whose token-store persistence FAILS still resolves ok — the storage error is logged, not surfaced through the never-throws Result", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ access_token: "at-fresh", expires_in: 3600 })),
@@ -248,10 +248,10 @@ describe("getValidAuth", () => {
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
 
     try {
-      await expect(client.getValidAuth(serverConfig(auth))).resolves.toEqual({
-        ok: true,
-        value: expect.objectContaining({ accessToken: "at-fresh" }),
-      });
+      await expect(client.getValidAuth(serverConfig(auth))).resolves.toEqual([
+        expect.objectContaining({ accessToken: "at-fresh" }),
+        undefined,
+      ]);
       expect(failingTokenStore.saveAuth).toHaveBeenCalled();
       // Best-effort persistence (module doc comment) does not mean silent:
       // a store that will not accept a refreshed token is a real fault the
@@ -271,11 +271,9 @@ describe("getValidAuth", () => {
     const client = createMcpOAuthClient({ tokenStore });
     const auth = oauthAuth({ expiresAt: Date.now() - 1000 });
 
-    const result = await client.getValidAuth(serverConfig(auth));
+    const [, error] = await client.getValidAuth(serverConfig(auth));
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("invalid-response");
+    expect(error?.kind).toBe("invalid-response");
     expect(tokenStore.saved).toEqual([]);
   });
 

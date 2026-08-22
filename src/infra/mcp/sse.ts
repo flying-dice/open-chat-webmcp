@@ -10,7 +10,8 @@
 // is one. Only the second needs a long-lived pump (./legacy-sse.ts); this
 // file is the framing both share plus the one-response read the first uses.
 
-import type { McpResult } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError } from "../../domain/tools";
 import type { Budget } from "./budget";
 import { isJsonRpcResponse, type JsonRpcResponseMsg } from "./json-rpc";
 
@@ -117,7 +118,7 @@ export async function readSseForResponse(
   body: ReadableStream<Uint8Array>,
   expectedId: number,
   budget: Budget,
-): Promise<McpResult<JsonRpcResponseMsg>> {
+): Promise<Result<JsonRpcResponseMsg, McpError>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const state = freshSseState();
@@ -127,23 +128,20 @@ export async function readSseForResponse(
       try {
         chunk = await reader.read();
       } catch (err) {
-        return { ok: false, error: budget.classify(err) };
+        return fail(budget.classify(err));
       }
       if (chunk.done) break;
       state.buffer += decoder.decode(chunk.value, { stream: true });
       const found = scanForResponse(extractSseMessages(state), expectedId);
-      if (found) return { ok: true, value: found };
+      if (found) return ok(found);
     }
     state.buffer += decoder.decode();
     const found = scanForResponse(extractSseMessages(state, { flush: true }), expectedId);
-    if (found) return { ok: true, value: found };
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "SSE stream ended without a matching JSON-RPC response.",
-      },
-    };
+    if (found) return ok(found);
+    return fail({
+      kind: "invalid-response",
+      message: "SSE stream ended without a matching JSON-RPC response.",
+    });
   } finally {
     reader.releaseLock();
   }

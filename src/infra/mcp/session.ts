@@ -7,14 +7,15 @@
 // uses it once, and closes it (see ./gateway.ts's module doc for why there
 // is no long-lived connection object).
 
-import type { McpConnectionInfo, McpResult, McpServerInfo } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpConnectionInfo, McpError, McpServerInfo } from "../../domain/tools";
 import { classifyRpcError, isRecord, type JsonRpcResponseMsg } from "./json-rpc";
 import { PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS, type McpClientInfo } from "./protocol";
 
 /** One more JSON-RPC request/notification to an already-initialized server, implemented once per transport (./streamable-http.ts, ./legacy-sse.ts). */
 export interface McpWireSession {
   readonly connection: McpConnectionInfo;
-  request(method: string, params?: unknown): Promise<McpResult<unknown>>;
+  request(method: string, params?: unknown): Promise<Result<unknown, McpError>>;
   notify(method: string, params?: unknown): Promise<void>;
   close(): void;
 }
@@ -42,29 +43,23 @@ function normalizeServerInfo(raw: unknown): McpServerInfo | undefined {
 
 export function validateInitializeResult(
   response: JsonRpcResponseMsg,
-): McpResult<McpConnectionInfo> {
-  if (response.error) return { ok: false, error: classifyRpcError(response.error) };
+): Result<McpConnectionInfo, McpError> {
+  if (response.error) return fail(classifyRpcError(response.error));
 
   const result = response.result;
   if (!isRecord(result) || typeof result.protocolVersion !== "string") {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "initialize response was missing protocolVersion.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "initialize response was missing protocolVersion.",
+    });
   }
   if (!SUPPORTED_PROTOCOL_VERSIONS.includes(result.protocolVersion)) {
-    return {
-      ok: false,
-      error: {
-        kind: "protocol-mismatch",
-        requested: PROTOCOL_VERSION,
-        supported: [...SUPPORTED_PROTOCOL_VERSIONS],
-        message: `Server negotiated protocol version "${result.protocolVersion}", which this client does not support (supports ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}).`,
-      },
-    };
+    return fail({
+      kind: "protocol-mismatch",
+      requested: PROTOCOL_VERSION,
+      supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+      message: `Server negotiated protocol version "${result.protocolVersion}", which this client does not support (supports ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}).`,
+    });
   }
   // `McpConnectionInfo.serverInfo`/`.instructions` (src/domain/tools, not
   // this folder's to widen) are optional without `| undefined` —
@@ -72,12 +67,9 @@ export function validateInitializeResult(
   // assigning it `undefined`.
   const serverInfo = normalizeServerInfo(result.serverInfo);
   const instructions = typeof result.instructions === "string" ? result.instructions : undefined;
-  return {
-    ok: true,
-    value: {
-      protocolVersion: result.protocolVersion,
-      ...(serverInfo !== undefined && { serverInfo }),
-      ...(instructions !== undefined && { instructions }),
-    },
-  };
+  return ok({
+    protocolVersion: result.protocolVersion,
+    ...(serverInfo !== undefined && { serverInfo }),
+    ...(instructions !== undefined && { instructions }),
+  });
 }

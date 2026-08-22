@@ -32,7 +32,7 @@ describe("fetchJson", () => {
       "fetch",
       vi.fn(async () => jsonResponse({ a: 1 })),
     );
-    await expect(fetchJson("https://x.example")).resolves.toEqual({ ok: true, value: { a: 1 } });
+    await expect(fetchJson("https://x.example")).resolves.toEqual([{ a: 1 }, undefined]);
   });
 
   it("maps a non-2xx response to not-mcp-endpoint", async () => {
@@ -41,10 +41,10 @@ describe("fetchJson", () => {
       vi.fn(async () => new Response("", { status: 404, statusText: "Not Found" })),
     );
     const result = await fetchJson("https://x.example");
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "not-mcp-endpoint", message: "https://x.example responded 404 Not Found." },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "not-mcp-endpoint", message: "https://x.example responded 404 Not Found." },
+    ]);
   });
 
   it("maps a malformed JSON body to invalid-response", async () => {
@@ -52,10 +52,9 @@ describe("fetchJson", () => {
       "fetch",
       vi.fn(async () => new Response("not json", { status: 200 })),
     );
-    const result = await fetchJson("https://x.example");
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("invalid-response");
+    const [, error] = await fetchJson("https://x.example");
+    expect(error).toBeDefined();
+    expect(error?.kind).toBe("invalid-response");
   });
 
   it("maps a network failure to the classified fetch error", async () => {
@@ -66,10 +65,10 @@ describe("fetchJson", () => {
       }),
     );
     const result = await fetchJson("https://x.example");
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "unreachable", message: expect.stringContaining("Could not reach") },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "unreachable", message: expect.stringContaining("Could not reach") },
+    ]);
   });
 });
 
@@ -85,7 +84,7 @@ describe("postToken", () => {
       new URLSearchParams({ grant_type: "refresh_token" }),
     );
 
-    expect(result).toEqual({ ok: true, value: { access_token: "at-1" } });
+    expect(result).toEqual([{ access_token: "at-1" }, undefined]);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
@@ -108,10 +107,10 @@ describe("postToken", () => {
       ),
     );
     const result = await postToken("https://as.example/token", new URLSearchParams());
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "auth", status: 400, message: "Refresh token expired" },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "auth", status: 400, message: "Refresh token expired" },
+    ]);
   });
 
   it("falls back to naming the error code when there's no error_description", async () => {
@@ -120,10 +119,10 @@ describe("postToken", () => {
       vi.fn(async () => new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })),
     );
     const result = await postToken("https://as.example/token", new URLSearchParams());
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "auth", status: 400, message: "Token request failed: invalid_grant" },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "auth", status: 400, message: "Token request failed: invalid_grant" },
+    ]);
   });
 
   it("a non-2xx with a non-JSON body still classifies as kind 'auth' with a generic message", async () => {
@@ -132,10 +131,10 @@ describe("postToken", () => {
       vi.fn(async () => new Response("not json", { status: 401, statusText: "Unauthorized" })),
     );
     const result = await postToken("https://as.example/token", new URLSearchParams());
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "auth", status: 401, message: "Token endpoint responded 401 Unauthorized." },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "auth", status: 401, message: "Token endpoint responded 401 Unauthorized." },
+    ]);
   });
 
   it("a 2xx with a non-JSON body maps to invalid-response", async () => {
@@ -144,10 +143,10 @@ describe("postToken", () => {
       vi.fn(async () => new Response("not json", { status: 200 })),
     );
     const result = await postToken("https://as.example/token", new URLSearchParams());
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "invalid-response", message: "Token endpoint did not return valid JSON." },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "invalid-response", message: "Token endpoint did not return valid JSON." },
+    ]);
   });
 
   it("a network failure maps through classifyFetchError", async () => {
@@ -157,9 +156,8 @@ describe("postToken", () => {
         throw new DOMException("aborted", "AbortError");
       }),
     );
-    const result = await postToken("https://as.example/token", new URLSearchParams());
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("timeout");
+    const [, error] = await postToken("https://as.example/token", new URLSearchParams());
+    expect(error).toBeDefined();
+    expect(error?.kind).toBe("timeout");
   });
 });

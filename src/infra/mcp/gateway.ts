@@ -13,10 +13,11 @@
 // correctness (no dangling session state, no reconnect logic) over saving one
 // round trip.
 //
-// Never-throw discipline: every method resolves an `McpResult` and rejects
-// for nothing — including on a malformed or hostile server response. The
-// vocabulary is the domain's (src/domain/tools/types.ts), a deliberate
-// parallel to `ProviderResult`/`ProviderError` rather than a re-export.
+// Never-throw discipline: every method resolves the shared `Result<T, McpError>`
+// (src/domain/result) and rejects for nothing — including on a malformed or
+// hostile server response. The error vocabulary is the domain's
+// (src/domain/tools/types.ts), a deliberate parallel to `ProviderError`
+// rather than a re-export.
 //
 // Per-server failure isolation (decisions/14: a slow server "must never stop
 // the page's own tools from being offered"): every operation carries its own
@@ -32,10 +33,11 @@
 // Both arrive at construction. Nothing here imports another adapter, and
 // nothing here reads storage.
 
+import { ok, type Result } from "../../domain/result";
 import type {
   McpCallOptions,
   McpConnectionInfo,
-  McpResult,
+  McpError,
   McpServerConfig,
   McpServerDiscovery,
   McpTokenResolver,
@@ -71,13 +73,13 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
   async function testServerConnection(
     config: McpServerConfig,
     opts?: McpCallOptions,
-  ): Promise<McpResult<McpConnectionInfo>> {
+  ): Promise<Result<McpConnectionInfo, McpError>> {
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS, opts?.signal);
     try {
-      const result = await connect(config, ctx, budget);
-      if (!result.ok) return result;
-      result.value.close();
-      return { ok: true, value: result.value.connection };
+      const [session, err] = await connect(config, ctx, budget);
+      if (err) return [undefined, err];
+      session.close();
+      return ok(session.connection);
     } finally {
       budget.cleanup();
     }
@@ -86,15 +88,15 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
   async function listServerTools(
     config: McpServerConfig,
     opts?: McpCallOptions,
-  ): Promise<McpResult<McpTool[]>> {
+  ): Promise<Result<McpTool[], McpError>> {
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_LIST_TOOLS_TIMEOUT_MS, opts?.signal);
     try {
-      const session = await connect(config, ctx, budget);
-      if (!session.ok) return session;
+      const [session, err] = await connect(config, ctx, budget);
+      if (err) return [undefined, err];
       try {
-        return await listToolsViaSession(session.value);
+        return await listToolsViaSession(session);
       } finally {
-        session.value.close();
+        session.close();
       }
     } finally {
       budget.cleanup();
@@ -106,15 +108,15 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
     toolName: string,
     args: Record<string, unknown> | undefined,
     opts?: McpCallOptions,
-  ): Promise<McpResult<McpToolCallResult>> {
+  ): Promise<Result<McpToolCallResult, McpError>> {
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_CALL_TOOL_TIMEOUT_MS, opts?.signal);
     try {
-      const session = await connect(config, ctx, budget);
-      if (!session.ok) return session;
+      const [session, err] = await connect(config, ctx, budget);
+      if (err) return [undefined, err];
       try {
-        return await callToolViaSession(session.value, toolName, args);
+        return await callToolViaSession(session, toolName, args);
       } finally {
-        session.value.close();
+        session.close();
       }
     } finally {
       budget.cleanup();
@@ -127,39 +129,39 @@ export function createMcpToolGateway(options: McpToolGatewayOptions): McpToolGat
   ): Promise<McpServerDiscovery> {
     const budget = createBudget(opts?.timeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS, opts?.signal);
     try {
-      const session = await connect(config, ctx, budget);
-      if (!session.ok) {
+      const [session, sessionErr] = await connect(config, ctx, budget);
+      if (sessionErr) {
         return {
           status: "error",
           serverId: config.id,
           serverName: config.name,
-          error: session.error,
+          error: sessionErr,
         };
       }
       try {
-        const tools = await listToolsViaSession(session.value);
-        if (!tools.ok) {
+        const [tools, toolsErr] = await listToolsViaSession(session);
+        if (toolsErr) {
           return {
             status: "error",
             serverId: config.id,
             serverName: config.name,
-            error: tools.error,
+            error: toolsErr,
           };
         }
         return {
           status: "ok",
           serverId: config.id,
           serverName: config.name,
-          connection: session.value.connection,
-          tools: tools.value,
+          connection: session.connection,
+          tools,
         };
       } finally {
-        session.value.close();
+        session.close();
       }
     } catch (err) {
       // Belt-and-suspenders: this must never throw and never let one
       // server's bug take down the whole batch (decisions/14) — everything
-      // above already returns `McpResult`/never-throw shapes, but a defensive
+      // above already returns `Result`/never-throw shapes, but a defensive
       // catch here means a bug in this adapter itself still degrades to one
       // failed server entry instead of an unhandled rejection in
       // `discoverAllServerTools`'s `Promise.all`.

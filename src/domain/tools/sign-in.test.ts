@@ -8,6 +8,7 @@
 // path, which is implicitly exercised by the app itself.
 
 import { describe, it, expect, vi } from "vitest";
+import type { Result } from "../result";
 import { createMcpSignIn } from "./sign-in";
 import type { HostPermissions } from "../permissions";
 import type {
@@ -16,14 +17,21 @@ import type {
   McpOAuthClient,
 } from "./gateway";
 import type { McpOAuthAuth } from "./servers";
-import type { McpError, McpResult } from "./types";
+import type { McpError } from "./types";
 
-function ok<T>(value: T): McpResult<T> {
-  return { ok: true, value };
+// Card 94 (decisions/34-errors-as-values.md): `McpResult` is gone — every
+// oauth port method below returns the shared `Result<T, McpError>` tuple.
+// These two local helpers keep the many call sites below reading as "this
+// fake resolves success"/"this fake resolves failure" without importing the
+// kernel's own `ok`/`fail` under names that would shadow this file's own,
+// more narrowly-typed versions (every value here is specifically an
+// `McpError` result, never a bare `E`).
+function ok<T>(value: T): Result<T, McpError> {
+  return [value, undefined];
 }
 
-function err<T>(error: McpError): McpResult<T> {
-  return { ok: false, error };
+function err<T>(error: McpError): Result<T, McpError> {
+  return [undefined, error];
 }
 
 function makePermissions(overrides: Partial<HostPermissions> = {}): HostPermissions & {
@@ -61,9 +69,9 @@ const okDiscovery: McpAuthorizationServerInfo = {
 };
 
 interface OauthOverrides {
-  discoverAuthorizationServer?: () => Promise<McpResult<McpAuthorizationServerInfo>>;
-  registerClient?: () => Promise<McpResult<McpDynamicClientRegistration>>;
-  runAuthorizationFlow?: () => Promise<McpResult<McpOAuthAuth>>;
+  discoverAuthorizationServer?: () => Promise<Result<McpAuthorizationServerInfo, McpError>>;
+  registerClient?: () => Promise<Result<McpDynamicClientRegistration, McpError>>;
+  runAuthorizationFlow?: () => Promise<Result<McpOAuthAuth, McpError>>;
 }
 
 function makeOauth(overrides: OauthOverrides = {}): McpOAuthClient & {

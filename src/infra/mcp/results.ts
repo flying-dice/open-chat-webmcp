@@ -8,7 +8,8 @@
 // (`content`/`structuredContent`/`isError`) match
 // /specification/2025-06-18/server/tools.
 
-import type { McpResult, McpTool, McpToolCallResult, McpToolContent } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError, McpTool, McpToolCallResult, McpToolContent } from "../../domain/tools";
 import { isRecord } from "./json-rpc";
 import type { McpWireSession } from "./session";
 
@@ -30,19 +31,16 @@ function normalizeTool(raw: unknown): McpTool | null {
 
 function parseToolsListResult(
   value: unknown,
-): McpResult<{ tools: McpTool[]; nextCursor?: string | undefined }> {
+): Result<{ tools: McpTool[]; nextCursor?: string | undefined }, McpError> {
   if (!isRecord(value) || !Array.isArray(value.tools)) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "tools/list result was missing a `tools` array.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "tools/list result was missing a `tools` array.",
+    });
   }
   const tools = value.tools.map(normalizeTool).filter((t): t is McpTool => t !== null);
   const nextCursor = typeof value.nextCursor === "string" ? value.nextCursor : undefined;
-  return { ok: true, value: { tools, nextCursor } };
+  return ok({ tools, nextCursor });
 }
 
 /** Coerce one tools/call `content` item into a known {@link McpToolContent} shape, falling back to a `text` item carrying the raw JSON for anything unrecognized (a future content type, or a malformed one) rather than dropping it — nothing the server returned silently disappears. */
@@ -96,55 +94,54 @@ function normalizeContent(raw: unknown): McpToolContent {
   }
 }
 
-function parseToolCallResult(value: unknown): McpResult<McpToolCallResult> {
+function parseToolCallResult(value: unknown): Result<McpToolCallResult, McpError> {
   if (!isRecord(value) || !Array.isArray(value.content)) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "tools/call result was missing a `content` array.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "tools/call result was missing a `content` array.",
+    });
   }
   // `McpToolCallResult.structuredContent` (src/domain/tools, not this
   // folder's to widen) is optional without `| undefined` — conditional
   // spread so an absent value omits the key instead of assigning it
   // `undefined`.
   const structuredContent = isRecord(value.structuredContent) ? value.structuredContent : undefined;
-  return {
-    ok: true,
-    value: {
-      content: value.content.map(normalizeContent),
-      ...(structuredContent !== undefined && { structuredContent }),
-      isError: typeof value.isError === "boolean" ? value.isError : false,
-    },
-  };
+  return ok({
+    content: value.content.map(normalizeContent),
+    ...(structuredContent !== undefined && { structuredContent }),
+    isError: typeof value.isError === "boolean" ? value.isError : false,
+  });
 }
 
 /** Follows `nextCursor` per the spec's pagination convention, bounded defensively so a server that never terminates pagination can't loop forever within the caller's own timeout budget. */
-export async function listToolsViaSession(session: McpWireSession): Promise<McpResult<McpTool[]>> {
+export async function listToolsViaSession(
+  session: McpWireSession,
+): Promise<Result<McpTool[], McpError>> {
   const tools: McpTool[] = [];
   let cursor: string | undefined;
   let guard = 0;
   const MAX_PAGES = 50;
   do {
-    const result = await session.request("tools/list", cursor ? { cursor } : {});
-    if (!result.ok) return result;
-    const parsed = parseToolsListResult(result.value);
-    if (!parsed.ok) return parsed;
-    tools.push(...parsed.value.tools);
-    cursor = parsed.value.nextCursor;
+    const [value, err] = await session.request("tools/list", cursor ? { cursor } : {});
+    if (err) return fail(err);
+    const [parsed, parsedErr] = parseToolsListResult(value);
+    if (parsedErr) return fail(parsedErr);
+    tools.push(...parsed.tools);
+    cursor = parsed.nextCursor;
     guard += 1;
   } while (cursor && guard < MAX_PAGES);
-  return { ok: true, value: tools };
+  return ok(tools);
 }
 
 export async function callToolViaSession(
   session: McpWireSession,
   toolName: string,
   args: Record<string, unknown> | undefined,
-): Promise<McpResult<McpToolCallResult>> {
-  const result = await session.request("tools/call", { name: toolName, arguments: args ?? {} });
-  if (!result.ok) return result;
-  return parseToolCallResult(result.value);
+): Promise<Result<McpToolCallResult, McpError>> {
+  const [value, err] = await session.request("tools/call", {
+    name: toolName,
+    arguments: args ?? {},
+  });
+  if (err) return fail(err);
+  return parseToolCallResult(value);
 }

@@ -7,7 +7,8 @@
 // fault matrix in isolation.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { McpResult, McpServerConfig, McpTokenResolver } from "../../domain/tools";
+import type { Result } from "../../domain/result";
+import type { McpError, McpServerConfig, McpTokenResolver } from "../../domain/tools";
 import { createMcpToolGateway } from "./gateway";
 import { jsonResponse } from "../testing/fetch-stub";
 
@@ -16,7 +17,7 @@ afterEach(() => {
 });
 
 const noopAuth: McpTokenResolver = {
-  async getValidAuth(): Promise<McpResult<never>> {
+  async getValidAuth(): Promise<Result<never, McpError>> {
     throw new Error("not an oauth config in these tests");
   },
 };
@@ -63,14 +64,14 @@ describe("createMcpToolGateway", () => {
 
       const result = await gateway.testServerConnection(serverConfig());
 
-      expect(result).toEqual({
-        ok: true,
-        value: {
+      expect(result).toEqual([
+        {
           protocolVersion: "2025-06-18",
           serverInfo: { name: "srv" },
           instructions: undefined,
         },
-      });
+        undefined,
+      ]);
     });
 
     it("propagates a connect failure untouched", async () => {
@@ -80,8 +81,8 @@ describe("createMcpToolGateway", () => {
       );
       const gateway = createMcpToolGateway({ auth: noopAuth });
 
-      const result = await gateway.testServerConnection(serverConfig());
-      expect(result.ok).toBe(false);
+      const [, error] = await gateway.testServerConnection(serverConfig());
+      expect(error).toBeDefined();
     });
   });
 
@@ -94,10 +95,9 @@ describe("createMcpToolGateway", () => {
       vi.stubGlobal("fetch", fetchMock);
       const gateway = createMcpToolGateway({ auth: noopAuth });
 
-      const result = await gateway.listServerTools(serverConfig());
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value.map((t) => t.name)).toEqual(["search", "fetch"]);
+      const [value, error] = await gateway.listServerTools(serverConfig());
+      if (error) throw error;
+      expect(value.map((t) => t.name)).toEqual(["search", "fetch"]);
     });
 
     it("a connect failure short-circuits before tools/list is ever attempted", async () => {
@@ -106,8 +106,10 @@ describe("createMcpToolGateway", () => {
       const gateway = createMcpToolGateway({ auth: noopAuth });
 
       // transport pinned to streamable-http so a 404 fails outright rather than falling back to legacy.
-      const result = await gateway.listServerTools(serverConfig({ transport: "streamable-http" }));
-      expect(result.ok).toBe(false);
+      const [, error] = await gateway.listServerTools(
+        serverConfig({ transport: "streamable-http" }),
+      );
+      expect(error).toBeDefined();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
@@ -130,14 +132,14 @@ describe("createMcpToolGateway", () => {
       const gateway = createMcpToolGateway({ auth: noopAuth });
 
       const result = await gateway.callServerTool(serverConfig(), "search", { q: "cats" });
-      expect(result).toEqual({
-        ok: true,
-        value: {
+      expect(result).toEqual([
+        {
           content: [{ type: "text", text: 'called search with {"q":"cats"}' }],
           structuredContent: undefined,
           isError: false,
         },
-      });
+        undefined,
+      ]);
     });
   });
 

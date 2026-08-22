@@ -92,5 +92,19 @@ export async function testMcpServerConnection(
       // module keeps working unchanged if a future caller ever does check
       // permission before calling this test.
       return { kind: "permission-denied", message: error.message };
+    // Card 94 widened `McpError` with four OAuth-flow-specific kinds
+    // (discovery/registration/refresh/user-cancel). `discoverAllServerTools`
+    // can reach `"refresh-expired"` for an oauth-configured server whose
+    // refresh grant fails mid-connect; the other three are only ever
+    // produced by the interactive sign-in flow (src/domain/tools/sign-in.ts),
+    // never by this test-connection path — handled anyway so this switch
+    // stays exhaustive against the shared union.
+    case "refresh-expired":
+      return { kind: "auth", message: error.message };
+    case "discovery-absent":
+    case "registration-rejected":
+      return { kind: "invalid-response", message: error.message };
+    case "user-cancelled":
+      return { kind: "aborted" };
   }
 }

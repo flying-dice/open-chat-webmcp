@@ -31,11 +31,11 @@
 // exported as plain functions and also bound into the `McpOAuthClient` object
 // ./oauth.ts builds.
 
+import { fail, ok, type Result } from "../../domain/result";
 import type {
   McpAuthorizationServerInfo,
   McpDynamicClientRegistration,
   McpError,
-  McpResult,
 } from "../../domain/tools";
 import { isRecord } from "./json-rpc";
 import { classifyFetchError, fetchJson } from "./oauth-http";
@@ -66,17 +66,17 @@ function wellKnownCandidates(baseUrl: string, wellKnownName: string): string[] {
 }
 
 /** Try each candidate URL in order, returning the first that resolves; if none do, the last (most-generic) candidate's error, since that's the most standard location a server that implements this metadata at all would use. */
-async function fetchFirstOk(urls: string[]): Promise<McpResult<unknown>> {
+async function fetchFirstOk(urls: string[]): Promise<Result<unknown, McpError>> {
   let lastError: McpError = {
     kind: "not-mcp-endpoint",
     message: "No well-known metadata URL could be constructed.",
   };
   for (const url of urls) {
-    const result = await fetchJson(url);
-    if (result.ok) return result;
-    lastError = result.error;
+    const [value, err] = await fetchJson(url);
+    if (!err) return ok(value);
+    lastError = err;
   }
-  return { ok: false, error: lastError };
+  return fail(lastError);
 }
 
 function parseScopes(v: unknown): string[] | undefined {
@@ -98,15 +98,12 @@ function parseScopes(v: unknown): string[] | undefined {
  */
 export async function discoverAuthorizationServer(
   mcpServerUrl: string,
-): Promise<McpResult<McpAuthorizationServerInfo>> {
+): Promise<Result<McpAuthorizationServerInfo, McpError>> {
   let origin: string;
   try {
     origin = new URL(mcpServerUrl).origin;
   } catch {
-    return {
-      ok: false,
-      error: { kind: "not-mcp-endpoint", message: `"${mcpServerUrl}" is not a valid URL.` },
-    };
+    return fail({ kind: "not-mcp-endpoint", message: `"${mcpServerUrl}" is not a valid URL.` });
   }
 
   let issuerCandidate = origin;
@@ -119,11 +116,11 @@ export async function discoverAuthorizationServer(
   // servers) issue a token with no meaningful grants, so every MCP tool call
   // then fails as a permission error even though sign-in itself succeeds.
   let resourceScopes: string[] | undefined;
-  const protectedResource = await fetchFirstOk(
+  const [protectedResourceBody, protectedResourceErr] = await fetchFirstOk(
     wellKnownCandidates(mcpServerUrl, "oauth-protected-resource"),
   );
-  if (protectedResource.ok) {
-    const body = protectedResource.value;
+  if (!protectedResourceErr) {
+    const body = protectedResourceBody;
     const servers =
       isRecord(body) && Array.isArray(body.authorization_servers)
         ? body.authorization_servers.filter(
@@ -140,23 +137,31 @@ export async function discoverAuthorizationServer(
   // documented fallback.
 
   const metadataUrls = wellKnownCandidates(issuerCandidate, "oauth-authorization-server");
-  const metadata = await fetchFirstOk(metadataUrls);
-  if (!metadata.ok) return metadata;
+  const [metadataBody, metadataErr] = await fetchFirstOk(metadataUrls);
+  if (metadataErr) {
+    // Card 94: a well-known URL that answered but not-OK (typically a 404 —
+    // `fetchJson`'s `"not-mcp-endpoint"`) means this authorization server
+    // simply doesn't publish RFC 8414 metadata at this location, distinct
+    // from a genuine connectivity failure (`"unreachable"`/`"timeout"`) or a
+    // malformed document (`"invalid-response"`), which stay as-is.
+    return fail(
+      metadataErr.kind === "not-mcp-endpoint"
+        ? { kind: "discovery-absent", message: metadataErr.message }
+        : metadataErr,
+    );
+  }
 
-  const body = metadata.value;
+  const body = metadataBody;
   if (
     !isRecord(body) ||
     typeof body.issuer !== "string" ||
     typeof body.authorization_endpoint !== "string" ||
     typeof body.token_endpoint !== "string"
   ) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `${metadataUrls[0]} did not return valid RFC 8414 metadata (missing issuer/authorization_endpoint/token_endpoint).`,
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: `${metadataUrls[0]} did not return valid RFC 8414 metadata (missing issuer/authorization_endpoint/token_endpoint).`,
+    });
   }
 
   // `McpAuthorizationServerInfo`'s `registrationEndpoint`/`scopesSupported`
@@ -166,16 +171,13 @@ export async function discoverAuthorizationServer(
   const registrationEndpoint =
     typeof body.registration_endpoint === "string" ? body.registration_endpoint : undefined;
   const scopesSupported = resourceScopes ?? parseScopes(body.scopes_supported);
-  return {
-    ok: true,
-    value: {
-      issuer: body.issuer,
-      authorizationEndpoint: body.authorization_endpoint,
-      tokenEndpoint: body.token_endpoint,
-      ...(registrationEndpoint !== undefined && { registrationEndpoint }),
-      ...(scopesSupported !== undefined && { scopesSupported }),
-    },
-  };
+  return ok({
+    issuer: body.issuer,
+    authorizationEndpoint: body.authorization_endpoint,
+    tokenEndpoint: body.token_endpoint,
+    ...(registrationEndpoint !== undefined && { registrationEndpoint }),
+    ...(scopesSupported !== undefined && { scopesSupported }),
+  });
 }
 
 /**
@@ -189,7 +191,7 @@ export async function discoverAuthorizationServer(
 export async function registerClient(
   registrationEndpoint: string,
   redirectUri: string,
-): Promise<McpResult<McpDynamicClientRegistration>> {
+): Promise<Result<McpDynamicClientRegistration, McpError>> {
   let response: Response;
   try {
     response = await fetch(registrationEndpoint, {
@@ -204,51 +206,42 @@ export async function registerClient(
       signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
-    return { ok: false, error: classifyFetchError(err) };
+    return fail(classifyFetchError(err));
   }
 
   if (!response.ok) {
+    // Card 94: the endpoint explicitly refused the registration (a non-2xx
+    // response) — distinct from `"invalid-response"`, which stays for a 2xx
+    // reply that doesn't actually carry a usable `client_id` below.
     const body = await response.text().catch(() => "");
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `Dynamic client registration at ${registrationEndpoint} failed: ${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 300)}` : ""}.`,
-      },
-    };
+    return fail({
+      kind: "registration-rejected",
+      message: `Dynamic client registration at ${registrationEndpoint} failed: ${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 300)}` : ""}.`,
+    });
   }
 
   let json: unknown;
   try {
     json = await response.json();
   } catch (err) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `Registration response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: `Registration response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
   if (!isRecord(json) || typeof json.client_id !== "string" || json.client_id.length === 0) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: `${registrationEndpoint} did not return a client_id.`,
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: `${registrationEndpoint} did not return a client_id.`,
+    });
   }
 
   // `McpDynamicClientRegistration.clientSecret` (src/domain/tools, not this
   // folder's to widen) is optional without `| undefined` — same
   // conditional-spread treatment.
   const clientSecret = typeof json.client_secret === "string" ? json.client_secret : undefined;
-  return {
-    ok: true,
-    value: {
-      clientId: json.client_id,
-      ...(clientSecret !== undefined && { clientSecret }),
-    },
-  };
+  return ok({
+    clientId: json.client_id,
+    ...(clientSecret !== undefined && { clientSecret }),
+  });
 }

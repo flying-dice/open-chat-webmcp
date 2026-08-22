@@ -207,7 +207,7 @@ inventory; this is the map.
 | `tools` | tool descriptors, the merge algebra that namespaces server tools alongside page tools, MCP server configs and their reserved-header rule, and the sign-in *order* | `McpToolGateway`, `McpOAuthClient`, `McpServerRegistry`, `McpAuthTokenStore`, `PageToolExecutor` |
 | `permissions` | what a host permission means for a URL | `HostPermissions` |
 | `storage` *(shared kernel, not a context)* | `StorageError` and its five kinds — the one vocabulary every storage port reports ([decisions/32](../decisions/32-storage-ports-and-error-vocabulary.md)) | — |
-| `result` *(shared kernel, not a context)* | `Result<T, E>` — the tuple a known failure travels in, with `ok()`/`fail()`. Every storage port returns `Promise<Result<T, StorageError>>`; `throw` is reserved for a violated invariant ([decisions/34](../decisions/34-errors-as-values.md)) | — |
+| `result` *(shared kernel, not a context)* | `Result<T, E>` — the tuple a known failure travels in, with `ok()`/`fail()`. Every storage port returns `Promise<Result<T, StorageError>>` and `ChatProvider`'s one-shot calls return `Promise<Result<T, ProviderError>>`; `throw` is reserved for a violated invariant ([decisions/34](../decisions/34-errors-as-values.md)) | — |
 
 Two rules make this hold up rather than merely look tidy:
 

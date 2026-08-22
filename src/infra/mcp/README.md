@@ -34,6 +34,6 @@ Nothing here reads `package.json`: the `clientInfo` announced in the handshake c
 
 ## The rules this folder keeps
 
-Every function that crosses the boundary returns an `McpResult` and throws for nothing — including a storage failure while persisting a refreshed token, which is swallowed as best-effort rather than turned into a failed request. The `McpError`/`McpResult` vocabulary lives in `src/domain/tools`; nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or a `fetch` rejection.
+Every function that crosses the boundary resolves the shared `Result<T, McpError>` tuple (`src/domain/result.ts`, decisions/34-errors-as-values.md) and throws for nothing — including a storage failure while persisting a refreshed token, which is swallowed as best-effort rather than turned into a failed request. `McpError` lives in `src/domain/tools`; nothing in `src/domain/*` ever sees a `DOMException`, an HTTP status, or a `fetch` rejection. Card 94 retired the bespoke `McpResult` record shape onto that shared tuple, and also widened `McpError` with four OAuth-specific kinds the flow used to fold into generic ones: `discovery-absent`, `registration-rejected`, `refresh-expired`, `user-cancelled`.
 
 Only a composition root constructs what lives here (`src/sidepanel/main.ts`, `src/options/main.ts`). Card 78 deleted the interim per-surface wiring modules that used to share that job and made `only-roots-construct-infra` enforce it.

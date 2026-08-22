@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import ProviderForm from "./ProviderForm.svelte";
 import { createFakeOptionsServices, initFakeOptionsServices } from "../testing/fake-services";
 import type { ProviderConfig } from "../../domain/providers";
+import { ok } from "../../domain/result";
 
 // @testing-library/svelte's auto-cleanup only registers when `beforeEach`/
 // `afterEach` are Vitest GLOBALS (test.globals, which this project
@@ -228,8 +229,8 @@ describe("ProviderForm", () => {
   it("Test connection calls the fake provider client and renders a success result", async () => {
     services.createProviderClient = () => ({
       type: "ollama",
-      listModels: async () => ({ ok: true, value: [] }),
-      getCapabilities: async () => ({ ok: true, value: { status: "unknown" } }),
+      listModels: async () => ok([]),
+      getCapabilities: async () => ok({ status: "unknown" }),
       // eslint-disable-next-line require-yield -- test stub
       chat: async function* () {
         return;

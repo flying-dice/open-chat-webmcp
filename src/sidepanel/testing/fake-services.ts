@@ -69,10 +69,11 @@
 //
 // CARD 93 brought the `ChatProvider` fake onto the same tuple: its
 // `listModels`/`getCapabilities` now return `Result<T, ProviderError>` and
-// their success arms are `ok(...)` too. The remaining
-// `PageToolAccess`/`ChatService`/`McpToolGateway` fakes still speak their own
-// vocabularies (`McpResult`, or plain values) — see each port's own module
-// for why, and card 94/95 for when they follow.
+// their success arms are `ok(...)` too. CARD 94 did the same for
+// `McpToolGateway`'s fake below (`Result<T, McpError>`, same `ok(...)`
+// construction). The remaining `PageToolAccess`/`ChatService` fakes still
+// speak their own vocabularies (a plain `{ok,result}`/`{ok,error}` record,
+// or plain values) — see each port's own module for why.
 
 import { vi } from "vitest";
 import { initSidePanelServices } from "../app-services";

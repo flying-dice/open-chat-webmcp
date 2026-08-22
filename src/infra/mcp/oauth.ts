@@ -18,8 +18,8 @@
 //     mitigation against a token issued for one resource being replayed
 //     against another.
 //
-// Never-throw discipline (mirrors ./gateway.ts): every method returns an
-// `McpResult`, never throws.
+// Never-throw discipline (mirrors ./gateway.ts): every method resolves the
+// shared `Result<T, McpError>` (../../domain/result), never throws.
 //
 // CARD 76 DISSOLVED THE INVERSION decisions/29 named here. This module used
 // to `import { mcpServerRegistry }` and call `updateServer` to persist a
@@ -33,13 +33,14 @@
 // flow needs `launchWebAuthFlow`, and `getRedirectURL` names the redirect the
 // authorization server sends the user back to.
 
+import { fail, ok, type Result } from "../../domain/result";
 import type {
   McpAuthorizationServerInfo,
   McpAuthTokenStore,
+  McpError,
   McpOAuthAuth,
   McpOAuthClient,
   McpOAuthFlowConfig,
-  McpResult,
   McpServerConfig,
 } from "../../domain/tools";
 import { isRecord } from "./json-rpc";
@@ -77,15 +78,12 @@ function parseTokenResponse(
   raw: unknown,
   config: Pick<McpOAuthFlowConfig, "clientId" | "clientSecret" | "serverUrl" | "scope">,
   authorizationServer: McpAuthorizationServerInfo,
-): McpResult<McpOAuthAuth> {
+): Result<McpOAuthAuth, McpError> {
   if (!isRecord(raw) || typeof raw.access_token !== "string" || raw.access_token.length === 0) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "Token endpoint did not return an access_token.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "Token endpoint did not return an access_token.",
+    });
   }
   const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
   const refreshToken = typeof raw.refresh_token === "string" ? raw.refresh_token : undefined;
@@ -95,31 +93,25 @@ function parseTokenResponse(
   // (src/domain/tools, not this folder's to widen) are optional without
   // `| undefined` — conditional spread so an absent value omits the key
   // instead of assigning it `undefined`.
-  return {
-    ok: true,
-    value: {
-      type: "oauth",
-      accessToken: raw.access_token,
-      ...(refreshToken !== undefined && { refreshToken }),
-      ...(expiresAt !== undefined && { expiresAt }),
-      ...(scope !== undefined && { scope }),
-      clientId: config.clientId,
-      ...(config.clientSecret !== undefined && { clientSecret: config.clientSecret }),
-      authorizationServer,
-      resource: config.serverUrl,
-    },
-  };
+  return ok({
+    type: "oauth",
+    accessToken: raw.access_token,
+    ...(refreshToken !== undefined && { refreshToken }),
+    ...(expiresAt !== undefined && { expiresAt }),
+    ...(scope !== undefined && { scope }),
+    clientId: config.clientId,
+    ...(config.clientSecret !== undefined && { clientSecret: config.clientSecret }),
+    authorizationServer,
+    resource: config.serverUrl,
+  });
 }
 
-function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): McpResult<McpOAuthAuth> {
+function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): Result<McpOAuthAuth, McpError> {
   if (!isRecord(raw) || typeof raw.access_token !== "string" || raw.access_token.length === 0) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "Refresh response did not include an access_token.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "Refresh response did not include an access_token.",
+    });
   }
   const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
   // `McpOAuthAuth`'s optional fields (src/domain/tools, not this folder's to
@@ -138,7 +130,7 @@ function parseRefreshedToken(raw: unknown, previous: McpOAuthAuth): McpResult<Mc
     delete refreshed.expiresAt;
   }
   if (typeof raw.scope === "string") refreshed.scope = raw.scope;
-  return { ok: true, value: refreshed };
+  return ok(refreshed);
 }
 
 async function exchangeCodeForToken(
@@ -147,7 +139,7 @@ async function exchangeCodeForToken(
   code: string,
   codeVerifier: string,
   redirectUri: string,
-): Promise<McpResult<McpOAuthAuth>> {
+): Promise<Result<McpOAuthAuth, McpError>> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -158,9 +150,9 @@ async function exchangeCodeForToken(
   });
   if (config.clientSecret) body.set("client_secret", config.clientSecret);
 
-  const result = await postToken(discovery.tokenEndpoint, body);
-  if (!result.ok) return result;
-  return parseTokenResponse(result.value, config, discovery);
+  const [tokenBody, tokenErr] = await postToken(discovery.tokenEndpoint, body);
+  if (tokenErr) return fail(tokenErr);
+  return parseTokenResponse(tokenBody, config, discovery);
 }
 
 /**
@@ -177,15 +169,12 @@ async function exchangeCodeForToken(
 async function runAuthorizationFlow(
   config: McpOAuthFlowConfig,
   discovery: McpAuthorizationServerInfo,
-): Promise<McpResult<McpOAuthAuth>> {
+): Promise<Result<McpOAuthAuth, McpError>> {
   if (typeof chrome === "undefined" || !chrome.identity) {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "chrome.identity is unavailable in this context.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "chrome.identity is unavailable in this context.",
+    });
   }
 
   const redirectUri = chrome.identity.getRedirectURL();
@@ -202,66 +191,60 @@ async function runAuthorizationFlow(
   authUrl.searchParams.set("resource", config.serverUrl); // RFC 8707
   if (config.scope) authUrl.searchParams.set("scope", config.scope);
 
+  // Card 94: a closed/denied sign-in window is the user declining, not a
+  // server or credential failure — `chrome.identity.launchWebAuthFlow`
+  // rejects with exactly this generic "closed or denied" shape when there is
+  // no more specific reason to report, so treat the rejection itself as
+  // `"user-cancelled"` rather than guessing at an underlying auth problem.
   let responseUrl: string | undefined;
   try {
     responseUrl = await chrome.identity.launchWebAuthFlow({
       url: authUrl.toString(),
       interactive: true,
     });
-  } catch (err) {
-    return {
-      ok: false,
-      error: {
-        kind: "auth",
-        message:
-          err instanceof Error
-            ? err.message
-            : "The sign-in window was closed or the user denied access.",
-      },
-    };
+  } catch {
+    return fail({ kind: "user-cancelled" });
   }
   if (!responseUrl) {
-    return { ok: false, error: { kind: "auth", message: "Sign-in did not complete." } };
+    return fail({ kind: "user-cancelled" });
   }
 
   let redirected: URL;
   try {
     redirected = new URL(responseUrl);
   } catch {
-    return {
-      ok: false,
-      error: {
-        kind: "invalid-response",
-        message: "The authorization redirect was not a valid URL.",
-      },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "The authorization redirect was not a valid URL.",
+    });
   }
 
   const oauthError = redirected.searchParams.get("error");
   if (oauthError) {
-    return {
-      ok: false,
-      error: {
-        kind: "auth",
-        message: redirected.searchParams.get("error_description") ?? oauthError,
-      },
-    };
+    // RFC 6749 §4.1.2.1's `error=access_denied` is the user explicitly
+    // declining consent at the authorization server — still a cancellation,
+    // not a credential/server failure. Any OTHER `error` value (e.g.
+    // `invalid_scope`, `server_error`) stays `"auth"`.
+    if (oauthError === "access_denied") {
+      return fail({ kind: "user-cancelled" });
+    }
+    return fail({
+      kind: "auth",
+      message: redirected.searchParams.get("error_description") ?? oauthError,
+    });
   }
   if (redirected.searchParams.get("state") !== state) {
-    return {
-      ok: false,
-      error: {
-        kind: "auth",
-        message: "Authorization response state did not match the request — aborting.",
-      },
-    };
+    return fail({
+      kind: "auth",
+      message: "Authorization response state did not match the request — aborting.",
+    });
   }
   const code = redirected.searchParams.get("code");
   if (!code) {
-    return {
-      ok: false,
-      error: { kind: "invalid-response", message: "Authorization redirect had no code parameter." },
-    };
+    return fail({
+      kind: "invalid-response",
+      message: "Authorization redirect had no code parameter.",
+    });
   }
 
   return exchangeCodeForToken(config, discovery, code, verifier, redirectUri);
@@ -304,29 +287,28 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
    * successful refresh into a failed request, so a rejection from the store
    * is swallowed here rather than surfaced.
    */
-  async function getValidAuth(config: McpServerConfig): Promise<McpResult<McpOAuthAuth>> {
+  async function getValidAuth(config: McpServerConfig): Promise<Result<McpOAuthAuth, McpError>> {
     const auth = config.auth;
     if (auth?.type !== "oauth") {
-      return {
-        ok: false,
-        error: {
-          kind: "auth",
-          message: `Server "${config.name}" has no OAuth credentials configured.`,
-        },
-      };
+      return fail({
+        kind: "auth",
+        message: `Server "${config.name}" has no OAuth credentials configured.`,
+      });
     }
 
     const stillValid = auth.expiresAt === undefined || auth.expiresAt - EXPIRY_SKEW_MS > Date.now();
-    if (stillValid) return { ok: true, value: auth };
+    if (stillValid) return ok(auth);
 
+    // Card 94: no refresh token to try, or the refresh grant itself failing,
+    // both mean the same thing to the caller — the stored credential is
+    // unusable and the only recovery is an interactive sign-in again — so
+    // both are `"refresh-expired"` rather than the generic `"auth"` a
+    // rejected FIRST sign-in produces.
     if (!auth.refreshToken) {
-      return {
-        ok: false,
-        error: {
-          kind: "auth",
-          message: `Access token for "${config.name}" has expired and no refresh token is available — sign in again.`,
-        },
-      };
+      return fail({
+        kind: "refresh-expired",
+        message: `Access token for "${config.name}" has expired and no refresh token is available — sign in again.`,
+      });
     }
 
     const body = new URLSearchParams({
@@ -337,11 +319,27 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
     });
     if (auth.clientSecret) body.set("client_secret", auth.clientSecret);
 
-    const refreshed = await postToken(auth.authorizationServer.tokenEndpoint, body);
-    if (!refreshed.ok) return refreshed;
+    const [refreshedBody, refreshedErr] = await postToken(
+      auth.authorizationServer.tokenEndpoint,
+      body,
+    );
+    if (refreshedErr) {
+      // `postToken`'s own `"auth"` kind doesn't know it was serving a
+      // refresh grant rather than a first sign-in — remap it here, where
+      // that context is known, so the caller sees `"refresh-expired"`
+      // whenever it was specifically the REFRESH that the server refused.
+      // Any other kind (unreachable/timeout/invalid-response) means the
+      // refresh attempt itself never got a verdict, so it is passed through
+      // unchanged rather than mislabelled as an expiry.
+      return fail(
+        refreshedErr.kind === "auth"
+          ? { kind: "refresh-expired", message: refreshedErr.message }
+          : refreshedErr,
+      );
+    }
 
-    const parsed = parseRefreshedToken(refreshed.value, auth);
-    if (!parsed.ok) return parsed;
+    const [parsed, parsedErr] = parseRefreshedToken(refreshedBody, auth);
+    if (parsedErr) return fail(parsedErr);
 
     // Best-effort by design, and now explicitly so (card 92,
     // decisions/34-errors-as-values.md): the refreshed token is already
@@ -353,7 +351,7 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
     // expected here. The failure is logged rather than discarded, because a
     // store that will not accept a token is a real fault the user will
     // otherwise only notice as a sign-in that never sticks.
-    const [, saveErr] = await options.tokenStore.saveAuth(config.id, parsed.value);
+    const [, saveErr] = await options.tokenStore.saveAuth(config.id, parsed);
     if (saveErr) {
       console.warn(
         `[webmcp][mcp-oauth] refreshed token for "${config.name}" was not persisted`,
@@ -361,7 +359,7 @@ export function createMcpOAuthClient(options: McpOAuthClientOptions): McpOAuthCl
       );
     }
 
-    return parsed;
+    return ok(parsed);
   }
 
   return {

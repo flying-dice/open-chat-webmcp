@@ -92,17 +92,18 @@ describe("connectLegacySse", () => {
     const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
     budget.cleanup();
 
-    expect(result).toEqual({
-      ok: true,
-      value: expect.objectContaining({
+    const [session, err] = result;
+    expect(err).toBeUndefined();
+    expect(session).toEqual(
+      expect.objectContaining({
         connection: {
           protocolVersion: "2025-06-18",
           serverInfo: undefined,
           instructions: undefined,
         },
       }),
-    });
-    if (result.ok) result.value.close();
+    );
+    session?.close();
   });
 
   it("a relative endpoint path resolves against the server's own URL", async () => {
@@ -132,8 +133,9 @@ describe("connectLegacySse", () => {
     );
     budget.cleanup();
 
-    expect(result.ok).toBe(true);
-    if (result.ok) result.value.close();
+    const [session, err] = result;
+    expect(err).toBeUndefined();
+    session?.close();
     expect(posted.length).toBeGreaterThan(0);
     expect(posted.every((u) => u === "https://mcp.example/session/abc")).toBe(true);
   });
@@ -152,10 +154,7 @@ describe("connectLegacySse", () => {
       const budget = createBudget(1000, undefined);
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result).toEqual({
-        ok: false,
-        error: { kind: "auth", status: 401, message: "Unauthorized" },
-      });
+      expect(result).toEqual([undefined, { kind: "auth", status: 401, message: "Unauthorized" }]);
     });
 
     it("a non-ok GET response fails as not-mcp-endpoint, naming that both transports were tried", async () => {
@@ -164,11 +163,9 @@ describe("connectLegacySse", () => {
         vi.fn(async () => new Response("nope", { status: 500 })),
       );
       const budget = createBudget(1000, undefined);
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("not-mcp-endpoint");
+      expect(err?.kind).toBe("not-mcp-endpoint");
     });
 
     it("an ok GET response that isn't an SSE stream fails as not-mcp-endpoint", async () => {
@@ -182,13 +179,13 @@ describe("connectLegacySse", () => {
       const budget = createBudget(1000, undefined);
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result).toEqual({
-        ok: false,
-        error: {
+      expect(result).toEqual([
+        undefined,
+        {
           kind: "not-mcp-endpoint",
           message: "Server did not open an SSE stream for the legacy MCP transport either.",
         },
-      });
+      ]);
     });
 
     it("a network error on the opening GET is classified via the budget", async () => {
@@ -199,11 +196,9 @@ describe("connectLegacySse", () => {
         }),
       );
       const budget = createBudget(1000, undefined);
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("unreachable");
+      expect(err?.kind).toBe("unreachable");
     });
 
     it("the stream never emits an endpoint event before the budget elapses: times out, and the reader is cancelled", async () => {
@@ -217,12 +212,10 @@ describe("connectLegacySse", () => {
       );
       const budget = createBudget(15, undefined); // fires almost immediately
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("timeout");
+      expect(err?.kind).toBe("timeout");
       expect(cancelled()).toBe(true);
     });
 
@@ -244,12 +237,10 @@ describe("connectLegacySse", () => {
       end(); // the stream closes right after the endpoint event — no init response ever comes
       const budget = createBudget(30, undefined);
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("timeout");
+      expect(err?.kind).toBe("timeout");
     });
 
     it("posting the initialize message fails (network error): the pump is closed and the error is returned", async () => {
@@ -271,13 +262,11 @@ describe("connectLegacySse", () => {
       );
       const budget = createBudget(1000, undefined);
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
 
       expect(postCount).toBe(1);
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("unreachable");
+      expect(err?.kind).toBe("unreachable");
       expect(cancelled()).toBe(true);
     });
 
@@ -304,10 +293,7 @@ describe("connectLegacySse", () => {
       const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
 
-      expect(result).toEqual({
-        ok: false,
-        error: { kind: "auth", status: 401, message: "Unauthorized" },
-      });
+      expect(result).toEqual([undefined, { kind: "auth", status: 401, message: "Unauthorized" }]);
       expect(cancelled()).toBe(true);
     });
 
@@ -329,12 +315,10 @@ describe("connectLegacySse", () => {
       push(ENDPOINT_EVENT);
       const budget = createBudget(1000, undefined);
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("protocol-mismatch");
+      expect(err?.kind).toBe("protocol-mismatch");
       expect(cancelled()).toBe(true);
     });
   });
@@ -357,10 +341,10 @@ describe("connectLegacySse", () => {
       push(`${ENDPOINT_EVENT}data: {not valid json\n\n`);
       const budget = createBudget(1000, undefined);
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [session, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result.ok).toBe(true);
-      if (result.ok) result.value.close();
+      expect(err).toBeUndefined();
+      session?.close();
     });
 
     it("a duplicate endpoint event is ignored — only the first is honored", async () => {
@@ -382,9 +366,9 @@ describe("connectLegacySse", () => {
       push(`${ENDPOINT_EVENT}event: endpoint\ndata: /other/path\n\n`);
       const budget = createBudget(1000, undefined);
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [session] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      if (result.ok) result.value.close();
+      session?.close();
       expect(posted.length).toBeGreaterThan(0);
       expect(posted.every((u) => u === "https://mcp.example/session/abc")).toBe(true);
     });
@@ -411,10 +395,10 @@ describe("connectLegacySse", () => {
       push(ENDPOINT_EVENT);
       const budget = createBudget(1000, undefined);
 
-      const result = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      const [session, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
       budget.cleanup();
-      expect(result.ok).toBe(true);
-      if (result.ok) result.value.close();
+      expect(err).toBeUndefined();
+      session?.close();
     });
   });
 
@@ -442,9 +426,9 @@ describe("connectLegacySse", () => {
       vi.stubGlobal("fetch", fetchMock);
       push(ENDPOINT_EVENT);
       const budget = createBudget(budgetMs, undefined);
-      const connected = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
-      if (!connected.ok) throw new Error("expected connect to succeed in this fixture");
-      return { session: connected.value, budget, fetchMock, push };
+      const [session, err] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      if (err) throw new Error("expected connect to succeed in this fixture");
+      return { session, budget, fetchMock, push };
     }
 
     it("request() ids increment starting at 2 (id 1 was the initialize)", async () => {
@@ -455,8 +439,8 @@ describe("connectLegacySse", () => {
       session.close();
       budget.cleanup();
 
-      expect(first).toEqual({ ok: true, value: { echoedId: 2 } });
-      expect(second).toEqual({ ok: true, value: { echoedId: 3 } });
+      expect(first).toEqual([{ echoedId: 2 }, undefined]);
+      expect(second).toEqual([{ echoedId: 3 }, undefined]);
     });
 
     it("notify() posts without waiting for (or requiring) a response", async () => {
@@ -511,19 +495,19 @@ describe("connectLegacySse", () => {
       const budget = createBudget(1000, undefined);
       push(ENDPOINT_EVENT);
 
-      const connected = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
-      expect(connected.ok).toBe(true);
-      if (!connected.ok) return;
+      const [session, connectErr] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      expect(connectErr).toBeUndefined();
+      if (!session) return;
 
-      const result = await connected.value.request("tools/call", { name: "doTheThing" });
-      connected.value.close();
+      const result = await session.request("tools/call", { name: "doTheThing" });
+      session.close();
       budget.cleanup();
 
       expect(toolCallSeen).toBe(true);
-      expect(result).toEqual({
-        ok: false,
-        error: { kind: "auth", status: 401, message: "Access token expired" },
-      });
+      expect(result).toEqual([
+        undefined,
+        { kind: "auth", status: 401, message: "Access token expired" },
+      ]);
     });
 
     it("request() times out when the relay accepts the POST but the SSE stream never delivers a matching response", async () => {
@@ -543,16 +527,14 @@ describe("connectLegacySse", () => {
       const budget = createBudget(60, undefined); // enough headroom to finish connecting, then times out waiting on the call
       push(ENDPOINT_EVENT);
 
-      const connected = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
-      if (!connected.ok) throw new Error("expected connect to succeed");
+      const [session, connectErr] = await connectLegacySse(serverConfig(), {}, clientInfo, budget);
+      if (connectErr) throw new Error("expected connect to succeed");
 
-      const result = await connected.value.request("tools/call", { name: "doTheThing" });
-      connected.value.close();
+      const [, err] = await session.request("tools/call", { name: "doTheThing" });
+      session.close();
       budget.cleanup();
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error.kind).toBe("timeout");
+      expect(err?.kind).toBe("timeout");
     });
   });
 });

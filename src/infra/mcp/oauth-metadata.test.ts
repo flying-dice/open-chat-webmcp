@@ -28,16 +28,16 @@ describe("discoverAuthorizationServer", () => {
     });
 
     const result = await discoverAuthorizationServer("https://mcp.example");
-    expect(result).toEqual({
-      ok: true,
-      value: {
+    expect(result).toEqual([
+      {
         issuer: "https://as.example",
         authorizationEndpoint: "https://as.example/authorize",
         tokenEndpoint: "https://as.example/token",
         registrationEndpoint: "https://as.example/register",
         scopesSupported: ["as-scope"],
       },
-    });
+      undefined,
+    ]);
   });
 
   it("an RFC 9728 protected-resource document names a different authorization server issuer, and prefers ITS scopes_supported", async () => {
@@ -51,12 +51,11 @@ describe("discoverAuthorizationServer", () => {
         jsonResponse(AS_METADATA),
     });
 
-    const result = await discoverAuthorizationServer("https://mcp.example");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.issuer).toBe("https://as.example");
+    const [value, error] = await discoverAuthorizationServer("https://mcp.example");
+    if (error) throw error;
+    expect(value.issuer).toBe("https://as.example");
     // The RESOURCE's scopes_supported win over the authorization server's own.
-    expect(result.value.scopesSupported).toEqual(["resource-scope"]);
+    expect(value.scopesSupported).toEqual(["resource-scope"]);
   });
 
   it("tries the path-inserted well-known URL first, falling back to the bare origin when it 404s (GitHub MCP server's shape)", async () => {
@@ -72,9 +71,9 @@ describe("discoverAuthorizationServer", () => {
         jsonResponse(AS_METADATA),
     });
 
-    const result = await discoverAuthorizationServer("https://mcp.example/mcp");
+    const [, error] = await discoverAuthorizationServer("https://mcp.example/mcp");
 
-    expect(result.ok).toBe(true);
+    expect(error).toBeUndefined();
     const calledUrls = fetchMock.mock.calls.map((c) => c[0]);
     // Path-inserted attempted BEFORE the bare-origin fallback for protected-resource discovery.
     expect(
@@ -90,10 +89,10 @@ describe("discoverAuthorizationServer", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const result = await discoverAuthorizationServer("not a url");
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "not-mcp-endpoint", message: '"not a url" is not a valid URL.' },
-    });
+    expect(result).toEqual([
+      undefined,
+      { kind: "not-mcp-endpoint", message: '"not a url" is not a valid URL.' },
+    ]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -107,21 +106,21 @@ describe("discoverAuthorizationServer", () => {
           authorization_endpoint: "https://mcp.example/authorize",
         }),
     });
-    const result = await discoverAuthorizationServer("https://mcp.example");
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("invalid-response");
+    const [, error] = await discoverAuthorizationServer("https://mcp.example");
+    if (!error) throw new Error("expected discoverAuthorizationServer to fail");
+    expect(error.kind).toBe("invalid-response");
   });
 
-  it("neither well-known location has RFC 8414 metadata at all: propagates the last (bare-origin) fetch failure", async () => {
+  it("neither well-known location has RFC 8414 metadata at all: reports discovery-absent (card 94)", async () => {
     stubFetchByUrl({
       "https://mcp.example/.well-known/oauth-protected-resource": () =>
         new Response("", { status: 404 }),
       "https://mcp.example/.well-known/oauth-authorization-server": () =>
         new Response("", { status: 404, statusText: "Not Found" }),
     });
-    const result = await discoverAuthorizationServer("https://mcp.example");
-    expect(result.ok).toBe(false);
+    const [, error] = await discoverAuthorizationServer("https://mcp.example");
+    if (!error) throw new Error("expected discoverAuthorizationServer to fail");
+    expect(error.kind).toBe("discovery-absent");
   });
 });
 
@@ -137,7 +136,7 @@ describe("registerClient", () => {
       "https://redirect.example/cb",
     );
 
-    expect(result).toEqual({ ok: true, value: { clientId: "cid-1", clientSecret: "shh" } });
+    expect(result).toEqual([{ clientId: "cid-1", clientSecret: "shh" }, undefined]);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body).toEqual({
@@ -154,34 +153,30 @@ describe("registerClient", () => {
       "https://as.example/register",
       "https://redirect.example/cb",
     );
-    expect(result).toEqual({ ok: true, value: { clientId: "cid-1", clientSecret: undefined } });
+    expect(result).toEqual([{ clientId: "cid-1", clientSecret: undefined }, undefined]);
   });
 
-  it("a non-2xx response is reported as invalid-response with the status and body", async () => {
+  it("a non-2xx response is reported as registration-rejected with the status and body (card 94)", async () => {
     stubFetchByUrl({
       "https://as.example/register": () =>
         new Response("invalid_client_metadata", { status: 400, statusText: "Bad Request" }),
     });
-    const result = await registerClient(
+    const [, error] = await registerClient(
       "https://as.example/register",
       "https://redirect.example/cb",
     );
-    expect(result.ok).toBe(false);
-    if (result.ok || result.error.kind !== "invalid-response")
-      throw new Error("expected invalid-response");
-    expect(result.error.message).toContain("400");
-    expect(result.error.message).toContain("invalid_client_metadata");
+    if (error?.kind !== "registration-rejected") throw new Error("expected registration-rejected");
+    expect(error.message).toContain("400");
+    expect(error.message).toContain("invalid_client_metadata");
   });
 
-  it("a response missing client_id is rejected", async () => {
+  it("a response missing client_id is rejected as invalid-response — malformed 2xx, not a refusal", async () => {
     stubFetchByUrl({ "https://as.example/register": () => jsonResponse({ not_client_id: true }) });
-    const result = await registerClient(
+    const [, error] = await registerClient(
       "https://as.example/register",
       "https://redirect.example/cb",
     );
-    expect(result.ok).toBe(false);
-    if (result.ok || result.error.kind !== "invalid-response")
-      throw new Error("expected invalid-response");
-    expect(result.error.message).toContain("did not return a client_id");
+    if (error?.kind !== "invalid-response") throw new Error("expected invalid-response");
+    expect(error.message).toContain("did not return a client_id");
   });
 });

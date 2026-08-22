@@ -90,7 +90,7 @@ describe("resolveAuthHeader", () => {
     const config = baseConfig({ auth: { type: "bearer", token: "tok-1" } });
     const resolver: McpTokenResolver = { getValidAuth: vi.fn() };
     const result = await resolveAuthHeader(config, resolver);
-    expect(result).toEqual({ ok: true, value: { Authorization: "Bearer tok-1" } });
+    expect(result).toEqual([{ Authorization: "Bearer tok-1" }, undefined]);
     expect(resolver.getValidAuth).not.toHaveBeenCalled();
   });
 
@@ -98,42 +98,38 @@ describe("resolveAuthHeader", () => {
     const config = baseConfig({ auth: { type: "bearer", token: "" } });
     const resolver: McpTokenResolver = { getValidAuth: vi.fn() };
     const result = await resolveAuthHeader(config, resolver);
-    expect(result).toEqual({ ok: true, value: {} });
+    expect(result).toEqual([{}, undefined]);
   });
 
   it("no auth configured resolves to {} without calling the resolver", async () => {
     const config = baseConfig();
     const resolver: McpTokenResolver = { getValidAuth: vi.fn() };
     const result = await resolveAuthHeader(config, resolver);
-    expect(result).toEqual({ ok: true, value: {} });
+    expect(result).toEqual([{}, undefined]);
     expect(resolver.getValidAuth).not.toHaveBeenCalled();
   });
 
   it("oauth: asks the injected resolver and maps a valid token to Authorization: Bearer <accessToken>", async () => {
     const config = baseConfig({ auth: oauthAuth });
     const resolver: McpTokenResolver = {
-      getValidAuth: vi.fn(async () => ({
-        ok: true as const,
-        value: { ...oauthAuth, accessToken: "at-fresh" },
-      })),
+      getValidAuth: vi.fn(
+        async () => [{ ...oauthAuth, accessToken: "at-fresh" }, undefined] as const,
+      ),
     };
     const result = await resolveAuthHeader(config, resolver);
-    expect(result).toEqual({ ok: true, value: { Authorization: "Bearer at-fresh" } });
+    expect(result).toEqual([{ Authorization: "Bearer at-fresh" }, undefined]);
     expect(resolver.getValidAuth).toHaveBeenCalledWith(config);
   });
 
-  it("oauth: a resolver failure short-circuits as the same McpResult error, before any request is attempted", async () => {
+  it("oauth: a resolver failure short-circuits as the same Result error, before any request is attempted", async () => {
     const config = baseConfig({ auth: oauthAuth });
     const resolver: McpTokenResolver = {
-      getValidAuth: vi.fn(async () => ({
-        ok: false as const,
-        error: { kind: "auth" as const, message: "expired, no refresh token" },
-      })),
+      getValidAuth: vi.fn(
+        async () =>
+          [undefined, { kind: "auth" as const, message: "expired, no refresh token" }] as const,
+      ),
     };
     const result = await resolveAuthHeader(config, resolver);
-    expect(result).toEqual({
-      ok: false,
-      error: { kind: "auth", message: "expired, no refresh token" },
-    });
+    expect(result).toEqual([undefined, { kind: "auth", message: "expired, no refresh token" }]);
   });
 });

@@ -7,7 +7,8 @@
 // config pins `"sse"`, falling back to the legacy one only on the spec's
 // documented 404/405 signal.
 
-import type { McpResult, McpServerConfig, McpTokenResolver } from "../../domain/tools";
+import { fail, ok, type Result } from "../../domain/result";
+import type { McpError, McpServerConfig, McpTokenResolver } from "../../domain/tools";
 import type { Budget } from "./budget";
 import { buildBaseHeaders, resolveAuthHeader } from "./headers";
 import { connectLegacySse } from "./legacy-sse";
@@ -25,15 +26,15 @@ export async function connect(
   config: McpServerConfig,
   ctx: McpTransportContext,
   budget: Budget,
-): Promise<McpResult<McpWireSession>> {
-  const resolvedAuth = await resolveAuthHeader(config, ctx.auth);
-  if (!resolvedAuth.ok) return resolvedAuth;
-  const baseHeaders = buildBaseHeaders(config, resolvedAuth.value);
+): Promise<Result<McpWireSession, McpError>> {
+  const [authHeader, authErr] = await resolveAuthHeader(config, ctx.auth);
+  if (authErr) return fail(authErr);
+  const baseHeaders = buildBaseHeaders(config, authHeader);
 
   if (config.transport !== "sse") {
     const attempt = await tryStreamableHttp(config, baseHeaders, ctx.clientInfo, budget);
-    if (attempt.outcome === "connected") return { ok: true, value: attempt.session };
-    if (attempt.outcome === "failed") return { ok: false, error: attempt.error };
+    if (attempt.outcome === "connected") return ok(attempt.session);
+    if (attempt.outcome === "failed") return fail(attempt.error);
     // outcome === "try-legacy": only reachable with transport === "auto".
   }
 
@@ -42,10 +43,10 @@ export async function connect(
     // pinned to this transport — "try-legacy" is unreachable above in that
     // case — but keep a defensive fallback rather than falling through to
     // an unrelated transport attempt.
-    return {
-      ok: false,
-      error: { kind: "not-mcp-endpoint", message: "Streamable HTTP handshake did not complete." },
-    };
+    return fail({
+      kind: "not-mcp-endpoint",
+      message: "Streamable HTTP handshake did not complete.",
+    });
   }
 
   return connectLegacySse(config, baseHeaders, ctx.clientInfo, budget);

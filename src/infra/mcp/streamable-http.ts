@@ -9,6 +9,7 @@
 // Session continuity (the `Mcp-Session-Id` a server may hand back) is honored
 // WITHIN one call's handshake+operation and never carried across calls.
 
+import { fail } from "../../domain/result";
 import type { McpError, McpServerConfig } from "../../domain/tools";
 import type { Budget } from "./budget";
 import {
@@ -50,21 +51,18 @@ function createStreamableHttpSession(
     async request(method, params) {
       const id = nextId++;
       const response = await post({ jsonrpc: "2.0", id, method, params: params ?? {} });
-      if ("failed" in response) return { ok: false, error: response.failed };
+      if ("failed" in response) return fail(response.failed);
 
       // TODO: clean-code - 0.3 - DRY: this 401/403 -> {kind:"auth",...} block is repeated here and below, and twice more in legacy-sse.ts (four occurrences total) — a classifyAuthStatus(response) helper in json-rpc.ts (already imported by both files) would collapse all four.
       if (response.status === 401 || response.status === 403) {
-        return {
-          ok: false,
-          error: {
-            kind: "auth",
-            status: response.status,
-            message: await safeAuthMessage(response),
-          },
-        };
+        return fail({
+          kind: "auth",
+          status: response.status,
+          message: await safeAuthMessage(response),
+        });
       }
       if (!response.ok) {
-        return { ok: false, error: await classifyHttpErrorResponse(response) };
+        return fail(await classifyHttpErrorResponse(response));
       }
 
       const contentType = response.headers.get("Content-Type") ?? "";
@@ -73,36 +71,27 @@ function createStreamableHttpSession(
         try {
           json = await response.json();
         } catch (err) {
-          return {
-            ok: false,
-            error: {
-              kind: "invalid-response",
-              message: err instanceof Error ? err.message : String(err),
-            },
-          };
+          return fail({
+            kind: "invalid-response",
+            message: err instanceof Error ? err.message : String(err),
+          });
         }
         if (!isJsonRpcResponse(json)) {
-          return {
-            ok: false,
-            error: {
-              kind: "invalid-response",
-              message: "Response body wasn't a JSON-RPC envelope.",
-            },
-          };
+          return fail({
+            kind: "invalid-response",
+            message: "Response body wasn't a JSON-RPC envelope.",
+          });
         }
         return toResult(json);
       }
       if (contentType.includes("text/event-stream") && response.body) {
-        const found = await readSseForResponse(response.body, id, budget);
-        return found.ok ? toResult(found.value) : found;
+        const [found, foundErr] = await readSseForResponse(response.body, id, budget);
+        return foundErr ? fail(foundErr) : toResult(found);
       }
-      return {
-        ok: false,
-        error: {
-          kind: "invalid-response",
-          message: `Unexpected content type "${contentType || "(none)"}".`,
-        },
-      };
+      return fail({
+        kind: "invalid-response",
+        message: `Unexpected content type "${contentType || "(none)"}".`,
+      });
     },
     async notify(method, params) {
       // Best-effort: a failed "initialized" notification doesn't itself
@@ -197,9 +186,9 @@ export async function tryStreamableHttp(
         error: { kind: "not-mcp-endpoint", message: "SSE response had no body." },
       };
     }
-    const found = await readSseForResponse(response.body, 1, budget);
-    if (!found.ok) return { outcome: "failed", error: found.error };
-    initResponse = found.value;
+    const [found, foundErr] = await readSseForResponse(response.body, 1, budget);
+    if (foundErr) return { outcome: "failed", error: foundErr };
+    initResponse = found;
   } else {
     return {
       outcome: "failed",
@@ -210,16 +199,10 @@ export async function tryStreamableHttp(
     };
   }
 
-  const parsedInit = validateInitializeResult(initResponse);
-  if (!parsedInit.ok) return { outcome: "failed", error: parsedInit.error };
+  const [parsedInit, parsedInitErr] = validateInitializeResult(initResponse);
+  if (parsedInitErr) return { outcome: "failed", error: parsedInitErr };
 
-  const session = createStreamableHttpSession(
-    config.url,
-    headers,
-    sessionId,
-    parsedInit.value,
-    budget,
-  );
+  const session = createStreamableHttpSession(config.url, headers, sessionId, parsedInit, budget);
   await session.notify("notifications/initialized");
   return { outcome: "connected", session };
 }

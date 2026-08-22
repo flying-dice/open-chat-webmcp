@@ -19,9 +19,10 @@
 //                       gateway itself (hence the narrower
 //                       {@link McpTokenResolver} it depends on).
 //
-// Both are NEVER-THROWS ports: every method resolves an `McpResult` and
-// rejects for nothing (./types.ts). That is a deliberate difference from the
-// storage ports of decisions/32, which throw `StorageError` — an MCP
+// Both are NEVER-THROWS ports: every method resolves the shared
+// `Result<T, McpError>` tuple (../result, decisions/34-errors-as-values.md)
+// and rejects for nothing (./types.ts). That is a deliberate difference from
+// the storage ports of decisions/32, which throw `StorageError` — an MCP
 // operation talks to a third party the user configured, so "it failed and
 // here is which way" is an ordinary outcome a caller must handle, not an
 // exceptional one.
@@ -30,10 +31,11 @@
 // and it is a value the CALLER already holds — the domain neither creates
 // one nor touches `chrome.*`, `fetch` or the DOM.
 
+import type { Result } from "../result";
 import type { McpOAuthAuth, McpServerConfig } from "./servers";
 import type {
   McpConnectionInfo,
-  McpResult,
+  McpError,
   McpServerDiscovery,
   McpTool,
   McpToolCallResult,
@@ -64,18 +66,21 @@ export interface McpToolGateway {
   testServerConnection(
     config: McpServerConfig,
     opts?: McpCallOptions,
-  ): Promise<McpResult<McpConnectionInfo>>;
+  ): Promise<Result<McpConnectionInfo, McpError>>;
 
   /** Every tool one server currently offers, paginated through internally. */
-  listServerTools(config: McpServerConfig, opts?: McpCallOptions): Promise<McpResult<McpTool[]>>;
+  listServerTools(
+    config: McpServerConfig,
+    opts?: McpCallOptions,
+  ): Promise<Result<McpTool[], McpError>>;
 
-  /** Invoke one tool on one server. `isError: true` inside an `ok: true` result is the TOOL's own reported failure (the spec's two-tier error model); only a transport/protocol failure is `ok: false`. */
+  /** Invoke one tool on one server. `isError: true` inside a successful result is the TOOL's own reported failure (the spec's two-tier error model); only a transport/protocol failure is the tuple's error side. */
   callServerTool(
     config: McpServerConfig,
     toolName: string,
     args: Record<string, unknown> | undefined,
     opts?: McpCallOptions,
-  ): Promise<McpResult<McpToolCallResult>>;
+  ): Promise<Result<McpToolCallResult, McpError>>;
 
   /**
    * Discover tools across many servers concurrently, one entry per server.
@@ -128,10 +133,11 @@ export interface McpTokenResolver {
    * a caller only ever reads the returned value.
    *
    * A missing refresh token, or a refused refresh grant, surfaces as
-   * `kind: "auth"` — the same kind an expired bearer token produces, so
-   * nothing downstream needs a new error kind for "reconnect needed".
+   * `kind: "refresh-expired"` (card 94) — distinct from `"auth"`, which
+   * stays for a FIRST sign-in the server rejects, so a caller can tell
+   * "reconnect needed" apart from "these credentials are wrong".
    */
-  getValidAuth(config: McpServerConfig): Promise<McpResult<McpOAuthAuth>>;
+  getValidAuth(config: McpServerConfig): Promise<Result<McpOAuthAuth, McpError>>;
 }
 
 /**
@@ -157,13 +163,15 @@ export interface McpOAuthClient extends McpTokenResolver {
   redirectUri(): string;
 
   /** RFC 9728 then RFC 8414: resolve the authorization server for an MCP server's URL. */
-  discoverAuthorizationServer(mcpServerUrl: string): Promise<McpResult<McpAuthorizationServerInfo>>;
+  discoverAuthorizationServer(
+    mcpServerUrl: string,
+  ): Promise<Result<McpAuthorizationServerInfo, McpError>>;
 
   /** RFC 7591: register this extension as a public client at a discovered `registration_endpoint`. */
   registerClient(
     registrationEndpoint: string,
     redirectUri: string,
-  ): Promise<McpResult<McpDynamicClientRegistration>>;
+  ): Promise<Result<McpDynamicClientRegistration, McpError>>;
 
   /**
    * RFC 6749 §4.1 + RFC 7636 + RFC 8707: drive the interactive
@@ -177,5 +185,5 @@ export interface McpOAuthClient extends McpTokenResolver {
   runAuthorizationFlow(
     config: McpOAuthFlowConfig,
     discovery: McpAuthorizationServerInfo,
-  ): Promise<McpResult<McpOAuthAuth>>;
+  ): Promise<Result<McpOAuthAuth, McpError>>;
 }

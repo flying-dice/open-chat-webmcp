@@ -164,41 +164,41 @@ export function createMcpSignIn(deps: McpSignInDeps): McpSignIn {
       }
 
       // 2. Discover the authorization server (RFC 9728 / RFC 8414).
-      const discovery = await oauth.discoverAuthorizationServer(url);
-      if (!discovery.ok) {
-        return { status: "error", message: describeMcpError(discovery.error) };
+      const [discovery, discoveryErr] = await oauth.discoverAuthorizationServer(url);
+      if (discoveryErr) {
+        return { status: "error", message: describeMcpError(discoveryErr) };
       }
 
       // 3. Endpoint host permissions — needed either way (DCR or manual).
-      const denied = await grantEndpointPermissions(discovery.value);
+      const denied = await grantEndpointPermissions(discovery);
       if (denied) return denied;
 
       // 4/5. Dynamic client registration, if this server supports it —
       //      otherwise hand off to the manual client-id panel.
-      if (!discovery.value.registrationEndpoint) {
-        return { status: "needs-manual-client", discovery: discovery.value };
+      if (!discovery.registrationEndpoint) {
+        return { status: "needs-manual-client", discovery };
       }
 
-      const registration = await oauth.registerClient(
-        discovery.value.registrationEndpoint,
+      const [registration, registrationErr] = await oauth.registerClient(
+        discovery.registrationEndpoint,
         oauth.redirectUri(),
       );
-      if (!registration.ok) {
-        return { status: "error", message: describeMcpError(registration.error) };
+      if (registrationErr) {
+        return { status: "error", message: describeMcpError(registrationErr) };
       }
 
-      const flow = await oauth.runAuthorizationFlow(
+      const [auth, flowErr] = await oauth.runAuthorizationFlow(
         {
           serverUrl: url,
-          clientId: registration.value.clientId,
-          clientSecret: registration.value.clientSecret,
-          scope: discovery.value.scopesSupported?.join(" "),
+          clientId: registration.clientId,
+          clientSecret: registration.clientSecret,
+          scope: discovery.scopesSupported?.join(" "),
         },
-        discovery.value,
+        discovery,
       );
-      if (!flow.ok) return { status: "error", message: describeMcpError(flow.error) };
+      if (flowErr) return { status: "error", message: describeMcpError(flowErr) };
 
-      return { status: "signed-in", auth: flow.value };
+      return { status: "signed-in", auth };
     },
 
     async completeManual(input): Promise<McpSignInCompletion> {
@@ -210,7 +210,7 @@ export function createMcpSignIn(deps: McpSignInDeps): McpSignIn {
         };
       }
 
-      const flow = await oauth.runAuthorizationFlow(
+      const [auth, flowErr] = await oauth.runAuthorizationFlow(
         {
           serverUrl: input.serverUrl.trim(),
           clientId,
@@ -222,9 +222,9 @@ export function createMcpSignIn(deps: McpSignInDeps): McpSignIn {
         },
         input.discovery,
       );
-      if (!flow.ok) return { status: "error", message: describeMcpError(flow.error) };
+      if (flowErr) return { status: "error", message: describeMcpError(flowErr) };
 
-      return { status: "signed-in", auth: flow.value };
+      return { status: "signed-in", auth };
     },
   };
 }

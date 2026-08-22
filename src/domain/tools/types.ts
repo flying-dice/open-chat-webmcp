@@ -4,10 +4,9 @@
 // port). Deliberately does not import anything from
 // src/domain/providers/provider.ts: the shapes below are a parallel,
 // MCP-specific vocabulary rather than a re-export or an extension of that
-// file. Where they are conceptually similar (`McpResult` / `ProviderResult`,
-// `McpError` / `ProviderError`), that is a deliberate mirror of
-// src/domain/providers/provider.ts's never-throw discipline, not a shared
-// type.
+// file. Where they are conceptually similar (`McpError` / `ProviderError`),
+// that is a deliberate mirror of src/domain/providers/provider.ts's
+// never-throw discipline, not a shared type.
 //
 // Wire format target: MCP protocol version "2025-06-18" (the current spec at
 // https://modelcontextprotocol.io/specification/2025-06-18/), with the
@@ -16,8 +15,13 @@
 // src/infra/mcp/protocol.ts.
 
 // ---------------------------------------------------------------------------
-// Never-throw result plumbing (mirrors src/domain/providers/provider.ts's ProviderResult/
-// ProviderError shape and rationale)
+// Never-throw result plumbing (card 94, decisions/34-errors-as-values.md):
+// every MCP operation resolves the shared `Result<T, McpError>` tuple
+// (../result) rather than the bespoke `{ok:true,value}|{ok:false,error}`
+// record this module used to declare as `McpResult`. That record shape is
+// gone — every signature below spells out `Result<T, McpError>` directly,
+// the same way the storage ports (../storage) spell out
+// `Result<T, StorageError>` rather than naming a `StorageResult` alias.
 // ---------------------------------------------------------------------------
 
 /**
@@ -60,6 +64,38 @@
  *     indistinguishable from a dead host (see `"unreachable"`'s doc); only a
  *     caller that checked the permission first, out of band, can tell the
  *     two apart.
+ *
+ * Card 94 (decisions/27-oauth-for-http-mcp-servers.md,
+ * decisions/34-errors-as-values.md) audited the OAuth flow's known-failure
+ * vocabulary and split four cases that used to fold into the generic
+ * "auth"/"invalid-response"/"not-mcp-endpoint" kinds above:
+ *
+ *   - `"discovery-absent"`: RFC 9728/RFC 8414 discovery
+ *     (src/infra/mcp/oauth-metadata.ts) reached the server but found no
+ *     authorization-server metadata document at all — a well-known URL that
+ *     404s, rather than one that answers with something malformed
+ *     (`"invalid-response"`) or unreachable (`"unreachable"`/`"timeout"`).
+ *     Distinct so the sign-in UI can say "this server doesn't support
+ *     discoverable OAuth" instead of a generic connection failure.
+ *   - `"registration-rejected"`: RFC 7591 dynamic client registration
+ *     (src/infra/mcp/oauth-metadata.ts's `registerClient`) reached the
+ *     `registration_endpoint` and it explicitly refused the request (a
+ *     non-2xx response). Distinct from `"invalid-response"`, which stays
+ *     for a 2xx response that doesn't actually contain a `client_id` —
+ *     that is a malformed server, this is a server saying no.
+ *   - `"refresh-expired"`: the RFC 6749 §6 `refresh_token` grant
+ *     (src/infra/mcp/oauth.ts's `getValidAuth`) failed, or there was no
+ *     refresh token to try — the access token is unusable and the ONLY
+ *     recovery is an interactive sign-in again. Distinct from `"auth"` so a
+ *     caller can say "reconnect" rather than "check your credentials".
+ *   - `"user-cancelled"`: the interactive `chrome.identity.launchWebAuthFlow`
+ *     window (src/infra/mcp/oauth.ts's `runAuthorizationFlow`) was closed by
+ *     the user, or the authorization server's redirect carried
+ *     `error=access_denied` — the user declined, rather than anything
+ *     failing. Distinct from `"aborted"` (the caller's own `AbortSignal`) and
+ *     from `"auth"` (the server rejecting credentials it was given); no
+ *     message, mirroring `"aborted"` — there is nothing more specific to say
+ *     about a user closing a window.
  */
 export type McpError =
   | { kind: "unreachable"; message: string }
@@ -75,7 +111,11 @@ export type McpError =
     }
   | { kind: "rpc-error"; code: number; message: string; data?: unknown }
   | { kind: "invalid-response"; message: string }
-  | { kind: "permission"; message: string };
+  | { kind: "permission"; message: string }
+  | { kind: "discovery-absent"; message: string }
+  | { kind: "registration-rejected"; message: string }
+  | { kind: "refresh-expired"; message: string }
+  | { kind: "user-cancelled" };
 
 /** Ready-made user-facing copy for an {@link McpError}, for UI that doesn't want to hand-roll it. Never includes header/credential values — see decisions/15-custom-headers-are-credentials.md. */
 export function describeMcpError(error: McpError): string {
@@ -98,11 +138,16 @@ export function describeMcpError(error: McpError): string {
       return `Server returned something this extension couldn't understand: ${error.message}`;
     case "permission":
       return error.message;
+    case "discovery-absent":
+      return `This server doesn't advertise a discoverable OAuth authorization server. ${error.message}`;
+    case "registration-rejected":
+      return `App registration was rejected: ${error.message}`;
+    case "refresh-expired":
+      return `Your session has expired: ${error.message} Sign in again.`;
+    case "user-cancelled":
+      return "Sign-in was cancelled.";
   }
 }
-
-/** Result of an MCP operation: never throws, always branch on `ok`. */
-export type McpResult<T> = { ok: true; value: T } | { ok: false; error: McpError };
 
 // ---------------------------------------------------------------------------
 // Tools (MCP "server/tools" — tools/list, tools/call)
@@ -177,7 +222,7 @@ export type McpToolContent =
   | McpResourceLinkContent
   | McpEmbeddedResourceContent;
 
-/** Result of a `tools/call`, typed per the spec's two-tier error model: a protocol-level failure surfaces as `McpResult`'s `ok:false`; a tool-level failure (the tool ran but reported an error) surfaces here as `isError: true` with the failure described in `content`. */
+/** Result of a `tools/call`, typed per the spec's two-tier error model: a protocol-level failure surfaces as the calling `Result<McpToolCallResult, McpError>`'s error side; a tool-level failure (the tool ran but reported an error) surfaces here as `isError: true` with the failure described in `content`. */
 export interface McpToolCallResult {
   content: McpToolContent[];
   /** Present when the tool declared an `outputSchema` and returned structured data alongside the required text fallback (spec: "structuredContent"). */

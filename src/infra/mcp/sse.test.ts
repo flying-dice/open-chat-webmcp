@@ -129,7 +129,7 @@ describe("readSseForResponse", () => {
     ]);
     const result = await readSseForResponse(body, 7, budget);
     budget.cleanup();
-    expect(result).toEqual({ ok: true, value: { jsonrpc: "2.0", id: 7, result: { ok: true } } });
+    expect(result).toEqual([{ jsonrpc: "2.0", id: 7, result: { ok: true } }, undefined]);
   });
 
   it("skips a garbage event mid-stream and still finds the real response after it", async () => {
@@ -140,23 +140,23 @@ describe("readSseForResponse", () => {
     ]);
     const result = await readSseForResponse(body, 1, budget);
     budget.cleanup();
-    expect(result).toEqual({ ok: true, value: { jsonrpc: "2.0", id: 1, result: "ok" } });
+    expect(result).toEqual([{ jsonrpc: "2.0", id: 1, result: "ok" }, undefined]);
   });
 
-  it("resolves ok:false invalid-response when the stream ends with no matching response", async () => {
+  it("resolves a failed Result with kind invalid-response when the stream ends with no matching response", async () => {
     const budget = createBudget(1000, undefined);
     const body = streamOf([
       `data: ${JSON.stringify({ jsonrpc: "2.0", id: 99, result: "wrong" })}\n\n`,
     ]);
     const result = await readSseForResponse(body, 1, budget);
     budget.cleanup();
-    expect(result).toEqual({
-      ok: false,
-      error: {
+    expect(result).toEqual([
+      undefined,
+      {
         kind: "invalid-response",
         message: "SSE stream ended without a matching JSON-RPC response.",
       },
-    });
+    ]);
   });
 
   it("classifies a budget timeout as kind 'timeout' via budget.classify", async () => {
@@ -176,9 +176,8 @@ describe("readSseForResponse", () => {
         // never enqueues, never closes on its own — only the abort above ends it
       },
     });
-    const result = await readSseForResponse(neverEndingBody, 1, budget);
+    const [, err] = await readSseForResponse(neverEndingBody, 1, budget);
     budget.cleanup();
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.kind).toBe("timeout");
+    expect(err?.kind).toBe("timeout");
   });
 });
