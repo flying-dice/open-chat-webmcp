@@ -32,7 +32,7 @@
     type ProviderPreset,
     type ProviderType,
   } from "../../domain/providers";
-  import { DEFAULT_OPENAI_BASE_URL } from "../../lib/providers/openai";
+  import { DEFAULT_OPENAI_BASE_URL } from "../../infra/openai";
   import { hasHostPermission, originPatternForUrl, requestHostPermission } from "../lib/permissions";
   import { testProviderConnection, type TestOutcome } from "../lib/testConnection";
   import { testResultClass, testResultMessage } from "../lib/testResultDisplay";

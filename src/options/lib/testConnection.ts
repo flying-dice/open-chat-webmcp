@@ -1,6 +1,6 @@
 // "Test connection" for the provider registry UI (card 22). Resolves
 // through the provider's own `ChatProvider` client — built via
-// `createProviderClient` (src/lib/providers/clients.ts) exactly the way
+// `createProviderClient` (./providerClients.ts, card 75) exactly the way
 // the side panel would — never a bespoke fetch of our own, so a client's
 // auth headers, wire quirks, and error classification are exercised for
 // real rather than approximated here.
@@ -12,7 +12,7 @@
 // "connection failed".
 
 import type { ProviderConfig } from "../../domain/providers";
-import { createProviderClient } from "../../lib/providers/clients";
+import { createProviderClient } from "./providerClients";
 
 export type TestOutcome =
   | { kind: "success"; modelCount: number }
@@ -48,19 +48,13 @@ export type TestOutcome =
 export async function testProviderConnection(
   config: ProviderConfig,
 ): Promise<TestOutcome> {
-  let client;
-  try {
-    client = createProviderClient(config);
-  } catch (err) {
-    // Only thrown for a provider type with no registered client factory
-    // (registry.ts: a programming-error path, not a runtime/network one) —
-    // surfaced plainly rather than silently swallowed.
-    return {
-      kind: "unexpected",
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
-
+  // Card 75: `createProviderClient` is now the exhaustive dispatcher from
+  // src/domain/providers/client-factory.ts — there is no "unregistered
+  // provider type" state left to throw for, so this no longer needs a
+  // try/catch around client construction. `"unexpected"` stays on
+  // `TestOutcome` for genuinely unanticipated failures elsewhere in this
+  // module's callers.
+  const client = createProviderClient(config);
   const result = await client.listModels();
   if (result.ok) {
     return { kind: "success", modelCount: result.value.length };

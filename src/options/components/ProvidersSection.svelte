@@ -17,7 +17,7 @@
     type ProviderSelection,
   } from "../../domain/providers";
   import { providerRegistry } from "../../infra/chrome-storage";
-  import { createProviderClient } from "../../lib/providers/clients";
+  import { createProviderClient } from "../lib/providerClients";
   import {
     describeProviderError,
     isSelectable,

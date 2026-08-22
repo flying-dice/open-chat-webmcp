@@ -10,18 +10,14 @@ import { mount } from "svelte";
 import "../app.css";
 import App from "./App.svelte";
 
-// `createProviderClient` (src/lib/providers/clients.ts) dispatches by
-// provider type through a registry each client populates via a
-// self-registering side-effect import. Ollama's is pulled in transitively
-// by clients.ts itself, but OpenAI's (src/lib/providers/openai.ts)
-// registers only when something imports it — clients.ts can't do that
-// itself (off-limits to the agent that built it). The options page
-// (src/options/main.ts) already does this for its own bundle; the side
-// panel is a separate entry point/bundle, so it needs the same import here
-// or `createProviderClient` throws for `type: "openai"` the moment the
-// picker (src/sidepanel/stores/selection.svelte.ts) tries to build a
-// client for an OpenAI-type provider.
-import "../lib/providers/openai";
+// CARD 75: the old `registerProviderType`/`createProviderClient` locator
+// (src/lib/providers/clients.ts, deleted) needed a self-registering
+// side-effect import of the OpenAI client on every entry point that could
+// construct one — a latent "unregistered provider type" throw for any new
+// entry point that forgot it. `src/sidepanel/lib/providerClients.ts`
+// replaces that with an exhaustive `Record<ProviderType, ...>` built from
+// `src/infra/ollama` and `src/infra/openai` directly; there is nothing left
+// for this root to import just for its side effect.
 
 // CARD 74 — storage wiring. Every `chrome.storage`-backed port this surface
 // uses (`ChatStore`, `ProviderRegistry`, `McpServerRegistry`,

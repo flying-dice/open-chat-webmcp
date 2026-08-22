@@ -7,7 +7,7 @@
 // (manifest.config.ts); any other endpoint needs a runtime grant via
 // `chrome.permissions.request` before it can ever connect — a blocked CORS
 // preflight and a genuinely dead server both fail identically as a bare
-// TypeError from `fetch` (src/lib/ollama.ts, src/lib/providers/openai.ts,
+// TypeError from `fetch` (src/infra/ollama/client.ts, src/infra/openai,
 // src/lib/mcp/client.ts), so the only way to make "needs permission"
 // visibly distinct from "misconfigured" is to check grant state
 // independently of ever attempting a request.

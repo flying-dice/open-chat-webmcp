@@ -1,12 +1,12 @@
 // Typed, UI-free REST client for a local Ollama server: model listing,
 // tool-capability detection, and streaming chat. This is the raw wire-level
-// client; src/lib/providers/ollama.ts wraps it to implement the shared
-// `ChatProvider` interface (src/domain/providers/provider.ts,
-// decisions/09-provider-agnostic-chat-transport.md) that card 21 (OpenAI)
-// and cards 22/23 (registry UI, panel picker) build against. This module
-// stays Ollama-specific on purpose — its exported names (`OllamaModel`,
-// `OllamaChatMessage`, ...) describe Ollama's wire shapes, not the
-// cross-provider ones; the adapter is where the translation happens.
+// client; ./adapter.ts wraps it to implement the shared `ChatProvider`
+// interface (src/domain/providers/provider.ts,
+// decisions/09-provider-agnostic-chat-transport.md) that OpenAI's client
+// (src/infra/openai) and the registry UI/panel picker build against. This
+// module stays Ollama-specific on purpose — its exported names
+// (`OllamaModel`, `OllamaChatMessage`, ...) describe Ollama's wire shapes,
+// not the cross-provider ones; the adapter is where the translation happens.
 //
 // Called directly from the side panel — the panel owns the HTTP connection
 // and this module never talks to the background service worker
@@ -28,7 +28,7 @@
 // `originRejectedError`'s doc comment below — instead of falling into the
 // generic `"http"` kind (card 33).
 
-import type { SerializedTool } from "./protocol";
+import type { SerializedTool } from "../../domain/tools";
 import type {
   ModelCapabilities,
   ModelCapabilityCache,
@@ -36,19 +36,22 @@ import type {
   ProviderError,
   ProviderHeader,
   ProviderResult,
-} from "../domain/providers";
+} from "../../domain/providers";
 
 // ---------------------------------------------------------------------------
 // Configuration
 //
-// CARD 74: this module used to keep its own `chrome.storage.local` store
-// here — `ollama:baseUrl` and `ollama:cap:<digest>`, read and written from
-// the middle of a wire client. Both are now ports the caller supplies
+// CARD 74 took this module's own `chrome.storage.local` store away —
+// `ollama:baseUrl` and `ollama:cap:<digest>`, formerly read and written from
+// the middle of this wire client. Both are now ports the caller supplies
 // (`ProviderDefaultsStore`, `ModelCapabilityCache`, src/domain/providers),
-// implemented by src/infra/chrome-storage and injected at the one
-// registration site in src/lib/providers/clients.ts. Nothing below touches
-// storage, which is what lets card 75 move this file to src/infra/ollama
-// without dragging a repository along.
+// implemented by src/infra/chrome-storage and injected by whichever
+// composition-root wiring builds this client (card 75:
+// src/sidepanel/lib/providerClients.ts, src/options/lib/providerClients.ts).
+// Nothing below touches storage — an infra adapter importing
+// src/infra/chrome-storage directly would break `adapters-do-not-import-adapters`
+// (.claude/skills/ddd-hexagonal/SKILL.md), so both ports arrive here already
+// resolved rather than being reached for.
 // ---------------------------------------------------------------------------
 
 /** Default Ollama base URL when nothing has been configured yet. */
@@ -148,7 +151,7 @@ function ownExtensionOrigin(): string | undefined {
  * caller of this module only ever talks to an Ollama server, never a
  * different provider's endpoint, so this mapping can't leak onto an
  * OpenAI-compatible host's unrelated 403s (those go through
- * src/lib/providers/openai.ts, which has its own `ollamaFetchJson`-style
+ * src/infra/openai, which has its own `ollamaFetchJson`-style
  * function that never calls this).
  *
  * Reuses the `unreachable-or-cors` kind and its `fix` field (card 14's
@@ -247,7 +250,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * (decisions/15-custom-headers-are-credentials.md) first — for a user
  * putting this Ollama server behind a gateway that wants its own
  * `x-api-key`, tenant header, or `Authorization` (Ollama itself has no
- * API-key concept, so unlike src/lib/providers/openai.ts's client,
+ * API-key concept, so unlike src/infra/openai's client,
  * `Authorization` is never reserved here) — then `Content-Type` set on top
  * so it always wins regardless of what the user typed or how it's cased
  * (`Headers.set` is case-insensitive). Defense in depth only: the options
@@ -473,7 +476,7 @@ export interface OllamaChatMessage {
  * (one counter per call to `chat`, stable across the `"tool-calls"` event
  * and the terminal `"done"` event's message for the same call) so downstream
  * consumers — in particular the `ChatProvider` adapter in
- * src/lib/providers/ollama.ts — can always rely on an id being present on an
+ * ./adapter.ts — can always rely on an id being present on an
  * inbound call, without inventing their own scheme. Left unset when this
  * type is used to build an *outbound* message (replaying history back to
  * Ollama): the id is a local-only correlation aid, never sent on the wire.

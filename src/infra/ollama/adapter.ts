@@ -1,5 +1,5 @@
-// `ChatProvider` adapter for the raw Ollama REST client in src/lib/ollama.ts
-// — translates between Ollama's wire habits (NDJSON, no auth, no call ids)
+// `ChatProvider` adapter for the raw Ollama REST client in ./client.ts —
+// translates between Ollama's wire habits (NDJSON, no auth, no call ids)
 // and the shared vocabulary in src/domain/providers/provider.ts
 // (decisions/09-provider-agnostic-chat-transport.md,
 // decisions/11-provider-capability-detection.md). Ollama is the one
@@ -25,7 +25,7 @@ import {
   type OllamaChatMessage,
   type OllamaModel,
   type OllamaToolCall,
-} from "../ollama";
+} from "./client";
 
 function toProviderModel(model: OllamaModel): ProviderModel {
   return { id: model.name, name: model.name, cacheKey: model.digest };
@@ -70,10 +70,11 @@ function toChatMessage(message: OllamaChatMessage): ChatMessage {
 }
 
 /**
- * The storage ports the raw client needs (card 74). Supplied at the
- * registration site (src/lib/providers/clients.ts) rather than reached for
- * here, so neither this adapter nor src/lib/ollama.ts imports an adapter —
- * which is what lets card 75 move both into src/infra/ollama without
+ * The storage ports the raw client needs (card 74). Supplied by whichever
+ * composition-root wiring builds this provider (card 75:
+ * src/sidepanel/lib/providerClients.ts, src/options/lib/providerClients.ts)
+ * rather than reached for here, so neither this adapter nor ./client.ts
+ * imports src/infra/chrome-storage — which is what keeps this folder from
  * breaking `adapters-do-not-import-adapters`.
  */
 export interface OllamaProviderStores {

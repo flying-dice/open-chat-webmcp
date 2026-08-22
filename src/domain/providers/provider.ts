@@ -7,11 +7,11 @@
 // It is deliberately designed against OpenAI's wire format — SSE, per-call
 // ids the caller must echo back, bearer auth that can 401, no per-model
 // capability endpoint — as the harder case. Ollama's client
-// (src/lib/providers/ollama.ts, adapting the raw REST client in
-// src/lib/ollama.ts) is the one that bends to fit this shape; nothing here
+// (src/infra/ollama/adapter.ts, adapting the raw REST client in
+// src/infra/ollama/client.ts) is the one that bends to fit this shape; nothing here
 // leaks NDJSON, Ollama's id-less tool calls, or Ollama's auth-free requests.
 //
-// Never-throw discipline (carried forward from src/lib/ollama.ts, which
+// Never-throw discipline (carried forward from src/infra/ollama/client.ts, which
 // predates this file): every method here returns a `ProviderResult` for a
 // one-shot call, or yields a terminal `{ type: "error" }` stream event for
 // `chat`, instead of throwing. A client that hits a failure mode not covered
@@ -44,7 +44,7 @@ export type ProviderType = "ollama" | "openai";
 /**
  * One user-defined request header attached to a provider config. `value` is
  * a credential by default (decision 15) — the same treatment as `apiKey`:
- * stored in `chrome.storage.local` only (src/lib/providers/registry.ts),
+ * stored in `chrome.storage.local` only (src/infra/chrome-storage/provider-registry.ts),
  * masked in the options UI (src/options/components/ProviderForm.svelte),
  * and never written into an error message, the call log, or the inspector.
  */
@@ -61,7 +61,7 @@ export interface ProviderHeader {
  * when the name is free to use.
  *
  * - `Content-Type` is reserved for every provider type: both clients
- *   (src/lib/ollama.ts, src/lib/providers/openai.ts) always send JSON
+ *   (src/infra/ollama/client.ts, src/infra/openai) always send JSON
  *   bodies and depend on this value being exactly right.
  * - `Accept` is reserved for `"openai"` only — that client sets it per
  *   request (`application/json` for `listModels`, `text/event-stream` for
@@ -113,7 +113,7 @@ export type ProviderError =
       message: string;
       /**
        * A concrete, copy-pasteable fix for this specific failure — e.g.
-       * Ollama's client (src/lib/ollama.ts) fills this in with the exact
+       * Ollama's client (src/infra/ollama/client.ts) fills this in with the exact
        * `OLLAMA_ORIGINS` assignment (boards/project-backlog/14-connection-diagnostics-and-empty-states.md:
        * "the message must name this possibility explicitly... make the fix
        * copyable"). `undefined` when there's no single command to hand back
@@ -208,8 +208,8 @@ export type ChatRole = "system" | "user" | "assistant" | "tool";
 /**
  * A tool call requested by the model, always carrying an `id` — OpenAI
  * assigns one on the wire and requires it to correlate a later `role:"tool"`
- * result; Ollama assigns none, so its client (src/lib/providers/ollama.ts,
- * via src/lib/ollama.ts's stream parser) synthesizes a stable one per call.
+ * result; Ollama assigns none, so its client (src/infra/ollama/adapter.ts,
+ * via src/infra/ollama/client.ts's stream parser) synthesizes a stable one per call.
  * Callers never need to special-case an absent id.
  */
 export interface ToolCall {
@@ -256,7 +256,7 @@ export interface ChatStats {
 /**
  * One event out of {@link ChatProvider.chat}'s stream. A tagged union (not a
  * callback per kind) so an agent loop can drive it with a single
- * `for await` + `switch`, the same shape src/lib/ollama.ts already used.
+ * `for await` + `switch`, the same shape src/infra/ollama/client.ts already used.
  */
 export type ChatStreamEvent =
   | { type: "content"; delta: string }
@@ -280,9 +280,9 @@ export interface ChatParams {
 /**
  * Everything the side panel and agent loop need from a chat backend,
  * independent of wire format. One instance is bound to one resolved provider
- * config (base URL, API key) at construction time via
- * `src/lib/providers/registry.ts`'s `createProviderClient` — methods here
- * take no `baseUrl`/`apiKey` params.
+ * config (base URL, API key) at construction time via the `createProviderClient`
+ * a composition root's wiring builds from `createProviderClientFactory`
+ * (./client-factory.ts) — methods here take no `baseUrl`/`apiKey` params.
  */
 export interface ChatProvider {
   readonly type: ProviderType;

@@ -8,7 +8,7 @@
 // for the OpenAI SDK. Those docs' `base_url` is whatever the SDK appends a
 // bare `/chat/completions` to, so it already ends in the provider's own
 // "v1" segment (`.../v1`, `.../openai/v1`, `.../v1beta/openai`, ...). This
-// project's OpenAI-compatible client (src/lib/providers/openai.ts) instead
+// project's OpenAI-compatible client (src/infra/openai) instead
 // treats `config.baseUrl` as HOST-ONLY and always appends its own
 // `/v1/models` / `/v1/chat/completions` (same convention as Ollama's
 // `/api/...` client) — so every `baseUrl` below has that trailing "v1"

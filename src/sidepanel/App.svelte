@@ -36,7 +36,7 @@
   import { initActiveTabSync } from "./services/activeTab";
   import { initMcpToolsSync } from "./services/mcpTools";
   import { runAgentTurn } from "./services/agentLoop";
-  import { createProviderClient } from "../lib/providers/clients";
+  import { createProviderClient } from "./lib/providerClients";
   import { iconForProvider } from "../lib/providerIcon";
   import { chatStore } from "../infra/chrome-storage";
   import { selection } from "./stores/selection.svelte";
@@ -235,16 +235,11 @@
       return;
     }
 
-    let provider;
-    try {
-      provider = createProviderClient(resolution.config);
-    } catch (err) {
-      addUserMessage(text);
-      addAssistantNote(
-        `Couldn't start a chat client for this provider: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
-    }
+    // Card 75: `createProviderClient` (./lib/providerClients.ts) is now the
+    // exhaustive dispatcher from src/domain/providers/client-factory.ts —
+    // there is no "unregistered provider type" state left to throw for, so
+    // this no longer needs a try/catch around client construction.
+    const provider = createProviderClient(resolution.config);
 
     void runAgentTurn(text, {
       provider,
