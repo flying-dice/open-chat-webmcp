@@ -557,3 +557,80 @@ export async function refresh(): Promise<void> {
 export function openOptionsPage(): void {
   sidePanelServices().shell.openOptionsPage();
 }
+
+// ---------------------------------------------------------------------------
+// Testing seam (card 124, decisions/42-storybook.md)
+// ---------------------------------------------------------------------------
+
+/** Every reactive field `selection` exposes, as a plain snapshot — see {@link setSelectionStateForTesting}. */
+export interface SelectionStateSnapshot {
+  providers: ProviderConfig[];
+  providersStatus: "loading" | "loaded" | "error";
+  resolution: SelectionResolution;
+  modelsByProvider: Record<string, ModelsState>;
+  selectionExplicit: boolean;
+  pickerOpen: boolean;
+}
+
+/** The state before `syncToTab` has ever resolved anything — a sane spread base for a story or test that only cares about a couple of fields. */
+export const EMPTY_SELECTION_STATE: SelectionStateSnapshot = {
+  providers: [],
+  providersStatus: "loaded",
+  resolution: { status: "none" },
+  modelsByProvider: {},
+  selectionExplicit: false,
+  pickerOpen: false,
+};
+
+/**
+ * TESTING SEAM. Composer.svelte and ModelPicker.svelte read this module's
+ * state only through the `selection` object above, and the one PRODUCTION
+ * path that ever populates it is {@link syncToTab} — async, and driven
+ * through several awaited `sidePanelServices()` calls (see its own doc
+ * comment). Composer.test.ts / ModelPicker.test.ts drive their component
+ * under test by mocking this whole module with `vi.mock` — a plain object
+ * standing in for `selection`'s getters, backed by a `state` object with
+ * exactly the shape {@link SelectionStateSnapshot} declares — which
+ * Storybook cannot do: it is one module graph for the whole session, so a
+ * per-story `vi.mock` has no equivalent (.storybook/story-services.ts's
+ * header explains the same constraint for app-services).
+ *
+ * Rather than invent a story-only double of this store, this function sets
+ * the SAME state the real `selection` getters read, so a Composer/
+ * ModelPicker story calls it once (from its `parameters.services` seed
+ * hook, ahead of render) and the component reads it back through its
+ * ordinary, unmocked import — no different from how `syncToTab` itself
+ * writes these fields, just without the async services round-trip a static
+ * story has no need to drive. Exported plainly, with a typed snapshot
+ * rather than a partial patch, so a future component test could reach for
+ * this instead of re-declaring the same shape as its own `vi.mock` factory.
+ *
+ * DEFERRED ONE MICROTASK, not written synchronously. Storybook's Svelte-CSF
+ * addon runs every decorator (`.storybook/preview.ts`'s `withServices`
+ * included) from inside a reactive derivation of its own, and Svelte's
+ * `$state` runes refuse a direct write from there —
+ * `state_unsafe_mutation`, confirmed live against Composer.stories.svelte/
+ * ModelPicker.stories.svelte before this comment was written, both call
+ * sites failing identically. A plain object write (the services fakes'
+ * properties, e.g. `services.chats.listChatSummaries = ...` in
+ * HistoryPanel.stories.svelte) has no such restriction — only a REAL
+ * Svelte-reactive write does, which is exactly what this function is.
+ * `queueMicrotask` runs after the decorator's synchronous frame has fully
+ * unwound, so the write lands as an ordinary external mutation that
+ * schedules a ordinary re-render, the same way `syncToTab`'s own `await`ed
+ * writes do — a story's first paint can show the previous scenario for one
+ * microtask before the seeded one replaces it, not a visible flash in
+ * practice. A test calling this directly gets the same contract a real
+ * `syncToTab` caller already has to honour: read the result after a tick
+ * (`await Promise.resolve()`), never synchronously on the next line.
+ */
+export function setSelectionStateForTesting(next: SelectionStateSnapshot): void {
+  queueMicrotask(() => {
+    providers = next.providers;
+    providersStatus = next.providersStatus;
+    resolution = next.resolution;
+    providerModelsState = next.modelsByProvider;
+    selectionExplicit = next.selectionExplicit;
+    pickerOpen = next.pickerOpen;
+  });
+}
