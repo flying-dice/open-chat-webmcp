@@ -11,7 +11,7 @@
 // needed to change.
 import "@testing-library/svelte/vitest";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/svelte";
+import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import {
   createFakeSidePanelServices,
@@ -111,7 +111,21 @@ describe("OverflowMenu", () => {
   // blocks `userEvent`'s pointer-events check on the NEXT test's trigger
   // button — confirmed by reproduction while writing this file. Reset it
   // directly rather than closing every menu by hand in every test.
-  afterEach(() => {
+  afterEach(async () => {
+    // bits-ui's body-scroll-lock releases via a REAL setTimeout after the
+    // dropdown unmounts. On a fast machine it fires before this file's jsdom
+    // is torn down; on CI's slower runner it fired AFTER, and `document is
+    // not defined` inside that timer failed the whole run as an unhandled
+    // error (v0.5.0's first tag pipeline). Unmount now and wait for the
+    // release to have actually run before the test ends, so no timer can
+    // outlive the environment. Polling, not a fixed sleep — card 125 found
+    // 50ms sleeps still flaky for this exact lock.
+    cleanup();
+    await waitFor(() => {
+      if (document.body.style.pointerEvents === "none") {
+        throw new Error("bits-ui scroll lock not yet released");
+      }
+    });
     document.body.style.pointerEvents = "";
   });
 
