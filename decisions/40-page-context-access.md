@@ -47,6 +47,15 @@ principle exactly):
 - **Transport**: two new pull messages over the existing relay/worker
   protocol (single-sourced message list per card 79's mechanism). The
   relay stays the only page-touching code.
+- **Live chip updates** (revised 2026-08-23, matching the Gemini panel per
+  Jonathan): the relay may additionally emit a **content-free,
+  debounced "selection changed" ping** when the page's selection settles —
+  carrying no text, ever. The panel reacts to a ping for its current tab
+  by running the same gated pull as any gesture, so the chip tracks the
+  selection live without the user touching the panel. Page text still
+  leaves the page ONLY via a gated pull; a dismissed gate drops the ping
+  unanswered; nothing reaches the model before Send. docs/03 and
+  PRIVACY.md state the observation in plain words.
 - **Privacy posture** (amends docs/03, keeps its spirit): nothing leaves
   the page without a user-visible artifact — the chip on the composer and
   a persisted transcript marker recording that context was shared with
