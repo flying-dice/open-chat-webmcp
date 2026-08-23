@@ -213,20 +213,19 @@ describe("extractPageText", () => {
     }
   });
 
-  it(
-    "does not blow the stack on a pathologically deep DOM",
-    // This test's claim is STACK SAFETY (an iterative walk, no RangeError),
-    // not speed — jsdom PARSING 5,000 nested divs is what's slow, and on the
-    // CI runner it measured 3.9s on one run and past vitest's 5s default on
-    // the next (v0.5.0's tag pipelines). The keystroke-latency claim lives in
-    // the separate "fast enough" test, which times only the walk.
-    { timeout: 30_000 },
-    () => {
-      const depth = 5_000;
-      const html = `<body>${"<div>".repeat(depth)}deep${"</div>".repeat(depth)}</body>`;
-      expect(extractPageText(parse(html)).text).toBe("deep");
-    },
-  );
+  // This test's claim is STACK SAFETY (an iterative walk, no RangeError),
+  // not speed — jsdom PARSING 5,000 nested divs is what's slow, and on the
+  // CI runner it measured 3.9s on one run and past vitest's 5s default on
+  // the next (v0.5.0's tag pipelines). Hence the explicit 30s timeout. The
+  // keystroke-latency claim lives in the separate "fast enough" test, which
+  // times only the walk. (Comment sits ABOVE the call: biome's formatter is
+  // unstable on comments inside this argument list and reshuffles them each
+  // pass, failing its own ci check forever.)
+  it("does not blow the stack on a pathologically deep DOM", { timeout: 30_000 }, () => {
+    const depth = 5_000;
+    const html = `<body>${"<div>".repeat(depth)}deep${"</div>".repeat(depth)}</body>`;
+    expect(extractPageText(parse(html)).text).toBe("deep");
+  });
 });
 
 // ---------------------------------------------------------------------------
