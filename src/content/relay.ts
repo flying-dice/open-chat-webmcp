@@ -482,6 +482,13 @@ function buildPageContext(mode: RuntimeGetPageContextRequest["mode"]): PageConte
     mode === "selection"
       ? extractSelection(document, PAGE_EXTRACT_CAP_BYTES)
       : extractPageText(document, PAGE_EXTRACT_CAP_BYTES);
+  // Diagnostic breadcrumb (2026-08-23, "still no chip"): shows in the PAGE
+  // tab's console. If a selection pull reaches this relay at all, this line
+  // says so and says what it read. Card 128 formalizes/retires it.
+  console.info(
+    `[openchat:relay] ${mode} pull → ${extracted.bytes} bytes` +
+      (mode === "selection" && extracted.bytes === 0 ? " (no selection found)" : ""),
+  );
 
   return {
     mode,
