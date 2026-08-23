@@ -43,7 +43,10 @@ gate:
 verify:
   stage: verify
   allow_failure: true
-  timeout: 25m
+  # 40m + cache saved even on failure: the first real run timed out at 25m
+  # with a cold Chrome-for-Testing cache, and GitLab's default cache:when
+  # on_success meant the failed run saved nothing for the next (v0.5.0).
+  timeout: 40m
   script:
     - apt-get update -qq && apt-get install -y -qq xvfb
       libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0
@@ -57,6 +60,7 @@ verify:
       paths: [.npm/]
     - key: cft-$CI_JOB_IMAGE
       paths: [.chrome-for-testing/]
+      when: always
   artifacts:
     when: always
     expire_in: 14 days
@@ -81,9 +85,9 @@ package:
         fi
       fi
     - npm run package
+    - ZIP="$(ls openchat-webmcp-*.zip)"; echo "ZIP_NAME=$ZIP" > package.env
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
-        ZIP="$(ls openchat-webmcp-*.zip)"
         curl --fail --silent --show-error \
           --header "JOB-TOKEN: $CI_JOB_TOKEN" \
           --upload-file "$ZIP" \
@@ -93,6 +97,8 @@ package:
   artifacts:
     expire_in: 90 days
     paths: [openchat-webmcp-*.zip]
+    reports:
+      dotenv: package.env
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_TAG =~ /^v/
@@ -112,8 +118,12 @@ release:
       locales validated — decisions/41)."
     assets:
       links:
-        - name: "openchat-webmcp-${CI_COMMIT_TAG}.zip (store upload)"
-          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/openchat-webmcp/$CI_COMMIT_TAG/openchat-webmcp-${CI_COMMIT_TAG#v}.zip"
+        - name: "$ZIP_NAME (store upload)"
+          # $ZIP_NAME arrives via the package job's dotenv report — GitLab
+          # does NOT expand shell parameter operations like ${VAR#v} in
+          # release YAML, which produced a dangling link on v0.5.0's first
+          # release (patched live via the API).
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/openchat-webmcp/$CI_COMMIT_TAG/$ZIP_NAME"
           link_type: package
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
