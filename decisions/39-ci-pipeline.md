@@ -33,3 +33,5 @@ A GitHub Actions workflow runs on push and pull request:
   happens in CI — cached; if it flakes, the settings.json local-module
   path noted in card 100's journal is the fix.
 - Screenshot artifacts give every PR a reviewable visual diff for free.
+
+> Amendment (2026-08-23): the repository origin is the self-hosted GitLab at gitlab.beluga-sirius.ts.net, so the canonical enforcement home is `.gitlab-ci.yml` (gate / verify-allow-failure / package / release stages, with the store zip uploaded to the Generic Package Registry and attached to the GitLab Release on v* tags). The GitHub workflow is retained unchanged for a potential GitHub mirror.
