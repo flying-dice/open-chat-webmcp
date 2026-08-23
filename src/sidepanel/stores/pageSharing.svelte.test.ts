@@ -487,11 +487,49 @@ describe("the focus sync", () => {
     teardown();
   });
 
+  it("re-reads on a click INTO the panel — the gesture window focus never fires for (found live: a page selection with no chip, 2026-08-23)", async () => {
+    const { pull } = sourceAnswering("selected then clicked into the panel");
+    const teardown = initPageSharingSync();
+
+    document.dispatchEvent(new Event("pointerdown"));
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1));
+    expect(pageSharing.selection?.text).toBe("selected then clicked into the panel");
+
+    teardown();
+  });
+
+  it("re-reads on keyboard entry (focusin)", async () => {
+    const { pull } = sourceAnswering("tabbed into the panel");
+    const teardown = initPageSharingSync();
+
+    document.dispatchEvent(new Event("focusin"));
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1));
+
+    teardown();
+  });
+
+  it("coalesces one gesture's event echoes into one pull — pointerdown, focusin and focus fire together on a click", async () => {
+    const { pull } = sourceAnswering("one gesture");
+    const teardown = initPageSharingSync();
+
+    document.dispatchEvent(new Event("pointerdown"));
+    document.dispatchEvent(new Event("focusin"));
+    window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1));
+    // Settle: still exactly one — the echoes were dropped, not deferred.
+    await Promise.resolve();
+    expect(pull).toHaveBeenCalledTimes(1);
+
+    teardown();
+  });
+
   it("stops listening once torn down", async () => {
     const { pull } = sourceAnswering("something");
     initPageSharingSync()();
 
     window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("pointerdown"));
+    document.dispatchEvent(new Event("focusin"));
     await Promise.resolve();
 
     expect(pull).not.toHaveBeenCalled();
