@@ -161,6 +161,15 @@ first — must contain the private key at the zip root:
     npm run package -- --key /path/to/dist.pem
 
 Every subsequent upload is a plain `npm run package` zip. If a fresh
-store-assigned ID is fine, skip the flag entirely. Either way the .pem
-belongs in a password manager: it is not used by CI, is scrubbed by the
-clean build on every plain run, and must never enter the repository.
+store-assigned ID is fine, skip the flag entirely.
+
+**Where the key lives** (2026-08-23): Proton Pass, **Flying Dice** vault,
+item **"OpenChat (WebMCP) — extension packing key (dist.pem)"** — the PEM
+is the item's hidden `dist.pem` field, with the derived extension ID and
+usage notes on the item itself. Retrieve it with:
+
+    pass-cli item view --vault-name "Flying Dice" \
+      --item-title "OpenChat (WebMCP) — extension packing key (dist.pem)"
+
+It is not used by CI, is scrubbed by the clean build on every plain
+`npm run package` run, and must never enter the repository.
