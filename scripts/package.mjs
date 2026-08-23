@@ -30,7 +30,15 @@
 // `zip -r`'s filesystem-order traversal — together, a build from the same
 // source produces a byte-identical zip.
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import pkg from "../package.json" with { type: "json" };
@@ -342,14 +350,43 @@ function printSizes(files) {
   }
 }
 
+/**
+ * FIRST-UPLOAD-ONLY: `npm run package -- --key <path/to.pem>` copies the
+ * private key into the zip root as `key.pem`, which is the Chrome Web
+ * Store's documented mechanism for adopting a locally-packed extension's
+ * existing ID (this extension's OAuth redirect URIs embed that ID, so it is
+ * worth preserving). The store only reads it on the FIRST upload of a new
+ * item — every later upload must be a plain zip, and the .pem itself
+ * belongs in a password manager, never in this repo (the dev-artifact scan
+ * below fails the build if one ever lands in the tree).
+ */
+function includeFirstUploadKey() {
+  const flagIndex = process.argv.indexOf("--key");
+  if (flagIndex === -1) return false;
+  const keyPath = process.argv[flagIndex + 1];
+  if (!keyPath) fail("--key needs a path to the .pem private key");
+  const pem = readFileSync(keyPath, "utf8");
+  if (!pem.includes("PRIVATE KEY")) {
+    fail(`--key: ${keyPath} does not look like a PEM private key`);
+  }
+  writeFileSync(path.join(OUT_DIR, "key.pem"), pem);
+  console.log(
+    "package: key.pem included at the zip root — FIRST Web Store upload only;\n" +
+      "         re-run without --key for every subsequent upload",
+  );
+  return true;
+}
+
 cleanBuild();
 runBuild();
 const { manifest, raw } = loadManifest();
 validateVersion(manifest);
 validateLocales(manifest, raw);
 validateIcons(manifest);
+const withKey = includeFirstUploadKey();
 const files = walkFiles(OUT_DIR);
-scanForDevArtifacts(files);
+if (!withKey) scanForDevArtifacts(files);
+else scanForDevArtifacts(files.filter((f) => !f.endsWith("key.pem")));
 pinModificationTimes(files);
 buildZip(files);
 verifyZipLayout();

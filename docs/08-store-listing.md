@@ -142,3 +142,25 @@ is not part of this card's script — flagged here so it isn't lost.
 - **Icon/asset audit**: `manifest.icons`/`action.default_icon` declare 16/32/48/128px, all four files exist under `icons/` and their actual PNG dimensions match their declared size exactly, including the store-mandatory 128px — enforced every run by `scripts/package.mjs`'s icon validation, not just checked once by hand.
 - **Package integrity**: `npm run package` (see the script's own header comment) produces `openchat-webmcp-<version>.zip` from a clean build, with the manifest verified at the zip root, every locale's `__MSG_*` keys verified resolvable, no source maps or dev-server artifacts in the bundle, and the version cross-checked against `package.json`. A failing validation exits non-zero with a specific reason — there is no path to a zip that hasn't passed all of them.
 - **Open, not yet done**: no Chrome Web Store developer account has been used for this listing yet; store-sized screenshots (see above) and the promotional tile (optional, 440×280) don't exist yet; version/changelog discipline beyond `package.json`'s own version field is out of this card's scope.
+
+## The signing model, and the one-time role of `dist.pem`
+
+The Chrome Web Store signs the extension itself: every upload is a plain
+zip, Google holds the signing key, and the store serves its own signed
+CRX. The `dist.pem`/`dist.crx` pair from Chrome's local "Pack extension"
+flow is a self-hosting mechanism — it is **never needed to publish or
+update** a store listing.
+
+Its one store-relevant property is the extension ID it encodes
+(`iagjapmpoocifnklmcbkkocggnedaeea`, which is also the
+`https://<id>.chromiumapp.org/` OAuth redirect origin any MCP
+authorization servers may have been registered against). To make the
+store listing adopt that same ID, the **first** upload — and only the
+first — must contain the private key at the zip root:
+
+    npm run package -- --key /path/to/dist.pem
+
+Every subsequent upload is a plain `npm run package` zip. If a fresh
+store-assigned ID is fine, skip the flag entirely. Either way the .pem
+belongs in a password manager: it is not used by CI, is scrubbed by the
+clean build on every plain run, and must never enter the repository.
