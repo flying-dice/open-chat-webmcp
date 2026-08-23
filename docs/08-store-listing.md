@@ -76,6 +76,14 @@ defensible second choice given WebMCP's current audience skews toward people
 testing WebMCP-enabled sites — worth a final call by whoever files the
 listing, not a hard requirement either way.
 
+## Privacy policy URL
+
+The dashboard requires a publicly reachable privacy-policy URL.
+[`PRIVACY.md`](../PRIVACY.md) at the repo root is the policy; once the
+repository is mirrored to GitHub, use the mirror's URL (e.g.
+`https://github.com/<org>/open-chat-webmcp/blob/main/PRIVACY.md`) in the
+listing field — the self-hosted GitLab is not publicly reachable.
+
 ## Privacy practices disclosure
 
 Chrome Web Store's Privacy practices tab asks for a single-purpose

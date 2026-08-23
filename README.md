@@ -458,6 +458,8 @@ layer that runs against a real browser; everything below it is `npm test`.
 
 ## Documentation
 
+- [Privacy Policy](PRIVACY.md) — what the extension stores, what leaves your device, and what never happens
+
 - [docs/01-architecture.md](docs/01-architecture.md) — the four runtime
   contexts, the four layers (domain/infra/ui/surfaces) and the guards that
   enforce them, how a tool call travels end to end, and the timeout ladder.
