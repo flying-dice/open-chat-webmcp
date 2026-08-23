@@ -107,6 +107,24 @@ in `src/` — `manifest.config.ts:48-51` re-checks this at every addition):
 - **Does the item collect or transmit user data itself (to the developer or any developer-operated service)?** No. There is no backend and no analytics/crash reporting of any kind (`docs/03-privacy-and-trust.md#no-telemetry-no-backend`).
 - **Is data sold to third parties?** No — there's no data collection to sell in the first place.
 - **Is data used for purposes unrelated to the extension's single purpose?** No.
+
+**Are you using remote code?** **No.** Every line of JavaScript ships
+inside the package: Vite bundles all first-party and dependency code, the
+MV3 default CSP (`script-src 'self'`) applies unmodified, and the built
+output contains no `eval`, no `new Function`, no `importScripts`, and no
+remote script/wasm URL (verified by grep over `dist/` — worth re-running at
+submission time). Three things a reviewer might mistake for remote code,
+and why they aren't:
+
+- **Model output** from a configured provider is *data* — rendered as
+  sanitized Markdown (`marked` + DOMPurify, scripts stripped, no `<img>`),
+  never executed.
+- **WebMCP page tools** run the *page's own* code in the page's own world;
+  the extension only calls the `document.modelContext` API the page itself
+  registered — it never loads or injects executable code into anything.
+- The inlang **message-format plugin** is fetched from a CDN at *build*
+  time on the developer machine/CI (card 100's journal); nothing fetched
+  at build time ships or is fetched at runtime.
 - **Is data used to determine creditworthiness or for lending?** No.
 - **What does leave the device, and where?** Only what the user explicitly configured receives it: (a) chat content and any shared page text/selection, sent to whichever provider (Ollama or an OpenAI-compatible endpoint) the user added, under that provider's own terms; (b) tool-call traffic to an MCP server the user registered and enabled; (c) WebMCP tool calls, which execute inside the page's own JavaScript context and never leave the browser via this extension at all. None of this is the extension's own developer or any third service chosen by the developer — every destination is one the user typed in.
 - **Data stored on-device**: chat history (including tool-call arguments/results, which can contain whatever a page's tool exposes) and provider/MCP credentials, both unencrypted in `chrome.storage.local` — stated to the user in the options page next to the relevant fields, and disclosed in full in [docs/03](03-privacy-and-trust.md).
