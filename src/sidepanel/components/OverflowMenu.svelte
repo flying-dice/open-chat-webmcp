@@ -64,8 +64,14 @@
     onSetShareContent?: ((on: boolean) => void) | undefined;
   }
 
-  const { onOpenHistory, onOpenTools, onOpenChat, connectionStatus, shareContent, onSetShareContent }: Props =
-    $props();
+  const {
+    onOpenHistory,
+    onOpenTools,
+    onOpenChat,
+    connectionStatus,
+    shareContent,
+    onSetShareContent,
+  }: Props = $props();
 
   /** How many chats the top level lists before deferring to "More". Five is what fits above the divider without the menu needing to scroll at a typical panel height. */
   const RECENT_LIMIT = 5;
