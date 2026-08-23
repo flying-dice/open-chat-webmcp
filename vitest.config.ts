@@ -70,6 +70,12 @@ export default defineConfig({
             // The background worker's tests use the same fake-chrome seam as
             // tab-sync.test.ts and run on node like the rest of this project.
             "src/background/**/*.test.ts",
+            // The content relay's, likewise (card 129). It is the other
+            // non-Svelte composition root, and its one test file opts itself
+            // into jsdom with a `@vitest-environment` docblock — the same
+            // per-file exception src/infra/dom/page-extraction.test.ts takes,
+            // rather than widening this project's environment for everyone.
+            "src/content/**/*.test.ts",
           ],
         },
       },

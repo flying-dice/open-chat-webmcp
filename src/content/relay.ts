@@ -54,7 +54,12 @@ import {
 // one; ../infra/dom/page-extraction.test.ts passes jsdom ones. Everything
 // about WHICH document, WHEN, and WHO ASKED stays here, in the relay, which
 // is the only code in this extension that touches a visited page.
-import { extractPageText, extractSelection, PAGE_EXTRACT_CAP_BYTES } from "../infra/dom";
+import {
+  extractPageText,
+  extractSelection,
+  PAGE_EXTRACT_CAP_BYTES,
+  selectionIdentity,
+} from "../infra/dom";
 import { RELAY_EXECUTE_TIMEOUT_MS } from "../infra/webmcp";
 // The shared result kernel (decisions/34-errors-as-values.md). A content
 // script is a runtime surface like any other, and this is the one place in it
@@ -80,6 +85,23 @@ import type { ModelContextToolInfo } from "@mcp-b/webmcp-types";
 // same tick; coalesce into a single `getTools()` + a single push to the
 // worker.
 const TOOLCHANGE_DEBOUNCE_MS = 100;
+
+/**
+ * Settle time for `document.selectionchange` before the relay considers the
+ * selection final enough to tell the panel about (card 129).
+ *
+ * 150ms, and deliberately at the SHORT end of the range this could sensibly
+ * take. `selectionchange` fires continuously while a mouse is dragged and on
+ * every shift+arrow keystroke, so some settle time is required — but the
+ * thing being kept in step is a chip the user is looking at while they select
+ * (the Gemini-panel behaviour Jonathan asked for), and a lag long enough to
+ * notice reads as the feature being broken. 150ms is under the ~200ms
+ * threshold where a UI response stops feeling immediate, and comfortably
+ * longer than the interval between repeats of a held-down arrow key
+ * (~30-50ms), so extending a selection with the keyboard produces ONE ping
+ * when the user stops, not one per character.
+ */
+const SELECTION_DEBOUNCE_MS = 150;
 
 // TODO: clean-code - 0.3 - DRY: this isRecord predicate is reimplemented independently seven times across src/ (chrome-storage/area.ts, chrome-runtime/protocol.ts, mcp/json-rpc.ts, ollama/client.ts, openai/index.ts, sidepanel/presentation/untrustedJson.ts). Card 96 took it from ten: sw.ts's two message guards now reuse chrome-runtime/protocol.ts's own isRuntimeMessage, and the three tool-inspector components share sidepanel/presentation/untrustedJson.ts. The five that remain are held apart by adapters-do-not-import-adapters (each adapter stack would have to reach into another's folder) — collapsing them needs a home in src/domain, which is a decision record, not a drive-by.
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -460,13 +482,18 @@ async function handleRefreshToolsRequest(
 // scope, and decisions/40 keeps it that way: the panel never touches a page,
 // it asks for a snapshot and gets plain text back.
 //
-// Note what is NOT here. There is no listener on `selectionchange`, no
-// `MutationObserver`, no cached last-selection, and no unsolicited push of
-// any of this to the worker. A snapshot is produced only when a
-// `runtime:get-page-context` request arrives — which the panel only ever
-// sends on a user gesture — so nothing about a page leaves it without the
+// Note what is NOT here. There is no `MutationObserver`, no cached
+// last-selection TEXT, and no unsolicited push of page content to the worker.
+// A snapshot is produced only when a `runtime:get-page-context` request
+// arrives — which the panel only ever sends on a user gesture, or on the
+// content-free ping below — so nothing about a page leaves it without the
 // user having done something to ask for that (decisions/40's privacy
 // posture, amending docs/03).
+//
+// Card 129 added the ONE thing this comment used to also rule out: a
+// `selectionchange` listener. It does not read page text out to anyone — see
+// "Live selection pings" at the bottom of this file for what it does and what
+// it deliberately cannot do.
 //
 // Synchronous and unwrapped by `callWithTimeout`, unlike a tool call: both
 // reads are bounded by construction (`PAGE_EXTRACT_CAP_BYTES` and the walk's
@@ -564,6 +591,66 @@ function scheduleToolsRefresh(): void {
 if (MODEL_CONTEXT_AVAILABLE && modelContext) {
   modelContext.ontoolchange = scheduleToolsRefresh;
 }
+
+// ---------------------------------------------------------------------------
+// Live selection pings (card 129, decisions/40's "Live chip updates")
+//
+// The composer's selection chip is meant to track the page the way Gemini's
+// panel does: highlight something, and the chip is already showing it — no
+// click into the panel first. That needs the page to say when its selection
+// moved, because the panel has no way to observe a document it is forbidden
+// to touch.
+//
+// WHAT CROSSES: a `runtime:selection-changed` message with no payload beyond
+// the tab-id sentinel. Not the text, not its length, not a preview. The panel
+// answers it by making the SAME gated pull it makes on a user gesture, so
+// page text still travels on exactly one message (`runtime:get-page-context`)
+// and still only when the sharing gate is up. A dismissed gate turns the ping
+// into a no-op in the panel — the relay is not told about the gate, and must
+// not be: a content script's knowledge of the user's consent state would be
+// one more thing to keep in step and one more thing a page could infer.
+//
+// WHEN IT FIRES: once per SETTLED CHANGE. `selectionchange` fires on every
+// mousemove of a drag and every keystroke of a shift+arrow extension; those
+// are debounced into one ({@link SELECTION_DEBOUNCE_MS}), and then dropped
+// entirely unless the settled selection's fingerprint differs from the last
+// one reported. That second half is what keeps a click that merely collapses
+// a caret — or a page that re-applies the same selection programmatically —
+// from waking the worker and the panel for nothing.
+//
+// `selectionIdentity` (src/infra/dom/page-extraction.ts) is derived from the
+// same extraction the pull performs, so the ping and the chip can never
+// disagree about what counts as a selection: a two-character one is below
+// MIN_SELECTION_CHARS, reads as no selection, and produces no ping.
+//
+// Form controls are covered here without a second listener: Chrome fires
+// `selectionchange` on the DOCUMENT for `<input>`/`<textarea>` selections
+// too, and `selectionIdentity` reads those through the same
+// `formControlSelection` path `extractSelection` uses (passwords excluded).
+// ---------------------------------------------------------------------------
+
+let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+/** Fingerprint of the last selection reported to the worker — never the text itself. `""` means "nothing worth offering", which is also the state at load. */
+let lastSelectionIdentity = "";
+
+function notifySelectionIfChanged(): void {
+  const identity = selectionIdentity(document);
+  if (identity === lastSelectionIdentity) return;
+  lastSelectionIdentity = identity;
+  // Sent even when the selection has just become EMPTY (identity ""), so a
+  // chip for a selection the user has cleared goes away on its own rather
+  // than lingering until the next gesture. The pull that follows comes back
+  // empty, which the panel already treats as "nothing to offer".
+  sendRuntimeMessage({ type: "runtime:selection-changed", tabId: -1 });
+}
+
+document.addEventListener("selectionchange", () => {
+  if (selectionTimer !== undefined) clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(() => {
+    selectionTimer = undefined;
+    notifySelectionIfChanged();
+  }, SELECTION_DEBOUNCE_MS);
+});
 
 // ---------------------------------------------------------------------------
 // Lifecycle: startup, bfcache restore

@@ -25,6 +25,7 @@ import {
   type RuntimeGetPageContextResponse,
   type RuntimeGetToolsRequest,
   type RuntimeGetToolsResponse,
+  type RuntimeNotification,
   type RuntimeRefreshToolsRequest,
   type RuntimeToolsUpdatedMessage,
   type SerializedTool,
@@ -318,9 +319,16 @@ async function pullToolsFromRelay(
 //
 // The side panel may not be open — that must never throw or produce an
 // unhandled rejection, just be a silent no-op.
+//
+// Typed on `RuntimeNotification` (the one-way half of the protocol) rather
+// than on one message: card 129's `runtime:selection-changed` travels the
+// identical route as `runtime:tools-updated` — relay push, tab id stamped
+// from `sender.tab.id`, fire-and-forget to whichever panel is listening — and
+// the only thing that would have come of giving it its own copy of this
+// function is two places to remember the `lastError` read.
 // ---------------------------------------------------------------------------
 
-function broadcastToolsUpdated(msg: RuntimeToolsUpdatedMessage): void {
+function broadcastToPanel(msg: RuntimeNotification): void {
   try {
     chrome.runtime.sendMessage(msg, () => {
       // No listener (panel closed) surfaces as lastError here — read it to
@@ -477,7 +485,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         available: message.available,
         tools: message.tools,
       });
-      broadcastToolsUpdated({ ...message, tabId });
+      broadcastToPanel({ ...message, tabId });
+      return false;
+    }
+
+    case "runtime:selection-changed": {
+      // Card 129. Same sender-authority rule as the push above, and for the
+      // same reason: the relay cannot learn its own tab id, so the id it
+      // sends is a sentinel and `sender.tab.id` is the only trustworthy
+      // source. No registry entry, nothing cached — the worker is a pure
+      // relay for this one, since the message carries no state to hold.
+      if (!sender.tab?.id) {
+        console.warn("[webmcp][sw] runtime:selection-changed with missing sender.tab.id, ignoring");
+        return false;
+      }
+      broadcastToPanel({ ...message, tabId: sender.tab.id });
       return false;
     }
 

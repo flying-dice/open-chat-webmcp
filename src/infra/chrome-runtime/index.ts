@@ -35,6 +35,7 @@ export {
   type RuntimeRefreshToolsRequest,
   type RuntimeRequest,
   type RuntimeResponse,
+  type RuntimeSelectionChangedMessage,
   type RuntimeToolsUpdatedMessage,
   type SerializedTool,
   type ToolAnnotations,

@@ -167,7 +167,9 @@ export interface RuntimeCallToolResponse {
  * there must not be one: decisions/40's privacy posture is that page content
  * moves only on an explicit user gesture, and the absence of a push message
  * is what makes "no background reads" a property of the protocol rather than
- * a promise about how the panel behaves.
+ * a promise about how the panel behaves. {@link RuntimeSelectionChangedMessage}
+ * (card 129) does not weaken that: it carries no text and cannot, so page
+ * CONTENT still moves only through this request.
  */
 export interface RuntimeGetPageContextRequest {
   type: "runtime:get-page-context";
@@ -198,8 +200,34 @@ export interface RuntimeGetPageContextResponse {
   error?: string;
 }
 
+/**
+ * Relay -> Worker -> Panel: the selection in this tab has SETTLED on
+ * something different from what the relay last reported (card 129,
+ * decisions/40's "Live chip updates").
+ *
+ * CONTENT-FREE, AND THAT IS THE WHOLE DESIGN. There is no `text` field, no
+ * length, no excerpt, and none may be added: the only thing this message says
+ * is "if you are showing a chip for this tab, it is out of date". The panel
+ * answers it by running the SAME gated
+ * {@link RuntimeGetPageContextRequest} pull it runs for a user gesture — so
+ * every guard that governs a gesture pull (the sharing gate, a restricted
+ * page, the dismissed-selection text, the superseded-pull token) governs this
+ * one too, without any of them having to be restated here. With the gate
+ * dismissed the ping is simply dropped and no pull is made at all, which is
+ * why a live-updating chip does not widen what leaves the page.
+ *
+ * The tab id is the same sentinel arrangement as
+ * {@link RuntimeToolsUpdatedMessage}: the relay cannot learn its own tab id,
+ * so it sends `-1` and the worker overwrites it from `sender.tab.id` before
+ * broadcasting.
+ */
+export interface RuntimeSelectionChangedMessage {
+  type: "runtime:selection-changed";
+  tabId: number;
+}
+
 /** One-way notifications sent over `chrome.runtime.sendMessage` / `onMessage`. */
-export type RuntimeNotification = RuntimeToolsUpdatedMessage;
+export type RuntimeNotification = RuntimeToolsUpdatedMessage | RuntimeSelectionChangedMessage;
 
 /** Request/response pairs sent over `chrome.runtime.sendMessage` (or long-lived ports). */
 export type RuntimeRequest =
@@ -243,6 +271,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  */
 const RUNTIME_MESSAGE_TYPES: Record<RuntimeMessage["type"], true> = {
   "runtime:tools-updated": true,
+  "runtime:selection-changed": true,
   "runtime:get-tools": true,
   "runtime:get-tools-response": true,
   "runtime:call-tool": true,

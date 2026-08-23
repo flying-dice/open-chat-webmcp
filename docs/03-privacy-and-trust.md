@@ -19,13 +19,27 @@ see, so it comes with one rule that the code is built around:
 > recording what went with it.
 
 There is no background reading. The two page-reading messages in the
-extension's protocol are *pull only* — there is deliberately no
-"page-context-changed" notification message for the panel to subscribe to
+extension's protocol are *pull only* — no message in it can carry page text
+anywhere except in answer to a request the panel made
 (`src/infra/chrome-runtime/protocol.ts`), and the domain port that pulls one
 has no `subscribe` method to call (`PageContextSource`,
-`src/domain/chat/page-context.ts`). A page read happens on exactly three
-gestures, all yours: clicking into the panel, the panel starting to point at a
-different page, and pressing Send. Nothing polls, and nothing streams.
+`src/domain/chat/page-context.ts`). A page read happens on exactly four
+things, all of them yours: selecting text on the page, clicking into the
+panel, the panel starting to point at a different page, and pressing Send.
+Nothing polls, and nothing streams.
+
+**Selecting text updates the chip as you go.** While sharing is on, the page
+tells the extension that your selection has changed — and nothing else: that
+message carries no text, not even how much of it there is
+(`runtime:selection-changed`, `src/content/relay.ts`). The panel answers it by
+making the same gated read it makes when you click into it, so the chip above
+the composer keeps up with what you have highlighted without you having to
+touch the panel first. The text still goes exactly one place, the chip, and
+still leaves for the model only with the message you choose to send. With
+sharing dismissed the notice is dropped and no read is made at all. Very short
+selections — one or two characters — are treated as no selection at all
+(`MIN_SELECTION_CHARS`, `src/infra/dom/page-extraction.ts`), so an accidental
+double-click never quietly becomes something you sent.
 
 ### The sharing gate
 

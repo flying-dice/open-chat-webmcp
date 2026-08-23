@@ -55,6 +55,8 @@ function createFakeChrome() {
   const messageListeners: MessageListener[] = [];
   const tabsUpdatedListeners: TabsUpdatedListener[] = [];
   const tabsRemovedListeners: TabsRemovedListener[] = [];
+  /** Everything the worker pushed OUT to whatever surface is listening (the panel, in the app). */
+  const broadcasts: unknown[] = [];
 
   let tabsSendMessageImpl: (
     tabId: number,
@@ -69,7 +71,8 @@ function createFakeChrome() {
       onMessage: {
         addListener: (l: MessageListener) => messageListeners.push(l),
       },
-      sendMessage: vi.fn((_message: unknown, callback?: (response?: unknown) => void) => {
+      sendMessage: vi.fn((message: unknown, callback?: (response?: unknown) => void) => {
+        broadcasts.push(message);
         callback?.(undefined);
       }),
       get lastError() {
@@ -113,6 +116,7 @@ function createFakeChrome() {
       lastError = err;
     },
     messageListenerCount: () => messageListeners.length,
+    broadcasts,
   };
 }
 
@@ -161,6 +165,77 @@ describe("sw.ts message router", () => {
       restricted: false,
       tools: [{ name: "x" }],
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // The selection ping (card 129, decisions/40's "Live chip updates")
+  //
+  // The worker's whole contribution is stamping the sender's REAL tab id onto
+  // a message that carries nothing else, and passing it on. Both halves are
+  // pinned here: the stamp (a relay cannot learn its own tab id, so the -1 it
+  // sends must be overwritten, never trusted) and the emptiness (no field of
+  // any kind may appear alongside `type` and `tabId` — a payload here would
+  // be page text travelling on a message decisions/40 promises carries none).
+  // -------------------------------------------------------------------------
+
+  it("a runtime:selection-changed ping is broadcast onward with the SENDER's tab id, replacing the relay's -1 sentinel", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    await loadSw();
+
+    const response = await fake.deliver(
+      { type: "runtime:selection-changed", tabId: -1 },
+      { tab: { id: 12 } },
+    );
+
+    expect(response).toBeUndefined(); // one-way, like tools-updated
+    expect(fake.broadcasts).toEqual([{ type: "runtime:selection-changed", tabId: 12 }]);
+  });
+
+  it("a runtime:selection-changed ping carries nothing but its type and tab id — no text can ride along", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    await loadSw();
+
+    await fake.deliver({ type: "runtime:selection-changed", tabId: -1 }, { tab: { id: 3 } });
+
+    expect(Object.keys(fake.broadcasts[0] as Record<string, unknown>).sort()).toEqual([
+      "tabId",
+      "type",
+    ]);
+  });
+
+  it("a runtime:selection-changed ping with no sender.tab.id is dropped, not broadcast with the sentinel", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    await loadSw();
+
+    await fake.deliver({ type: "runtime:selection-changed", tabId: -1 }, {});
+
+    expect(fake.broadcasts).toEqual([]);
+  });
+
+  it("holds no state for a selection ping — two pings for the same tab are two identical broadcasts, and nothing is cached", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    await loadSw();
+
+    await fake.deliver({ type: "runtime:selection-changed", tabId: -1 }, { tab: { id: 4 } });
+    await fake.deliver({ type: "runtime:selection-changed", tabId: -1 }, { tab: { id: 4 } });
+
+    expect(fake.broadcasts).toEqual([
+      { type: "runtime:selection-changed", tabId: 4 },
+      { type: "runtime:selection-changed", tabId: 4 },
+    ]);
+    // The tools registry is untouched by a ping: a get-tools for that tab
+    // still has to go to the relay.
+    let pulled = false;
+    fake.setTabsSendMessageImpl((_tabId, _message, callback) => {
+      pulled = true;
+      callback(undefined);
+    });
+    await fake.deliver({ type: "runtime:get-tools", tabId: 4 });
+    expect(pulled).toBe(true);
   });
 
   it("a runtime:tools-updated push with no sender.tab.id is ignored — cannot be spoofed by page content", async () => {

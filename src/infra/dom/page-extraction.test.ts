@@ -25,7 +25,13 @@
 //     "no Selection API for this document" case.
 
 import { afterEach, describe, expect, it } from "vitest";
-import { extractPageText, extractSelection, PAGE_EXTRACT_CAP_BYTES } from "./page-extraction";
+import {
+  extractPageText,
+  extractSelection,
+  MIN_SELECTION_CHARS,
+  PAGE_EXTRACT_CAP_BYTES,
+  selectionIdentity,
+} from "./page-extraction";
 
 /** A fresh, isolated `Document` per fixture — no shared global state between tests. */
 function parse(html: string): Document {
@@ -403,6 +409,146 @@ describe("extractSelection", () => {
     const result = extractSelection(doc);
     expect(result.truncated).toBe(true);
     expect(result.bytes).toBeLessThanOrEqual(PAGE_EXTRACT_CAP_BYTES);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The minimum selection length (card 129, Jonathan 2026-08-24)
+//
+// The floor lives in `extractSelection` and NOT in the panel on purpose: the
+// send-time re-read is what attaches text to a turn, so a floor applied only
+// where the chip is drawn would let a two-character selection be sent having
+// never been shown to anybody — the exact thing decisions/40's
+// visible-artifact rule forbids. These pin it at the one place both paths go
+// through.
+// ---------------------------------------------------------------------------
+
+describe("extractSelection — the minimum length", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("a two-character selection is an empty success — no chip, and nothing to attach at send", () => {
+    const doc = selectTarget("<p id='target'>ab</p>");
+    expect(extractSelection(doc)).toEqual({ text: "", truncated: false, bytes: 0 });
+  });
+
+  it("three characters is offered — the floor is a floor, not a preference", () => {
+    const doc = selectTarget("<p id='target'>abc</p>");
+    expect(extractSelection(doc)).toEqual({ text: "abc", truncated: false, bytes: 3 });
+    expect(MIN_SELECTION_CHARS).toBe(3);
+  });
+
+  it("measures AFTER trimming — a padded '  ab  ' is two characters, not six", () => {
+    const doc = selectTarget("<p id='target'>  ab  </p>");
+    expect(extractSelection(doc)).toEqual({ text: "", truncated: false, bytes: 0 });
+  });
+
+  it("applies to a form-control selection too — the floor is about the selection, not where it was made", () => {
+    const input = document.createElement("input");
+    input.value = "ab cd";
+    document.body.appendChild(input);
+    input.focus();
+    input.setSelectionRange(0, 2); // "ab"
+    expect(extractSelection(document)).toEqual({ text: "", truncated: false, bytes: 0 });
+    input.setSelectionRange(0, 5); // "ab cd"
+    expect(extractSelection(document).text).toBe("ab cd");
+  });
+
+  it("counts CHARACTERS, not bytes — three CJK characters are nine bytes and still qualify", () => {
+    const doc = selectTarget("<p id='target'>漢字語</p>");
+    expect(extractSelection(doc)).toEqual({ text: "漢字語", truncated: false, bytes: 9 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectionIdentity (card 129, decisions/40's "Live chip updates")
+//
+// The relay compares these between `selectionchange` events to decide whether
+// anything worth telling the panel about happened. Two properties matter, and
+// both are load-bearing for a promise made elsewhere: it must AGREE with
+// `extractSelection` about what counts as a selection (or the relay would ping
+// for selections the chip will never show, and vice versa), and it must carry
+// no recoverable text (it is the only selection-derived value the relay keeps
+// between events).
+// ---------------------------------------------------------------------------
+
+describe("selectionIdentity", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("is empty when there is no selection", () => {
+    document.body.innerHTML = "<p>text</p>";
+    window.getSelection()?.removeAllRanges();
+    expect(selectionIdentity(document)).toBe("");
+  });
+
+  it("is stable for the same selection — re-reading it twice is not a change", () => {
+    const doc = selectTarget("<p id='target'>the selected sentence.</p>");
+    expect(selectionIdentity(doc)).toBe(selectionIdentity(doc));
+    expect(selectionIdentity(doc)).not.toBe("");
+  });
+
+  it("differs when the selection changes to different text of the SAME length", () => {
+    const first = selectionIdentity(selectTarget("<p id='target'>abcdef</p>"));
+    const second = selectionIdentity(selectTarget("<p id='target'>ghijkl</p>"));
+    expect(first).not.toBe(second);
+  });
+
+  it("differs when a selection is EXTENDED — the shift+arrow case, where the anchor never moves", () => {
+    document.body.innerHTML = "<p id='target'>one two three four</p>";
+    const target = document.getElementById("target");
+    const seen = new Set<string>();
+    for (const end of [3, 7, 13, 18]) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      const range = document.createRange();
+      range.setStart(target!.firstChild!, 0);
+      range.setEnd(target!.firstChild!, end);
+      selection?.addRange(range);
+      seen.add(selectionIdentity(document));
+    }
+    expect(seen.size).toBe(4); // every extension read as a change
+  });
+
+  it("agrees with extractSelection about the minimum length: a two-character selection has the SAME identity as none at all, so it never pings", () => {
+    const tiny = selectionIdentity(selectTarget("<p id='target'>ab</p>"));
+    window.getSelection()?.removeAllRanges();
+    expect(tiny).toBe(selectionIdentity(document));
+    expect(tiny).toBe("");
+  });
+
+  it("does not carry the selected text — the relay keeps this value between events, and it must not be a copy of the page", () => {
+    const doc = selectTarget("<p id='target'>hunter2 is not a good password</p>");
+    const identity = selectionIdentity(doc);
+    expect(identity).not.toContain("hunter");
+    expect(identity).not.toContain("password");
+    // A byte count and a short hash, and nothing else.
+    expect(identity).toMatch(/^\d+:[0-9a-z]+$/);
+    expect(identity.length).toBeLessThan(16);
+  });
+
+  it("covers a form-control selection through the same path extractSelection uses", () => {
+    const input = document.createElement("input");
+    input.value = "Hello world";
+    document.body.appendChild(input);
+    input.focus();
+    input.setSelectionRange(0, 5);
+    const five = selectionIdentity(document);
+    input.setSelectionRange(0, 11);
+    expect(selectionIdentity(document)).not.toBe(five);
+    expect(five).not.toBe("");
+  });
+
+  it("never reads a password field, so typing into one produces no identity to ping about", () => {
+    const input = document.createElement("input");
+    input.type = "password";
+    input.value = "hunter2!";
+    document.body.appendChild(input);
+    input.focus();
+    input.setSelectionRange(0, 8);
+    expect(selectionIdentity(document)).toBe("");
   });
 });
 

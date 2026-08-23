@@ -66,11 +66,16 @@ control you can always see:
 - **Selected text** is offered as a chip on the composer only while sharing
   is on, and only what the chip shows is sent, with the message you send it
   with.
+- While sharing is on, the extension notices when you select something
+  different on the page and updates that chip to match — the chip is the
+  only place it goes, and it is still sent only with the message you choose
+  to send. Dismissing sharing stops this too.
 - **Full page text** is included only when you switch on "Share page
   content", and the transcript records what was shared with each message.
 - Nothing is read from any page in the background: reads happen only on
-  your gestures (focusing the panel, sending a message), and never on
-  restricted pages (like Chrome's own pages).
+  things you do (selecting text, focusing the panel, sending a message),
+  never on a page you have stopped sharing, and never on restricted pages
+  (like Chrome's own pages).
 - Tool calls that are not explicitly read-only **stop for your approval**,
   showing their real arguments, before they run. Remote MCP server tools
   follow their own, stricter approval policy.

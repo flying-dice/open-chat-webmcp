@@ -47,6 +47,7 @@ import {
   createPageToolExecutor,
   createTabToolsLookup,
   startTabSync,
+  type TabSyncView,
 } from "../infra/chrome-runtime";
 import { createChromeStoragePorts } from "../infra/chrome-storage";
 import { applyDocumentLocale, startDarkModeSync } from "../infra/dom";
@@ -61,6 +62,7 @@ import { getLocale, getTextDirection } from "../paraglide/runtime.js";
 
 import { initSidePanelServices } from "./app-services";
 import { originLabel } from "./presentation/toolOrigin";
+import { notifySelectionMaybeChanged } from "./stores/pageSharing.svelte";
 import { presenter, tabSyncView } from "./stores/panel.svelte";
 import { clearNoticeByKey, reportNotice } from "./stores/notices.svelte";
 import { storageFailureMessage } from "../ui/storageMessage";
@@ -208,7 +210,20 @@ document.title = m.app_documentTitle();
 // starting it here rather than after the first paint means a restored
 // transcript can land sooner. Never torn down — the listeners die with this
 // document, which is the panel closing.
-startTabSync({ session: chat, view: tabSyncView, trace });
+// The adapter's inbound seam is assembled HERE rather than exported whole by
+// one store, because its four callbacks belong to two of them (card 129).
+// Three describe the page on screen and land in ./stores/panel.svelte's
+// `tabSyncView`; the fourth is the relay's content-free "the selection
+// settled on something else" ping, which belongs to the sharing gate
+// (./stores/pageSharing.svelte). The page store cannot forward it — the gate
+// store reads the page store, so the import would close a cycle — and the
+// composition root is exactly the place that is allowed to know both.
+const tabSyncSurface: TabSyncView = {
+  ...tabSyncView,
+  selectionMaybeChanged: notifySelectionMaybeChanged,
+};
+
+startTabSync({ session: chat, view: tabSyncSurface, trace });
 
 // Card 59 item 2: `chrome.storage.local` writes are debounced per chat (the
 // chat-store adapter's DEBOUNCE_MS/MAX_WAIT_MS), so the tail of a streamed

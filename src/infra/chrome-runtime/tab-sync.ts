@@ -71,6 +71,25 @@ export interface TabSyncView {
   pageMetaChanged(meta: { title: string; favIconUrl?: string | undefined }): void;
   /** The worker pushed a new tool list for `tabId` (its `runtime:tools-updated` broadcast). */
   toolsChanged(tabId: number, tools: SerializedTool[], available: boolean): void;
+  /**
+   * The worker pushed a content-free `runtime:selection-changed` ping for
+   * `tabId` — the relay noticed the page's selection settle on something
+   * different (card 129, decisions/40's "Live chip updates").
+   *
+   * Says only THAT it changed, never what to: the surface answers by making
+   * its own gated page-context pull, which is where every consent rule lives.
+   * This adapter's contribution is the one thing the surface cannot do for
+   * itself — hold the `chrome.runtime` listener, and know whether the ping is
+   * about the tab currently on screen.
+   *
+   * On the panel this is wired to `notifySelectionMaybeChanged` in
+   * src/sidepanel/stores/pageSharing.svelte.ts, NOT to the page store the
+   * other three methods land in: the sharing gate is a different store, and
+   * the composition root is the one place allowed to know both. (The page
+   * store could not implement it anyway — it is what pageSharing reads to
+   * find the current page, so the import would be a cycle.)
+   */
+  selectionMaybeChanged(tabId: number): void;
 }
 
 export interface TabSyncOptions {
@@ -345,13 +364,32 @@ export function startTabSync(options: TabSyncOptions): () => void {
     }
   };
 
-  // Live tool-count updates pushed by the worker as pages register/deregister
-  // tools, without waiting for the panel to re-poll (src/background/sw.ts's
-  // `runtime:tools-updated` broadcast).
+  // The worker's two one-way broadcasts about the active tab
+  // (src/background/sw.ts): live tool-count updates as pages
+  // register/deregister tools, without waiting for the panel to re-poll; and
+  // card 129's content-free "the selection settled on something else" ping.
+  // One listener for both — they arrive on the same channel and need the same
+  // active-tab test, and a second `chrome.runtime.onMessage` registration
+  // would be a second thing to remember to tear down.
   const onMessage = (message: unknown) => {
-    if (!isRuntimeMessage(message) || message.type !== "runtime:tools-updated") return;
-    if (message.tabId !== activeTabId) return;
-    view.toolsChanged(message.tabId, message.tools, message.available);
+    if (!isRuntimeMessage(message)) return;
+    // Both broadcasts are scoped to the tab on screen here rather than in the
+    // surface: a push for a background tab is not news to a panel that is not
+    // showing it, and (for the selection ping) answering one would be a page
+    // read of a tab the user is not looking at.
+    if (message.type === "runtime:tools-updated") {
+      if (message.tabId !== activeTabId) return;
+      view.toolsChanged(message.tabId, message.tools, message.available);
+      return;
+    }
+    if (message.type === "runtime:selection-changed") {
+      trace("selection-changed", {
+        tabId: message.tabId,
+        isActiveTab: message.tabId === activeTabId,
+      });
+      if (message.tabId !== activeTabId) return;
+      view.selectionMaybeChanged(message.tabId);
+    }
   };
 
   chrome.tabs.onActivated.addListener(onActivated);

@@ -29,6 +29,8 @@ export { applyDocumentLocale } from "./document-locale";
 export {
   extractPageText,
   extractSelection,
+  MIN_SELECTION_CHARS,
   PAGE_EXTRACT_CAP_BYTES,
+  selectionIdentity,
   type ExtractedText,
 } from "./page-extraction";

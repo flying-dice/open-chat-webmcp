@@ -7,6 +7,15 @@
 // the SelectionChip, the Inspector's tools list) rather than asserting on
 // pixels.
 //
+// Card 129 extended it with the LIVE half (decisions/40's "Live chip
+// updates"): four steps in the middle that never touch the panel at all —
+// select a different paragraph and the chip follows it, extend the selection
+// and the chip grows, clear it and the chip goes away — plus one after the
+// gate is dismissed, where changing the selection must produce nothing at
+// all. Those are the only steps in this file with no panel interaction
+// whatsoever, which is exactly what makes them a test of the relay's
+// selectionchange ping rather than of the focus pull.
+//
 // Sequence: a real `window.getSelection()` Range is put on the demo page
 // (the same technique verify/checks/pageContext.mjs uses to prove a real
 // selection round-trips through the relay) -> a "focus" event fires on the
@@ -32,6 +41,9 @@ import { assert, assertEqual } from "../lib/assert.mjs";
 /** The demo page element this scenario selects — same stable target verify/checks/pageContext.mjs uses. */
 const SELECTION_TARGET = "main .panel .hint";
 
+/** A DIFFERENT stable paragraph, for card 129's live-update steps: the chip has to follow the selection from one to the other with nobody touching the panel. */
+const SECOND_SELECTION_TARGET = "main .panel:nth-of-type(3) .hint";
+
 const DEMO_PAGE_TOOL_NAMES = [
   "read-page-state",
   "read-notes-content",
@@ -53,6 +65,23 @@ async function selectOnPage(demoPage, cssSelector) {
     selection.addRange(range);
     return selection.toString().replace(/\s+/g, " ").trim();
   }, cssSelector);
+}
+
+/**
+ * Waits until the SelectionChip is showing an excerpt of `selection` (card
+ * 129). Polls the panel's own text rather than a fixed sleep: the chip
+ * updating is the assertion, and the ping it rides on is debounced in the
+ * relay and coalesced again in the panel, so "how long" is not a number this
+ * scenario should be encoding.
+ */
+async function waitForChipContaining(panel, selection) {
+  const needle = selection.slice(0, 30);
+  await panel
+    .getByText("Selected text", { exact: true })
+    .waitFor({ state: "visible", timeout: 25000 });
+  await panel.waitForFunction((text) => document.body.innerText.includes(text), needle, {
+    timeout: 25000,
+  });
 }
 
 async function sharingAttr(panel) {
@@ -171,6 +200,63 @@ async function main() {
       },
     );
 
+    // -----------------------------------------------------------------
+    // Card 129: the chip tracks the page LIVE, with no panel interaction
+    // at all. Everything below this point deliberately never touches the
+    // panel between selecting and asserting — the only thing that happens
+    // is a selection changing in the page, which is the whole claim.
+    // -----------------------------------------------------------------
+
+    await report.run(
+      "LIVE: a NEW selection on the page, with NO panel interaction, changes the chip on its own",
+      async () => {
+        const second = await selectOnPage(demoPage, SECOND_SELECTION_TARGET);
+        assert(
+          typeof second === "string" && second.length > 10 && second !== expectedSelection,
+          `could not put a DIFFERENT selection on "${SECOND_SELECTION_TARGET}" (got "${second}")`,
+        );
+        // No focus event, no click, no keystroke in the panel. The relay's
+        // selectionchange ping is the only thing that can make this pass.
+        await waitForChipContaining(panel, second);
+        expectedSelection = second;
+        return { chipTracked: second.slice(0, 40) };
+      },
+    );
+
+    await report.run(
+      "LIVE: extending the selection to the whole panel section updates the chip again",
+      async () => {
+        const extended = await selectOnPage(demoPage, "main .panel");
+        assert(
+          typeof extended === "string" && extended.length > expectedSelection.length,
+          "expected the extended selection to be longer than the previous one",
+        );
+        await waitForChipContaining(panel, extended);
+        expectedSelection = extended;
+        return { extendedTo: extended.length };
+      },
+    );
+
+    await report.run(
+      "LIVE: clearing the selection in the page makes the chip go away on its own",
+      async () => {
+        await demoPage.evaluate(() => window.getSelection().removeAllRanges());
+        await panel
+          .getByText("Selected text", { exact: true })
+          .waitFor({ state: "detached", timeout: 25000 });
+        return { chipCleared: true };
+      },
+    );
+
+    await report.run(
+      "LIVE: re-selecting brings the chip back, so the gate test below starts from a chip on screen",
+      async () => {
+        expectedSelection = await selectOnPage(demoPage, SELECTION_TARGET);
+        await waitForChipContaining(panel, expectedSelection);
+        return { reselected: true };
+      },
+    );
+
     await report.run(
       'Dismiss sharing ("Stop sharing this page") -> chip gone, gate off, page tools hidden everywhere',
       async () => {
@@ -215,6 +301,37 @@ async function main() {
         );
         await backToChat(panel);
         return { dismissed: true };
+      },
+    );
+
+    await report.run(
+      "LIVE + GATE: changing the selection while sharing is DISMISSED produces no chip — the ping is dropped unanswered",
+      async () => {
+        const ignored = await selectOnPage(demoPage, SECOND_SELECTION_TARGET);
+        assert(
+          typeof ignored === "string" && ignored.length > 10,
+          "could not put a fresh selection on the page while dismissed",
+        );
+        // Generous, and deliberately so: this asserts a NON-event, so it has
+        // to outlast the relay's debounce and the panel's coalescing window
+        // several times over before "no chip" means anything.
+        await panel.waitForTimeout(3000);
+        assertEqual(
+          await panel.getByText("Selected text", { exact: true }).count(),
+          0,
+          "a selection changed while sharing is dismissed must never produce a chip",
+        );
+        assertEqual(await sharingAttr(panel), "false", "gate still dismissed");
+        // Put the original selection back, so the re-enable step below is
+        // asserting what it always did.
+        expectedSelection = await selectOnPage(demoPage, SELECTION_TARGET);
+        await panel.waitForTimeout(1000);
+        assertEqual(
+          await panel.getByText("Selected text", { exact: true }).count(),
+          0,
+          "still no chip while dismissed, even for the selection that had one before",
+        );
+        return { pingsIgnored: true };
       },
     );
 

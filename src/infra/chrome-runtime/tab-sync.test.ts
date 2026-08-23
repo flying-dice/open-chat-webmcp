@@ -67,7 +67,14 @@ function createFakeChrome() {
       sendMessage: vi.fn((message: unknown) => sendMessageImpl(message)),
       onMessage: {
         addListener: (l: MessageListener) => onMessage.push(l),
-        removeListener: vi.fn(),
+        // Actually removes, unlike the `chrome.tabs` stubs above: card 129's
+        // teardown test needs a torn-down sync to genuinely stop hearing
+        // broadcasts, which a no-op `removeListener` would report as a pass
+        // for the wrong reason.
+        removeListener: (l: MessageListener) => {
+          const at = onMessage.indexOf(l);
+          if (at >= 0) onMessage.splice(at, 1);
+        },
       },
     },
   } as unknown as typeof chrome;
@@ -115,17 +122,39 @@ function makeSession(): TabSyncSession & { syncCalls: [number, string][] } {
 function makeView(): TabSyncView & {
   resolved: Parameters<TabSyncView["pageResolved"]>[0][];
   toolsChanges: { tabId: number; count: number; available: boolean }[];
+  selectionPings: number[];
 } {
   const resolved: Parameters<TabSyncView["pageResolved"]>[0][] = [];
   const toolsChanges: { tabId: number; count: number; available: boolean }[] = [];
+  const selectionPings: number[] = [];
   return {
     resolved,
     toolsChanges,
+    selectionPings,
     pageResolved: (page) => resolved.push(page),
     pageMetaChanged: () => undefined,
     toolsChanged: (tabId, tools, available) =>
       toolsChanges.push({ tabId, count: tools.length, available }),
+    selectionMaybeChanged: (tabId) => selectionPings.push(tabId),
   };
+}
+
+/** Start a sync with one tab already active and resolved — the state most tests below want to begin from. */
+async function startSyncedOnTab(
+  fake: ReturnType<typeof createFakeChrome>,
+  tabId: number,
+): Promise<{ view: ReturnType<typeof makeView>; stop: () => void }> {
+  fake.setSendMessageImpl(async () => ({
+    type: "runtime:get-tools-response",
+    tabId,
+    available: true,
+    restricted: false,
+    tools: [],
+  }));
+  const view = makeView();
+  const stop = startTabSync({ session: makeSession(), view });
+  await vi.waitFor(() => expect(view.resolved.length).toBeGreaterThan(0));
+  return { view, stop };
 }
 
 afterEach(() => {
@@ -284,5 +313,90 @@ describe("chaos: createTabToolsLookup against a wedged or misbehaving worker", (
 
     const lookup = createTabToolsLookup();
     await expect(lookup(1)).resolves.toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The selection ping (card 129, decisions/40's "Live chip updates")
+//
+// The adapter's whole job for this message is the part the surface cannot do
+// itself: hold the `chrome.runtime` listener, and know which tab is on
+// screen. It carries no payload, so there is nothing else to get right —
+// which is exactly why the tab test below matters.
+// ---------------------------------------------------------------------------
+
+describe("runtime:selection-changed", () => {
+  it("forwards a ping for the ACTIVE tab to the view, carrying only the tab id", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
+    fake.setActive(1);
+    const { view, stop } = await startSyncedOnTab(fake, 1);
+
+    fake.fireMessage({ type: "runtime:selection-changed", tabId: 1 });
+
+    expect(view.selectionPings).toEqual([1]);
+    stop();
+  });
+
+  it("drops a ping for a BACKGROUND tab — answering it would be a page read of a tab the user is not looking at", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
+    fake.tabs.set(2, { id: 2, url: "https://b.example.com", title: "B" });
+    fake.setActive(1);
+    const { view, stop } = await startSyncedOnTab(fake, 1);
+
+    fake.fireMessage({ type: "runtime:selection-changed", tabId: 2 });
+
+    expect(view.selectionPings).toEqual([]);
+    stop();
+  });
+
+  it("follows the active tab: after a switch, the NEW tab's pings are the ones that count", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
+    fake.tabs.set(2, { id: 2, url: "https://b.example.com", title: "B" });
+    fake.setActive(1);
+    const { view, stop } = await startSyncedOnTab(fake, 1);
+
+    fake.fireActivated(2);
+    await vi.waitFor(() => expect(view.resolved.length).toBeGreaterThan(1));
+
+    fake.fireMessage({ type: "runtime:selection-changed", tabId: 1 });
+    fake.fireMessage({ type: "runtime:selection-changed", tabId: 2 });
+
+    expect(view.selectionPings).toEqual([2]);
+    stop();
+  });
+
+  it("stops forwarding once torn down", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
+    fake.setActive(1);
+    const { view, stop } = await startSyncedOnTab(fake, 1);
+
+    stop();
+    fake.fireMessage({ type: "runtime:selection-changed", tabId: 1 });
+
+    expect(view.selectionPings).toEqual([]);
+  });
+
+  it("ignores a message that is not a runtime message at all, and one of an unrelated type", async () => {
+    const fake = createFakeChrome();
+    vi.stubGlobal("chrome", fake.chrome);
+    fake.tabs.set(1, { id: 1, url: "https://a.example.com", title: "A" });
+    fake.setActive(1);
+    const { view, stop } = await startSyncedOnTab(fake, 1);
+
+    fake.fireMessage({ type: "something-else", tabId: 1 });
+    fake.fireMessage("not an object");
+    fake.fireMessage(undefined);
+
+    expect(view.selectionPings).toEqual([]);
+    expect(view.toolsChanges).toEqual([]);
+    stop();
   });
 });

@@ -80,6 +80,28 @@ export interface ExtractedText {
 export const PAGE_EXTRACT_CAP_BYTES = 16_000;
 
 /**
+ * The shortest selection worth offering, in CHARACTERS, measured after
+ * normalisation and trimming. Below it, {@link extractSelection} reports the
+ * ordinary empty success — no text, no chip, nothing attached to a turn.
+ *
+ * Three, and enforced HERE rather than in the panel, which is the whole point
+ * (Jonathan, 2026-08-24, comparing against Gemini's panel; card 129). A
+ * one- or two-character selection is almost always an accident — a
+ * double-click that landed on a bracket, a stray drag while scrolling, a
+ * caret nudged with shift held — and offering a chip for it is noise. But the
+ * reason it cannot live panel-side is the VISIBLE-ARTIFACT rule
+ * (decisions/40, docs/03): the send-time re-read is what actually attaches
+ * text to a turn, so a floor applied only to the chip would let a two-character
+ * selection ride along with a message having never been shown to anyone. One
+ * floor, in the one function both paths call, is the only shape where "no
+ * chip" and "nothing sent" cannot come apart.
+ *
+ * Selection only. {@link extractPageText} has no floor — an explicit "share
+ * page content" on a nearly-empty page should say what it found.
+ */
+export const MIN_SELECTION_CHARS = 3;
+
+/**
  * Ceiling on how many DOM nodes one walk will visit.
  *
  * The byte cap already stops the walk on any page with a lot of TEXT. This
@@ -532,10 +554,11 @@ export function extractPageText(
 /**
  * The user's current selection in `doc`, trimmed and capped.
  *
- * A collapsed selection (a bare caret) and no selection at all both produce
- * `{text: ""}` — decisions/40 offers the composer chip only when there is
- * something to offer, and this is the value that says there isn't. It is a
- * SUCCESS, never an error.
+ * A collapsed selection (a bare caret), no selection at all, and anything
+ * shorter than {@link MIN_SELECTION_CHARS} all produce `{text: ""}` —
+ * decisions/40 offers the composer chip only when there is something to
+ * offer, and this is the value that says there isn't. It is a SUCCESS, never
+ * an error.
  *
  * FRAMES. `document.getSelection()` reports only what is selected in THIS
  * document. Text the user selected inside an `<iframe>` belongs to that
@@ -596,11 +619,62 @@ export function extractSelection(
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  if (normalized === "") return { text: "", truncated: false, bytes: 0 };
+  // Below the floor is the same answer as nothing at all — see
+  // {@link MIN_SELECTION_CHARS}. Checked AFTER normalisation so a padded
+  // "  ab  " is measured as the two characters it actually is.
+  if (normalized.length < MIN_SELECTION_CHARS) return { text: "", truncated: false, bytes: 0 };
 
   const bytes = utf8Length(normalized);
   if (bytes <= capBytes) return { text: normalized, truncated: false, bytes };
 
   const head = sliceToBytes(normalized, capBytes);
   return { text: head, truncated: true, bytes: utf8Length(head) };
+}
+
+/**
+ * FNV-1a, 32-bit, rendered base-36. Not a security primitive and not trying
+ * to be: {@link selectionIdentity} needs to answer "is this the same
+ * selection as last time" cheaply, on the page's own main thread, several
+ * times a second while someone drags a mouse.
+ */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * A short, content-free fingerprint of what {@link extractSelection} would
+ * return for `doc` right now — `""` when there is nothing to offer.
+ *
+ * Card 129 (decisions/40's "Live chip updates"): the relay watches
+ * `selectionchange` so the composer's chip can track the page, and it must
+ * only tell the panel something happened when the settled selection actually
+ * DIFFERS from the one it last reported. Comparing fingerprints is what makes
+ * that "actually" cheap — and, more importantly, keeps the comparison state
+ * inside the page's own relay: the value returned here is a byte count and a
+ * 32-bit hash, so nothing that crosses a process boundary (or lingers in the
+ * relay between events) is page text.
+ *
+ * Derived from `extractSelection` rather than from `getSelection().toString()`
+ * so the two can never disagree: normalisation, the form-control path, the
+ * password exclusion, {@link MIN_SELECTION_CHARS} and the cap are all applied
+ * before the fingerprint is taken. A two-character selection therefore has
+ * the SAME identity as no selection at all, and never produces a ping.
+ *
+ * The byte count is part of the identity, not just the hash, so extending a
+ * selection with shift+arrow — the same anchor, one more character — always
+ * reads as a change even in the (astronomically unlikely) event of a hash
+ * collision.
+ */
+export function selectionIdentity(
+  doc: Document,
+  capBytes: number = PAGE_EXTRACT_CAP_BYTES,
+): string {
+  const { text, bytes } = extractSelection(doc, capBytes);
+  if (text === "") return "";
+  return `${bytes}:${fnv1a(text)}`;
 }

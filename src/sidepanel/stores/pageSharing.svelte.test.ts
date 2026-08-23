@@ -26,6 +26,7 @@ import {
   collectTurnContext,
   dismissSelection,
   initPageSharingSync,
+  notifySelectionMaybeChanged,
   pageSharing,
   refreshSelection,
   resetPageSharing,
@@ -547,5 +548,121 @@ describe("the focus sync", () => {
     expect(pull).not.toHaveBeenCalled();
 
     teardown();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The live selection ping (card 129, decisions/40's "Live chip updates")
+//
+// The panel's whole reaction to a `runtime:selection-changed` broadcast is
+// `notifySelectionMaybeChanged`, wired by src/sidepanel/main.ts to the
+// chrome-runtime adapter. It decides only WHETHER to ask; every rule about
+// what may be pulled and what may be shown stays in `refreshSelection`, and
+// these tests are mostly about proving that it really is the same path a
+// gesture takes — including the gate that drops the ping unanswered.
+// ---------------------------------------------------------------------------
+
+describe("the live selection ping", () => {
+  it("pulls for the tab on screen, with no panel interaction at all — the chip appears on its own", async () => {
+    const { pull } = sourceAnswering("selected in the page, panel untouched");
+    const teardown = initPageSharingSync();
+
+    notifySelectionMaybeChanged(1);
+
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1));
+    expect(pageSharing.selection?.text).toBe("selected in the page, panel untouched");
+    teardown();
+  });
+
+  it("makes NO PULL AT ALL while sharing is dismissed — the ping dies at the same gate a gesture does", async () => {
+    const { pull } = sourceAnswering("something highlighted behind a dismissed gate");
+    const teardown = initPageSharingSync();
+    setSharing(false);
+
+    notifySelectionMaybeChanged(1);
+    // Long enough for the coalescer's trailing timer to have fired too, so
+    // this is "never pulled", not "not pulled yet".
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    expect(pull).not.toHaveBeenCalled();
+    expect(pageSharing.selection).toBeUndefined();
+    teardown();
+  });
+
+  it("ignores a ping for a tab the panel is not showing", async () => {
+    const { pull } = sourceAnswering("a selection in another tab");
+    const teardown = initPageSharingSync();
+
+    notifySelectionMaybeChanged(99);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(pull).not.toHaveBeenCalled();
+    teardown();
+  });
+
+  it("goes through the SAME coalescer as a gesture: a ping and a click for one act of selecting collapse into one pull plus one catch-up", async () => {
+    const { pull } = sourceAnswering("selected, then clicked into the panel");
+    const teardown = initPageSharingSync();
+
+    // The user releases the mouse in the page (ping) and immediately clicks
+    // into the composer (gesture) — one intention, arriving as two events.
+    notifySelectionMaybeChanged(1);
+    document.dispatchEvent(new Event("pointerdown"));
+    notifySelectionMaybeChanged(1);
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1));
+
+    // Exactly one trailing catch-up for everything suppressed by the window —
+    // never one pull per event.
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(2), { timeout: 1500 });
+    await Promise.resolve();
+    expect(pull).toHaveBeenCalledTimes(2);
+    teardown();
+  });
+
+  it("re-offers a chip when the selection CHANGES to something the user has not dismissed", async () => {
+    let text = "the first thing selected";
+    const pull = vi.fn(async (_tabId: number, mode: PageContextSnapshot["mode"]) =>
+      ok(snapshot(text, { mode })),
+    );
+    services.pageContext = { pull };
+    const teardown = initPageSharingSync();
+
+    notifySelectionMaybeChanged(1);
+    await vi.waitFor(() => expect(pageSharing.selection?.text).toBe("the first thing selected"));
+
+    // The user dismisses THAT chip, then selects something else in the page.
+    dismissSelection();
+    expect(pageSharing.selection).toBeUndefined();
+    text = "a completely different sentence";
+    notifySelectionMaybeChanged(1);
+
+    await vi.waitFor(() =>
+      expect(pageSharing.selection?.text).toBe("a completely different sentence"),
+    );
+    teardown();
+  });
+
+  it("keeps a dismissed selection dismissed when the ping reports the very same text again", async () => {
+    const { pull } = sourceAnswering("the same selection, still there");
+    const teardown = initPageSharingSync();
+
+    notifySelectionMaybeChanged(1);
+    await vi.waitFor(() => expect(pageSharing.selection).toBeDefined());
+    dismissSelection();
+
+    notifySelectionMaybeChanged(1);
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(2), { timeout: 1500 });
+    expect(pageSharing.selection).toBeUndefined();
+    teardown();
+  });
+
+  it("does nothing when no sync is mounted — a ping that arrives after teardown cannot pull", async () => {
+    const { pull } = sourceAnswering("something");
+    initPageSharingSync()();
+
+    notifySelectionMaybeChanged(1);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    expect(pull).not.toHaveBeenCalled();
   });
 });
