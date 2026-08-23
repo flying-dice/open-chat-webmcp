@@ -53,9 +53,19 @@
     /** Switch back to the chat view — called only once a recent-chat open actually succeeds. */
     onOpenChat: () => void;
     connectionStatus: ConnectionStatus;
+    /**
+     * The share-page-content toggle (decisions/40), relocated here from the
+     * context chip's always-visible row (Jonathan, 2026-08-23): the chip
+     * keeps only the ON-state pill; this menu item is where it's switched.
+     * Absent (undefined) when the page can't be shared at all — restricted,
+     * no tab, or the sharing gate itself dismissed — and hidden then.
+     */
+    shareContent?: boolean | undefined;
+    onSetShareContent?: ((on: boolean) => void) | undefined;
   }
 
-  const { onOpenHistory, onOpenTools, onOpenChat, connectionStatus }: Props = $props();
+  const { onOpenHistory, onOpenTools, onOpenChat, connectionStatus, shareContent, onSetShareContent }: Props =
+    $props();
 
   /** How many chats the top level lists before deferring to "More". Five is what fits above the divider without the menu needing to scroll at a typical panel height. */
   const RECENT_LIMIT = 5;
@@ -178,6 +188,15 @@
       <Icon name="build" class="size-4" />
       <span class="min-w-0 flex-1 truncate">{m.overflowMenu_toolsCallLogLabel()}</span>
     </DropdownMenu.Item>
+
+    {#if shareContent !== undefined && onSetShareContent}
+      <DropdownMenu.CheckboxItem
+        checked={shareContent}
+        onCheckedChange={(on) => onSetShareContent(on === true)}
+      >
+        <span class="min-w-0 flex-1 truncate">{m.contextChip_shareContentLabel()}</span>
+      </DropdownMenu.CheckboxItem>
+    {/if}
 
     <DropdownMenu.Item onSelect={openOptionsPage}>
       <Icon name="settings" class="size-4" />

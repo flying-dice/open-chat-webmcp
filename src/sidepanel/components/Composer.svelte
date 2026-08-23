@@ -168,12 +168,13 @@
           >{m.openOptionsAction()}</Button
         >
       {:else if blocked.kind === "no-providers"}
+        <!-- No action button here on purpose: the model chip in the action
+             row below already carries the error-state "add one" affordance,
+             and two doors to the same room read as two problems
+             (Jonathan, 2026-08-23). -->
         <p class="text-sm text-muted-foreground">
           {m.composer_noProvidersMessage()}
         </p>
-        <Button type="button" variant="secondary" size="sm" onclick={openOptionsPage}>
-          {m.openOptionsAddProviderAction()}
-        </Button>
       {:else if blocked.kind === "unselected"}
         <p class="text-sm text-muted-foreground">
           {#if blocked.dangling}

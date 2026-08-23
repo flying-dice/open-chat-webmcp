@@ -207,16 +207,15 @@ describe("Composer", () => {
       expect(openOptionsPage).toHaveBeenCalledTimes(1);
     });
 
-    it("shows a no-providers-registered message with an Open options action", async () => {
-      const user = userEvent.setup();
+    it("shows a no-providers-registered message with NO duplicate action button — the model chip's error state is the affordance (Jonathan, 2026-08-23)", () => {
       state.providersStatus = "loaded";
       state.providers = [];
       render(Composer, { busy: false, onSend: vi.fn(), onStop: vi.fn() });
 
       expect(screen.getByText(m.composer_noProvidersMessage())).toBeInTheDocument();
-      const button = screen.getByRole("button", { name: m.openOptionsAddProviderAction() });
-      await user.click(button);
-      expect(openOptionsPage).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByRole("button", { name: m.openOptionsAddProviderAction() }),
+      ).not.toBeInTheDocument();
     });
 
     it("shows an unselected message with a Choose provider & model action when resolution is none", async () => {

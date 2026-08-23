@@ -72,7 +72,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 /** One iteration = one `ModelGateway.chat()` turn. Caps a runaway call/observe chain rather than streaming forever. */
-export const MAX_ITERATIONS = 8;
+export const MAX_ITERATIONS = 50;
 
 /** Defensive cap on how much of a tool result's serialized text is fed back to the model and stored — a huge or hostile page payload must not blow up the context window or storage. */
 const MAX_TOOL_RESULT_CHARS = 8_000;

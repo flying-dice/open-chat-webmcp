@@ -76,15 +76,12 @@ describe("ContextChip", () => {
       expect(onSetSharing).toHaveBeenCalledWith(false);
     });
 
-    it("offers the page-content toggle in its off state", async () => {
-      const onSetShareContent = vi.fn();
-      render(ContextChip, { props: baseProps({ onSetShareContent }) });
+    it("shows NO page-content control in the default sharing row — the toggle lives in the kebab menu now (Jonathan, 2026-08-23)", () => {
+      render(ContextChip, { props: baseProps({}) });
 
-      const toggle = screen.getByRole("button", { name: m.contextChip_shareContentLabel() });
-      expect(toggle).toHaveAttribute("aria-pressed", "false");
-
-      await fireEvent.click(toggle);
-      expect(onSetShareContent).toHaveBeenCalledWith(true);
+      expect(
+        screen.queryByRole("button", { name: m.contextChip_shareContentLabel() }),
+      ).not.toBeInTheDocument();
     });
 
     it("shows the page-content toggle as pressed when it is on, and turns it back off", async () => {

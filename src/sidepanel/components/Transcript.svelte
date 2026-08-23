@@ -49,6 +49,7 @@
   import { noteActionLabel, noteText } from "../presentation/transcriptNote";
   import { isSpokenPhase } from "../presentation/turnStatus";
   import { approvals } from "../stores/approvals.svelte";
+  import { pageSharing } from "../stores/pageSharing.svelte";
   import { openOptionsPage } from "../stores/selection.svelte";
   import type { IconName } from "../../ui/icons";
   import type { Snippet } from "svelte";
@@ -169,7 +170,10 @@
     {#if messages.length === 0}
       <div class="m-auto flex flex-col gap-2 text-center">
         <p class="m-0 text-center text-sm text-muted-foreground">
-          {m.transcript_emptyMessage()}
+          <!-- "Ask something about this page" would be a false promise while
+               the sharing gate is dismissed — the assistant can't see the
+               page (Jonathan, 2026-08-23). -->
+          {pageSharing.sharing ? m.transcript_emptyMessage() : m.transcript_emptyMessageNotShared()}
         </p>
         {#if toolsNotice}
           <p class="m-0 text-center text-sm text-muted-foreground">{toolsNotice}</p>

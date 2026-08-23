@@ -222,29 +222,27 @@
     </div>
   {/if}
 
-  {#if gateable && sharing}
-    <!-- "Share page content": a TOGGLE, so it is a button with `aria-pressed`
-         rather than a link that fires an action. Its on-state is visible three
-         ways at once — the pressed background, the accent glyph and (where
-         there is room) its own label — because a control whose only feedback
-         is a colour is not a state a user can rely on before pressing Send. -->
+  {#if gateable && sharing && shareContent}
+    <!-- The share-page-content TOGGLE lives in the kebab menu now — showing
+         it here whenever sharing was on made the default chip row read as
+         two controls deep before the user had asked for anything (Jonathan,
+         2026-08-23). What remains here is decisions/40's visible STANDING
+         STATE: this pill exists only while page content is opted in, and
+         clicking it opts back out. -->
     <button
       type="button"
-      aria-pressed={shareContent}
+      aria-pressed="true"
       aria-label={m.contextChip_shareContentLabel()}
       title={m.contextChip_shareContentHint()}
-      class={cn(
-        "flex flex-none items-center gap-1 rounded-full px-2 py-1 text-xs",
-        shareContent
-          ? "bg-background text-foreground ring-1 ring-border"
-          : "text-muted-foreground hover:bg-muted",
-      )}
-      onclick={() => onSetShareContent(!shareContent)}
+      class="flex flex-none items-center gap-1 rounded-full bg-background px-2 py-1 text-xs text-foreground ring-1 ring-border"
+      onclick={() => onSetShareContent(false)}
     >
       <Icon name="subject" class="size-4" />
       <span class="max-[360px]:hidden">{m.contextChip_shareContentLabel()}</span>
     </button>
+  {/if}
 
+  {#if gateable && sharing}
     <button
       bind:this={stopButton}
       type="button"

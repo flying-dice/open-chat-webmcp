@@ -452,6 +452,10 @@
         onOpenHistory={() => switchView("history")}
         onOpenTools={() => switchView("inspector")}
         onOpenChat={() => switchView("chat")}
+        shareContent={panel.pageInfo && !panel.pageInfo.restricted && pageSharing.sharing
+          ? pageSharing.shareContent
+          : undefined}
+        onSetShareContent={setShareContent}
       />
     {/snippet}
   </Header>
