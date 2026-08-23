@@ -79,10 +79,11 @@ listing, not a hard requirement either way.
 ## Privacy policy URL
 
 The dashboard requires a publicly reachable privacy-policy URL.
-[`PRIVACY.md`](../PRIVACY.md) at the repo root is the policy; once the
-repository is mirrored to GitHub, use the mirror's URL (e.g.
-`https://github.com/<org>/open-chat-webmcp/blob/main/PRIVACY.md`) in the
-listing field — the self-hosted GitLab is not publicly reachable.
+[`PRIVACY.md`](../PRIVACY.md) at the repo root is the policy. The public
+URL for the listing field (mirror confirmed live and serving it,
+2026-08-23):
+
+> https://github.com/flying-dice/open-chat-webmcp/blob/main/PRIVACY.md
 
 ## Privacy practices disclosure
 
