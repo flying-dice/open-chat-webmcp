@@ -439,9 +439,18 @@ module.exports = {
      * otherwise flag every `src/domain/**\/*.test.ts`'s `import ... from
      * "vitest"` as the domain taking an npm dependency, which is not the
      * coupling that rule exists to catch.
+     *
+     * `\.stories\.svelte$` (card 123, decisions/42-storybook.md) is excluded
+     * on identical grounds, and the rule it would otherwise trip is a real
+     * one: a story imports its surface's `testing/fake-services` module, and
+     * `only-roots-construct-infra` reserves that kind of wiring for the four
+     * composition roots. A story IS a composition root — it is how the story
+     * surface wires a component up — but it is one per component rather than
+     * one per surface, so widening `ROOTS` to cover ~44 files would empty that
+     * rule of meaning. Excluding the fixtures instead leaves it exact.
      */
     exclude: {
-      path: "^src/ui/components/ui/|\\.test\\.ts$",
+      path: "^src/ui/components/ui/|\\.test\\.ts$|\\.stories\\.svelte$",
     },
     doNotFollow: {
       path: "node_modules",

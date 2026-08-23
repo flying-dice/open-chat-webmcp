@@ -13,7 +13,7 @@
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "guard": "npm run guard:biome && npm run guard:boundaries && npm run guard:clean-code && npm run guard:return-types && npm run guard:throws && npm run guard:i18n",
+    "guard": "npm run guard:biome && npm run guard:boundaries && npm run guard:clean-code && npm run guard:return-types && npm run guard:throws && npm run guard:i18n && npm run guard:stories",
     "guard:biome": "biome ci --error-on-warnings .",
     "guard:boundaries": "depcruise src --config .dependency-cruiser.cjs && node scripts/guard-boundaries.mjs",
     "guard:clean-code": "node scripts/guard-clean-code.mjs",
@@ -36,7 +36,10 @@
     "verify:smoke:turn-control": "node verify/checks/turnControlScenario.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build",
+    "guard:stories": "node scripts/guard-stories.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
@@ -44,6 +47,8 @@
     "@inlang/paraglide-js": "^2.24.1",
     "@mcp-b/webmcp-types": "^4.0.0",
     "@puppeteer/browsers": "^3.2.1",
+    "@storybook/addon-svelte-csf": "5.1.2",
+    "@storybook/svelte-vite": "10.5.10",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
@@ -58,6 +63,7 @@
     "jsdom": "^30.0.1",
     "playwright": "^1.62.1",
     "shadcn-svelte": "^1.5.0",
+    "storybook": "10.5.10",
     "svelte": "^5.56.8",
     "svelte-check": "^4.7.3",
     "tailwindcss": "^4.3.3",

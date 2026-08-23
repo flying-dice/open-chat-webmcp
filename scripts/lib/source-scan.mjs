@@ -40,16 +40,28 @@ export function isVendored(relPath) {
 }
 
 /**
- * True when `relPath` is test code — a spec or a hand-rolled fake/fixture that
- * only tests import. Guards that police PRODUCTION discipline (throwing,
- * explicit return types) skip these: a test asserts with throws by design, and
- * a fixture builder's inferred return type is the fixture's own shape.
+ * True when `relPath` is test code — a spec, a hand-rolled fake/fixture that
+ * only tests import, or a Storybook story. Guards that police PRODUCTION
+ * discipline (throwing, explicit return types) skip these: a test asserts with
+ * throws by design, and a fixture builder's inferred return type is the
+ * fixture's own shape.
+ *
+ * `*.stories.svelte` joined the list in card 123 (decisions/42-storybook.md).
+ * Decision 42 asks for stories to be "excluded from the guards the way tests
+ * are", and they are test code in every sense these guards care about: a story
+ * is a fixture with a viewer attached, built out of the SAME per-surface fakes
+ * (`src/{sidepanel,options}/testing/fake-services.ts`) the component tests use.
+ * The two guards this reaches (`guard:throws`, `guard:return-types`) are the
+ * two that would otherwise ask a fixture to justify itself as production code.
+ * They are still FORMATTED and LINTED — biome.jsonc has no such carve-out —
+ * and `npm run check` type-checks them like any other `.svelte` under src/.
  */
 export function isTestCode(relPath) {
   return (
     /\.(test|spec)\.[cm]?[jt]s$/.test(relPath) ||
     relPath.includes("/testing/") ||
-    relPath.endsWith(".test.svelte")
+    relPath.endsWith(".test.svelte") ||
+    relPath.endsWith(".stories.svelte")
   );
 }
 

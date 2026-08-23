@@ -76,7 +76,22 @@
     // dynamically.
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+  // Card 123 / decisions/42-storybook.md. `.storybook/preview.ts` and the one
+  // decorator component beside it are BROWSER code — they import src/app.css,
+  // the paraglide runtime, the shared UI layer and the per-surface fakes — so
+  // they belong in this program (the one svelte-check runs), not in
+  // tsconfig.node.json's build-config program. `.storybook/main.ts` is the
+  // other half of that split and is named in tsconfig.node.json instead; the
+  // two files are deliberately in exactly one program each, so no file is
+  // type-checked twice under two different `lib`/`types` sets.
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.js",
+    "src/**/*.svelte",
+    ".storybook/preview.ts",
+    ".storybook/story-services.ts",
+    ".storybook/*.svelte"
+  ],
   // Card 100 / decisions/37-i18n-paraglide.md. `src/paraglide/` is Paraglide's
   // codegen output — the typed `m.someKey()` functions, one JS module per
   // message. `allowJs` + `checkJs` above mean the `src/**/*.js` glob would

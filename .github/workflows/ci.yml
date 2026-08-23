@@ -6,10 +6,12 @@
 # own dist-verify/ (verify/lib/build.mjs) — running them side by side gets a
 # PR its full signal in one wall-clock pass instead of two.
 #
-#   - gate:   npm ci -> check -> test -> guard -> build. Fast, always
-#             required — this is "the hard wall" decision 39 names. Nothing
-#             here needs a display or downloads a browser, so it's the
-#             quickest possible red/green signal on every push.
+#   - gate:   npm ci -> check -> test -> guard -> build -> build-storybook.
+#             Fast, always required — this is "the hard wall" decision 39
+#             names. Nothing here needs a display or downloads a browser, so
+#             it's the quickest possible red/green signal on every push.
+#             (build-storybook joined in card 123 per decisions/42 — see the
+#             step's own comment for why it is here and not a parallel job.)
 #   - verify: npm run verify (the Chrome-for-Testing harness — README's
 #             "Verification harness" section) under xvfb, since MV3
 #             extensions require a HEADED launch
@@ -71,7 +73,7 @@ permissions:
 
 jobs:
   gate:
-    name: Gate (check, test, guard, build)
+    name: Gate (check, test, guard, build, storybook)
     runs-on: ubuntu-latest
     # Local fresh-clone dry run (card 109 journal): npm ci ~7s, check ~4s,
     # test ~8s, guard ~3s, build ~3s — ~25s total on a warm-ish local
@@ -106,11 +108,37 @@ jobs:
       - name: Unit / component tests
         run: npm test
 
-      - name: Guards (biome, boundaries, clean-code, return-types, throws, i18n)
+      - name: Guards (biome, boundaries, clean-code, return-types, throws, i18n, stories)
         run: npm run guard
 
       - name: Build
         run: npm run build
+
+      # decisions/42-storybook.md: "build-storybook joins the gate as a
+      # build-only smoke (no publish; hosting is a later choice if ever
+      # wanted)". IN the gate job rather than a parallel one, on cost: it
+      # reuses this job's `npm ci` and its warm node_modules, and the build
+      # itself measured ~3s locally against the ~25s the rest of the gate
+      # takes (card 123's journal). A parallel job would pay a fresh
+      # checkout + setup-node + npm ci — tens of seconds of runner time — to
+      # save three, and would add a second required check for no extra
+      # signal. It runs AFTER `build` so a broken bundle fails on the faster,
+      # more familiar step first.
+      #
+      # What it actually catches, and why it is worth a step at all: the
+      # story surface has its OWN Vite config (.storybook/vite.config.ts) and
+      # its own composition root (.storybook/preview.ts), neither of which
+      # `npm run build` or `npm test` touches. A component that grows a new
+      # dependency its story cannot resolve, or a fake that stops being
+      # importable outside Vitest (the exact regression card 123 hit and
+      # fixed in src/sidepanel/testing/fake-services.ts), is red here and
+      # nowhere else.
+      #
+      # The output (storybook-static/) is gitignored and NOT uploaded as an
+      # artifact — nothing consumes it, and decision 42 explicitly declines
+      # to publish.
+      - name: Build Storybook (build-only smoke)
+        run: npm run build-storybook
 
   verify:
     name: Verify (Chrome for Testing under xvfb)

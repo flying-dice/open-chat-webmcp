@@ -115,7 +115,9 @@ Two details worth knowing:
 | `npm run check` | `svelte-check` + `tsc`, no build output — typechecks the tests too |
 | `npm test` | Vitest: domain, infra and component. `test:watch`, `test:coverage` |
 | `npm run lint` / `format` | Biome, check-only. `lint:fix` / `format:check` |
-| `npm run guard` | the six architecture guards — the pre-push gate |
+| `npm run guard` | the seven architecture guards — the pre-push gate |
+| `npm run storybook` | the component workbench on `:6006` (theme / locale / panel-width toolbars) |
+| `npm run build-storybook` | static Storybook into gitignored `storybook-static/` — CI's build-only smoke |
 | `npm run verify` | the Chrome-for-Testing harness. `-- --check <name>` runs one |
 | `npm run verify:smoke` | the options-page form smoke (no model needed) |
 | `npm run verify:smoke:live` | the live end-to-end turn against a local Ollama |
@@ -194,14 +196,46 @@ posture and run evidence for each.
 npm run guard
 ```
 
-Six gates, each runnable alone (`npm run guard:biome`, `:boundaries`,
-`:clean-code`, `:return-types`, `:throws`, `:i18n`). What each one fails on is
+Seven gates, each runnable alone (`npm run guard:biome`, `:boundaries`,
+`:clean-code`, `:return-types`, `:throws`, `:i18n`, `:stories`). What each one fails on is
 tabulated in the [README](../README.md#scripts); the architectural rules
 behind `guard:boundaries` are in
 [docs/01-architecture.md](01-architecture.md#the-guards).
 
 Run `npm run guard` before pushing. It is check-only — it never rewrites your
 tree — so a formatting failure means running `npm run format` yourself.
+
+## Storybook
+
+```
+npm run storybook
+```
+
+The component workbench on `:6006` — every non-vendored component in isolation,
+per [decisions/42](../decisions/42-storybook.md). Three toolbar axes, because
+they are the three the product actually has:
+
+| Toolbar | What it drives |
+| --- | --- |
+| Theme | the `.dark` class on `<html>` — the one `src/infra/dom/dark-mode.ts` mirrors from your OS, so you can see the other half without changing your system setting |
+| Locale | all ten locales: Paraglide's `setLocale` **and** the `<html lang>`/`<html dir>` bootstrap, so Arabic and Hebrew genuinely mirror rather than just translating |
+| Panel width | 320 / 400px, opt-in per story via `parameters.panelWidth` — the two ends of the range Chrome lets a side panel be dragged to |
+
+Stories are **colocated** (`Component.stories.svelte` beside the component) and
+render through the *same* fakes the component tests use — the per-surface
+`src/{sidepanel,options}/testing/fake-services.ts` modules, seeded per story
+via `parameters.services`. There are no story-only mocks; if a story needs
+canned data a test does not have yet, extend the testing module rather than
+forking it.
+
+`npm run guard:stories` keeps "every component has a story" honest — a new
+component with no colocated story fails it. Components not yet covered are
+listed in `scripts/story-allowlist.json`, which shrinks to nothing as stories
+land; `node scripts/guard-stories.mjs --seed` regenerates it.
+
+Storybook has its own Vite config (`.storybook/vite.config.ts`) rather than
+reusing the app's, for the same reason `vitest.config.ts` does: the CRXJS
+manifest plugin must never load anywhere but the extension build.
 
 ## Chrome for Testing vs real Chrome
 
@@ -254,7 +288,8 @@ More user-facing failure modes (CORS against Ollama, provider setup) are in
 The same gates run in GitHub Actions on every push and pull request —
 `.github/workflows/ci.yml`, per
 [decisions/39](../decisions/39-ci-pipeline.md): a fast always-on job for
-`check` / `test` / `guard` / `build`, and the Chrome-for-Testing harness on
-its own job under `xvfb` with the screenshot matrix uploaded as an artifact.
+`check` / `test` / `guard` / `build` / `build-storybook`, and the
+Chrome-for-Testing harness on its own job under `xvfb` with the screenshot
+matrix uploaded as an artifact.
 Nothing in this document is CI-only: everything it runs is a script you can
 run locally, which is the point.

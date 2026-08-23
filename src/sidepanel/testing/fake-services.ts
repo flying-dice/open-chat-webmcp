@@ -75,7 +75,6 @@
 // speak their own vocabularies (a plain `{ok,result}`/`{ok,error}` record,
 // or plain values) — see each port's own module for why.
 
-import { vi } from "vitest";
 import { initSidePanelServices } from "../app-services";
 import type {
   PageToolAccess,
@@ -375,11 +374,26 @@ export function createFakePageContextSource(
   };
 }
 
+/**
+ * Card 123: `openOptionsPage` used to default to `vi.fn()`, which made this
+ * whole module import `vitest` — fine under Vitest, fatal in Storybook, whose
+ * preview is a BROWSER bundle that renders stories through these very fakes
+ * (decisions/42-storybook.md's "one source of fake truth"). Vitest is not
+ * resolvable there, so the import took the whole preview down before a story
+ * could render.
+ *
+ * The default is a plain no-op now, which costs nothing: every test that
+ * ASSERTS on this call already installs its own spy first
+ * (OverflowMenu.test.ts:97, ModelPicker.test.ts:70, Transcript.test.ts:31) —
+ * the default was never the thing being asserted on. Nothing else in this
+ * module needed `vitest`, so the import is gone entirely and both surfaces'
+ * fake bundles are now importable from any bundler.
+ */
 export function createFakeExtensionShell(
   overrides: Partial<ExtensionShellAccess> = {},
 ): ExtensionShellAccess {
   return {
-    openOptionsPage: vi.fn(),
+    openOptionsPage: () => undefined,
     ...overrides,
   };
 }

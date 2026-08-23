@@ -37,11 +37,18 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true
   },
+  // `.storybook/main.ts` (card 123) is a build config like the four above it —
+  // it names a framework package, assembles Vite plugins and never runs in a
+  // browser — so it is checked here under the same maximal strictness. Its
+  // browser-side siblings (`preview.ts`, the decorator component) are in
+  // tsconfig.app.json's program instead; see the note there.
   "include": [
     "vite.config.ts",
     "manifest.config.ts",
     "vitest.config.ts",
     "vitest.setup.ts",
-    "paraglide.options.mjs"
+    "paraglide.options.mjs",
+    ".storybook/main.ts",
+    ".storybook/vite.config.ts"
   ]
 }

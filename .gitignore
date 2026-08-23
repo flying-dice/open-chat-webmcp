@@ -51,6 +51,14 @@ dist-package
 # as generated without opening it, not because it is load-bearing.
 src/paraglide
 
+# Storybook (boards/project-backlog/123-storybook-bootstrap.md,
+# decisions/42-storybook.md): `npm run build-storybook`'s static site and the
+# builder's own on-disk cache. The site is a build artifact — CI builds it as a
+# smoke test and nothing publishes it (decision 42: "no publish; hosting is a
+# later choice if ever wanted") — and the cache is per-machine.
+storybook-static
+.storybook/cache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

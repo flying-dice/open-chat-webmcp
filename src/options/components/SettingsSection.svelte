@@ -41,6 +41,7 @@
   import type { ApprovalPolicy, McpApprovalPolicy } from "../../domain/settings";
   import { storageFailureMessage } from "../../ui/storageMessage";
   import { uiTextDirection } from "../../ui/direction";
+  import { localeEndonym } from "../../ui/localeNames";
   import { optionsServices } from "../app-services";
   import { m } from "../../paraglide/messages.js";
   import { getLocale, locales, setLocale, type Locale } from "../../paraglide/runtime.js";
@@ -139,45 +140,15 @@
   const currentLocale = getLocale();
 
   /**
-   * Each locale's name IN ITS OWN LANGUAGE — "Deutsch", not "German". That is
-   * the convention a language picker is read by: someone who has landed in the
-   * wrong locale needs to recognise their own language in the list, which they
-   * cannot do if the list is written in the language they are trying to leave.
-   *
-   * Spelled out rather than derived from `Intl.DisplayNames`, which card 105
-   * measured against this list and found gives the wrong ANSWER for a picker
-   * three times over: `zh-CN` comes back as "中文（中国）" where the endonym a
-   * Simplified-Chinese reader looks for is "简体中文", and `fr`/`es`/`ru` come
-   * back lowercase ("français", "español", "русский") because CLDR stores
-   * them the way they are written mid-sentence, not the way a list item is.
-   * A hand-written table is also the only form that can be READ in review,
-   * which for the one control a lost user has to navigate by matters more
-   * than saving ten lines.
-   *
-   * Typed `Record<Locale, string>` against the compiled tuple on purpose: a
-   * locale added to settings.json with no endonym here is a `npm run check`
-   * failure, not a picker row reading "pt-BR".
+   * Card 123 moved the endonym table itself to ../../ui/localeNames.ts — see
+   * that module for why each locale is named in its own language and why the
+   * list is hand-written rather than derived from `Intl.DisplayNames`. It left
+   * this component when Storybook's locale toolbar (decisions/42) became a
+   * second reader of the same ten labels; the table is unchanged.
    */
-  const LOCALE_ENDONYMS: Record<Locale, string> = {
-    en: "English",
-    "zh-CN": "简体中文",
-    ja: "日本語",
-    de: "Deutsch",
-    fr: "Français",
-    es: "Español",
-    "pt-BR": "Português (Brasil)",
-    ko: "한국어",
-    ru: "Русский",
-    ar: "العربية",
-  };
-
-  function localeLabel(locale: Locale): string {
-    return LOCALE_ENDONYMS[locale];
-  }
-
   const LOCALE_OPTIONS: { value: Locale; label: string }[] = locales.map((locale) => ({
     value: locale,
-    label: localeLabel(locale),
+    label: localeEndonym(locale),
   }));
 
   function handleLocaleChange(next: string): void {
@@ -312,7 +283,7 @@
           onValueChange={handleLocaleChange}
         >
           <Select.Trigger id="interface-locale" class="w-full">
-            {localeLabel(currentLocale)}
+            {localeEndonym(currentLocale)}
           </Select.Trigger>
           <Select.Content dir={uiTextDirection()}>
             {#each LOCALE_OPTIONS as option (option.value)}

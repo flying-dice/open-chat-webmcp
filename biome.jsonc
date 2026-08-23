@@ -63,6 +63,11 @@
       // at the root next to the other build-config files, so it is named here
       // the same way they are.
       "paraglide.options.mjs",
+      // Card 123 — Storybook's config directory (decisions/42-storybook.md).
+      // Named like the other build-config files at the root so the story
+      // surface's own root/decorators are held to the same house style as the
+      // two real surfaces' composition roots.
+      ".storybook/**",
       "svelte.config.js",
       "components.json",
       "package.json",

@@ -145,13 +145,14 @@ service worker aren't hot-reloadable.
 | `npm test` | Vitest — the domain/infra/component pyramid, ~6s. `npm run test:watch`, `npm run test:coverage` |
 | `npm run lint` | Biome lint, `--error-on-warnings`, no writes. `npm run lint:fix` applies the safe fixes |
 | `npm run format` | Biome formatter, in place. `npm run format:check` reports without writing |
-| `npm run guard` | all six architecture guards, below |
+| `npm run guard` | all seven architecture guards, below |
+| `npm run storybook` | the component workbench on `:6006` — every component in isolation, with theme / locale / panel-width toolbars ([decisions/42](decisions/42-storybook.md), [docs/07-development.md](docs/07-development.md)). `npm run build-storybook` builds it statically |
 | `npm run verify` | the end-to-end harness: real Chrome for Testing, the built extension, a real WebMCP page. Needs a display. `npm run verify -- --check <name>` runs one check, `-- --list` names them |
 | `npm run verify:smoke` | the options-page form smoke; `npm run verify:smoke:live` drives a real turn against a local Ollama. Neither is a required gate |
 | `npm run demo` | serves the WebMCP fixture page on `:5175` |
 | `npm run launch` | rebuilds and opens `dist/` in your real installed Chrome |
 
-`npm run guard` is six gates, each runnable on its own:
+`npm run guard` is seven gates, each runnable on its own:
 
 | Gate | Fails when |
 | --- | --- |
@@ -161,11 +162,13 @@ service worker aren't hot-reloadable.
 | `guard:return-types` | an exported function under `src/` has no declared return type |
 | `guard:throws` | a `throw`/`Promise.reject` under `src/` isn't on `scripts/throw-allowlist.json` with its invariant named |
 | `guard:i18n` | a locale under `messages/` is missing a key the base locale has, carries one it doesn't, declares a plural as a flat string, renames or drops a `{placeholder}`, loses a `<code>`/`<a>` tag, matches on English's plural categories instead of its own, or has no file at all |
+| `guard:stories` | a non-vendored component has no colocated `*.stories.svelte` and isn't named in `scripts/story-allowlist.json` — or that allowlist names one that now has a story, or one that no longer exists |
 
 **The release gate is all five of** `check`, `test`, `build`, `guard`,
 `verify` **green** — see [docs/05-testing.md](docs/05-testing.md). CI
-(`.github/workflows/ci.yml`) runs `check`/`test`/`guard`/`build` as a
-required gate on every push and pull request, plus `verify` under `xvfb` on
+(`.github/workflows/ci.yml`) runs
+`check`/`test`/`guard`/`build`/`build-storybook` as a required gate on every
+push and pull request, plus `verify` under `xvfb` on
 its own job with the screenshot matrix uploaded as a build artifact — see
 that file's header comments for the cache/artifact design
 (decisions/39-ci-pipeline.md). A third job, `package`, runs `npm run package`
