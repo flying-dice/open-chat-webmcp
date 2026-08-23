@@ -24,7 +24,7 @@
 //     `getSelection()` returns `null`. That is used deliberately below as the
 //     "no Selection API for this document" case.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { extractPageText, extractSelection, PAGE_EXTRACT_CAP_BYTES } from "./page-extraction";
 
 /** A fresh, isolated `Document` per fixture — no shared global state between tests. */
@@ -225,6 +225,58 @@ describe("extractPageText", () => {
     const depth = 5_000;
     const html = `<body>${"<div>".repeat(depth)}deep${"</div>".repeat(depth)}</body>`;
     expect(extractPageText(parse(html)).text).toBe("deep");
+  });
+});
+
+describe("extractSelection — form controls", () => {
+  // document.getSelection() never covers input/textarea selections; these
+  // read the active element's selectionStart/End instead (found live:
+  // "Hello" selected in Google's search box extracted as nothing — Jonathan,
+  // 2026-08-23). These tests use the jsdom GLOBAL document because a
+  // DOMParser document has no browsing context, no focus and no
+  // activeElement — exactly why the other suites above use it.
+  function mount(el: HTMLElement): void {
+    document.body.appendChild(el);
+  }
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("reads a selection inside a focused <input>", () => {
+    const input = document.createElement("input");
+    input.value = "Hello world";
+    mount(input);
+    input.focus();
+    input.setSelectionRange(0, 5);
+    expect(extractSelection(document).text).toBe("Hello");
+  });
+
+  it("reads a selection inside a focused <textarea>", () => {
+    const area = document.createElement("textarea");
+    area.value = "line one\nline two";
+    mount(area);
+    area.focus();
+    area.setSelectionRange(9, 17);
+    expect(extractSelection(document).text).toBe("line two");
+  });
+
+  it("NEVER reads a selection inside a password input — a selected password is still a password", () => {
+    const input = document.createElement("input");
+    input.type = "password";
+    input.value = "hunter2!";
+    mount(input);
+    input.focus();
+    input.setSelectionRange(0, 8);
+    expect(extractSelection(document)).toEqual({ text: "", truncated: false, bytes: 0 });
+  });
+
+  it("a collapsed input selection reads as no selection", () => {
+    const input = document.createElement("input");
+    input.value = "Hello";
+    mount(input);
+    input.focus();
+    input.setSelectionRange(3, 3);
+    expect(extractSelection(document)).toEqual({ text: "", truncated: false, bytes: 0 });
   });
 });
 

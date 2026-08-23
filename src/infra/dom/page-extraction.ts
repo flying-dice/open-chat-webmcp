@@ -551,14 +551,45 @@ export function extractPageText(
  * it, and those newlines are the user's own sense of what they selected.
  * Only horizontal whitespace is collapsed.
  */
+/**
+ * Text selected inside a form control, or `undefined` when there is none.
+ *
+ * `document.getSelection()` does NOT cover `<input>`/`<textarea>` — a
+ * selection there lives on the element's own `selectionStart`/`End` (found
+ * live: "Hello" selected in Google's search box read as no selection at
+ * all, and the model was asked about text it never received — Jonathan,
+ * 2026-08-23). Passwords are excluded outright: a selected password is
+ * still a password. Reading `selectionStart` THROWS on input types that
+ * don't support it (email/number in some engines), hence the try.
+ */
+function formControlSelection(doc: Document): string | undefined {
+  const el = doc.activeElement;
+  const isTextArea = el instanceof HTMLTextAreaElement;
+  const isInput = el instanceof HTMLInputElement;
+  if (!isTextArea && !isInput) return undefined;
+  if (isInput && el.type === "password") return undefined;
+  try {
+    const { selectionStart, selectionEnd, value } = el;
+    if (selectionStart === null || selectionEnd === null || selectionStart === selectionEnd) {
+      return undefined;
+    }
+    return value.slice(selectionStart, selectionEnd);
+  } catch {
+    return undefined;
+  }
+}
+
 export function extractSelection(
   doc: Document,
   capBytes: number = PAGE_EXTRACT_CAP_BYTES,
 ): ExtractedText {
   const selection = doc.getSelection?.();
-  if (!selection || selection.isCollapsed) return { text: "", truncated: false, bytes: 0 };
-
-  const raw = selection.toString();
+  const documentSelection = selection && !selection.isCollapsed ? selection.toString() : undefined;
+  // The document selection wins when both somehow exist — it is the one the
+  // user made most visibly — but in practice they are mutually exclusive:
+  // selecting in an input collapses the document selection and vice versa.
+  const raw = documentSelection ?? formControlSelection(doc);
+  if (raw === undefined) return { text: "", truncated: false, bytes: 0 };
   const normalized = raw
     .replace(/[^\S\n]+/g, " ")
     .replace(/[ \t]*\n[ \t]*/g, "\n")
