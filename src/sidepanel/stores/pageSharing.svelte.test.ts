@@ -508,7 +508,7 @@ describe("the focus sync", () => {
     teardown();
   });
 
-  it("coalesces one gesture's event echoes into one pull — pointerdown, focusin and focus fire together on a click", async () => {
+  it("coalesces one gesture's event echoes: one immediate pull, and at most one trailing catch-up so a late gesture is never lost", async () => {
     const { pull } = sourceAnswering("one gesture");
     const teardown = initPageSharingSync();
 
@@ -516,9 +516,14 @@ describe("the focus sync", () => {
     document.dispatchEvent(new Event("focusin"));
     window.dispatchEvent(new Event("focus"));
     await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1));
-    // Settle: still exactly one — the echoes were dropped, not deferred.
+
+    // The echoes inside the window schedule exactly ONE trailing pull —
+    // that catch-up is what keeps a selection made just after a prior panel
+    // interaction from silently never getting its chip (the sharing-gate
+    // scenario caught the leading-only version losing it).
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(2), { timeout: 1500 });
     await Promise.resolve();
-    expect(pull).toHaveBeenCalledTimes(1);
+    expect(pull).toHaveBeenCalledTimes(2);
 
     teardown();
   });
