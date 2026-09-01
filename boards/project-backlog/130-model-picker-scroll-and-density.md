@@ -4,7 +4,7 @@ agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-01T20:55:00.000Z
+updatedAt: 2026-09-01T21:05:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -355,3 +355,8 @@ auto-expand, badge default color, collapsible-heading accessible name):
   http://localhost:6009 (details in the gate entry above); killed
   Storybook afterward. Leaving `column: review` as instructed — these were
   review-column fixes, not a restart of the card.
+- **claude** (2026-09-01T21:05:00.000Z): Committed to branch `card/130`,
+  pushed to origin, and opened GitLab issue #1 and MR !1 for tracking,
+  requesting review from shockwave.
+  Issue: https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/work_items/1
+  MR: https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/merge_requests/1
