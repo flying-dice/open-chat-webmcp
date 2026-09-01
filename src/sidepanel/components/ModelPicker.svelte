@@ -481,6 +481,30 @@
   let highlightedValue = $state("");
 
   async function restoreDisclosureHighlight(sectionKey: string): Promise<void> {
+    /**
+     * Review fix on card 130 (MR !1, note 12478): a CLICK on the toggle
+     * doesn't just risk the roving *highlight* handled below — it also moves
+     * real DOM *focus*, and nothing was putting that back. `Command.Item`
+     * rows carry no `tabindex` of their own (see the module doc comment:
+     * real focus stays on the input/root the whole time), so a mousedown on
+     * one bubbles focus to the nearest focusable ancestor. Before card 130's
+     * `tabindex={0}` fix (line ~763) that ancestor was `Command.Root`; now
+     * it's `Command.List` itself. Either way, focus lands on the scroll
+     * container instead of the filter input, and every key typed afterward
+     * is consumed by the (non-editable) container and silently discarded —
+     * the filter box stays visibly empty with no feedback at all.
+     *
+     * Enter/Space activation never had this problem: focus was already on
+     * the input (or root) before the key was pressed, and activating
+     * `onSelect` doesn't move it, so this call is a harmless no-op on that
+     * path — it fires identically regardless of activation method, matching
+     * `handleOpenAutoFocus` (line ~190), which already establishes
+     * "filter when there is one, else the root" as this picker's one
+     * intended default focus target.
+     */
+    if (filterInputEl) filterInputEl.focus();
+    else commandRootEl?.focus();
+
     for (let i = 0; i < 8; i++) {
       await tick();
       if (highlightedValue !== sectionKey) highlightedValue = sectionKey;
@@ -750,15 +774,31 @@
                are `aria-disabled` until selectable), and the container's own
                `scrollTop` never moved because nothing in it could take real
                focus. Making the region itself a tab stop gives keyboard users
-               a way to scroll it directly (arrow keys / Page Down once
-               focused), satisfying axe's rule, without touching Command's own
-               roving-tabindex management of its child items — items never
-               carry a `tabindex` of their own (see the module doc comment:
-               real DOM focus stays on the input/root the whole time), so this
-               doesn't compete with that mechanism. Verified live: keydown for
-               arrow-key roving still bubbles from this element up to
-               Command.Root's own `onkeydown` exactly as before, and Escape
-               still closes the popover from here. -->
+               a way to reach it and scroll it directly, satisfying axe's
+               rule, without touching Command's own roving-tabindex
+               management of its child items — items never carry a
+               `tabindex` of their own (see the module doc comment: real DOM
+               focus stays on the input/root the whole time), so this doesn't
+               compete with that mechanism.
+
+               Review fix on card 130 (MR !1, note 12479): the paragraph
+               above used to credit "arrow keys / Page Down" with doing the
+               scrolling once this region is focused. Measured live in
+               Chromium (Unverified expanded, scrollHeight 1928 / clientHeight
+               321, focus on this element, scrollTop reset to 0 before each
+               key): ArrowDown and End do NOT move `scrollTop` — Command.Root
+               owns those for its own roving highlight and calls
+               `preventDefault` before they ever reach the browser's native
+               scroll behavior. Only PageDown and Space — the two keys
+               Command doesn't claim for roving — actually move `scrollTop`
+               (measured: both landed at 273). Space only does this while
+               focus is on THIS element; the same key typed while focus is on
+               the filter input above just types a space character (note
+               12450's fix), it does not scroll anything. Arrow-key roving
+               still bubbles from this element up to Command.Root's own
+               `onkeydown` exactly as before, and Escape still closes the
+               popover from here — none of that changed, only the claim about
+               which keys scroll the region. -->
           <Command.List
             tabindex={0}
             class="flex min-h-0 max-h-full flex-1 flex-col gap-3 overflow-y-auto py-1"

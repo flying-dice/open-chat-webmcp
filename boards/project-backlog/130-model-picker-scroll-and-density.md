@@ -4,7 +4,7 @@ agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-01T23:52:00.000Z
+updatedAt: 2026-09-02T00:33:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -284,6 +284,94 @@ not touched again):
       hint) — present in the collapsed "Grouped" story's popover text.
       12387 (test coverage) — `npm test` green, no `it.skip`/`it.only`.
       (claude-sonnet, 2026-09-01T23:52:00Z)
+
+Sixth pass, shockwave's third FAIL at head `0f1182b` (notes 12478/12479,
+verdict 12480) — 2 new findings, both on the collapsible disclosure
+`Command.Item`:
+
+- [x] tests-passing — `npm test`: 81 files, 1339 tests, all green (6 new
+      ModelPicker cases — click-focus-restore for both sections, the
+      below-`FILTER_THRESHOLD` commandRootEl-fallback edge case, a
+      scrollTop-invariance check, plus focus assertions added to the
+      existing Enter and click round-trip tests) (claude-sonnet,
+      2026-09-02T00:18:38Z)
+- [x] typecheck — `npm run check`: svelte-check 2077 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-02T00:18:45Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome,
+      boundaries, clean-code — nothing new above the 0.5 threshold,
+      return-types, throws, i18n — 446 keys x 10 locales unchanged,
+      stories — 44/44 covered) (claude-sonnet, 2026-09-02T00:19:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-02T00:19:30Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-02T00:20:00Z)
+- [x] live-storybook-check — `npm run storybook -p 6006 --no-open`, driven
+      via Playwright MCP (Chromium) against `side-panel-modelpicker--many-
+      unverified-models-large-gateway-catalog` and `--grouped-selectable-
+      unverified-no-tools`, killed afterward. **12478**: clicked "Unverified
+      (24)" — `document.activeElement` is the filter input
+      (`[data-slot="command-input"]`) AND `[data-selected]` is
+      `unverified-toggle` at the same moment (both halves measured
+      together); pressed `g a t e` with no click on the input anywhere —
+      filter value became `"gate"` and the list narrowed to 28 matching
+      options (28 = the toggle + 27 matches at that point in the sequence).
+      Full click cycle after the fix: 27 → 3 → 27 options, focus on the
+      filter input at every step (including the second, collapsing click).
+      Below `FILTER_THRESHOLD` (the "Grouped" story, 1-row Unverified
+      section, no filter input renders at all): clicking the toggle put
+      focus on `[role="application"]` (`commandRootEl`), not `document.body`
+      — the guarded fallback works, no crash. Isolated the "`.focus()` on a
+      scroll container" risk directly: with the list scrolled to
+      `scrollTop=40`, calling `filterInputEl.focus()` alone (no other DOM
+      change) left `scrollTop` at exactly 40 — the small 40→35.5 drift seen
+      when a DIFFERENT toggle's click also inserted new rows was traced to
+      that content change (Chromium's own scroll-anchoring reacting to
+      newly-inserted rows), not to the added focus call. Keyboard path
+      (Enter x3) reconfirmed unchanged: 27→3→27, `document.activeElement`
+      stayed the filter input at every step (never needed the restore, so
+      it's confirmed a true no-op there). Filter-auto-expand path
+      (typing "model-7" with nothing pre-expanded): narrowed to "Unverified
+      (1)", auto-revealed `gateway-model-7`, focus never left the filter
+      (this path never moves focus, so nothing to fix). Popover-close-reset
+      path: Escape closed the popover; reopening showed filter reset to
+      `""`, both sections re-collapsed (3 options), and
+      `handleOpenAutoFocus` still landed focus on the filter — all four
+      activation paths (click, Enter, filter auto-expand, popover-close
+      reopen) consistent. **12479**: with the Unverified section expanded
+      (`scrollHeight` 1568 vs `clientHeight` 344) and real focus on
+      `[role="listbox"]` itself, `scrollTop` reset to 0 before each key:
+      ArrowDown → stays 0 (Command's roving highlight consumed it, moved to
+      `no-tools-toggle`); End → stays 0; PageDown → 316 (real scroll);
+      Space (focus on the list) → 316 (real scroll). Space typed while
+      focus is on the FILTER input instead: `scrollTop` stayed 0 and the
+      filter's value became a literal `" "` — confirming the comment's new
+      claim that Space only scrolls while focus is on the list itself.
+      **Full 11-finding regression pass** (all three review rounds, not
+      just the 9 from the first two): 12383 (Enter expands, doesn't commit)
+      — reconfirmed via the Enter x3 cycle above. 12384
+      (collapse-during-filter) — filtered to "model" (25 options), clicked
+      to collapse (1 option, not a no-op), cleared the filter, reverted to
+      collapsed 3-option state (not latched open at 25). 12385
+      (`aria-required-children`) — structurally reconfirmed: the toggle is
+      still `[role="option"]` (a valid listbox child), and `npm run
+      verify`'s axe-core pass against the real built extension reported 0
+      blocking violations. 12386 (`ollama pull` hint) — reconfirmed present
+      in the "Grouped" story's popover text while the No-tool-support
+      section is collapsed. 12387 (test coverage) — `npm test` green, 26
+      ModelPicker cases, no skips. 12449 (highlight survives
+      expand/register) — reconfirmed via every click/Enter cycle above,
+      `[data-selected]` never left the toggle. 12450 (`handleListKeydown`
+      deletion holds) — `grep -rn handleListKeydown src/` finds only
+      historical doc-comment references, no live handler or wiring. 12451
+      (group accessible names) — reconfirmed on the "Grouped" story: all
+      three `[role="group"]` elements (`Local Ollama`, `Unverified`, `No
+      tool support`) resolve a non-empty `aria-labelledby`. 12452 (scroll
+      region reachable + real scroll) — reconfirmed via the PageDown/Space
+      measurements above. 12478/12479 — this pass's own fixes, measured
+      above. (claude-sonnet, 2026-09-02T00:32:00Z)
 
 ## Comments
 
@@ -725,3 +813,89 @@ not touched again):
   Storybook static server afterward. Not committing/pushing per the task
   brief — leaving `column: review` for Jonathan's own diff review and a
   further internal pass before pushing.
+- **claude-sonnet** (2026-09-02T00:33:00Z): shockwave's THIRD review (head
+  `0f1182b`) confirmed all 9 prior findings across two passes still fixed,
+  but filed a third FAIL on 2 new ones (notes 12478/12479, verdict 12480),
+  both on the collapsible disclosure `Command.Item`.
+  **12478 — click leaves real focus on `Command.List`, discarding every
+  keystroke after (`restoreDisclosureHighlight`,
+  ModelPicker.svelte:483-510):** the keyboard path was already correct
+  (focus never left the filter/root), but a mouse click on the toggle moves
+  real DOM focus to the nearest focusable ancestor of the clicked
+  `Command.Item` — which, since items carry no `tabindex` of their own, is
+  now `Command.List` itself (card 130's own `tabindex={0}` fix, note
+  12452). Added the "matching half" the review asked for directly inside
+  `restoreDisclosureHighlight` (ModelPicker.svelte:483-510, called from
+  both `toggleUnverifiedDisclosure` and `toggleNoToolsDisclosure`): `if
+  (filterInputEl) filterInputEl.focus(); else commandRootEl?.focus();`,
+  fired unconditionally alongside the existing highlight-restore loop so it
+  behaves identically regardless of activation method (Enter/Space are a
+  no-op there since focus never moved; click is the actual fix). Explicitly
+  guarded the filter-input-absent case (the coordinator flagged
+  `filterInputEl!.focus()` as a crash risk on the below-`FILTER_THRESHOLD`
+  "Grouped" story) rather than asserting non-null.
+  **12479 — the `tabindex={0}` comment overclaimed which keys scroll the
+  region (ModelPicker.svelte:767-798):** rewrote the paragraph to name
+  PageDown/Space specifically as the keys that move `scrollTop`, and to
+  state explicitly that Command.Root's own roving-highlight keys (arrows,
+  Home/End) are consumed by its `preventDefault` and never reach native
+  scroll — plus that Space only scrolls while focus is on the list itself,
+  not the filter input (where it just types a space, per note 12450's
+  fix).
+  **Tests added/extended in ModelPicker.test.ts:** a new test asserting a
+  click's focus-restore AND highlight-restore together (not separately),
+  followed by a real keystroke (`user.keyboard`, no click on the input)
+  proving the filter actually receives it and narrows the list; the same
+  test duplicated for the No-tool-support toggle to prove the fix isn't
+  Unverified-specific; a below-`FILTER_THRESHOLD` test proving the fallback
+  lands on `[role="application"]` (`commandRootEl`), never
+  `document.body`; a scrollTop-invariance test (a different toggle's click
+  triggers the same focus-restore while the list is pre-scrolled, asserts
+  `scrollTop` unchanged, documented as a DOM-level guard since jsdom can't
+  lay out real scrolling); `document.activeElement` assertions added at
+  every step of the existing Enter x3 and click x3 round-trip tests (proves
+  no regression on either path); and the `tabindex={0}` DOM test's comment
+  rewritten to explain why a genuine PageDown/Space scroll assertion can't
+  be expressed in jsdom (no native keydown-scroll behavior at all there)
+  and points at the live Chromium measurement instead.
+  **Live Chromium verification (Playwright, local Storybook, killed
+  afterward) covering the coordinator's structural note — all four
+  activation paths measured for consistency, not just the click path in
+  isolation:** click → focus on filter + highlight on toggle, together;
+  typed "gate" with no click on the input → filter value `"gate"`, list
+  narrowed to 28 options. Full click cycle 27→3→27, focus on the filter at
+  every step. Below-threshold "Grouped" story → focus on `commandRootEl`,
+  not body. Isolated the `.focus()`-causes-scroll risk directly: focusing
+  the filter input alone left a pre-set `scrollTop=40` at exactly 40; the
+  4.5px drift seen when a DIFFERENT toggle's click also inserted new rows
+  traced to Chromium's own scroll-anchoring reacting to the content change,
+  not to the added focus call. Enter path: 27→3→27, focus stayed on the
+  filter throughout (true no-op, as expected). Filter auto-expand: typing
+  "model-7" narrowed to "Unverified (1)" and revealed the row with no
+  click, focus never left the filter (this path never moves focus).
+  Popover-close-reset: Escape closed it; reopening showed filter reset to
+  empty, both sections re-collapsed, and `handleOpenAutoFocus` still landed
+  focus on the filter. For 12479: expanded list, focus on
+  `[role="listbox"]`, `scrollTop` reset to 0 before each key — ArrowDown
+  and End both stayed at 0 (consumed by Command's roving highlight,
+  confirmed by watching `[data-selected]` move instead), PageDown reached
+  316, Space (focus on the list) also reached 316, and Space typed with
+  focus on the filter input instead left `scrollTop` at 0 and put a literal
+  space into the filter's value.
+  **Full 11-finding regression pass** (all three review rounds — the
+  coordinator's standing rule, not just the 9 the task brief named):
+  12383/12384/12386/12449/12452 reconfirmed via the measurements above;
+  12385 reconfirmed structurally (toggle still `role="option"`, a valid
+  listbox child) plus `npm run verify`'s axe-core pass (0 blocking
+  violations against the real built extension); 12387 reconfirmed via `npm
+  test` green with no skips; 12450 reconfirmed via `grep -rn
+  handleListKeydown src/` finding only historical comment references, no
+  live handler; 12451 reconfirmed on the "Grouped" story — all three
+  `role="group"` elements resolve non-empty `aria-labelledby`. Full detail
+  and exact numbers in the Sixth-pass `## Gates` entry above.
+  Gates: `npm test` (81 files, 1339 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven), `npm run build`, `npm run
+  verify` (10/10 required + both best-effort) all green. Killed the
+  Storybook dev server afterward. Not committing/pushing per the task
+  brief — leaving `column: review` for Jonathan to review the diff and push
+  himself.

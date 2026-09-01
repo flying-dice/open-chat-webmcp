@@ -413,12 +413,20 @@ describe("ModelPicker", () => {
     );
     expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
     expect(screen.getByLabelText(m.providerPicker_filterAriaLabel())).toBeInTheDocument();
+    // Review fix on card 130 (MR !1, note 12478) added a real-focus restore
+    // alongside the highlight restore above, on the theory it fires
+    // identically for every activation method. On the keyboard path focus
+    // never left the filter in the first place, so this call must be a
+    // true no-op here — pin that down explicitly so a future change can't
+    // make Enter start moving focus away from the filter.
+    expect(document.activeElement).toBe(filter);
 
     // Second Enter: re-collapses — the highlight must still be on the
     // toggle, not on whatever bits-ui sorted first after the expand.
     await user.keyboard("{Enter}");
     expect(screen.queryByText("gateway-model-1")).not.toBeInTheDocument();
     expect(screen.getByLabelText(m.providerPicker_filterAriaLabel())).toBeInTheDocument();
+    expect(document.activeElement).toBe(filter);
 
     // Third Enter: re-expands again — a repeatable toggle, not a one-shot.
     await waitFor(() =>
@@ -430,6 +438,7 @@ describe("ModelPicker", () => {
     await user.keyboard("{Enter}");
     expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
     expect(screen.getByLabelText(m.providerPicker_filterAriaLabel())).toBeInTheDocument();
+    expect(document.activeElement).toBe(filter);
 
     expect(selectModel).not.toHaveBeenCalled();
     expect(closePicker).not.toHaveBeenCalled();
@@ -449,27 +458,188 @@ describe("ModelPicker", () => {
 
     render(ModelPicker);
 
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
+
     let toggle = await screen.findByRole("option", {
       name: `${m.providerPicker_unverifiedHeading()} (${names.length})`,
     });
 
     await user.click(toggle);
     expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
+    // Review fix on card 130 (MR !1, note 12478): every click on the toggle
+    // must leave real DOM focus on the filter, not just the roving
+    // highlight — checked at every step of the full expand/collapse/expand
+    // cycle, not only the first click.
+    expect(document.activeElement).toBe(filter);
 
     toggle = (await screen.findByText(`${m.providerPicker_unverifiedHeading()} (9)`)).closest(
       '[role="option"]',
     ) as HTMLElement;
     await user.click(toggle);
     expect(screen.queryByText("gateway-model-1")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(filter);
 
     toggle = (await screen.findByText(`${m.providerPicker_unverifiedHeading()} (9)`)).closest(
       '[role="option"]',
     ) as HTMLElement;
     await user.click(toggle);
     expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
+    expect(document.activeElement).toBe(filter);
 
     expect(selectModel).not.toHaveBeenCalled();
     expect(closePicker).not.toHaveBeenCalled();
+  });
+
+  // Review fix on card 130 (MR !1, note 12478): a click leaves real DOM
+  // focus on `Command.List` (now a tab stop per note 12452's `tabindex={0}`)
+  // instead of the filter input, so every subsequent keystroke was silently
+  // discarded — no character in the box, no change to the list, no error.
+  // Measured live in Chromium at head 0f1182b: `activeElement` after the
+  // click was `command-list`, and typing "gate" afterward produced zero
+  // change. This proves BOTH halves the review asked for measured together
+  // in one assertion set (not separately, so a fix that restores one but not
+  // the other can't slip through): the roving highlight AND real focus land
+  // correctly from the SAME click, and a keystroke typed with no click on
+  // the input actually reaches it and narrows the list.
+  it("restores real focus to the filter input on a CLICK, so a keystroke with no click on the input still reaches the filter", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
+    const toggle = await screen.findByRole("option", {
+      name: `${m.providerPicker_unverifiedHeading()} (${names.length})`,
+    });
+
+    await user.click(toggle);
+
+    // Both halves, measured together: the highlight AND real focus.
+    expect(document.querySelector("[data-selected]")).toHaveAttribute(
+      "data-value",
+      "unverified-toggle",
+    );
+    expect(document.activeElement).toBe(filter);
+
+    // No click on the input anywhere in this test — type at whatever
+    // currently holds focus, exactly the recovery path (or lack of one) the
+    // review measured.
+    await user.keyboard("gateway-model-5");
+    expect(filter).toHaveValue("gateway-model-5");
+    expect(screen.getByText("gateway-model-5")).toBeInTheDocument();
+    expect(screen.queryByText("gateway-model-1")).not.toBeInTheDocument();
+  });
+
+  // Same fix, No-tool-support section: the restore isn't specific to the
+  // Unverified toggle, so this proves it generalizes to the other
+  // collapsible disclosure sharing the same `toggle` snippet
+  // (`collapsibleOption` in ModelPicker.svelte).
+  it("restores real focus to the filter input on a click on the No-tool-support toggle too", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 9 }, (_, i) => `no-tools-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), NO_TOOLS))),
+    };
+
+    render(ModelPicker);
+
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
+    const toggle = await screen.findByRole("option", {
+      name: `${m.providerPicker_noToolSupportHeading()} (${names.length})`,
+    });
+
+    await user.click(toggle);
+
+    expect(document.querySelector("[data-selected]")).toHaveAttribute(
+      "data-value",
+      "no-tools-toggle",
+    );
+    expect(document.activeElement).toBe(filter);
+
+    await user.keyboard("no-tools-model-3");
+    expect(filter).toHaveValue("no-tools-model-3");
+    expect(screen.getByText("no-tools-model-3")).toBeInTheDocument();
+    expect(screen.queryByText("no-tools-model-1")).not.toBeInTheDocument();
+  });
+
+  // CRITICAL EDGE CASE the review flagged: below FILTER_THRESHOLD (8) there
+  // is no filter input at all (`showFilter` is false — see the "Grouped"
+  // Storybook story, which renders none), so the restore must fall back to
+  // `commandRootEl`, exactly like `handleOpenAutoFocus` already does on open.
+  // A restore that assumed the filter input always exists (e.g.
+  // `filterInputEl!.focus()`) would throw here instead of falling back.
+  it("falls back to the Command root for focus restore when there is no filter input to restore to", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    // A single unverified model: 1 row total, well under FILTER_THRESHOLD
+    // (8), so `showFilter` is false and no filter input mounts at all.
+    state.modelsByProvider = { a: loaded([entry(model("mystery"), UNKNOWN)]) };
+
+    render(ModelPicker);
+
+    expect(screen.queryByLabelText(m.providerPicker_filterAriaLabel())).not.toBeInTheDocument();
+
+    const toggle = await screen.findByRole("option", {
+      name: `${m.providerPicker_unverifiedHeading()} (1)`,
+    });
+    await user.click(toggle);
+
+    expect(screen.getByText("mystery")).toBeInTheDocument();
+    const root = document.querySelector('[role="application"]');
+    expect(root).not.toBeNull();
+    expect(document.activeElement).toBe(root);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  // Review follow-up: `.focus()` on an element that lives inside (or beside)
+  // a scroll container can itself cause the browser to scroll something into
+  // view. The filter input and the Command root both live OUTSIDE the
+  // scrollable `Command.List`, so restoring focus to either must never move
+  // that list's own scroll position. jsdom has no real layout, so this only
+  // guards the DOM-level fact (the property this component actually touches
+  // is untouched); the genuine measurement — expand, scroll down, click a
+  // toggle, confirm `scrollTop` doesn't reset — is a live Chromium check.
+  it("does not disturb the scrollable list's own scroll position when restoring focus", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const unverifiedNames = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    const noToolsNames = Array.from({ length: 9 }, (_, i) => `no-tools-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded([
+        ...unverifiedNames.map((name) => entry(model(name), UNKNOWN)),
+        ...noToolsNames.map((name) => entry(model(name), NO_TOOLS)),
+      ]),
+    };
+
+    render(ModelPicker);
+
+    const unverifiedToggle = await screen.findByRole("option", {
+      name: `${m.providerPicker_unverifiedHeading()} (${unverifiedNames.length})`,
+    });
+    await user.click(unverifiedToggle);
+    expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
+
+    const list = document.querySelector('[role="listbox"]') as HTMLElement;
+    list.scrollTop = 42;
+
+    // A DIFFERENT toggle's click also runs the same focus-restore — proving
+    // the restore itself, not just "nothing happened yet", leaves scrollTop
+    // alone.
+    const noToolsToggle = (
+      await screen.findByText(`${m.providerPicker_noToolSupportHeading()} (${noToolsNames.length})`)
+    ).closest('[role="option"]') as HTMLElement;
+    await user.click(noToolsToggle);
+
+    expect(list.scrollTop).toBe(42);
   });
 
   // Review fix on card 130 (MR !1, note 12450): `handleListKeydown` used to
@@ -888,6 +1058,21 @@ describe("ModelPicker", () => {
   // (jsdom can't lay out or scroll anything real); this just guards the
   // one DOM fact that measurement depends on, so a future edit can't drop
   // the attribute without a test noticing.
+  //
+  // Review follow-up (note 12479): the claim this attribute earns is
+  // narrower than "arrow keys scroll it" — measured live in Chromium,
+  // ArrowDown/End are consumed by Command.Root's own roving-highlight
+  // `preventDefault` and never move `scrollTop`; only PageDown and Space
+  // (the keys Command doesn't claim) actually scroll the region, and only
+  // while focus is on the region itself (Space typed into the filter input
+  // just types a space). jsdom implements no native "browser default
+  // action" for ANY key — it doesn't scroll on PageDown/Space either — so a
+  // `keydown` + `scrollTop` assertion here would either be vacuously true
+  // for the wrong reason or fail regardless of whether the real behavior is
+  // correct; it genuinely can't be expressed in jsdom. The real proof is the
+  // Chromium measurement recorded on card 130's board
+  // (boards/project-backlog/130-model-picker-scroll-and-density.md) and in
+  // ModelPicker.svelte's own comment beside `tabindex={0}`.
   it("makes the scrollable list region itself a keyboard focus target", async () => {
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
