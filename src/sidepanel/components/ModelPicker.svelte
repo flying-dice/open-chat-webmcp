@@ -133,14 +133,24 @@
   let noToolsFilterOverride: boolean | null = $state(null);
 
   /**
-   * Review fix on card 130 (MR !1, note 12385): the Unverified/No-tool-
+   * Review fix on card 130 (MR !1, note 12451): the Unverified/No-tool-
    * support disclosure headings render as a real `Command.Item` (a genuine
    * `role="option"` row) rather than a `<button>`/custom widget nested
    * inside the group — see the doc comment on `collapsibleOption` below for
-   * why. That means the group's plain string `heading` prop (the same one
-   * every provider group already uses) gives it a correctly-wired
-   * `aria-labelledby` for free, exactly like command-group.svelte's
-   * baseline case — no per-instance id plumbing needed here any more.
+   * why. That row's own visible text ("Unverified (24)") is exactly what a
+   * plain string `heading` prop would ALSO render (command-group.svelte's
+   * `GroupHeading`), so passing `heading` the ordinary way would print the
+   * label twice on screen. The two groups below instead pass `heading` with
+   * `headingHidden` — command-group.svelte renders that `GroupHeading` with
+   * `sr-only` instead of its normal visible classes, so the group still gets
+   * a real, non-empty `aria-labelledby` (measured: matches origin/main's
+   * three-of-three named groups) without a second, visible copy of the
+   * label. This was previously skipped as a false economy ("no `heading`
+   * string prop here" — see the group templates below) on the theory that
+   * the option row's own content-based accessible name would cover the
+   * *group's* name too; it doesn't — `group` and `option` are named
+   * independently, and skipping `heading` left `aria-labelledby: null` on
+   * both groups (note 12451's measured regression from origin/main).
    */
 
   /** A current tool-calling-capable Ollama model, named concretely per card 14 rather than leaving "pull a model" vague. */
@@ -437,47 +447,76 @@
   }
 
   /**
-   * Review fix on card 130 (MR !1, note 12383's Space half): `collapsibleOption`'s
-   * doc comment explains why Space can't be caught on the item itself —
-   * Command's roving-highlight keeps real DOM focus on the filter input (or
-   * `commandRootEl`), never on the highlighted `Command.Item`, so this is the
-   * one place a Space keydown can be intercepted before its default action
-   * (typing a literal space into whatever actually has focus) runs.
+   * Review fix on card 130 (MR !1, note 12449): bound to `Command.Root`'s
+   * `value` below. bits-ui derives EVERY item's `data-selected`/`aria-
+   * selected` (`CommandItemState.isSelected`, command.svelte.js) straight
+   * off this value, so forcing it onto a toggle's own `value` forces that
+   * toggle to read as highlighted, immediately and reactively — this is the
+   * "controllable highlighted value" the finding asked to look for.
    *
-   * Gated on `[data-selected]` — the item Command itself is currently
-   * highlighting — matching ONE of the two toggles' own stable `value`
-   * (`"unverified-toggle"`/`"no-tools-toggle"`, set on `collapsibleOption`'s
-   * `Command.Item` below): only then is this Space "for" a toggle, not
-   * ordinary filter typing. `commandRootEl` — not `e.currentTarget` — is the
-   * query root: `onkeydown` here is Command.Root's OWN prop, but the event
-   * that reaches it already bubbled from wherever focus actually is, and
-   * `commandRootEl` is the one stable reference to the root's DOM node this
-   * component already keeps (`bind:ref` below).
+   * Why it needs forcing at all: with `shouldFilter={false}` (this list's
+   * own visibility logic replaces Command's), `CommandRootState#sort()`
+   * unconditionally re-picks the FIRST valid item (`#selectFirstItem()`)
+   * every time `registerItem` runs for a newly-mounted item, once past
+   * initial mount. Expanding a section mounts a batch of newly-visible rows,
+   * each a fresh `registerItem` call, so activating the toggle is
+   * immediately followed — a few ticks later, via bits-ui's own
+   * `afterTick`-chained `registerItem` -> `#sort()` -> `#selectFirstItem()`
+   * — by the highlight silently jumping to whatever row now sorts first.
+   * Nothing on screen shows this: the toggle keeps its `data-value`, it
+   * simply stops being `[data-selected]`. The next Enter/click therefore
+   * lands on that first row instead of re-collapsing the section — note
+   * 12449's exact repro.
    *
-   * Known, accepted edge case: if a user's filter QUERY text happens to
-   * land the toggle option as the highlighted item while they are still
-   * mid-typing a multi-word query that itself contains a space (e.g. typing
-   * "no tool" happens to filter down such that the toggle sorts first),
-   * that one space keystroke would be intercepted as a toggle rather than
-   * typed — rare (the toggle's own label text is not the sort of thing a
-   * user searching for a MODEL id would be typing towards) and
-   * self-correcting (retyping the space works normally once the toggle is
-   * no longer the highlighted item), traded deliberately for Space
-   * genuinely working in the common case the review measured: arrow to the
-   * toggle, press Space.
+   * There is no prop to opt out of that reselect (read: command.svelte.js
+   * has no "don't reselect on registration" option), so this reacts instead
+   * of preventing: `tick()` a handful of times after every toggle — enough
+   * to span `registerItem`'s own `afterTick` plus `#selectFirstItem`'s
+   * nested one — snapping `highlightedValue` back onto the toggle any time
+   * bits-ui's async reselect has knocked it off. Collapsing never triggers
+   * the reselect in the first place (removing items only reselects if the
+   * REMOVED item was the one selected, and the toggle itself is never
+   * removed), so these calls are harmless no-ops on that path.
    */
-  function handleListKeydown(e: KeyboardEvent): void {
-    if (e.key !== " ") return;
-    const highlighted = commandRootEl?.querySelector("[data-selected]");
-    const value = highlighted?.getAttribute("data-value");
-    if (value === "unverified-toggle") {
-      e.preventDefault();
-      toggleUnverified();
-    } else if (value === "no-tools-toggle") {
-      e.preventDefault();
-      toggleNoTools();
+  let highlightedValue = $state("");
+
+  async function restoreDisclosureHighlight(sectionKey: string): Promise<void> {
+    for (let i = 0; i < 8; i++) {
+      await tick();
+      if (highlightedValue !== sectionKey) highlightedValue = sectionKey;
     }
   }
+
+  function toggleUnverifiedDisclosure(): void {
+    toggleUnverified();
+    void restoreDisclosureHighlight("unverified-toggle");
+  }
+
+  function toggleNoToolsDisclosure(): void {
+    toggleNoTools();
+    void restoreDisclosureHighlight("no-tools-toggle");
+  }
+
+  /**
+   * Review fix on card 130 (MR !1, note 12450): `handleListKeydown` used to
+   * intercept Space centrally on `Command.Root` whenever the toggle held
+   * `[data-selected]`, on the theory that this was a rare edge case. Measured
+   * by the review, it was not rare: Command auto-highlights the FIRST option
+   * on every filter change, and the toggle IS the first option whenever the
+   * current query has no tool-capable match — the ordinary shape of
+   * searching a large gateway catalog. Any space typed at that point (e.g.
+   * mid-way through "local ollama", `ModelPicker.stories.svelte`'s own
+   * fixture provider name) was silently eaten and the section collapsed
+   * instead, corrupting the query the user was still typing.
+   *
+   * Now that the toggle is a real `Command.Item` reached through Command's
+   * own `onSelect` (see `collapsibleOption` below), Enter and click both
+   * activate it correctly with no interception needed — and `role="option"`
+   * in a combobox+listbox does not require Space to activate at all; Space's
+   * only correct job here is typing into the filter input. So the handler,
+   * its `onkeydown` wiring on `Command.Root`, and the Space-specific test
+   * coverage it existed for are deleted outright rather than patched.
+   */
 
   function handlePickModel(row: Row): void {
     if (!isSelectable(row.capability)) return;
@@ -582,16 +621,21 @@
       hack needed; Command.Root doing its normal job IS the fix.
     - Click goes through the same `onSelect` path Command.Item already
       wires internally.
-    - Space does NOT reach a per-item handler here at all — Command's
-      roving-highlight ("virtual focus") pattern keeps REAL DOM focus on
-      the filter input (or on `commandRootEl` when there's no filter),
-      never on the highlighted item itself, so an `onkeydown` attached to
-      THIS item never fires; confirmed live (Chromium/Storybook): with a
-      per-item handler, pressing Space just typed a literal space into the
-      filter input. Space is handled centrally on `Command.Root` below
-      instead, gated on whichever item currently carries `data-selected`
-      being one of these two toggles specifically — see that handler's own
-      comment for why, and its known, accepted edge case.
+    - Space is deliberately NOT handled here or anywhere else (review fix,
+      MR !1 note 12450) — `role="option"` in a combobox+listbox is activated
+      via Enter/click, not Space, and this picker's filter input needs Space
+      to type normally. An earlier version intercepted Space centrally on
+      Command.Root; it was deleted because it stole a space keystroke out of
+      an in-progress filter query whenever the toggle happened to be the
+      highlighted (typically first) option — see `handlePickModel`'s
+      neighboring doc comment for the measured regression.
+    - Enter/click landing on `onSelect` toggles the section correctly every
+      time, including a SECOND activation to re-collapse (review fix, MR !1
+      note 12449) — see `restoreDisclosureHighlight`'s doc comment above for
+      why that needed its own fix: bits-ui silently steals the highlight off
+      this item once the section's rows mount, and without correcting that,
+      a second Enter/click would land on whatever row bits-ui picked instead
+      of back on this toggle.
   Its accessible name comes from content, same as every other row here
   (`option` gets name-from-content; `group`, notably, does not) — there is
   no formal `aria-expanded` announcement (no listbox-permitted role
@@ -675,7 +719,7 @@
         <Command.Root
           shouldFilter={false}
           bind:ref={commandRootEl}
-          onkeydown={handleListKeydown}
+          bind:value={highlightedValue}
           class="min-h-0 flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0"
         >
           {#if showFilter}
@@ -694,8 +738,31 @@
                without it, the list was clipping mid-row exactly at the top/
                bottom edge with no cushion (card 89's visual QA note).
                `scroll-py-1` (from Command.List's own base class) only
-               affects scroll-into-view margins, not this. -->
-          <Command.List class="flex min-h-0 max-h-full flex-1 flex-col gap-3 overflow-y-auto py-1">
+               affects scroll-into-view margins, not this.
+
+               `tabindex="0"` — review fix on card 130 (MR !1, note 12452):
+               once a section expands, this region genuinely scrolls
+               (scrollHeight > clientHeight) but had no keyboard focus target
+               of its own — axe-core flagged it `scrollable-region-focusable`
+               (serious), and a real keyboard walk confirmed it: 30x
+               ArrowDown after expanding only ever visits the 2 toggle rows
+               (Command's roving nav correctly skips the revealed rows, which
+               are `aria-disabled` until selectable), and the container's own
+               `scrollTop` never moved because nothing in it could take real
+               focus. Making the region itself a tab stop gives keyboard users
+               a way to scroll it directly (arrow keys / Page Down once
+               focused), satisfying axe's rule, without touching Command's own
+               roving-tabindex management of its child items — items never
+               carry a `tabindex` of their own (see the module doc comment:
+               real DOM focus stays on the input/root the whole time), so this
+               doesn't compete with that mechanism. Verified live: keydown for
+               arrow-key roving still bubbles from this element up to
+               Command.Root's own `onkeydown` exactly as before, and Escape
+               still closes the popover from here. -->
+          <Command.List
+            tabindex={0}
+            class="flex min-h-0 max-h-full flex-1 flex-col gap-3 overflow-y-auto py-1"
+          >
             {#each visibleGroups as group (group.provider.id)}
               <Command.Group value={group.provider.id} heading={group.provider.name} class="flex flex-col gap-1 p-0">
                 {#if group.filteredSelectable.length > 0}
@@ -775,23 +842,27 @@
             {/each}
 
             {#if unverifiedRows.length > 0}
-              <!-- No `heading` string prop here (unlike the provider groups
-                   above) — passing one would render command-group.svelte's
-                   own `GroupHeading` text AS WELL AS this group's first
-                   item below, duplicating "Unverified (24)" on screen.
-                   The disclosure control renders as the group's FIRST item
-                   through `children`, like every other row — see the doc
-                   comment on `collapsibleOption` above for why that (not a
-                   button, not a separate slot) is what actually satisfies
-                   axe's `aria-required-children`, and gives the group its
-                   accessible name via that item's own content instead. -->
-              <Command.Group value="unverified" class="flex flex-col gap-1 p-0">
+              <!-- Review fix on card 130 (MR !1, note 12451): `heading` IS
+                   passed here now, with `headingHidden` — command-group.svelte
+                   renders that `GroupHeading` `sr-only` instead of its normal
+                   visible classes, so the group gets a real, non-empty
+                   `aria-labelledby` (this was previously skipped entirely,
+                   leaving the group unnamed — see the doc comment near this
+                   file's top for the full history) without a second, VISIBLE
+                   copy of "Unverified (24)" alongside the disclosure item's
+                   own on-screen text below. -->
+              <Command.Group
+                value="unverified"
+                heading={m.providerPicker_unverifiedHeading()}
+                headingHidden
+                class="flex flex-col gap-1 p-0"
+              >
                 {@render collapsibleOption(
                   "unverified-toggle",
                   m.providerPicker_unverifiedHeading(),
                   unverifiedRows.length,
                   unverifiedEffectivelyExpanded,
-                  toggleUnverified,
+                  toggleUnverifiedDisclosure,
                 )}
                 {#if unverifiedEffectivelyExpanded}
                   {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
@@ -803,14 +874,19 @@
 
             {#if noToolsRows.length > 0}
               <!-- See the matching comment on the Unverified group above:
-                   no `heading` string prop, same reason. -->
-              <Command.Group value="no-tools" class="flex flex-col gap-1 p-0">
+                   sr-only `heading` for a real accessible name, same reason. -->
+              <Command.Group
+                value="no-tools"
+                heading={m.providerPicker_noToolSupportHeading()}
+                headingHidden
+                class="flex flex-col gap-1 p-0"
+              >
                 {@render collapsibleOption(
                   "no-tools-toggle",
                   m.providerPicker_noToolSupportHeading(),
                   noToolsRows.length,
                   noToolsEffectivelyExpanded,
-                  toggleNoTools,
+                  toggleNoToolsDisclosure,
                 )}
                 <!-- Review fix on card 130 (MR !1, note 12386): this hint has
                      to render whenever `noToolsHasOllama` is true regardless

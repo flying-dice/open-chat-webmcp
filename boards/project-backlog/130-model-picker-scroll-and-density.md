@@ -4,7 +4,7 @@ agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-01T22:40:00.000Z
+updatedAt: 2026-09-01T23:52:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -211,6 +211,79 @@ during-filter no-op/latch, critical axe `aria-required-children`, the
       serious/critical fail loudly, moderate/minor are printed only).
       Killed the Storybook and `http.server` processes afterward
       (claude-sonnet, 2026-09-01T22:32:00Z)
+
+Fifth pass, fixing shockwave's second FAIL (4 new findings at head `4a3fc96`
+— notes 12449/12450/12451/12452; the prior 5 threads all reconfirmed fixed,
+not touched again):
+
+- [x] tests-passing — `npm test`: 81 files, 1335 tests, all green (7 new/
+      rewritten ModelPicker cases: double-Enter and double-click disclosure
+      round-trip, filter-space-not-eaten, group accessible-name, and a
+      `tabindex="0"` DOM check; the old Space-toggle test deleted along with
+      `handleListKeydown`) (claude-sonnet, 2026-09-01T23:39:42Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-01T23:39:59Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome, boundaries,
+      clean-code — nothing new above the 0.5 threshold, return-types, throws,
+      i18n — 446 keys x 10 locales unchanged, stories — 44/44 covered)
+      (claude-sonnet, 2026-09-01T23:40:30Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T23:41:00Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-01T23:42:30Z)
+- [x] live-storybook-check — built Storybook static (`npm run
+      build-storybook`), served it locally, drove real Chromium via
+      Playwright against both `Side panel/ModelPicker` stories, and killed
+      the server afterward. Measured, for all four findings:
+      **12449** (ModelPicker.svelte:490-527, `highlightedValue`/
+      `restoreDisclosureHighlight`, bound via `Command.Root`'s
+      `bind:value`): ArrowDown → `unverified-toggle`; Enter → options 3→27,
+      `data-selected` STAYS `unverified-toggle` (previously reset to
+      `custom-host:gateway-flagship`); Enter again → options 27→3, popover
+      still present, highlight still on the toggle (previously: popover
+      ABSENT, options 0); Enter a third time → options 3→27 again. Same
+      round-trip confirmed via two real DOM `.click()`s on the toggle
+      (expand→collapse→re-expand), matching the keyboard result.
+      **12450** (`handleListKeydown` and its `Command.Root` `onkeydown`
+      wiring deleted, ModelPicker.svelte:449-518): typed "gateway-model-1"
+      into the filter (12 options, toggle highlighted, matching the
+      review's own measurement), then typed a literal space — filter value
+      became `"gateway-model-1 "`, options stayed at 12, nothing collapsed.
+      **12451** (`command-group.svelte`'s new `headingHidden` prop;
+      ModelPicker.svelte:855-892 pass `heading` + `headingHidden` on both
+      collapsible groups): on "Grouped (selectable, unverified, no-tools)",
+      all three `[role="group"]` elements resolve a non-empty
+      `aria-labelledby` ("Local Ollama"/"Unverified"/"No tool support" —
+      three-of-three, matching origin/main's baseline); the sr-only heading
+      node measures 1x1px/`overflow:hidden`/`clip-path:inset(50%)` (Tailwind's
+      real `sr-only`, confirmed via computed style, not just the class
+      name); the toggle's own visible text still reads exactly
+      "Unverified (1)" once. **12452** (`tabindex={0}` on `Command.List`,
+      ModelPicker.svelte:742-762): axe-core 4.13.0
+      (`wcag2a,wcag2aa,wcag21a,wcag21aa,best-practice`) over the OPEN,
+      EXPANDED "Many unverified models" picker reports 0
+      `scrollable-region-focusable` violations (previously 1, serious); full
+      violation set both collapsed and expanded is unchanged from before
+      this fix (`aria-required-attr` critical on the filter combobox —
+      confirmed pre-existing, tracked as issue #3 — plus the same three
+      non-blocking moderate document-structure ones); Tab from the filter
+      input lands on the list region (`role="listbox"`), then "Refresh" —
+      a sane, defensible order; Space with the list region focused actually
+      scrolls it natively (`scrollTop` 0→316) without landing in the
+      filter; Escape from the list region still closes the popover.
+      **Regression re-check, all 5 previously-fixed findings, live, this
+      pass**: 12383 (Enter opens without committing) — covered by the
+      12449 measurement above. 12384 (collapse-during-filter) — filtered to
+      "gateway-model-7" (2 options), clicked to collapse (1 option), cleared
+      the filter, reverted to collapsed "Unverified (24)" (3 options), not
+      latched open. 12385 (`aria-required-children`) — absent from both
+      stories' axe results, collapsed and expanded. 12386 (`ollama pull`
+      hint) — present in the collapsed "Grouped" story's popover text.
+      12387 (test coverage) — `npm test` green, no `it.skip`/`it.only`.
+      (claude-sonnet, 2026-09-01T23:52:00Z)
 
 ## Comments
 
@@ -567,3 +640,88 @@ during-filter no-op/latch, critical axe `aria-required-children`, the
   (`1d77905`, "Fix keyboard, filter-collapse, ARIA, and hint-visibility
   regressions from shockwave's review") and pushed to `card/130`.
   Watching MR !1 for shockwave's re-review.
+- **claude-sonnet** (2026-09-01T23:52:00.000Z): shockwave's second review
+  (head `4a3fc96`) confirmed all 5 prior findings fixed but filed a FAIL on
+  4 new ones (notes 12449/12450/12451/12452, verdict note 12459). Fixed all
+  four, read live against a locally built/served Storybook (Playwright,
+  Chromium) rather than trusting jsdom, per the review's own repeated point
+  that jsdom has twice missed real regressions here.
+  **12449 — disclosure highlight reset (ModelPicker.svelte:490-527,
+  614-624, 855-892):** read bits-ui's actual `Command` source
+  (`node_modules/bits-ui/dist/bits/command/command.svelte.js`) rather than
+  guessing. Root cause: with `shouldFilter={false}`, `CommandRootState`'s
+  `#sort()`/`#selectFirstItem()` unconditionally re-picks the first valid
+  item every time `registerItem` fires for a newly-mounted row (not just on
+  initial mount), and expanding a section mounts a batch of them —
+  `CommandItemState.isSelected` derives `data-selected` straight off
+  `Command.Root`'s own bindable `value` prop, which is exactly the
+  "controllable highlighted value" the finding asked me to look for. Bound
+  it as `highlightedValue` (`bind:value` on `Command.Root`,
+  ModelPicker.svelte:721) and added `restoreDisclosureHighlight` — after
+  each toggle, `await tick()` a handful of times, forcing `highlightedValue`
+  back onto the toggle's own key any time bits-ui's async reselect (itself
+  chained through nested `afterTick`s) has knocked it off. `toggleUnverified`/
+  `toggleNoTools` got thin wrappers (`toggleUnverifiedDisclosure`/
+  `toggleNoToolsDisclosure`) that call the restore after toggling; passed
+  to `collapsibleOption` in place of the bare toggles. Verified live:
+  Enter/Enter/Enter cycles 3→27→3→27 options with the toggle staying
+  `[data-selected]` throughout, popover never closing, `selectModel`/
+  `closePicker` never firing; same result via two real `.click()`s. Added
+  two jsdom tests (ModelPicker.test.ts, keyboard and mouse) that each
+  activate the toggle three times and assert the full round-trip.
+  **12450 — Space eating filter text (ModelPicker.svelte:449-467, deleted
+  the `handleListKeydown` function and its `onkeydown` wiring on
+  `Command.Root` at the old line 678; also `command-item.svelte`'s doc
+  comment at the old 624-633):** deleted rather than patched, per the
+  review's own recommendation — now that 12449 makes Enter/click reliably
+  repeatable, Space needs no special handling at all. Removed the old
+  Space-toggle test and its "known, accepted edge case" framing entirely;
+  replaced with a test that types "local" into a filter over a "Local
+  Ollama"-named provider (matching `ModelPicker.stories.svelte`'s own
+  fixture provider name, and the review's exact repro shape), confirms the
+  toggle is highlighted (matches via provider name), then types a literal
+  space and asserts it lands in the filter value rather than collapsing
+  anything. Verified live with the review's own literal repro
+  ("gateway-model-1" then space): filter value became
+  `"gateway-model-1 "`, options unchanged at 12.
+  **12451 — group accessible name (command-group.svelte:5-27, new
+  `headingHidden` prop; ModelPicker.svelte:135-152, 848-892):** the false
+  doc comment claiming `aria-labelledby` came "for free" without passing
+  `heading` is rewritten to state what's actually true. Both collapsible
+  groups now pass `heading` (the plain label, no count — deliberately NOT
+  matching the toggle's own visible "Unverified (24)" text, so it can never
+  collide with it in a DOM/text query) plus a new `headingHidden` boolean
+  that renders `command-group.svelte`'s `GroupHeading` with `sr-only`
+  instead of its normal sticky/visible classes. Verified live: all three
+  `role="group"` elements on the "Grouped" story resolve a non-empty
+  `aria-labelledby` (matching origin/main's 3-of-3 baseline), the sr-only
+  node's computed style is genuinely Tailwind's `sr-only` (1x1px,
+  `clip-path: inset(50%)`), and the toggle's own visible text is still
+  exactly "Unverified (1)" with no on-screen duplicate. Added a jsdom test
+  reading `aria-labelledby` off the DOM directly (accessible-name-by-role
+  queries are unreliable here due to the pre-existing jsdom/floating-ui
+  `visibility:hidden` artifact this file's other tests already document).
+  **12452 — `scrollable-region-focusable` (ModelPicker.svelte:698-719,
+  `tabindex={0}` on `Command.List`):** verified live that this doesn't
+  fight bits-ui's roving-highlight (items never carry their own `tabindex`,
+  so there's nothing to compete with) — arrow-key roving still works with
+  the list region focused, since `Command.Root`'s `onkeydown` still
+  receives the bubbled keydown. Measured: axe reports 0
+  `scrollable-region-focusable` violations on the expanded picker (was 1,
+  serious); pressing Space while the list region is focused genuinely
+  scrolls it (`scrollTop` 0→316) without typing into the filter; Tab from
+  the filter lands on the list region then "Refresh" (sane order); Escape
+  from the list region still closes the popover. Reported the FULL
+  violation set both collapsed and expanded, not just the targeted rule —
+  unchanged from before this fix (the pre-existing `aria-required-attr`
+  critical on the filter combobox, tracked separately as issue #3, plus
+  three non-blocking moderate document-structure ones).
+  **Whole-diff regression check:** re-measured all 5 previously-fixed
+  findings live this pass (12383/12384/12385/12386/12387) — all still hold,
+  none reintroduced; details in the `## Gates` entry above.
+  Gates: `npm test` (81 files, 1335 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven), `npm run build`, `npm run
+  verify` (10/10 required + both best-effort) all green. Killed the
+  Storybook static server afterward. Not committing/pushing per the task
+  brief — leaving `column: review` for Jonathan's own diff review and a
+  further internal pass before pushing.

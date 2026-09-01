@@ -7,10 +7,23 @@
     class: className,
     children,
     heading,
+    headingHidden = false,
     value,
     ...restProps
   }: CommandPrimitive.GroupProps & {
     heading?: string;
+    /**
+     * Card 130 review fix (MR !1, note 12451): a group whose visible
+     * disclosure/label already prints its own name on screen (ModelPicker's
+     * collapsible Unverified/No-tool-support sections) still needs a real
+     * `heading` for `CommandPrimitive.GroupHeading`'s `aria-labelledby`
+     * wiring — the group's accessible name and the option's accessible name
+     * are independent, and skipping `heading` entirely leaves the group
+     * unnamed. Setting this renders that heading `sr-only` instead of the
+     * normal visible classes, so the group gets named without a second,
+     * visible copy of the label.
+     */
+    headingHidden?: boolean;
   } = $props();
 </script>
 
@@ -44,7 +57,7 @@
 		     scrolls off with it as the next section arrives — one scroll
 		     region (Command.List), not a second independent one. Padding
 		     tightened py-1.5→py-1 as part of the same card's density pass. -->
-		<CommandPrimitive.GroupHeading class="sticky top-0 z-10 bg-popover px-2 py-1 text-xs font-medium text-muted-foreground">
+		<CommandPrimitive.GroupHeading class={headingHidden ? "sr-only" : "sticky top-0 z-10 bg-popover px-2 py-1 text-xs font-medium text-muted-foreground"}>
 			{heading}
 		</CommandPrimitive.GroupHeading>
 	{/if}
