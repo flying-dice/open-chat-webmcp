@@ -54,3 +54,34 @@ rather than remembering the last expansion.
 - If a provider surfaces so few unverified/no-tools models that collapsing
   adds a click for no real space saving, that's accepted as a minor cost of
   one consistent interaction rather than a row-count-dependent special case.
+
+## Amendment (2026-09-01) — the disclosure control is a `Command.Item`, not a `<button>`
+
+MR !1's review (card 130) measured, live in Chromium with axe-core, that
+this decision's literal `<button aria-expanded>` cannot be placed ANYWHERE
+inside `Command.List`'s `role="listbox"` subtree: axe's
+`aria-required-children` flags any `role="button"` descendant of a listbox
+as a critical violation, at any nesting depth (confirmed even wrapped in a
+`role="group"`, which has no owned-elements restriction of its own to stop
+the check). A hand-rolled `<div role="group" tabindex="0" aria-expanded>`
+satisfies axe but is independently invalid — `svelte-check`'s a11y linter
+confirms `group` is a non-interactive role that does not support
+`aria-expanded` at all, contrary to what its name suggests. There is no
+listbox-permitted role (`option` or `group`) that supports `aria-expanded`.
+
+The disclosure control is now a real `Command.Item` (`role="option"`, the
+same primitive every selectable model row already uses) whose activation
+(click, Enter via `Command.Root`'s own "activate the highlighted row"
+mechanism, or a hand-wired Space) toggles the section instead of picking a
+model. State is communicated via the listbox's own visible row count
+changing, the way a "Show more" option row does in any real combobox —
+there is no formal `aria-expanded` announcement, because no valid element
+for one exists in this position. Verified: 0 `aria-required-children`
+violations, matching origin/main's baseline. Everything else this decision
+specifies — collapsed by default, count in the heading, expand in place on
+click, reset on popover close — is unchanged; only the underlying markup
+primitive is corrected. See src/sidepanel/components/ModelPicker.svelte's
+`collapsibleOption` snippet doc comment for the full measured trail
+(including the two designs that were tried and failed) and
+boards/project-backlog/130-model-picker-scroll-and-density.md's fourth-pass
+gate entry for the live Storybook/axe evidence.

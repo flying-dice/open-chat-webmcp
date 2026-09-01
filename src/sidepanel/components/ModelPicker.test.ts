@@ -24,7 +24,7 @@
 Element.prototype.scrollIntoView = () => undefined;
 
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/svelte";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import type { ModelListEntry, ModelsState } from "../stores/selection.svelte";
 import type { ModelCapabilities, ProviderConfig, ProviderModel } from "../../domain/providers";
@@ -211,9 +211,23 @@ describe("ModelPicker", () => {
 
   // -------------------------------------------------------------------------
   // Card 130 / decisions/43: the Unverified and No-tool-support sections
-  // start collapsed behind a heading stating their count, and only render
-  // their rows once that heading is clicked.
-  it("starts the Unverified section collapsed (heading shows the count, row absent) and reveals its row on click", async () => {
+  // start collapsed behind a disclosure option stating their count, and
+  // only render their rows once that option is activated (click, Enter, or
+  // Space).
+  //
+  // Review fix on card 130 (MR !1, note 12385): the disclosure is a real
+  // `Command.Item` (`role="option"`), not a `<button>` or a custom widget —
+  // see the doc comment on the `collapsibleOption` snippet in
+  // ModelPicker.svelte for why: axe-core's `aria-required-children` flags
+  // ANY `role="button"` (or any role besides `option`/`group`) descendant
+  // of `Command.List`'s `role="listbox"`, at any nesting depth, and NEITHER
+  // listbox-permitted role supports `aria-expanded` — there is no valid way
+  // to put a formally "expanded" element in this tree at all. State is
+  // therefore asserted via row presence/count (as most of these tests
+  // already did), not an `aria-expanded` attribute — there isn't one.
+  // `findByRole("option", ...)` finds it the same way `findByRole("button"/
+  // "group", ...)` found the earlier markups.
+  it("starts the Unverified section collapsed (toggle option shows the count, row absent) and reveals its row on click", async () => {
     const user = userEvent.setup();
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
@@ -221,15 +235,13 @@ describe("ModelPicker", () => {
 
     render(ModelPicker);
 
-    const heading = await screen.findByRole("button", {
+    const toggle = await screen.findByRole("option", {
       name: `${m.providerPicker_unverifiedHeading()} (1)`,
     });
-    expect(heading).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("mystery")).not.toBeInTheDocument();
 
-    await user.click(heading);
+    await user.click(toggle);
 
-    expect(heading).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("mystery")).toBeInTheDocument();
   });
 
@@ -252,37 +264,32 @@ describe("ModelPicker", () => {
 
     // Starts collapsed like every open (decisions/43) — past FILTER_THRESHOLD
     // (8), so the filter input is present too.
-    const heading = await screen.findByRole("button", {
+    await screen.findByRole("option", {
       name: `${m.providerPicker_unverifiedHeading()} (${names.length})`,
     });
-    expect(heading).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("gateway-model-7")).not.toBeInTheDocument();
 
     const filter = screen.getByLabelText(m.providerPicker_filterAriaLabel());
     await user.type(filter, "gateway-model-7");
 
     // The match is visible immediately once the filter narrows the section
-    // to a nonzero count — no click on the heading required. Queried by
-    // text + `.closest("button")` rather than `findByRole(..., { name })`:
-    // typing into the filter triggers a floating-ui reposition that jsdom's
-    // missing layout leaves the popover's positioning wrapper stuck at
-    // inline `visibility: hidden` — CSS `visibility` inherits, so
-    // `dom-accessibility-api`'s name-from-content computation (which
-    // `findByRole`'s `name` matcher relies on) treats every descendant's
-    // text as hidden and returns an EMPTY accessible name for every button
-    // in the popover, `{ hidden: true }` notwithstanding (that option only
-    // stops the role query from excluding hidden elements outright, it
-    // doesn't change how their name is computed). `getByText` matches
-    // literal `textContent`, unaffected by that. Same underlying jsdom/
-    // floating-ui artifact as the large-bucket regression test's `{ hidden:
-    // true }` note above; confirmed via the live Storybook check this
-    // card's gates require that the button and row are genuinely visible in
-    // a real browser.
-    const matchHeading = (
-      await screen.findByText(`${m.providerPicker_unverifiedHeading()} (1)`)
-    ).closest("button");
-    expect(matchHeading).not.toBeNull();
-    expect(matchHeading).toHaveAttribute("aria-expanded", "true");
+    // to a nonzero count — no click on the toggle required. `getByText` +
+    // `.closest`, not `findByRole(..., { name })`: typing into the filter
+    // triggers a floating-ui reposition that jsdom's missing layout leaves
+    // the popover's positioning wrapper stuck at inline `visibility:
+    // hidden` — CSS `visibility` inherits, so `dom-accessibility-api`'s
+    // name-from-content computation (which the toggle's accessible name
+    // comes from — see the doc comment on `collapsibleOption` in
+    // ModelPicker.svelte) treats every descendant's text as hidden and
+    // returns an EMPTY accessible name for every option in the popover.
+    // `getByText` matches literal `textContent`, unaffected by that.
+    // Confirmed live in Storybook/Chromium (this card's gates require that)
+    // that the toggle is genuinely reachable by role+name in a real browser.
+    expect(
+      (await screen.findByText(`${m.providerPicker_unverifiedHeading()} (1)`)).closest(
+        '[role="option"]',
+      ),
+    ).not.toBeNull();
     expect(screen.getByText("gateway-model-7")).toBeInTheDocument();
     expect(screen.queryByText("gateway-model-1")).not.toBeInTheDocument();
 
@@ -290,11 +297,179 @@ describe("ModelPicker", () => {
     // manual toggle, so it doesn't stick once the query is gone.
     await user.clear(filter);
 
-    const collapsedHeading = (
-      await screen.findByText(`${m.providerPicker_unverifiedHeading()} (${names.length})`)
-    ).closest("button");
-    expect(collapsedHeading).not.toBeNull();
-    expect(collapsedHeading).toHaveAttribute("aria-expanded", "false");
+    expect(
+      (
+        await screen.findByText(`${m.providerPicker_unverifiedHeading()} (${names.length})`)
+      ).closest('[role="option"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText("gateway-model-7")).not.toBeInTheDocument();
+  });
+
+  // Review fix on card 130 (MR !1, note 12383): Enter on the disclosure
+  // used to bubble to Command.Root, which owns Enter globally for "activate
+  // the currently-highlighted row" — since the disclosure wasn't a
+  // Command.Item, that committed whatever row WAS highlighted and closed
+  // the whole popover instead of expanding the section. Now that the
+  // disclosure IS a Command.Item, that same Command.Root mechanism is what
+  // makes Enter work correctly: it activates the disclosure's own
+  // `onSelect`. Measured live in Chromium via Playwright too (the card's
+  // gates require that); this is the jsdom half, driven by a real keyboard
+  // sequence rather than `user.click`.
+  //
+  // Command uses a roving/"virtual focus" highlight, not real per-row DOM
+  // focus — real focus stays on the filter input (or `commandRootEl` when
+  // there's no filter) the whole time, and arrow keys move a `[data-selected]`
+  // marker instead. So this presses `{ArrowDown}` from the filter to
+  // highlight the disclosure option, THEN Enter — not `heading.focus()`,
+  // which doesn't reflect how this control is actually reached.
+  //
+  // Uses a dataset past FILTER_THRESHOLD (so the filter input mounts) and
+  // waits for it to actually receive focus before pressing ArrowDown:
+  // ModelPicker's own `handleOpenAutoFocus` resolves its `tick().then(...)`
+  // ASYNCHRONOUSLY — later than `findByLabelText` resolves, since the
+  // filter element is already in the DOM on the very first render and needs
+  // no waiting itself. `waitFor` polls until that auto-focus has genuinely
+  // landed.
+  it("expands the Unverified section on Enter, keeping the popover open and committing nothing", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
+    await waitFor(() => expect(filter).toHaveFocus());
+
+    await user.keyboard("{ArrowDown}");
+    expect(document.querySelector("[data-selected]")).toHaveAttribute(
+      "data-value",
+      "unverified-toggle",
+    );
+
+    await user.keyboard("{Enter}");
+
+    // (a) the section expands
+    expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
+    // (b) the popover stays open — checked via the filter input rather than
+    // the `content()` helper: with the default `resolution: "none"` state
+    // this test uses, the trigger chip's accessible name and the popover's
+    // own `aria-label` are BOTH literally "Choose a model"
+    // (`providerPicker_chooseModelLabel`/`providerPicker_choosePopoverAriaLabel`
+    // in messages/en.json), which makes `findByLabelText` ambiguous — a
+    // pre-existing quirk of that helper no earlier test happened to exercise
+    // under this resolution state, not something this fix introduced. The
+    // filter input's own label doesn't collide, and its presence is exactly
+    // as strong a proof the popover/Command tree is still mounted.
+    expect(screen.getByLabelText(m.providerPicker_filterAriaLabel())).toBeInTheDocument();
+    // (c) no row gets committed/selected
+    expect(selectModel).not.toHaveBeenCalled();
+    expect(closePicker).not.toHaveBeenCalled();
+  });
+
+  // Space already worked before the Enter fix; this guards against a
+  // regression. Command's own `onkeydown` (command.svelte.js) does NOT
+  // handle Space at all (only arrow/vim/Home/End/Enter), and — because the
+  // highlighted item never holds real DOM focus (see the Enter test's doc
+  // comment) — an `onkeydown` on the item itself never fires either.
+  // ModelPicker.svelte's `handleListKeydown`, wired on `Command.Root`
+  // itself, is what actually catches Space: it checks whether the
+  // currently-`[data-selected]` item is one of the two toggles and, if so,
+  // calls `toggle()` and `preventDefault`s Space's native action (typing a
+  // literal space into whichever element really has focus — confirmed live
+  // in Chromium that without this, Space just typed a space into the filter
+  // input instead of toggling anything).
+  it("still expands the Unverified section on Space, unaffected by the Enter fix", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
+    await waitFor(() => expect(filter).toHaveFocus());
+
+    await user.keyboard("{ArrowDown}");
+    expect(document.querySelector("[data-selected]")).toHaveAttribute(
+      "data-value",
+      "unverified-toggle",
+    );
+
+    await user.keyboard(" ");
+
+    expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
+    // Space must not have been typed into the filter — the interception
+    // (`e.preventDefault()`) is what stops that from happening.
+    expect(filter).toHaveValue("");
+  });
+
+  // Review fix on card 130 (MR !1, note 12384): a click on the heading WHILE
+  // filtering used to be a no-op (the OR pinned the rendered state to
+  // expanded regardless of the toggle) and, worse, flipped the raw toggle to
+  // `true` as a side effect — so once the filter cleared, the section was
+  // left stuck open. Both repro sequences from the review, reproduced here:
+  // (1) filter → click to collapse → verify collapsed and rows absent;
+  // (2) filter → click to collapse → clear filter → verify collapsed, not
+  // latched open.
+  it("makes the collapse click during filtering a real, visible toggle, and reverts to collapsed (not latched) once the filter clears", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    const filter = await screen.findByLabelText(m.providerPicker_filterAriaLabel());
+    await user.type(filter, "gateway-model-7");
+
+    // Auto-expanded by the filter match, as before this fix. `getByText` +
+    // `.closest`, not `findByRole(..., { name })` — same jsdom/floating-ui
+    // name-from-content artifact the auto-expand test above documents.
+    let toggle = (await screen.findByText(`${m.providerPicker_unverifiedHeading()} (1)`)).closest(
+      '[role="option"]',
+    ) as HTMLElement;
+    expect(screen.getByText("gateway-model-7")).toBeInTheDocument();
+
+    // Repro 1: a click to collapse WHILE filtering must be a real, visible
+    // toggle, not a no-op.
+    await user.click(toggle);
+
+    toggle = (await screen.findByText(`${m.providerPicker_unverifiedHeading()} (1)`)).closest(
+      '[role="option"]',
+    ) as HTMLElement;
+    expect(screen.queryByText("gateway-model-7")).not.toBeInTheDocument();
+
+    // Clicking again re-expands it — the override is a real toggle, not a
+    // one-way latch either.
+    await user.click(toggle);
+    toggle = (await screen.findByText(`${m.providerPicker_unverifiedHeading()} (1)`)).closest(
+      '[role="option"]',
+    ) as HTMLElement;
+    expect(screen.getByText("gateway-model-7")).toBeInTheDocument();
+
+    // Collapse it again before clearing, to match the review's exact repro.
+    await user.click(toggle);
+
+    // Repro 2: clearing the filter after that click must NOT latch the
+    // section open — it reverts to its pre-filter state (collapsed, since
+    // it was never manually expanded outside filtering).
+    await user.clear(filter);
+
+    expect(
+      (
+        await screen.findByText(`${m.providerPicker_unverifiedHeading()} (${names.length})`)
+      ).closest('[role="option"]'),
+    ).not.toBeNull();
     expect(screen.queryByText("gateway-model-7")).not.toBeInTheDocument();
   });
 
@@ -306,10 +481,10 @@ describe("ModelPicker", () => {
 
     render(ModelPicker);
 
-    const heading = await screen.findByRole("button", {
+    const toggle = await screen.findByRole("option", {
       name: `${m.providerPicker_unverifiedHeading()} (1)`,
     });
-    await user.click(heading);
+    await user.click(toggle);
 
     const row = screen.getByText("mystery").closest('[role="option"]');
     expect(row).not.toBeNull();
@@ -340,10 +515,10 @@ describe("ModelPicker", () => {
 
     render(ModelPicker);
 
-    const heading = await screen.findByRole("button", {
+    const toggle = await screen.findByRole("option", {
       name: `${m.providerPicker_unverifiedHeading()} (${names.length})`,
     });
-    await user.click(heading);
+    await user.click(toggle);
 
     for (const name of names) {
       expect(screen.getByText(name)).toBeInTheDocument();
@@ -356,8 +531,11 @@ describe("ModelPicker", () => {
     // card's gates confirms the rows are genuinely visible in a real
     // browser). Every row is still a real, present, role="option" element in
     // the DOM; this just stops testing-library's accessibility-tree
-    // visibility filter from hiding them from the query.
-    expect(screen.getAllByRole("option", { hidden: true })).toHaveLength(names.length);
+    // visibility filter from hiding them from the query. `+ 1`: the
+    // disclosure toggle itself is now a real `role="option"` too (card 130
+    // review fix, MR !1 note 12385), so it's part of this count alongside
+    // the 24 model rows it discloses.
+    expect(screen.getAllByRole("option", { hidden: true })).toHaveLength(names.length + 1);
   });
 
   it("shows a no-tools model under 'No tool support' with its badge label, once expanded", async () => {
@@ -368,16 +546,39 @@ describe("ModelPicker", () => {
 
     render(ModelPicker);
 
-    const heading = await screen.findByRole("button", {
+    const toggle = await screen.findByRole("option", {
       name: `${m.providerPicker_noToolSupportHeading()} (1)`,
     });
-    await user.click(heading);
+    await user.click(toggle);
 
     const row = screen.getByText("chatty").closest('[role="option"]');
     expect(row).not.toBeNull();
     expect(
       within(row as HTMLElement).getByText(new RegExp(m.capabilityBadge_noTools())),
     ).toBeInTheDocument();
+  });
+
+  // Review fix on card 130 (MR !1, note 12386): the `ollama pull` hint got
+  // swept inside the same expand-gate as the rows, hiding card 14's
+  // required copyable fix behind a click. decisions/43 only authorises
+  // collapsing the ROWS ("only the individual rows require one click to
+  // reach") — the hint has to stay visible whenever the section exists,
+  // collapsed or not, matching origin/main's pre-card-130 behaviour.
+  it("keeps the ollama pull hint visible for No-tool-support even while the section is collapsed", async () => {
+    const a = provider("a", { name: "Ollama" });
+    state.providers = [a];
+    state.modelsByProvider = {
+      a: loaded([entry(model("chatty-1"), NO_TOOLS), entry(model("chatty-2"), NO_TOOLS)]),
+    };
+
+    render(ModelPicker);
+
+    await screen.findByRole("option", {
+      name: `${m.providerPicker_noToolSupportHeading()} (2)`,
+    });
+    // Collapsed by default — the rows are gone, the hint is not.
+    expect(screen.queryByText("chatty-1")).not.toBeInTheDocument();
+    expect(screen.getByText("ollama pull llama3.1")).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -389,10 +590,10 @@ describe("ModelPicker", () => {
 
     render(ModelPicker);
 
-    const heading = await screen.findByRole("button", {
+    const toggle = await screen.findByRole("option", {
       name: `${m.providerPicker_noToolSupportHeading()} (1)`,
     });
-    await user.click(heading);
+    await user.click(toggle);
 
     const row = (await screen.findByText("chatty")).closest('[role="option"]') as HTMLElement;
     expect(row).toHaveAttribute("aria-disabled", "true");

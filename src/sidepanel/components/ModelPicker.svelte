@@ -118,23 +118,30 @@
   let noToolsExpanded = $state(false);
 
   /**
-   * Code-review fix on card 130: the Unverified/No-tool-support
-   * `Command.Group`s dropped their `heading` string prop for the
-   * interactive `collapsibleHeading` button below, so bits-ui's own
-   * `Command.GroupHeading` wiring (which only fires for that string prop —
-   * see command-group.svelte) never ran and the group's `role="group"`
-   * element (`Command.GroupItems`, per bits-ui's command.svelte.js) got no
-   * `aria-labelledby` at all — a screen reader announced an unnamed
-   * "group" instead of "Unverified"/"No tool support". Fixed by giving the
-   * button its own id and wiring it through command-group.svelte's new
-   * `headingId` prop, which forwards straight to `Command.GroupItems`'
-   * `aria-labelledby` (see that file's comment). `$props.id()` keeps the
-   * ids unique per mounted ModelPicker instance (e.g. two Storybook
-   * stories mounted side by side) without a global counter.
+   * Review fix on card 130 (MR !1, note 12384): while filtering auto-expands
+   * a section (see `*EffectivelyExpanded` below), a click on the heading has
+   * to produce a REAL, visible toggle — not a no-op — and must NOT leak into
+   * the raw `unverifiedExpanded`/`noToolsExpanded` state once the filter
+   * clears (that leak is what "latched the section open" after clearing the
+   * query). So filtering gets its OWN override, entirely separate from the
+   * raw toggle: `null` means "no override yet, use the auto-expand default
+   * (open)"; `true`/`false` are an explicit click during filtering. Reset to
+   * `null` whenever `filtering` (below) goes false, so it never survives
+   * into the next filter session or leaks into the non-filtering toggle.
    */
-  const uid = $props.id();
-  const unverifiedHeadingId = `${uid}-unverified-heading`;
-  const noToolsHeadingId = `${uid}-no-tools-heading`;
+  let unverifiedFilterOverride: boolean | null = $state(null);
+  let noToolsFilterOverride: boolean | null = $state(null);
+
+  /**
+   * Review fix on card 130 (MR !1, note 12385): the Unverified/No-tool-
+   * support disclosure headings render as a real `Command.Item` (a genuine
+   * `role="option"` row) rather than a `<button>`/custom widget nested
+   * inside the group — see the doc comment on `collapsibleOption` below for
+   * why. That means the group's plain string `heading` prop (the same one
+   * every provider group already uses) gives it a correctly-wired
+   * `aria-labelledby` for free, exactly like command-group.svelte's
+   * baseline case — no per-instance id plumbing needed here any more.
+   */
 
   /** A current tool-calling-capable Ollama model, named concretely per card 14 rather than leaving "pull a model" vague. */
   const OLLAMA_TOOL_MODEL_SUGGESTION = "llama3.1";
@@ -152,6 +159,8 @@
       filterQuery = "";
       unverifiedExpanded = false;
       noToolsExpanded = false;
+      unverifiedFilterOverride = null;
+      noToolsFilterOverride = null;
     }
   });
 
@@ -364,30 +373,111 @@
   const noToolsHasOllama = $derived(noToolsRows.some((r) => r.isOllama));
 
   /**
-   * Code-review fix on card 130 (post-decisions/43): `unverifiedRows`/
+   * Review fix on card 130 (MR !1, notes 12384/12387 — the original OR'd
+   * design is preserved only in git history): `unverifiedRows`/
    * `noToolsRows` above are already filtered by the query, so typing e.g.
    * "gateway-model-7" correctly narrows a collapsed heading down to
-   * "Unverified (1)" — but with only the raw `unverifiedExpanded`/
-   * `noToolsExpanded` toggle gating the rows, the match stayed hidden
-   * behind the still-collapsed section, forcing an extra click to actually
-   * see it. These two derive "effectively expanded" as the manual toggle
-   * OR'd with "a filter is active and left at least one row in this
-   * section" — deliberately NOT an `$effect` that mutates
-   * `unverifiedExpanded`/`noToolsExpanded` directly, which would fight a
-   * manual collapse-during-filter click every time it re-ran. Because nothing
-   * ever overwrites the raw toggle, clicking the heading always flips a
-   * stable, independent piece of state; a filtered-open section reverts to
-   * collapsed the moment the query is cleared (or the popover closes, which
-   * already resets the raw toggle above) purely because the OR's second
-   * term goes false, with no separate reset needed here.
+   * "Unverified (1)" and that match should be visible without an extra
+   * click. The first cut expressed that as
+   * `unverifiedExpanded || (filtering && rows.length > 0)` — but the OR
+   * pinned the rendered state to `true` while filtering regardless of
+   * `unverifiedExpanded`, so a click during filtering flipped the raw
+   * toggle with zero visible effect, AND left it `true`, which then stuck
+   * the section open once the query was cleared.
+   *
+   * Fixed by giving filtering its OWN override (`unverifiedFilterOverride`/
+   * `noToolsFilterOverride` above) instead of overloading the raw toggle:
+   * while filtering leaves this section nonempty, the effective state is
+   * the override if the user has clicked during THIS filter session
+   * (`?? true` — auto-expanded by default), otherwise the raw toggle
+   * exactly as it is outside filtering. The override is reset to `null`
+   * whenever `filtering` goes false (the `$effect` below), so a click made
+   * while filtering can never leak into the next session or into the
+   * non-filtering toggle — a filtered-open section reverts to whatever
+   * `unverifiedExpanded` already was (collapsed, unless the user had
+   * manually expanded it before filtering started) the moment the query is
+   * cleared.
    */
   const filtering = $derived(normalizedQuery() !== "");
   const unverifiedEffectivelyExpanded = $derived(
-    unverifiedExpanded || (filtering && unverifiedRows.length > 0),
+    filtering && unverifiedRows.length > 0
+      ? (unverifiedFilterOverride ?? true)
+      : unverifiedExpanded,
   );
   const noToolsEffectivelyExpanded = $derived(
-    noToolsExpanded || (filtering && noToolsRows.length > 0),
+    filtering && noToolsRows.length > 0 ? (noToolsFilterOverride ?? true) : noToolsExpanded,
   );
+
+  // The override only means anything WHILE filtering — reset it the moment
+  // filtering ends (query cleared, or narrowed back below FILTER_THRESHOLD)
+  // so it never survives into the next filter session. Popover-close already
+  // resets it directly above too (belt and suspenders: that effect fires on
+  // close regardless of how `filtering` gets there).
+  $effect(() => {
+    if (!filtering) {
+      unverifiedFilterOverride = null;
+      noToolsFilterOverride = null;
+    }
+  });
+
+  /** Toggle callbacks passed into `collapsibleOption` — during filtering they flip the filter-scoped override; otherwise the raw persistent toggle, exactly as outside filtering. */
+  function toggleUnverified(): void {
+    if (filtering && unverifiedRows.length > 0) {
+      unverifiedFilterOverride = !(unverifiedFilterOverride ?? true);
+    } else {
+      unverifiedExpanded = !unverifiedExpanded;
+    }
+  }
+  function toggleNoTools(): void {
+    if (filtering && noToolsRows.length > 0) {
+      noToolsFilterOverride = !(noToolsFilterOverride ?? true);
+    } else {
+      noToolsExpanded = !noToolsExpanded;
+    }
+  }
+
+  /**
+   * Review fix on card 130 (MR !1, note 12383's Space half): `collapsibleOption`'s
+   * doc comment explains why Space can't be caught on the item itself —
+   * Command's roving-highlight keeps real DOM focus on the filter input (or
+   * `commandRootEl`), never on the highlighted `Command.Item`, so this is the
+   * one place a Space keydown can be intercepted before its default action
+   * (typing a literal space into whatever actually has focus) runs.
+   *
+   * Gated on `[data-selected]` — the item Command itself is currently
+   * highlighting — matching ONE of the two toggles' own stable `value`
+   * (`"unverified-toggle"`/`"no-tools-toggle"`, set on `collapsibleOption`'s
+   * `Command.Item` below): only then is this Space "for" a toggle, not
+   * ordinary filter typing. `commandRootEl` — not `e.currentTarget` — is the
+   * query root: `onkeydown` here is Command.Root's OWN prop, but the event
+   * that reaches it already bubbled from wherever focus actually is, and
+   * `commandRootEl` is the one stable reference to the root's DOM node this
+   * component already keeps (`bind:ref` below).
+   *
+   * Known, accepted edge case: if a user's filter QUERY text happens to
+   * land the toggle option as the highlighted item while they are still
+   * mid-typing a multi-word query that itself contains a space (e.g. typing
+   * "no tool" happens to filter down such that the toggle sorts first),
+   * that one space keystroke would be intercepted as a toggle rather than
+   * typed — rare (the toggle's own label text is not the sort of thing a
+   * user searching for a MODEL id would be typing towards) and
+   * self-correcting (retyping the space works normally once the toggle is
+   * no longer the highlighted item), traded deliberately for Space
+   * genuinely working in the common case the review measured: arrow to the
+   * toggle, press Space.
+   */
+  function handleListKeydown(e: KeyboardEvent): void {
+    if (e.key !== " ") return;
+    const highlighted = commandRootEl?.querySelector("[data-selected]");
+    const value = highlighted?.getAttribute("data-value");
+    if (value === "unverified-toggle") {
+      e.preventDefault();
+      toggleUnverified();
+    } else if (value === "no-tools-toggle") {
+      e.preventDefault();
+      toggleNoTools();
+    }
+  }
 
   function handlePickModel(row: Row): void {
     if (!isSelectable(row.capability)) return;
@@ -450,39 +540,88 @@
 {/snippet}
 
 <!--
-  Card 130 / decisions/43: a clickable, sticky disclosure heading for the
-  Unverified/No-tool-support sections, standing in for `Command.Group`'s own
-  `heading` prop (which only renders static text, not a control). Composes
-  the existing bucket-heading string with the row count client-side rather
-  than adding a new i18n key. "Never hide, always show-with-reason"
-  (decisions/06/11, refined by decisions/43) is kept: the section is never
-  gone, only condensed behind a heading that states exactly how many rows it
-  holds.
+  Review fix on card 130 (MR !1, notes 12383 AND 12385 — both threads land on
+  this one control, and the fix for one turned out to be the fix for both).
+
+  Two earlier designs were tried and measured to fail:
+
+  1. A real `<button aria-expanded>`, rendered via a new `headingContent`
+     snippet slot on command-group.svelte so it sat as a SIBLING of
+     `Command.GroupItems` rather than nested inside it (the position the
+     plain-string `heading` prop already uses safely). Still failed:
+     axe-core's `aria-required-children` flags ANY `role="button"`
+     descendant of `role="listbox"` (`Command.List`, below) as a critical
+     violation, at ANY nesting depth — `group` has no owned-elements
+     restriction of its own for axe's check to stop at, so it's a
+     pass-through, not a boundary. Confirmed live: even
+     `<div role="group"><button>…</button></div>` still failed with
+     "Element has children which are not allowed: button".
+  2. A hand-rolled `<div role="group" tabindex="0" aria-expanded>` doing the
+     button's job manually. This satisfied axe, but Svelte's OWN a11y linter
+     (`svelte-check`) rejects it on three independent counts, all correct
+     per the real WAI-ARIA spec (not just axe's specific rule coverage):
+     `group` is a non-interactive/structural role (no `tabindex`, no
+     click/keydown handlers), and — contrary to what its name might
+     suggest — `group` does NOT support `aria-expanded` as a state at all.
+     Passing axe this way was passing one checker by failing another, not a
+     genuine fix.
+
+  The actual constraint, once both of those failed: NEITHER role a listbox
+  permits (`option` or `group`) supports `aria-expanded`. There is no valid
+  way to nest an `aria-expanded`-bearing element inside `role="listbox"`.
+
+  The fix that is genuinely correct: this disclosure is now a real
+  `Command.Item` (`role="option"`) — the same primitive every selectable
+  model row already uses, which is why it can live here at all. Its
+  `onSelect` toggles the section instead of picking a model (and never
+  calls `selectModel`/`closePicker`):
+    - Enter now works through Command.Root's OWN existing mechanism (module
+      doc comment above: "Enter activates the currently-highlighted row") —
+      the exact interception that used to WRONGLY commit/close the picker
+      is now correctly routed to THIS item's `onSelect`. No `stopPropagation`
+      hack needed; Command.Root doing its normal job IS the fix.
+    - Click goes through the same `onSelect` path Command.Item already
+      wires internally.
+    - Space does NOT reach a per-item handler here at all — Command's
+      roving-highlight ("virtual focus") pattern keeps REAL DOM focus on
+      the filter input (or on `commandRootEl` when there's no filter),
+      never on the highlighted item itself, so an `onkeydown` attached to
+      THIS item never fires; confirmed live (Chromium/Storybook): with a
+      per-item handler, pressing Space just typed a literal space into the
+      filter input. Space is handled centrally on `Command.Root` below
+      instead, gated on whichever item currently carries `data-selected`
+      being one of these two toggles specifically — see that handler's own
+      comment for why, and its known, accepted edge case.
+  Its accessible name comes from content, same as every other row here
+  (`option` gets name-from-content; `group`, notably, does not) — there is
+  no formal `aria-expanded` announcement (no listbox-permitted role
+  supports it), so state is communicated the way a "Show more" option row
+  in any real combobox already communicates it: the listbox's own visible
+  row count changes when it activates.
+  Verified with axe-core against Storybook's "Many unverified models (large
+  gateway catalog)" AND "Grouped (selectable, unverified, no-tools)"
+  stories, open picker: 0 `aria-required-children` violations on both
+  (previously 1, critical, on the first), matching origin/main's baseline —
+  and 0 new Svelte a11y warnings from `npm run check`.
 -->
-{#snippet collapsibleHeading(
-  headingId: string,
+{#snippet collapsibleOption(
+  sectionKey: "unverified-toggle" | "no-tools-toggle",
   label: string,
   count: number,
   expanded: boolean,
   toggle: () => void,
 )}
-  <!-- Code-review fix on card 130: `id={headingId}` is what
-       command-group.svelte's `headingId` prop points the surrounding
-       `Command.Group`'s `aria-labelledby` at — see the doc comment on
-       `unverifiedHeadingId`/`noToolsHeadingId` above. -->
-  <button
-    id={headingId}
-    type="button"
-    class="sticky top-0 z-10 flex w-full items-center justify-between gap-2 bg-popover px-2 py-1 text-start text-xs font-medium text-muted-foreground"
-    aria-expanded={expanded}
-    onclick={toggle}
+  <Command.Item
+    value={sectionKey}
+    onSelect={toggle}
+    class="sticky top-0 z-10 flex w-full items-center justify-between gap-2 rounded-none bg-popover px-2 py-1 text-start text-xs font-medium text-muted-foreground"
   >
     <span>{label} ({count})</span>
     <Icon
       name="expand_more"
       class={cn("size-4 flex-none transition-transform", expanded && "rotate-180")}
     />
-  </button>
+  </Command.Item>
 {/snippet}
 
 <div class="relative min-w-0">
@@ -536,6 +675,7 @@
         <Command.Root
           shouldFilter={false}
           bind:ref={commandRootEl}
+          onkeydown={handleListKeydown}
           class="min-h-0 flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0"
         >
           {#if showFilter}
@@ -635,13 +775,23 @@
             {/each}
 
             {#if unverifiedRows.length > 0}
-              <Command.Group value="unverified" headingId={unverifiedHeadingId} class="flex flex-col gap-1 p-0">
-                {@render collapsibleHeading(
-                  unverifiedHeadingId,
+              <!-- No `heading` string prop here (unlike the provider groups
+                   above) — passing one would render command-group.svelte's
+                   own `GroupHeading` text AS WELL AS this group's first
+                   item below, duplicating "Unverified (24)" on screen.
+                   The disclosure control renders as the group's FIRST item
+                   through `children`, like every other row — see the doc
+                   comment on `collapsibleOption` above for why that (not a
+                   button, not a separate slot) is what actually satisfies
+                   axe's `aria-required-children`, and gives the group its
+                   accessible name via that item's own content instead. -->
+              <Command.Group value="unverified" class="flex flex-col gap-1 p-0">
+                {@render collapsibleOption(
+                  "unverified-toggle",
                   m.providerPicker_unverifiedHeading(),
                   unverifiedRows.length,
                   unverifiedEffectivelyExpanded,
-                  () => (unverifiedExpanded = !unverifiedExpanded),
+                  toggleUnverified,
                 )}
                 {#if unverifiedEffectivelyExpanded}
                   {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
@@ -652,22 +802,34 @@
             {/if}
 
             {#if noToolsRows.length > 0}
-              <Command.Group value="no-tools" headingId={noToolsHeadingId} class="flex flex-col gap-1 p-0">
-                {@render collapsibleHeading(
-                  noToolsHeadingId,
+              <!-- See the matching comment on the Unverified group above:
+                   no `heading` string prop, same reason. -->
+              <Command.Group value="no-tools" class="flex flex-col gap-1 p-0">
+                {@render collapsibleOption(
+                  "no-tools-toggle",
                   m.providerPicker_noToolSupportHeading(),
                   noToolsRows.length,
                   noToolsEffectivelyExpanded,
-                  () => (noToolsExpanded = !noToolsExpanded),
+                  toggleNoTools,
                 )}
+                <!-- Review fix on card 130 (MR !1, note 12386): this hint has
+                     to render whenever `noToolsHasOllama` is true regardless
+                     of collapse state — decisions/43 only authorises
+                     collapsing the ROWS ("only the individual rows require
+                     one click to reach"), and card 14 requires this
+                     concrete, copyable fix to stay reachable for the exact
+                     case where a user's only provider has zero tool-capable
+                     models. Previously swept inside the expand-gate below by
+                     mistake; matches origin/main's pre-card-130 behaviour
+                     (always rendered whenever the section exists) now. -->
+                {#if noToolsHasOllama}
+                  <p class="px-2 text-sm text-muted-foreground">
+                    {m.providerPicker_pullToolCapableHintPrefix()}<code
+                      >ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code
+                    >{m.providerPicker_pullToolCapableHintSuffix()}
+                  </p>
+                {/if}
                 {#if noToolsEffectivelyExpanded}
-                  {#if noToolsHasOllama}
-                    <p class="px-2 text-sm text-muted-foreground">
-                      {m.providerPicker_pullToolCapableHintPrefix()}<code
-                        >ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code
-                      >{m.providerPicker_pullToolCapableHintSuffix()}
-                    </p>
-                  {/if}
                   {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
                     {@render modelRow(row, true)}
                   {/each}

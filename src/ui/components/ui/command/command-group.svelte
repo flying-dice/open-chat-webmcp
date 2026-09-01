@@ -7,27 +7,10 @@
     class: className,
     children,
     heading,
-    headingId,
     value,
     ...restProps
   }: CommandPrimitive.GroupProps & {
     heading?: string;
-    /**
-     * Code-review fix on card 130: bits-ui only wires `Command.GroupItems`'
-     * (the `role="group"` element) `aria-labelledby` to a heading rendered
-     * through the `heading` prop above (`CommandPrimitive.GroupHeading`
-     * sets `group.headingNode` via `attachRef`, see command.svelte.js's
-     * `CommandGroupHeadingState`/`CommandGroupItemsState`). A consumer that
-     * needs an INTERACTIVE heading — e.g. ModelPicker.svelte's collapsible
-     * disclosure button, rendered as a `children` sibling instead — never
-     * triggers that wiring, so the group got no accessible name at all.
-     * `headingId` lets such a consumer point `aria-labelledby` straight at
-     * its own external heading element's id. `mergeProps`' plain-key rule
-     * (svelte-toolbelt: `b !== undefined ? b : a`) means bits-ui's own
-     * computed `aria-labelledby` still wins whenever a real `heading` prop
-     * is also passed, so this never fights the built-in case.
-     */
-    headingId?: string;
   } = $props();
 </script>
 
@@ -68,5 +51,5 @@
 	<!-- Local edit (card 91): bits-ui declares `children?: Snippet`, which under
 	     exactOptionalPropertyTypes refuses an explicitly-undefined value. Rendering
 	     the snippet inside is equivalent and type-clean. -->
-	<CommandPrimitive.GroupItems aria-labelledby={headingId}>{@render children?.()}</CommandPrimitive.GroupItems>
+	<CommandPrimitive.GroupItems>{@render children?.()}</CommandPrimitive.GroupItems>
 </CommandPrimitive.Group>

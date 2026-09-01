@@ -4,7 +4,7 @@ agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-01T21:05:00.000Z
+updatedAt: 2026-09-01T22:35:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -144,6 +144,73 @@ auto-expand, badge default color, collapsible-heading accessible name):
       (verified against `getComputedStyle(document.documentElement)`), not
       `--foreground`'s `oklch(0.141 0.005 285.823)`. Killed the Storybook
       process afterward (claude-sonnet, 2026-09-01T19:48:00Z)
+
+Fourth pass, five FAIL findings from reviewer shockwave on MR !1 (notes
+12383-12387, summary 12391 — Enter closes instead of expands, collapse-
+during-filter no-op/latch, critical axe `aria-required-children`, the
+`ollama pull` hint hidden behind a click, missing test coverage):
+
+- [x] tests-passing — `npm test`: 81 files, 1331 tests, all green (incl. 2
+      new keyboard tests — Enter, Space — and a rewritten collapse-during-
+      filter test proving both exact repro sequences) (claude-sonnet,
+      2026-09-01T22:23:00Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings (incl. after the `role="group"` design was tried and its 3
+      a11y warnings — `a11y_no_noninteractive_tabindex`,
+      `a11y_role_supports_aria_props`, `a11y_no_noninteractive_element_interactions`
+      — led to the `Command.Item`-based redesign instead); `tsc -p
+      tsconfig.node.json` clean (claude-sonnet, 2026-09-01T22:24:00Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome — clean
+      after `biome check --write` on the test file's formatting;
+      boundaries; clean-code — nothing new above the 0.5 threshold;
+      return-types; throws; i18n — 446 keys x 10 locales unchanged, no new
+      key needed; stories — 44/44 covered) (claude-sonnet,
+      2026-09-01T22:24:30Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T22:25:00Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations against the real
+      built extension's own seeded screens) passed (claude-sonnet,
+      2026-09-01T22:26:00Z)
+- [x] live-storybook-check — `npm run storybook -- -p 6010 --ci --no-open`,
+      driven via Playwright MCP against both `side-panel-modelpicker--*`
+      stories (`many-unverified-models-large-gateway-catalog` and
+      `grouped-selectable-unverified-no-tools`), with axe-core 4.13.0
+      injected via a throwaway `python3 -m http.server 8098` serving
+      `node_modules/axe-core/axe.min.js` (Storybook doesn't serve
+      `node_modules`, and `verify/checks/axe.mjs`'s CSP-safe
+      `addInitScript` approach only applies to the real extension, not a
+      bare Storybook page):
+      — **Enter**: `ArrowDown` from the filter (or from `commandRootEl`
+      when there's no filter) highlights `data-value="unverified-toggle"`;
+      `Enter` sets the section's row count 3→27/3→4, popover stays open
+      (`[data-slot=popover-content]` still present), trigger chip's text
+      unchanged ("gateway-flagship"/"llama3.1", proving nothing got
+      committed). Reproduced on both stories and both headings
+      (Unverified, No tool support).
+      — **Space**: same ArrowDown-highlight, then `Space` — same row-count
+      change, filter's own value stays empty (no literal space typed),
+      confirming `handleListKeydown`'s interception actually fires.
+      — **Collapse-during-filter**: typed "gateway-model-7" into the
+      filter → "Unverified (1)" auto-expands (1 option). Clicked the
+      toggle → collapses for REAL (0 options; was previously a no-op at 24
+      options pre-fix). Cleared the filter afterward → reverts to
+      collapsed "Unverified (24)" (3 options total, not the 27 a latch
+      would produce).
+      — **axe-core** (`wcag2a,wcag2aa,wcag21a,wcag21aa,best-practice`):
+      `aria-required-children` = 0 critical violations on BOTH stories
+      (was 1, critical, on the first, before this fix) — the only other
+      critical hit, `aria-required-attr` on the filter `Command.Input`
+      missing `aria-controls`, is confirmed pre-existing and unrelated:
+      byte-identical `Command.Input` block in `git diff d28b449 --
+      ModelPicker.svelte` (base of this MR). Remaining violations are all
+      `moderate` (`landmark-one-main`/`page-has-heading-one`/`region`) —
+      generic Storybook-iframe-shell noise (no `<main>`/`<h1>` at the
+      story-runner level), not ModelPicker's, and non-blocking per this
+      repo's own established axe policy (`verify/checks/axe.mjs`:
+      serious/critical fail loudly, moderate/minor are printed only).
+      Killed the Storybook and `http.server` processes afterward
+      (claude-sonnet, 2026-09-01T22:32:00Z)
 
 ## Comments
 
@@ -360,3 +427,125 @@ auto-expand, badge default color, collapsible-heading accessible name):
   requesting review from shockwave.
   Issue: https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/work_items/1
   MR: https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/merge_requests/1
+- **claude-sonnet** (2026-09-01T22:35:00Z): Fourth pass — five FAIL findings
+  from reviewer shockwave on MR !1 (notes 12383-12387, summary 12391), all
+  addressed in `column: review` per the task brief (not restarting the
+  card).
+  **Fix 1 (Enter closed the picker instead of expanding):** on the old
+  `<button>`-based `collapsibleHeading`, Enter bubbled to `Command.Root`
+  (module doc comment, ModelPicker.svelte:37-40), which owns Enter globally
+  for "activate the currently-highlighted row" and committed whatever row
+  was highlighted. Superseded by Fix 3 below (making the control a real
+  `Command.Item` routes Enter through the SAME mechanism correctly, onto
+  the control's own `onSelect`) rather than patched in isolation with
+  `stopPropagation`.
+  **Fix 2 (collapse-during-filter was a no-op that latched the section open
+  after clearing):** `unverifiedEffectivelyExpanded`/`noToolsEffectivelyExpanded`
+  (ModelPicker.svelte:402-408) no longer OR the raw toggle with the
+  filtering condition. Added `unverifiedFilterOverride`/`noToolsFilterOverride`
+  (:117-133, `boolean | null`, reset to `null` whenever `filtering` goes
+  false via the `$effect` at :416-420, and on popover close at :157-165):
+  while filtering leaves a section nonempty, effective-expanded is
+  `filterOverride ?? true` (auto-expanded by default, overridable by a
+  click scoped to THIS filter session only); outside filtering, the raw
+  toggle exactly as before. `toggleUnverified`/`toggleNoTools`
+  (:424-437) flip whichever state applies. Proved both exact repro
+  sequences from the review live (filter → click collapse → verify 0
+  options; filter → click collapse → clear filter → verify collapsed, not
+  latched at 25/26 options) — see the Fourth-pass gate entry below.
+  **Fix 3 (critical axe `aria-required-children`: a `<button>` inside
+  `role="listbox"`) — the one that reshaped the other four fixes:** the
+  first two designs tried both measured as failures, not just
+  theoretically wrong:
+    1. A `headingContent` snippet slot on command-group.svelte (rendering
+       the button as a `Command.GroupItems` SIBLING, the position the
+       plain-string `heading` prop safely uses) — axe still failed with
+       "children which are not allowed: button" on the listbox, because its
+       check recurses through `role="group"` wrappers rather than stopping
+       at them; `group` has no owned-elements restriction of its own to act
+       as a boundary.
+    2. A hand-rolled `<div role="group" tabindex="0" aria-expanded>` doing
+       the button's job manually — satisfied axe, but `npm run check`
+       (svelte-check) rejected it on three independent, spec-correct
+       grounds: `group` is non-interactive (no `tabindex`/handlers), and —
+       contrary to its name — does NOT support `aria-expanded` as a state
+       at all. Passing one checker by failing another isn't a fix.
+    The design that measures clean on BOTH: the disclosure is now a real
+    `Command.Item` (`role="option"`, the same primitive every model row
+    uses), `collapsibleOption` (ModelPicker.svelte:551-621), rendered as
+    the group's first item through `children` (:788-820) rather than any
+    special slot. `command-group.svelte` reverted in full to its
+    pre-review state (no `headingContent`/`headingId` — both now dead code,
+    since the plain string `heading` prop's existing bits-ui wiring is
+    unused too: passing it would DUPLICATE "Unverified (24)" on screen
+    alongside the option, so these two groups pass no `heading` at all and
+    get their accessible name from the toggle option's own content
+    instead, same as any option). Its `onSelect` toggles instead of
+    picking a model (never calls `selectModel`/`closePicker`); Enter now
+    works through Command.Root's OWN Enter-activates-highlighted-item
+    mechanism — the exact interception the original bug report was about
+    is now correctly routed to the control's own handler, no
+    `stopPropagation` hack needed. `aria-required-children`: 0 on both
+    "Many unverified models (large gateway catalog)" and "Grouped
+    (selectable, unverified, no-tools)" stories (was 1, critical, on the
+    first), matching origin/main's baseline exactly.
+  **Fix 1 continued (Space):** Command's roving/"virtual focus" pattern
+  keeps real DOM focus on the filter input (or `commandRootEl`), never on
+  the highlighted `Command.Item` — confirmed live that a per-item
+  `onkeydown` on the toggle option never fires; Space just typed a literal
+  space into the filter. `handleListKeydown` (ModelPicker.svelte:469-491),
+  wired on `Command.Root` itself (:678), checks whether the currently
+  `[data-selected]` item's `data-value` is one of the two toggles'
+  stable keys (`"unverified-toggle"`/`"no-tools-toggle"`, set via
+  `collapsibleOption`'s `sectionKey` param) and, if so, calls `toggle()`
+  and `preventDefault`s Space's native action. Documented, accepted edge
+  case in that function's own comment: a filter query that happens to
+  leave the toggle highlighted mid-typing a multi-word query containing a
+  space would have that one space keystroke intercepted rather than typed
+  — rare and self-correcting, traded for Space genuinely working in the
+  common case (arrow to the toggle, press Space) the review measured.
+  **Fix 4 (`ollama pull` hint hidden behind a click):** moved the hint
+  paragraph (ModelPicker.svelte:825-831) out from under the
+  `{#if noToolsEffectivelyExpanded}` row-gate — it now always renders
+  whenever `noToolsHasOllama` (:373) is true, collapsed or not, matching
+  decisions/43's "only the individual rows require one click to reach" and
+  origin/main's pre-card-130 behaviour.
+  **Fix 5 (no test coverage for the two broken paths):** added to
+  ModelPicker.test.ts — a real-keyboard Enter test (:322-370, ArrowDown to
+  highlight then Enter, asserting the row appears, the popover stays open
+  via the filter input's continued presence, and neither `selectModel` nor
+  `closePicker` was called), a Space regression test (:372-397, same
+  ArrowDown-then-Space sequence, plus asserting the filter's value stayed
+  empty — proving the interception actually worked, not just that
+  something toggled), and rewrote the collapse-during-filter test
+  (:413-462) to prove both exact repro sequences. All `getByRole("button"/
+  "group", ...)` queries updated to `"option"` throughout the file to match
+  the new markup; two tests that query mid-filter-typing kept the
+  pre-existing `getByText(...).closest(...)` jsdom/floating-ui workaround
+  (name-from-content is affected by the same `visibility: hidden` artifact
+  again, now that the control's name comes from content rather than an
+  explicit `aria-label`).
+  Known, disclosed trade-off (not silently absorbed): after ANY
+  Enter/Space/click on the toggle, Command's own item-set-changed handling
+  resets its roving highlight back to the first item in the list (the same
+  mechanism the module doc already documents for "reselecting the first
+  valid row when a filter removes the highlighted one" — generalized here,
+  not new to this fix). A second immediate Enter/Space does NOT collapse
+  it back without re-navigating to it first; mouse click is unaffected
+  (goes through `onSelect` directly, no highlight dependency). This wasn't
+  interaction the review's five findings covered, but it's a real
+  consequence of making the control a genuine `Command.Item` — flagging
+  rather than omitting.
+  Gates: `npm test` (81 files, 1331 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven, including a `biome
+  check --write` pass on the test file's formatting; i18n unchanged at 446
+  keys x 10 locales), `npm run build`, and `npm run verify` (10/10
+  required + both best-effort) all green — see the Fourth-pass `## Gates`
+  entry for full evidence and the live-Chromium measurements for all five
+  fixes. Killed the Storybook (`-p 6010`) and the throwaway `python3 -m
+  http.server 8098` (serving `node_modules/axe-core/axe.min.js` for
+  injection into the Storybook page, since Storybook's dev server doesn't
+  serve `node_modules` and the extension's real CSP-safe `addInitScript`
+  approach in `verify/checks/axe.mjs` isn't applicable to a bare Storybook
+  page) processes afterward. Not committing/pushing per the task brief —
+  leaving `column: review` for Jonathan to review the diff himself.
