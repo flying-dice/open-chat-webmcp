@@ -120,6 +120,38 @@
     setSelectionStateForTesting(snapshot);
   };
 
+  /**
+   * Card 130 / decisions/43. A large OpenAI-compatible gateway catalog: one
+   * tool-capable allowlisted model, ~24 unverified models (the normal shape
+   * decisions/22's amendment describes — most of a gateway's catalog has no
+   * verified capability), and one no-tools model. Backs the story below,
+   * which shows the Unverified/No-tool-support sections' collapsed-by-
+   * default, count-in-heading behavior (decisions/43).
+   */
+  const seedLargeUnverifiedCatalog = (_services: SidePanelServices): void => {
+    const unverifiedEntries = Array.from({ length: 24 }, (_, i) =>
+      entry(`gateway-model-${i + 1}`, UNKNOWN),
+    );
+    const snapshot: SelectionStateSnapshot = {
+      ...EMPTY_SELECTION_STATE,
+      providers: [CUSTOM_HOST],
+      resolution: { status: "ok", config: CUSTOM_HOST, model: "gateway-flagship" },
+      selectionExplicit: true,
+      pickerOpen: true,
+      modelsByProvider: {
+        [CUSTOM_HOST.id]: {
+          status: "loaded",
+          entries: [
+            entry("gateway-flagship", TOOL_CAPABLE),
+            ...unverifiedEntries,
+            entry("gateway-legacy-chat", NO_TOOLS),
+          ],
+        },
+      },
+    };
+    setSelectionStateForTesting(snapshot);
+  };
+
   const { Story } = defineMeta({
     title: "Side panel/ModelPicker",
     component: ModelPicker,
@@ -133,3 +165,8 @@
 <Story name="Degraded provider (connection error, copyable fix)" parameters={{ services: { sidepanel: seedDegradedProvider } }} />
 
 <Story name="Manual entry (no listing API)" parameters={{ services: { sidepanel: seedManualEntry } }} />
+
+<Story
+  name="Many unverified models (large gateway catalog)"
+  parameters={{ services: { sidepanel: seedLargeUnverifiedCatalog } }}
+/>

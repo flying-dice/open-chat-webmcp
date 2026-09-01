@@ -63,6 +63,7 @@
   import Icon from "./Icon.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import * as Command from "$lib/components/ui/command";
+  import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Separator } from "$lib/components/ui/separator";
@@ -107,6 +108,34 @@
   let filterInputEl: HTMLInputElement | null = $state(null);
   let commandRootEl: HTMLDivElement | null = $state(null);
 
+  // Card 130 / decisions/43: the Unverified and No-tool-support sections
+  // start collapsed behind a heading stating their count, and expand in
+  // place on click. Both start collapsed — reset alongside the filter query
+  // whenever the popover closes (see the `$effect` below) so each open
+  // starts from the same condensed state rather than remembering the last
+  // session's expansion.
+  let unverifiedExpanded = $state(false);
+  let noToolsExpanded = $state(false);
+
+  /**
+   * Code-review fix on card 130: the Unverified/No-tool-support
+   * `Command.Group`s dropped their `heading` string prop for the
+   * interactive `collapsibleHeading` button below, so bits-ui's own
+   * `Command.GroupHeading` wiring (which only fires for that string prop —
+   * see command-group.svelte) never ran and the group's `role="group"`
+   * element (`Command.GroupItems`, per bits-ui's command.svelte.js) got no
+   * `aria-labelledby` at all — a screen reader announced an unnamed
+   * "group" instead of "Unverified"/"No tool support". Fixed by giving the
+   * button its own id and wiring it through command-group.svelte's new
+   * `headingId` prop, which forwards straight to `Command.GroupItems`'
+   * `aria-labelledby` (see that file's comment). `$props.id()` keeps the
+   * ids unique per mounted ModelPicker instance (e.g. two Storybook
+   * stories mounted side by side) without a global counter.
+   */
+  const uid = $props.id();
+  const unverifiedHeadingId = `${uid}-unverified-heading`;
+  const noToolsHeadingId = `${uid}-no-tools-heading`;
+
   /** A current tool-calling-capable Ollama model, named concretely per card 14 rather than leaving "pull a model" vague. */
   const OLLAMA_TOOL_MODEL_SUGGESTION = "llama3.1";
 
@@ -117,9 +146,13 @@
     if (info) void syncToTab(info.tabId, info.origin);
   });
 
-  // Reset the filter between opens.
+  // Reset the filter and the section collapse state between opens.
   $effect(() => {
-    if (!selection.pickerOpen) filterQuery = "";
+    if (!selection.pickerOpen) {
+      filterQuery = "";
+      unverifiedExpanded = false;
+      noToolsExpanded = false;
+    }
   });
 
   /**
@@ -330,6 +363,32 @@
   /** Keeps the concrete `ollama pull` suggestion alive for the "some models installed, none tool-capable" case, without violating the "no heading for a provider with no selectable models" rule above — this hint lives on the No-tool-support SECTION instead of on a per-provider heading. */
   const noToolsHasOllama = $derived(noToolsRows.some((r) => r.isOllama));
 
+  /**
+   * Code-review fix on card 130 (post-decisions/43): `unverifiedRows`/
+   * `noToolsRows` above are already filtered by the query, so typing e.g.
+   * "gateway-model-7" correctly narrows a collapsed heading down to
+   * "Unverified (1)" — but with only the raw `unverifiedExpanded`/
+   * `noToolsExpanded` toggle gating the rows, the match stayed hidden
+   * behind the still-collapsed section, forcing an extra click to actually
+   * see it. These two derive "effectively expanded" as the manual toggle
+   * OR'd with "a filter is active and left at least one row in this
+   * section" — deliberately NOT an `$effect` that mutates
+   * `unverifiedExpanded`/`noToolsExpanded` directly, which would fight a
+   * manual collapse-during-filter click every time it re-ran. Because nothing
+   * ever overwrites the raw toggle, clicking the heading always flips a
+   * stable, independent piece of state; a filtered-open section reverts to
+   * collapsed the moment the query is cleared (or the popover closes, which
+   * already resets the raw toggle above) purely because the OR's second
+   * term goes false, with no separate reset needed here.
+   */
+  const filtering = $derived(normalizedQuery() !== "");
+  const unverifiedEffectivelyExpanded = $derived(
+    unverifiedExpanded || (filtering && unverifiedRows.length > 0),
+  );
+  const noToolsEffectivelyExpanded = $derived(
+    noToolsExpanded || (filtering && noToolsRows.length > 0),
+  );
+
   function handlePickModel(row: Row): void {
     if (!isSelectable(row.capability)) return;
     void selectModel(row.providerId, row.model.id).then(() => closePicker());
@@ -347,19 +406,22 @@
     data-status={row.capability?.status ?? "unknown"}
     data-active={row.isActive}
     class={cn(
-      "flex items-center justify-between gap-2 rounded-xl px-3 py-2",
+      "flex items-center justify-between gap-2 rounded-xl px-3 py-1.5",
       row.isActive && "border border-primary data-selected:bg-muted",
     )}
   >
-    <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span class={cn("truncate text-foreground", !selectable && "text-muted-foreground")} dir="ltr">
+    <span class="flex min-w-0 flex-1 flex-col gap-0">
+      <span
+        class={cn("truncate leading-tight text-foreground", !selectable && "text-muted-foreground")}
+        dir="ltr"
+      >
         {row.model.name}
       </span>
       {#if showProvider}
-        <span class="text-xs text-muted-foreground">{row.providerName}</span>
+        <span class="text-xs leading-tight text-muted-foreground">{row.providerName}</span>
       {/if}
       {#if reason}
-        <span class="text-xs break-words text-muted-foreground">{reason}</span>
+        <span class="text-xs leading-tight break-words text-muted-foreground">{reason}</span>
       {/if}
     </span>
     {#if row.isActive}
@@ -368,16 +430,59 @@
            is a box. -->
       <span class="flex-none text-primary"><Icon name="check_circle" class="size-4" /></span>
     {:else if badge}
-      <span
+      <!-- Code-review fix on card 130: `text-muted-foreground` is the
+           always-on base — matches the raw `<span>` this replaced and the
+           same outline-Badge pattern elsewhere (CallLogEntry.svelte:145,
+           ToolCallRow.svelte:218, AnnotationBadges.svelte:52). Without it,
+           `Badge`'s own `text-foreground` won for Unverified/No-tool-support
+           rows since only the tool-capable case was overriding color. -->
+      <Badge
+        variant="outline"
         class={cn(
-          "flex-none text-xs whitespace-nowrap text-muted-foreground",
-          row.capability?.status === "tool-capable" && "text-primary",
+          "flex-none whitespace-nowrap text-muted-foreground",
+          row.capability?.status === "tool-capable" && "border-primary/30 text-primary",
         )}
       >
         {badge.icon} {badge.label}
-      </span>
+      </Badge>
     {/if}
   </Command.Item>
+{/snippet}
+
+<!--
+  Card 130 / decisions/43: a clickable, sticky disclosure heading for the
+  Unverified/No-tool-support sections, standing in for `Command.Group`'s own
+  `heading` prop (which only renders static text, not a control). Composes
+  the existing bucket-heading string with the row count client-side rather
+  than adding a new i18n key. "Never hide, always show-with-reason"
+  (decisions/06/11, refined by decisions/43) is kept: the section is never
+  gone, only condensed behind a heading that states exactly how many rows it
+  holds.
+-->
+{#snippet collapsibleHeading(
+  headingId: string,
+  label: string,
+  count: number,
+  expanded: boolean,
+  toggle: () => void,
+)}
+  <!-- Code-review fix on card 130: `id={headingId}` is what
+       command-group.svelte's `headingId` prop points the surrounding
+       `Command.Group`'s `aria-labelledby` at — see the doc comment on
+       `unverifiedHeadingId`/`noToolsHeadingId` above. -->
+  <button
+    id={headingId}
+    type="button"
+    class="sticky top-0 z-10 flex w-full items-center justify-between gap-2 bg-popover px-2 py-1 text-start text-xs font-medium text-muted-foreground"
+    aria-expanded={expanded}
+    onclick={toggle}
+  >
+    <span>{label} ({count})</span>
+    <Icon
+      name="expand_more"
+      class={cn("size-4 flex-none transition-transform", expanded && "rotate-180")}
+    />
+  </button>
 {/snippet}
 
 <div class="relative min-w-0">
@@ -428,7 +533,11 @@
           </p>
         {/if}
 
-        <Command.Root shouldFilter={false} bind:ref={commandRootEl} class="flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0">
+        <Command.Root
+          shouldFilter={false}
+          bind:ref={commandRootEl}
+          class="min-h-0 flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0"
+        >
           {#if showFilter}
             <Command.Input
               bind:value={filterQuery}
@@ -446,7 +555,7 @@
                bottom edge with no cushion (card 89's visual QA note).
                `scroll-py-1` (from Command.List's own base class) only
                affects scroll-into-view margins, not this. -->
-          <Command.List class="flex max-h-full flex-col gap-3 overflow-y-auto py-1">
+          <Command.List class="flex min-h-0 max-h-full flex-1 flex-col gap-3 overflow-y-auto py-1">
             {#each visibleGroups as group (group.provider.id)}
               <Command.Group value={group.provider.id} heading={group.provider.name} class="flex flex-col gap-1 p-0">
                 {#if group.filteredSelectable.length > 0}
@@ -526,33 +635,43 @@
             {/each}
 
             {#if unverifiedRows.length > 0}
-              <Command.Group
-                value="unverified"
-                heading={m.providerPicker_unverifiedHeading()}
-                class="flex flex-col gap-1 p-0"
-              >
-                {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
-                  {@render modelRow(row, true)}
-                {/each}
+              <Command.Group value="unverified" headingId={unverifiedHeadingId} class="flex flex-col gap-1 p-0">
+                {@render collapsibleHeading(
+                  unverifiedHeadingId,
+                  m.providerPicker_unverifiedHeading(),
+                  unverifiedRows.length,
+                  unverifiedEffectivelyExpanded,
+                  () => (unverifiedExpanded = !unverifiedExpanded),
+                )}
+                {#if unverifiedEffectivelyExpanded}
+                  {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
+                    {@render modelRow(row, true)}
+                  {/each}
+                {/if}
               </Command.Group>
             {/if}
 
             {#if noToolsRows.length > 0}
-              <Command.Group
-                value="no-tools"
-                heading={m.providerPicker_noToolSupportHeading()}
-                class="flex flex-col gap-1 p-0"
-              >
-                {#if noToolsHasOllama}
-                  <p class="px-2 text-sm text-muted-foreground">
-                    {m.providerPicker_pullToolCapableHintPrefix()}<code
-                      >ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code
-                    >{m.providerPicker_pullToolCapableHintSuffix()}
-                  </p>
+              <Command.Group value="no-tools" headingId={noToolsHeadingId} class="flex flex-col gap-1 p-0">
+                {@render collapsibleHeading(
+                  noToolsHeadingId,
+                  m.providerPicker_noToolSupportHeading(),
+                  noToolsRows.length,
+                  noToolsEffectivelyExpanded,
+                  () => (noToolsExpanded = !noToolsExpanded),
+                )}
+                {#if noToolsEffectivelyExpanded}
+                  {#if noToolsHasOllama}
+                    <p class="px-2 text-sm text-muted-foreground">
+                      {m.providerPicker_pullToolCapableHintPrefix()}<code
+                        >ollama pull {OLLAMA_TOOL_MODEL_SUGGESTION}</code
+                      >{m.providerPicker_pullToolCapableHintSuffix()}
+                    </p>
+                  {/if}
+                  {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
+                    {@render modelRow(row, true)}
+                  {/each}
                 {/if}
-                {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
-                  {@render modelRow(row, true)}
-                {/each}
               </Command.Group>
             {/if}
 

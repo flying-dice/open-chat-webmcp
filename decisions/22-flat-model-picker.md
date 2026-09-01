@@ -75,3 +75,50 @@ interaction only; nothing about what a selection *means* changes.
   `llama3`). The group heading disambiguates in the list; the chip may not. The
   chip is a reminder, not an identifier — the full pair stays available on hover
   and in the options page.
+
+## Amendment (2026-09-01, card 130)
+
+Real gateway setups can put dozens of models in the "Unverified" bucket — one
+OpenAI-compatible backend, a handful of tool-capable allowlisted models, the
+rest unknown. That's the normal shape for a large catalog, not an edge case,
+and it surfaced two problems this amendment fixes without changing the
+three-bucket structure above:
+
+- **The list wasn't actually scrollable.** `Command.Root` sat inside
+  `Popover.Content`'s bounded flex column (`max-h-[60vh]`) as a `flex-1` child
+  with no `min-h-0`. Per the flexbox "automatic minimum size" rule, a flex
+  item with no explicit `min-height` won't shrink below its content's
+  intrinsic height, so `Command.Root` grew to fit every row instead of
+  shrinking to the space actually left. `Command.List`'s `max-h-full`
+  inherited that inflated height, so its own `overflow-y-auto` never had
+  anything to scroll *within* — excess rows were clipped instead of
+  scrolling. Fixed with `min-h-0` on `Command.Root` and `Command.List`.
+- **Density and orientation.** Rows are tighter (`py-1.5`, tighter line
+  height) so more fit before scrolling is needed, the capability badge now
+  reuses the shared `Badge` component instead of raw text, and each group's
+  heading is `sticky top-0` within the single scroll region — so a section
+  heading like "Unverified" stays visible while scrolling its own (possibly
+  large) section, then scrolls off with it as the next section arrives. This
+  is still one scroll region (`Command.List`); no second independent scroll
+  area was introduced.
+- **The same bug, one level deeper.** `min-h-0` on `Command.Root`/`Command.List`
+  alone still didn't scroll, confirmed live in Storybook against a 24-row
+  Unverified bucket: `Command.List`'s `scrollHeight` stayed equal to its
+  `clientHeight` (no scrollable area at all) even though rows visibly
+  overflowed it. Each `Command.Group` is itself a flex ITEM of `Command.List`
+  (a `flex flex-col` container), and without `shrink-0` a Group's own
+  automatic minimum size collapsed below its rows' actual height — the exact
+  same flexbox rule above, recurring one level down the tree. Its own
+  `overflow-hidden` compounded this for the sticky heading specifically: CSS
+  sticky positions relative to the nearest ancestor that is a scroll
+  container, and `overflow: hidden` counts as one even when nothing scrolls
+  it — so the heading was sticking inside the Group's own static box instead
+  of `Command.List`'s real scrolled viewport. Fixed with `shrink-0
+  overflow-visible` on `Command.Group`.
+
+### Consequences (addendum)
+
+- `src/ui/components/ui/command/command-group.svelte`'s heading padding,
+  sticky positioning, and its root's `shrink-0 overflow-visible` are now a
+  local edit — safe because `ModelPicker` is this repo's only consumer of
+  `Command.*`.

@@ -210,14 +210,107 @@ describe("ModelPicker", () => {
   });
 
   // -------------------------------------------------------------------------
-  it("shows an unknown-capability model under Unverified with its badge label", async () => {
+  // Card 130 / decisions/43: the Unverified and No-tool-support sections
+  // start collapsed behind a heading stating their count, and only render
+  // their rows once that heading is clicked.
+  it("starts the Unverified section collapsed (heading shows the count, row absent) and reveals its row on click", async () => {
+    const user = userEvent.setup();
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
     state.modelsByProvider = { a: loaded([entry(model("mystery"), UNKNOWN)]) };
 
     render(ModelPicker);
 
-    expect(await screen.findByText(m.providerPicker_unverifiedHeading())).toBeInTheDocument();
+    const heading = await screen.findByRole("button", {
+      name: `${m.providerPicker_unverifiedHeading()} (1)`,
+    });
+    expect(heading).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("mystery")).not.toBeInTheDocument();
+
+    await user.click(heading);
+
+    expect(heading).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("mystery")).toBeInTheDocument();
+  });
+
+  // Code-review fix on card 130: a filter query narrowing a collapsed
+  // section down to a real match used to leave that match hidden behind the
+  // still-collapsed heading — the count changed ("Unverified (9)" ->
+  // "Unverified (1)") but the user had to notice that and click anyway.
+  // Filtering should auto-expand a section with a nonzero filtered count,
+  // and revert to collapsed once the filter clears again.
+  it("auto-expands the Unverified section when a filter narrows it to a match, without an extra click", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    // Starts collapsed like every open (decisions/43) — past FILTER_THRESHOLD
+    // (8), so the filter input is present too.
+    const heading = await screen.findByRole("button", {
+      name: `${m.providerPicker_unverifiedHeading()} (${names.length})`,
+    });
+    expect(heading).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("gateway-model-7")).not.toBeInTheDocument();
+
+    const filter = screen.getByLabelText(m.providerPicker_filterAriaLabel());
+    await user.type(filter, "gateway-model-7");
+
+    // The match is visible immediately once the filter narrows the section
+    // to a nonzero count — no click on the heading required. Queried by
+    // text + `.closest("button")` rather than `findByRole(..., { name })`:
+    // typing into the filter triggers a floating-ui reposition that jsdom's
+    // missing layout leaves the popover's positioning wrapper stuck at
+    // inline `visibility: hidden` — CSS `visibility` inherits, so
+    // `dom-accessibility-api`'s name-from-content computation (which
+    // `findByRole`'s `name` matcher relies on) treats every descendant's
+    // text as hidden and returns an EMPTY accessible name for every button
+    // in the popover, `{ hidden: true }` notwithstanding (that option only
+    // stops the role query from excluding hidden elements outright, it
+    // doesn't change how their name is computed). `getByText` matches
+    // literal `textContent`, unaffected by that. Same underlying jsdom/
+    // floating-ui artifact as the large-bucket regression test's `{ hidden:
+    // true }` note above; confirmed via the live Storybook check this
+    // card's gates require that the button and row are genuinely visible in
+    // a real browser.
+    const matchHeading = (
+      await screen.findByText(`${m.providerPicker_unverifiedHeading()} (1)`)
+    ).closest("button");
+    expect(matchHeading).not.toBeNull();
+    expect(matchHeading).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("gateway-model-7")).toBeInTheDocument();
+    expect(screen.queryByText("gateway-model-1")).not.toBeInTheDocument();
+
+    // Clearing the filter reverts to collapsed — the auto-expand was never a
+    // manual toggle, so it doesn't stick once the query is gone.
+    await user.clear(filter);
+
+    const collapsedHeading = (
+      await screen.findByText(`${m.providerPicker_unverifiedHeading()} (${names.length})`)
+    ).closest("button");
+    expect(collapsedHeading).not.toBeNull();
+    expect(collapsedHeading).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("gateway-model-7")).not.toBeInTheDocument();
+  });
+
+  it("shows an unknown-capability model under Unverified with its badge label, once expanded", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    state.modelsByProvider = { a: loaded([entry(model("mystery"), UNKNOWN)]) };
+
+    render(ModelPicker);
+
+    const heading = await screen.findByRole("button", {
+      name: `${m.providerPicker_unverifiedHeading()} (1)`,
+    });
+    await user.click(heading);
+
     const row = screen.getByText("mystery").closest('[role="option"]');
     expect(row).not.toBeNull();
     expect(
@@ -225,14 +318,61 @@ describe("ModelPicker", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows a no-tools model under 'No tool support' with its badge label", async () => {
+  // -------------------------------------------------------------------------
+  // Card 130: regression guard for the scroll-trap fix (decisions/22's
+  // amendment). jsdom can't prove the list actually SCROLLS — that's the
+  // live Storybook check this card's gates require instead — but this proves
+  // the "never hidden" half: a large Unverified bucket (the shape that
+  // triggered the bug, a gateway catalog with dozens of unverified models)
+  // still renders every single row — reachable after expanding the section —
+  // rather than any being clipped or dropped by the fix. Decisions/43 reads
+  // the never-hide rule as satisfied by "reachable after one click", not
+  // "immediately on render", so the count in the collapsed heading is
+  // asserted too.
+  it("renders every row of a large Unverified bucket, none hidden, once expanded", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const names = Array.from({ length: 24 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(names.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    const heading = await screen.findByRole("button", {
+      name: `${m.providerPicker_unverifiedHeading()} (${names.length})`,
+    });
+    await user.click(heading);
+
+    for (const name of names) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    // `{ hidden: true }`: expanding this section grows the popover content
+    // enough to trigger a floating-ui reposition, which jsdom (no real
+    // layout/ResizeObserver) leaves the floating wrapper's inline
+    // `visibility: hidden` stuck on — a jsdom/floating-ui artifact, not a
+    // real accessibility regression (the live Storybook check under this
+    // card's gates confirms the rows are genuinely visible in a real
+    // browser). Every row is still a real, present, role="option" element in
+    // the DOM; this just stops testing-library's accessibility-tree
+    // visibility filter from hiding them from the query.
+    expect(screen.getAllByRole("option", { hidden: true })).toHaveLength(names.length);
+  });
+
+  it("shows a no-tools model under 'No tool support' with its badge label, once expanded", async () => {
+    const user = userEvent.setup();
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
     state.modelsByProvider = { a: loaded([entry(model("chatty"), NO_TOOLS)]) };
 
     render(ModelPicker);
 
-    expect(await screen.findByText(m.providerPicker_noToolSupportHeading())).toBeInTheDocument();
+    const heading = await screen.findByRole("button", {
+      name: `${m.providerPicker_noToolSupportHeading()} (1)`,
+    });
+    await user.click(heading);
+
     const row = screen.getByText("chatty").closest('[role="option"]');
     expect(row).not.toBeNull();
     expect(
@@ -248,6 +388,11 @@ describe("ModelPicker", () => {
     state.modelsByProvider = { a: loaded([entry(model("chatty"), NO_TOOLS)]) };
 
     render(ModelPicker);
+
+    const heading = await screen.findByRole("button", {
+      name: `${m.providerPicker_noToolSupportHeading()} (1)`,
+    });
+    await user.click(heading);
 
     const row = (await screen.findByText("chatty")).closest('[role="option"]') as HTMLElement;
     expect(row).toHaveAttribute("aria-disabled", "true");
