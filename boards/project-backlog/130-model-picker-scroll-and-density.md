@@ -4,7 +4,7 @@ agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-01T22:35:00.000Z
+updatedAt: 2026-09-01T22:40:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -549,3 +549,21 @@ during-filter no-op/latch, critical axe `aria-required-children`, the
   approach in `verify/checks/axe.mjs` isn't applicable to a bare Storybook
   page) processes afterward. Not committing/pushing per the task brief —
   leaving `column: review` for Jonathan to review the diff himself.
+- **claude** (2026-09-01T22:40:00.000Z): Verified the fourth pass myself
+  before pushing: `npm test` (18/18 ModelPicker tests), `npm run check`
+  (0 errors), biome clean, and an independent axe-core run (standalone
+  Playwright script, not trusting the subagent's report alone) against
+  both `Side panel/ModelPicker` stories — 0 serious/critical violations
+  from this diff. Manually drove the keyboard path live: Tab to
+  "Unverified (24)", Enter → section expands (options 3→27), popover
+  stays open — confirmed the fix, not just the code.
+  While doing that pass I found ONE separate critical axe violation —
+  `aria-required-attr`, missing `aria-controls` on the filter
+  `Command.Input` (`src/ui/components/ui/command/command-input.svelte`)
+  — confirmed pre-existing (file untouched since card 91, well before
+  this branch) and unrelated to card 130's diff. Filed
+  https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/work_items/3
+  rather than scope-creeping it into this MR. Committed
+  (`1d77905`, "Fix keyboard, filter-collapse, ARIA, and hint-visibility
+  regressions from shockwave's review") and pushed to `card/130`.
+  Watching MR !1 for shockwave's re-review.
