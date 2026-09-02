@@ -1,0 +1,1266 @@
+---
+column: review
+agent: claude-sonnet
+live: false
+labels: [frontend, bug]
+priority: high
+updatedAt: 2026-09-02T01:50:00.000Z
+---
+# Model picker: fix scroll trap, denser list UX
+
+The composer's model picker (decisions/22) can't scroll: `Command.Root` is a
+`flex-1` child with no `min-h-0` inside `Popover.Content`'s bounded flex
+column, so it grows to its content's full height instead of shrinking, and
+`Command.List`'s `overflow-y-auto` never has anything to scroll within. Hit
+in real use with a large gateway catalog where the "Unverified" bucket
+(decisions/11) has dozens of rows and swallows the whole popover. See
+decisions/22's 2026-09-01 amendment for the root cause and the fix.
+
+Also does a density pass (tighter rows, shared `Badge` component for the
+capability tag, sticky section headings within the one scroll region), and
+builds two Storybook-comparable variants of how the Unverified/No-tool-
+support sections display — always-expanded vs. collapsible-with-count — for
+Jonathan to pick between live in Storybook before either becomes the shipped
+behavior. The losing variant and its temporary prop get deleted afterward;
+this is a comparison aid, not a permanent feature flag.
+
+## Checklist
+
+- [x] `min-h-0` fix on `Command.Root`/`Command.List`; list genuinely
+      scrollable regardless of section size
+- [x] Row density pass: tighter padding/line-height, `Badge` component for
+      the capability tag
+- [x] Sticky section headings in `command-group.svelte` (local edit, this
+      card, since `ModelPicker` is the only consumer)
+- [x] New "many unverified models" seed + two comparison stories in
+      `ModelPicker.stories.svelte` (always-expanded vs. collapsible)
+- [x] New `ModelPicker.test.ts` case: large Unverified bucket still renders
+      every row (never-hidden regression guard)
+- [x] Live Storybook check in a real browser confirming actual scroll
+      behavior (jsdom can't prove this)
+- [x] Jonathan picks a variant; losing branch + temporary prop removed —
+      picked collapsible sections (decisions/43-collapsible-picker-sections.md).
+      Deleted the `sectionDisplay` prop and its Props interface, and the
+      always-expanded branches for both sections, from
+      src/sidepanel/components/ModelPicker.svelte; deleted the "always
+      expanded" comparison `<Story>` from
+      src/sidepanel/components/ModelPicker.stories.svelte
+- [x] If collapsible picked: new decision record + i18n keys across all
+      locales, `npm run guard:i18n` green — decisions/43 recorded; no i18n
+      key was needed after all, confirmed by `npm run guard:i18n` staying at
+      446 keys x 10 locales unchanged (the collapsed-heading count composes
+      `m.providerPicker_unverifiedHeading()`/`m.providerPicker_noToolSupportHeading()`
+      with the row count client-side, per decisions/43)
+- [x] `npm test`, `npm run check`, `npm run guard`, `npm run build`,
+      `npm run verify` all green
+
+## Gates
+
+- [x] tests-passing — `npm test`: 81 files, 1325 tests, all green (incl. the
+      new 24-row Unverified regression test) (claude-sonnet, 2026-09-01T19:52:00Z)
+- [x] typecheck — `npm run check`: svelte-check 2077 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet, 2026-09-01T19:52:00Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome, boundaries,
+      clean-code — nothing new above the 0.5 threshold, return-types, throws,
+      i18n — 446 keys x 10 locales unchanged, stories — 44/44 covered)
+      (claude-sonnet, 2026-09-01T19:53:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T19:53:30Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-01T19:56:00Z)
+- [x] live-storybook-check — navigated both new stories in a real Chromium
+      (Playwright) at http://localhost:6006: confirmed genuine scroll in
+      "Many unverified models — always expanded" (`Command.List.scrollHeight`
+      1650 vs `clientHeight` 346, `scrollTop` actually moves, reached the
+      bottom "No tool support" row), and confirmed independent expand/collapse
+      with correct counts in "Many unverified models — collapsible sections"
+      (claude-sonnet, 2026-09-01T18:50:45Z)
+
+Second pass, making collapsible the only behavior (decisions/43):
+
+- [x] tests-passing — `npm test`: 81 files, 1326 tests, all green (incl. the
+      updated collapsed-by-default coverage and a new dedicated
+      collapse/expand test) (claude-sonnet, 2026-09-01T20:23:00Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-01T20:24:00Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome, boundaries,
+      clean-code — nothing new above the 0.5 threshold, return-types, throws,
+      i18n — 446 keys x 10 locales unchanged confirming no new key was
+      needed, stories — 44/44 covered) (claude-sonnet, 2026-09-01T20:25:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T20:26:00Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-01T20:30:00Z)
+- [x] live-storybook-check — navigated the renamed
+      "Many unverified models (large gateway catalog)" story in a real
+      Chromium (Playwright) at http://localhost:6008: confirmed both
+      sections render collapsed by default with the right counts in the
+      heading ("Unverified (24)", "No tool support (1)"), and that clicking
+      each sets `aria-expanded="true"` and independently reveals its rows
+      (25 options after expanding Unverified, 26 after also expanding No
+      tool support) (claude-sonnet, 2026-09-01T20:33:00Z)
+
+Third pass, three code-review fixes on the review-column diff (filter
+auto-expand, badge default color, collapsible-heading accessible name):
+
+- [x] tests-passing — `npm test`: 81 files, 1327 tests, all green (incl. the
+      new filter-auto-expand test) (claude-sonnet, 2026-09-01T19:45:00Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-01T19:46:00Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome — clean
+      after `biome format --write` on the new test's multi-line query;
+      boundaries; clean-code — nothing new above the 0.5 threshold;
+      return-types; throws; i18n — 446 keys x 10 locales unchanged;
+      stories — 44/44 covered) (claude-sonnet, 2026-09-01T19:47:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T19:47:30Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-01T19:46:30Z)
+- [x] live-storybook-check — navigated "Many unverified models (large
+      gateway catalog)" in a real Chromium (Playwright) at
+      http://localhost:6009: typing "gateway-model-7" into the filter
+      narrowed "Unverified (24)" to "Unverified (1)" AND auto-expanded it
+      (`[expanded]` in the a11y snapshot, no click) with the matching row
+      genuinely present; clearing the filter reverted it to collapsed
+      "Unverified (24)" with no options listed. Confirmed the accessible
+      name fix via the resolved DOM, not eyeballing:
+      `document.querySelector('[data-command-group-items][aria-labelledby]')`
+      for the Unverified section resolves `aria-labelledby="c1-unverified-heading"`
+      to an element whose `textContent` is "Unverified (1)" (and, before
+      filtering, "Unverified (24)"/"No tool support (1)" for that section
+      and the No-tool-support section respectively, "Self-hosted" for the
+      provider group) — every `role="group"` in the popover now has a real,
+      non-empty computed accessible name. Also confirmed the badge color fix
+      live: the "? Unverified" badge's computed `color` is
+      `oklch(0.535 0.016 285.938)`, which is exactly `--muted-foreground`
+      (verified against `getComputedStyle(document.documentElement)`), not
+      `--foreground`'s `oklch(0.141 0.005 285.823)`. Killed the Storybook
+      process afterward (claude-sonnet, 2026-09-01T19:48:00Z)
+
+Fourth pass, five FAIL findings from reviewer shockwave on MR !1 (notes
+12383-12387, summary 12391 — Enter closes instead of expands, collapse-
+during-filter no-op/latch, critical axe `aria-required-children`, the
+`ollama pull` hint hidden behind a click, missing test coverage):
+
+- [x] tests-passing — `npm test`: 81 files, 1331 tests, all green (incl. 2
+      new keyboard tests — Enter, Space — and a rewritten collapse-during-
+      filter test proving both exact repro sequences) (claude-sonnet,
+      2026-09-01T22:23:00Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings (incl. after the `role="group"` design was tried and its 3
+      a11y warnings — `a11y_no_noninteractive_tabindex`,
+      `a11y_role_supports_aria_props`, `a11y_no_noninteractive_element_interactions`
+      — led to the `Command.Item`-based redesign instead); `tsc -p
+      tsconfig.node.json` clean (claude-sonnet, 2026-09-01T22:24:00Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome — clean
+      after `biome check --write` on the test file's formatting;
+      boundaries; clean-code — nothing new above the 0.5 threshold;
+      return-types; throws; i18n — 446 keys x 10 locales unchanged, no new
+      key needed; stories — 44/44 covered) (claude-sonnet,
+      2026-09-01T22:24:30Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T22:25:00Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations against the real
+      built extension's own seeded screens) passed (claude-sonnet,
+      2026-09-01T22:26:00Z)
+- [x] live-storybook-check — `npm run storybook -- -p 6010 --ci --no-open`,
+      driven via Playwright MCP against both `side-panel-modelpicker--*`
+      stories (`many-unverified-models-large-gateway-catalog` and
+      `grouped-selectable-unverified-no-tools`), with axe-core 4.13.0
+      injected via a throwaway `python3 -m http.server 8098` serving
+      `node_modules/axe-core/axe.min.js` (Storybook doesn't serve
+      `node_modules`, and `verify/checks/axe.mjs`'s CSP-safe
+      `addInitScript` approach only applies to the real extension, not a
+      bare Storybook page):
+      — **Enter**: `ArrowDown` from the filter (or from `commandRootEl`
+      when there's no filter) highlights `data-value="unverified-toggle"`;
+      `Enter` sets the section's row count 3→27/3→4, popover stays open
+      (`[data-slot=popover-content]` still present), trigger chip's text
+      unchanged ("gateway-flagship"/"llama3.1", proving nothing got
+      committed). Reproduced on both stories and both headings
+      (Unverified, No tool support).
+      — **Space**: same ArrowDown-highlight, then `Space` — same row-count
+      change, filter's own value stays empty (no literal space typed),
+      confirming `handleListKeydown`'s interception actually fires.
+      — **Collapse-during-filter**: typed "gateway-model-7" into the
+      filter → "Unverified (1)" auto-expands (1 option). Clicked the
+      toggle → collapses for REAL (0 options; was previously a no-op at 24
+      options pre-fix). Cleared the filter afterward → reverts to
+      collapsed "Unverified (24)" (3 options total, not the 27 a latch
+      would produce).
+      — **axe-core** (`wcag2a,wcag2aa,wcag21a,wcag21aa,best-practice`):
+      `aria-required-children` = 0 critical violations on BOTH stories
+      (was 1, critical, on the first, before this fix) — the only other
+      critical hit, `aria-required-attr` on the filter `Command.Input`
+      missing `aria-controls`, is confirmed pre-existing and unrelated:
+      byte-identical `Command.Input` block in `git diff d28b449 --
+      ModelPicker.svelte` (base of this MR). Remaining violations are all
+      `moderate` (`landmark-one-main`/`page-has-heading-one`/`region`) —
+      generic Storybook-iframe-shell noise (no `<main>`/`<h1>` at the
+      story-runner level), not ModelPicker's, and non-blocking per this
+      repo's own established axe policy (`verify/checks/axe.mjs`:
+      serious/critical fail loudly, moderate/minor are printed only).
+      Killed the Storybook and `http.server` processes afterward
+      (claude-sonnet, 2026-09-01T22:32:00Z)
+
+Fifth pass, fixing shockwave's second FAIL (4 new findings at head `4a3fc96`
+— notes 12449/12450/12451/12452; the prior 5 threads all reconfirmed fixed,
+not touched again):
+
+- [x] tests-passing — `npm test`: 81 files, 1335 tests, all green (7 new/
+      rewritten ModelPicker cases: double-Enter and double-click disclosure
+      round-trip, filter-space-not-eaten, group accessible-name, and a
+      `tabindex="0"` DOM check; the old Space-toggle test deleted along with
+      `handleListKeydown`) (claude-sonnet, 2026-09-01T23:39:42Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-01T23:39:59Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome, boundaries,
+      clean-code — nothing new above the 0.5 threshold, return-types, throws,
+      i18n — 446 keys x 10 locales unchanged, stories — 44/44 covered)
+      (claude-sonnet, 2026-09-01T23:40:30Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-01T23:41:00Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-01T23:42:30Z)
+- [x] live-storybook-check — built Storybook static (`npm run
+      build-storybook`), served it locally, drove real Chromium via
+      Playwright against both `Side panel/ModelPicker` stories, and killed
+      the server afterward. Measured, for all four findings:
+      **12449** (ModelPicker.svelte:490-527, `highlightedValue`/
+      `restoreDisclosureHighlight`, bound via `Command.Root`'s
+      `bind:value`): ArrowDown → `unverified-toggle`; Enter → options 3→27,
+      `data-selected` STAYS `unverified-toggle` (previously reset to
+      `custom-host:gateway-flagship`); Enter again → options 27→3, popover
+      still present, highlight still on the toggle (previously: popover
+      ABSENT, options 0); Enter a third time → options 3→27 again. Same
+      round-trip confirmed via two real DOM `.click()`s on the toggle
+      (expand→collapse→re-expand), matching the keyboard result.
+      **12450** (`handleListKeydown` and its `Command.Root` `onkeydown`
+      wiring deleted, ModelPicker.svelte:449-518): typed "gateway-model-1"
+      into the filter (12 options, toggle highlighted, matching the
+      review's own measurement), then typed a literal space — filter value
+      became `"gateway-model-1 "`, options stayed at 12, nothing collapsed.
+      **12451** (`command-group.svelte`'s new `headingHidden` prop;
+      ModelPicker.svelte:855-892 pass `heading` + `headingHidden` on both
+      collapsible groups): on "Grouped (selectable, unverified, no-tools)",
+      all three `[role="group"]` elements resolve a non-empty
+      `aria-labelledby` ("Local Ollama"/"Unverified"/"No tool support" —
+      three-of-three, matching origin/main's baseline); the sr-only heading
+      node measures 1x1px/`overflow:hidden`/`clip-path:inset(50%)` (Tailwind's
+      real `sr-only`, confirmed via computed style, not just the class
+      name); the toggle's own visible text still reads exactly
+      "Unverified (1)" once. **12452** (`tabindex={0}` on `Command.List`,
+      ModelPicker.svelte:742-762): axe-core 4.13.0
+      (`wcag2a,wcag2aa,wcag21a,wcag21aa,best-practice`) over the OPEN,
+      EXPANDED "Many unverified models" picker reports 0
+      `scrollable-region-focusable` violations (previously 1, serious); full
+      violation set both collapsed and expanded is unchanged from before
+      this fix (`aria-required-attr` critical on the filter combobox —
+      confirmed pre-existing, tracked as issue #3 — plus the same three
+      non-blocking moderate document-structure ones); Tab from the filter
+      input lands on the list region (`role="listbox"`), then "Refresh" —
+      a sane, defensible order; Space with the list region focused actually
+      scrolls it natively (`scrollTop` 0→316) without landing in the
+      filter; Escape from the list region still closes the popover.
+      **Regression re-check, all 5 previously-fixed findings, live, this
+      pass**: 12383 (Enter opens without committing) — covered by the
+      12449 measurement above. 12384 (collapse-during-filter) — filtered to
+      "gateway-model-7" (2 options), clicked to collapse (1 option), cleared
+      the filter, reverted to collapsed "Unverified (24)" (3 options), not
+      latched open. 12385 (`aria-required-children`) — absent from both
+      stories' axe results, collapsed and expanded. 12386 (`ollama pull`
+      hint) — present in the collapsed "Grouped" story's popover text.
+      12387 (test coverage) — `npm test` green, no `it.skip`/`it.only`.
+      (claude-sonnet, 2026-09-01T23:52:00Z)
+
+Sixth pass, shockwave's third FAIL at head `0f1182b` (notes 12478/12479,
+verdict 12480) — 2 new findings, both on the collapsible disclosure
+`Command.Item`:
+
+- [x] tests-passing — `npm test`: 81 files, 1339 tests, all green (6 new
+      ModelPicker cases — click-focus-restore for both sections, the
+      below-`FILTER_THRESHOLD` commandRootEl-fallback edge case, a
+      scrollTop-invariance check, plus focus assertions added to the
+      existing Enter and click round-trip tests) (claude-sonnet,
+      2026-09-02T00:18:38Z)
+- [x] typecheck — `npm run check`: svelte-check 2077 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-02T00:18:45Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome,
+      boundaries, clean-code — nothing new above the 0.5 threshold,
+      return-types, throws, i18n — 446 keys x 10 locales unchanged,
+      stories — 44/44 covered) (claude-sonnet, 2026-09-02T00:19:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-02T00:19:30Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension in Chrome for Testing (claude-sonnet,
+      2026-09-02T00:20:00Z)
+- [x] live-storybook-check — `npm run storybook -p 6006 --no-open`, driven
+      via Playwright MCP (Chromium) against `side-panel-modelpicker--many-
+      unverified-models-large-gateway-catalog` and `--grouped-selectable-
+      unverified-no-tools`, killed afterward. **12478**: clicked "Unverified
+      (24)" — `document.activeElement` is the filter input
+      (`[data-slot="command-input"]`) AND `[data-selected]` is
+      `unverified-toggle` at the same moment (both halves measured
+      together); pressed `g a t e` with no click on the input anywhere —
+      filter value became `"gate"` and the list narrowed to 28 matching
+      options (28 = the toggle + 27 matches at that point in the sequence).
+      Full click cycle after the fix: 27 → 3 → 27 options, focus on the
+      filter input at every step (including the second, collapsing click).
+      Below `FILTER_THRESHOLD` (the "Grouped" story, 1-row Unverified
+      section, no filter input renders at all): clicking the toggle put
+      focus on `[role="application"]` (`commandRootEl`), not `document.body`
+      — the guarded fallback works, no crash. Isolated the "`.focus()` on a
+      scroll container" risk directly: with the list scrolled to
+      `scrollTop=40`, calling `filterInputEl.focus()` alone (no other DOM
+      change) left `scrollTop` at exactly 40 — the small 40→35.5 drift seen
+      when a DIFFERENT toggle's click also inserted new rows was traced to
+      that content change (Chromium's own scroll-anchoring reacting to
+      newly-inserted rows), not to the added focus call. Keyboard path
+      (Enter x3) reconfirmed unchanged: 27→3→27, `document.activeElement`
+      stayed the filter input at every step (never needed the restore, so
+      it's confirmed a true no-op there). Filter-auto-expand path
+      (typing "model-7" with nothing pre-expanded): narrowed to "Unverified
+      (1)", auto-revealed `gateway-model-7`, focus never left the filter
+      (this path never moves focus, so nothing to fix). Popover-close-reset
+      path: Escape closed the popover; reopening showed filter reset to
+      `""`, both sections re-collapsed (3 options), and
+      `handleOpenAutoFocus` still landed focus on the filter — all four
+      activation paths (click, Enter, filter auto-expand, popover-close
+      reopen) consistent. **12479**: with the Unverified section expanded
+      (`scrollHeight` 1568 vs `clientHeight` 344) and real focus on
+      `[role="listbox"]` itself, `scrollTop` reset to 0 before each key:
+      ArrowDown → stays 0 (Command's roving highlight consumed it, moved to
+      `no-tools-toggle`); End → stays 0; PageDown → 316 (real scroll);
+      Space (focus on the list) → 316 (real scroll). Space typed while
+      focus is on the FILTER input instead: `scrollTop` stayed 0 and the
+      filter's value became a literal `" "` — confirming the comment's new
+      claim that Space only scrolls while focus is on the list itself.
+      **Full 11-finding regression pass** (all three review rounds, not
+      just the 9 from the first two): 12383 (Enter expands, doesn't commit)
+      — reconfirmed via the Enter x3 cycle above. 12384
+      (collapse-during-filter) — filtered to "model" (25 options), clicked
+      to collapse (1 option, not a no-op), cleared the filter, reverted to
+      collapsed 3-option state (not latched open at 25). 12385
+      (`aria-required-children`) — structurally reconfirmed: the toggle is
+      still `[role="option"]` (a valid listbox child), and `npm run
+      verify`'s axe-core pass against the real built extension reported 0
+      blocking violations. 12386 (`ollama pull` hint) — reconfirmed present
+      in the "Grouped" story's popover text while the No-tool-support
+      section is collapsed. 12387 (test coverage) — `npm test` green, 26
+      ModelPicker cases, no skips. 12449 (highlight survives
+      expand/register) — reconfirmed via every click/Enter cycle above,
+      `[data-selected]` never left the toggle. 12450 (`handleListKeydown`
+      deletion holds) — `grep -rn handleListKeydown src/` finds only
+      historical doc-comment references, no live handler or wiring. 12451
+      (group accessible names) — reconfirmed on the "Grouped" story: all
+      three `[role="group"]` elements (`Local Ollama`, `Unverified`, `No
+      tool support`) resolve a non-empty `aria-labelledby`. 12452 (scroll
+      region reachable + real scroll) — reconfirmed via the PageDown/Space
+      measurements above. 12478/12479 — this pass's own fixes, measured
+      above. (claude-sonnet, 2026-09-02T00:32:00Z)
+
+Fourth re-review (note 12491, one new finding: activating an off-screen
+toggle threw the viewport to the top; the reviewer's meta-instruction was to
+assert `data-selected` + `document.activeElement` + real visible-rectangle
+content TOGETHER, across all four activation paths, not as separate checks):
+
+- [x] tests-passing — `npm test`: 81 files, 1340 tests, all green (incl. the
+      two rewritten/added ModelPicker.test.ts cases below) (claude-sonnet,
+      2026-09-02T01:16:24Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-02T01:15:01Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome — clean
+      after `biome format --write` on the two touched files; boundaries;
+      clean-code — nothing new above 0.5, the existing ModelPicker.svelte:293
+      SRP note unchanged; return-types; throws; i18n — 446 keys x 10 locales
+      unchanged; stories — 44/44) (claude-sonnet, 2026-09-02T01:17:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-02T01:17:30Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension (claude-sonnet, 2026-09-02T01:19:00Z)
+- [x] live-chromium-combined-check — Storybook + Playwright, "Many unverified
+      models" story, list deliberately scrolled so the effect would show if
+      broken. ONE snapshot per path, all three properties together
+      (`data-selected`, `document.activeElement`, visible-rectangle content),
+      not four separate checks:
+      **Click, expand from true bottom** (`scrollTop` 1223.5, `scrollHeight`
+      1568, `clientHeight` 344 — exactly maxed): native `.click()` on "No tool
+      support (1)" → `data-selected="no-tools-toggle"`,
+      `document.activeElement` = filter input, `scrollTop` followed to the
+      NEW max (1298, `scrollHeight` grew to 1642) — both the toggle AND the
+      revealed row `gateway-legacy-chat` measured inside the list's own
+      `getBoundingClientRect()` rectangle (`toggleInView: true,
+      revealedInView: true`). A literal "keep scrollTop unchanged" was tried
+      first and measured to FAIL this exact case: at true-bottom, growing
+      `scrollHeight` while holding `scrollTop` fixed mathematically pushes
+      the new content below the old bottom edge (confirmed: `revealedInView:
+      false` with that approach) — see ModelPicker.svelte:488-540's doc
+      comment for the derivation. **Keyboard, same scenario**: real
+      `KeyboardEvent('keydown')` ArrowDown x26 to reach the toggle then Enter
+      → identical result to click (`data-selected`, focus, `scrollTop` 1298,
+      both rows in view). **Keyboard collapse from bottom**: Enter again on
+      the now-expanded toggle → `data-selected` stays `no-tools-toggle`,
+      focus stays on the filter, `scrollTop` followed the shrinking content
+      back down to the new max (1223.5, `scrollHeight` back to 1568), toggle
+      stayed in view. **Click, NOT at the bottom** (scrolled to top,
+      `scrollTop` 0, `beforeAtBottom: false`): collapsing the (separately)
+      expanded Unverified section left `scrollTop` at the literal, unchanged
+      0 (nothing above the toggle moved, matching the doc comment's "no
+      special-casing needed here" claim), `data-selected` and focus correct,
+      toggle stayed in view. **Filter auto-expand** (typing "gateway-legacy"
+      while scrolled): `data-selected` landed on `no-tools-toggle` (the sole
+      match), focus stayed on the filter input throughout, both remaining
+      options measured inside the list's rectangle — this path does not call
+      `restoreDisclosureHighlight` at all (documented decision in
+      ModelPicker.svelte:~416: Command's own default reselect-first-
+      match-and-scroll-into-view on every keystroke is the intended combobox
+      behavior here, not inherited from the toggle bug). **Popover
+      close/reopen**: closing genuinely unmounts `[role="listbox"]`
+      (confirmed via accessibility snapshot — 0 listboxes present while
+      closed); reopening remounts fresh — 3 options, both sections
+      collapsed, `scrollTop` 0, focus on the filter — nothing to restore
+      because there is nothing left over to disturb. Storybook killed
+      afterward (`pkill -f "storybook dev"`, confirmed no process on :6006).
+      (claude-sonnet, 2026-09-02T01:15:47Z)
+- [x] prior-findings-spot-check — reviewer had already reconfirmed all 14 at
+      this head before the fix; spot-checked (not re-audited) post-fix: the
+      "Grouped" story still resolves 3/3 `role="group"` elements to a
+      non-empty `aria-labelledby` and 0 `[role="listbox"] button` elements
+      (12385/12451), and `npm run verify`'s axe pass stayed at 0 blocking
+      violations (claude-sonnet, 2026-09-02T01:15:47Z)
+- [x] tests-passing (fifth re-review, notes 12505/12506) — `npm test`: 81
+      files, 1341 tests, all green (1 net new test:
+      `ModelPicker.test.ts:~660`, and confirmed by temporarily reverting the
+      fix that it genuinely fails against the pre-fix predicate). (claude,
+      2026-09-02T01:50:00.000Z)
+- [x] check-clean (fifth re-review) — `npm run check`: 1631 files, 0 errors,
+      0 warnings. (claude, 2026-09-02T01:50:00.000Z)
+- [x] guard-clean (fifth re-review) — `npm run guard`: all seven
+      (biome/boundaries/clean-code/return-types/throws/i18n/stories) green;
+      no new clean-code debt above the 0.5 threshold. (claude,
+      2026-09-02T01:50:00.000Z)
+- [x] build-clean (fifth re-review) — `npm run build`: succeeds. (claude,
+      2026-09-02T01:50:00.000Z)
+- [x] verify-clean (fifth re-review) — `npm run verify`: 10/10 required +
+      both best-effort (screenshots, axe-core: 0 blocking violations) green.
+      (claude, 2026-09-02T01:50:00.000Z)
+- [x] live-chromium-both-starting-states (fifth re-review, notes 12505/12506)
+      — Playwright against a locally-run Storybook (killed afterward),
+      `Many unverified models (large gateway catalog)` story, one section
+      temporarily scaled to 30 No-tool-support rows for the fresh-open check
+      then reverted before commit (confirmed zero diff on
+      `ModelPicker.stories.svelte`). **Not-yet-scrollable starting state**
+      (scrollHeight === clientHeight === 140, every real popover open):
+      fresh open, click "Unverified (24)" → `scrollTop` 0, visible rows
+      gateway-model-1..5 (not 21-24); same via Enter (ArrowDown then Enter
+      from the initial highlight) → identical result. Fresh open, click
+      "No tool support (30)" as the FIRST section expanded → `scrollTop` 0,
+      visible rows legacy-chat-1..3 (not 28-30); same via Enter → identical.
+      From that same state, expanding the SECOND section too (Unverified,
+      while viewing the top of No-tool-support) → `scrollTop` stayed 0,
+      landed inside the newly-expanded Unverified section from ITS top
+      (gateway-model-1..5) — nothing jumped, matching note 12506's corrected
+      comment (offset preserved; landing inside the just-expanded section is
+      deliberate when it's below the viewport). **Already-scrollable
+      starting state**, reverted to the original 1-row No-tool-support
+      fixture for exact reproducibility: exact-bottom expand (Unverified
+      expanded, `scrollTop` set to the true max 1223.5) → expanding
+      "No tool support (1)" tracked the new bottom, `scrollTop` 1223.5 ->
+      1298, revealed row in view; collapse from bottom → 1298 -> 1223.5,
+      clamped back correctly; mid-list expand (`scrollTop` 900) -> 900
+      (anchor preserved); mid-list collapse -> 900 (anchor preserved).
+      **Boundary case 1** (scrollable by only a few px, `scrollTop` 0): a
+      synthetic DOM harness running the exact `captureScrollState` predicate
+      against a real 100px container with 105px of content (5px overflow)
+      confirmed `scrollHeight > clientHeight` true but `wasAtBottom` false
+      (`105 - 0 = 105 > 101`), i.e. the offset stays preserved at 0, not
+      jumped to the small max. **Boundary case 2** (collapsing back to
+      non-scrollable): both a synthetic harness (150px content shrunk to
+      40px inside a 100px container; assigning the pre-collapse
+      `wasAtBottom`-derived target of 100 was clamped by the browser itself
+      to 0) and the real component (collapsing a fully-expanded, scrolled-
+      to-900 Unverified section back down) confirmed the browser's own
+      scrollTop clamping lands sanely with no special-casing needed. (claude,
+      2026-09-02T01:50:00.000Z)
+- [x] whole-diff-16-findings-live-chromium (fifth re-review, coordinator's
+      explicit instruction to re-measure all 16 findings live, not just the
+      two new ones) — same Storybook session, `Many unverified models`
+      story unless noted: **12383** (Enter expands, doesn't close popover) —
+      Tab->filter, ArrowDown, Enter -> options 3->27, popover still present,
+      `data-selected` stayed "Unverified (24)". **12449** (highlight
+      survives activation) — same session, second Enter -> options 27->3,
+      popover still present, highlight still on the toggle (not reset to
+      the first row / no model committed). **12384** (collapse works while
+      filtering, and reverts to the PRE-filter raw state on clear, not
+      latched) — expanded via click, typed "gateway-model" (filtering=true),
+      clicked the toggle -> collapsed to 1 row (override took effect);
+      cleared the filter -> re-expanded to the raw (already-`true`)
+      `unverifiedExpanded`, exactly per the documented revert-to-raw-state
+      contract (ModelPicker.svelte:~411-413), not a regression. **12450**
+      (space not swallowed) — typed "gateway-model-1" then a real `Space`
+      keypress -> input value `"gateway-model-1 "` (literal space landed).
+      **12478** (click leaves focus on the filter, not the list) — clicked
+      "No tool support" toggle -> `document.activeElement` was the filter
+      `<input>`; typed "g" with no click on the input -> value became "g"
+      (filter genuinely live). **12452/12479** (list keyboard-scrollable,
+      arrow/End don't scroll but PageDown/Space do) — expanded+focused the
+      list (`tabindex="0"`), `scrollTop` 0: ArrowDown -> `scrollTop` still 0
+      (consumed by roving highlight); PageDown -> `scrollTop` 316 (genuine
+      scroll). **12385/12452** (axe: no `aria-required-children` /
+      `scrollable-region-focusable` violations) — axe-core 4.10.2 injected
+      live, scoped to those two rule IDs, on the expanded/scrolled list: 0
+      violations. **12386** (ollama pull hint visible without expanding) —
+      "Grouped" story, no click: `providerPicker_pullToolCapableHintPrefix`
+      text present in the DOM. **12451** (group `aria-labelledby` wired) —
+      all 3 `data-command-group-items` groups resolve `aria-labelledby` to a
+      real element; the 2 unrelated `role="group"` elements with no
+      `aria-labelledby` are the search-input wrapper chrome, not a Command
+      group. **12387** (test coverage exists) — confirmed by name in
+      `ModelPicker.test.ts`: Enter-activation (`:336`, `:386`),
+      collapse-while-filtering (`:830`), space-into-filter (`:779`), pull
+      hint while collapsed (`:1036`), scrollable-region focus target
+      (`:1200`). **12491** (expand-from-scrolled doesn't throw to top) —
+      covered by the mid-list/exact-bottom measurements in the entry above.
+      All 16 (14 prior + the 2 from this round) reconfirmed holding at this
+      head. **Non-blocking FYI, out of scope for this round**: axe-core also
+      flagged one PRE-EXISTING, unrelated `aria-required-attr` (critical) on
+      the Command filter `<input>` — bits-ui's `Command.Input` renders
+      `role="combobox"` without an `aria-controls` pointing at the listbox.
+      Not one of the 16 findings, not touched by card 130's changes (the
+      input's ARIA wiring predates this card), and not something
+      `npm run verify`'s own axe pass happens to catch (its seeded screens
+      don't render this input in the state that trips the rule). Flagging
+      for a separate card, not acted on here. (claude, 2026-09-02T01:50:00.000Z)
+
+## Comments
+
+- **claude** (2026-09-01T00:00:00.000Z): Filed from a live bug report — the
+  picker at src/sidepanel/components/ModelPicker.svelte:429/447 traps scroll
+  via the flexbox auto-min-height rule. Amended decisions/22 with the root
+  cause and fix. Dispatching a Sonnet subagent to implement per this card;
+  I'll oversee and verify gates before moving this to review.
+- **claude-sonnet** (2026-09-01T19:00:00Z): Read decisions/22's amendment and
+  ModelPicker.svelte end to end before touching anything, per the card. Fixed
+  the scroll trap: added `min-h-0` to `Command.Root`
+  (src/sidepanel/components/ModelPicker.svelte:490-494) and `min-h-0 flex-1`
+  to `Command.List` (src/sidepanel/components/ModelPicker.svelte:512). Row
+  density pass in the shared `modelRow` snippet
+  (src/sidepanel/components/ModelPicker.svelte:369-415): `py-2`→`py-1.5`,
+  tightened the text-stack gap to `gap-0`, added `leading-tight` to the
+  name/provider/reason lines. Swapped the raw `<span>` capability badge for
+  the shadcn `Badge` (`variant="outline"`, tool-capable rows keep
+  `border-primary/30 text-primary`), following AnnotationBadges.svelte's
+  usage pattern (src/sidepanel/components/AnnotationBadges.svelte:42-55);
+  added the import at src/sidepanel/components/ModelPicker.svelte:66. Verified
+  via `grep -rl 'ui/command"' src --include="*.svelte"` that ModelPicker is
+  the only consumer before editing command-group.svelte directly.
+- **claude-sonnet** (2026-09-01T19:10:00Z): Added the sticky-heading local
+  edit to src/ui/components/ui/command/command-group.svelte:42-49 (`sticky
+  top-0 z-10 bg-popover`, padding `py-1.5`→`py-1`), commented "Local edit
+  (card 130)" matching badge.svelte's convention. Added the `sectionDisplay`
+  temporary prop (src/sidepanel/components/ModelPicker.svelte:111-133),
+  wired the two collapsible branches for the Unverified/No-tool-support
+  `Command.Group`s (src/sidepanel/components/ModelPicker.svelte:592-654)
+  behind a `collapsibleHeading` snippet
+  (src/sidepanel/components/ModelPicker.svelte:417-440) — a real `<button
+  aria-expanded>` since `Command.Group`'s own `heading` prop only renders
+  static text. Composed "Unverified (N)"/"No tool support (N)" from the
+  existing i18n strings plus the row count client-side, so no new message
+  key was needed (skips the i18n-key checklist item). Added
+  `seedLargeUnverifiedCatalog` (1 tool-capable + 24 unverified + 1 no-tools,
+  simulating a big gateway catalog) and the two comparison `<Story>` exports
+  to src/sidepanel/components/ModelPicker.stories.svelte. Added the
+  never-hidden regression test (24-row Unverified bucket, asserts every row
+  renders + option count) to
+  src/sidepanel/components/ModelPicker.test.ts. `npm test`/`npm run
+  check`/`npm run guard` all green at this point.
+- **claude-sonnet** (2026-09-01T18:41:00Z): `npm run verify` initially failed
+  on a corrupted/incomplete Chrome for Testing download in
+  `.chrome-for-testing/chrome/152.0.7977.64-chrome-mac-arm64.zip` —
+  environment issue, unrelated to this card's diff. Removed the partial
+  install and reinstalled with `npx @puppeteer/browsers install
+  chrome@152.0.7977.64 --path .chrome-for-testing`; verify then ran clean,
+  10/10 required checks.
+- **claude-sonnet** (2026-09-01T18:50:00Z): Live-checked both new Storybook
+  stories in a real Chromium via Playwright (claude-in-chrome wasn't
+  connected in this environment). Found the `min-h-0` fix from decisions/22's
+  amendment ALONE did not actually scroll: `Command.List.scrollHeight`
+  stayed equal to `clientHeight` even with 26 rows visibly overflowing it.
+  Root-caused live (see this session's tool transcript) to the SAME flexbox
+  "automatic minimum size" bug recurring one level deeper — each
+  `Command.Group` is a flex item of `Command.List`'s `flex flex-col`
+  container and, without `shrink-0`, was collapsing below its own rows'
+  content height; separately, `Command.Group`'s own `overflow-hidden`
+  (command-group.svelte's base class) made IT the nearest CSS-sticky scroll
+  container instead of `Command.List`, pinning the sticky heading to the
+  Group's own static box instead of the real scrolled viewport. Fixed with
+  `shrink-0 overflow-visible` added to command-group.svelte's root class
+  (src/ui/components/ui/command/command-group.svelte:17-37), documented
+  inline and in decisions/22's amendment (`### Consequences (addendum)`).
+  Confirmed live afterward: `scrollHeight` 1650 vs `clientHeight` 346,
+  `scrollTop` genuinely moves, reached the bottom row; sticky heading stays
+  pinned while scrolling its section (one very minor, pre-existing cosmetic
+  nit: a ~4px sliver of the previous row's text peeks through
+  `Command.List`'s own `py-1` top padding during the sticky transition —
+  functional, not blocking, flagging rather than gold-plating further). Also
+  confirmed both collapsible-section toggles expand/collapse independently
+  with correct counts. Re-ran `npm test`/`npm run check`/`npm run
+  guard`/`npm run build`/`npm run verify` after this second command-group.svelte
+  edit — all green (see Gates above).
+- **claude-sonnet** (2026-09-01T19:57:00Z): Out-of-scope note, not touched:
+  ModelPicker.test.ts's `content()` helper
+  (src/sidepanel/components/ModelPicker.test.ts:156-166) can throw "Found
+  multiple elements" if a test leaves `state.resolution` at the default
+  `{status:"none"}` while providers are populated — `providerPicker_chooseModelLabel`
+  and `providerPicker_choosePopoverAriaLabel` are both literally "Choose a
+  model" (messages/en.json:294,296), so the trigger chip and the popover
+  region collide on that text. Hit this writing the new regression test and
+  worked around it by not using `content()` there; flagging rather than
+  fixing since it's a pre-existing i18n string collision, not part of this
+  card's scope.
+- **claude-sonnet** (2026-09-01T19:58:00Z): All of my gates are green (see
+  `## Gates`). Leaving `column: doing` rather than `review` — the two
+  checklist items still open ("Jonathan picks a variant" and the
+  conditional-on-that-pick i18n/decision-record work) are explicitly his to
+  do, and per the task brief I'm stopping here without committing/pushing
+  for diff review first.
+- **claude-sonnet** (2026-09-01T20:35:00Z): Jonathan picked collapsible
+  sections, recorded as decisions/43-collapsible-picker-sections.md. Made
+  it the only behavior: deleted the temporary `sectionDisplay` prop and its
+  `Props` interface (replaced by a plain comment at
+  src/sidepanel/components/ModelPicker.svelte:111-117), and the
+  always-expanded branches for both the Unverified and No-tool-support
+  `Command.Group`s, leaving the single collapsible-only block at
+  src/sidepanel/components/ModelPicker.svelte:576-611. Updated the
+  `collapsibleHeading` snippet's doc comment at :402-410 to point at
+  decisions/43 instead of describing a Storybook comparison aid. In
+  src/sidepanel/components/ModelPicker.stories.svelte: dropped the "always
+  expanded" `<Story>` and its `args={{ sectionDisplay: ... }}`, kept
+  `seedLargeUnverifiedCatalog` (:123-151) with its doc comment updated to
+  reference decisions/43, and renamed the surviving story (:169-172) to
+  "Many unverified models (large gateway catalog)" — no more comparison
+  framing since this is the shipped behavior now.
+  In src/sidepanel/components/ModelPicker.test.ts: since rows in the
+  Unverified/No-tool-support sections no longer render until their
+  disclosure heading is clicked (`{#if unverifiedExpanded}`/`{#if
+  noToolsExpanded}` in ModelPicker.svelte), updated every test that
+  previously asserted a row was visible right after render to click
+  `screen.findByRole("button", { name: "<Heading> (<count>)" })` first —
+  the unknown-capability badge test (:236-253), the no-tools badge test
+  (:298-315), and the disabled-row/no-selectModel-on-click test (:319-341).
+  Updated the card-130 never-hidden regression test (:267-296) to expand
+  the section before asserting all 24 rows render — per decisions/43,
+  "reachable after one click" satisfies decisions/06/11's never-hide rule,
+  not "immediately on render"; also asserts the heading count. Added a new,
+  dedicated small test (:216-234) proving the core new behavior directly: a
+  section starts collapsed (heading shows "(1)", row absent,
+  `aria-expanded="false"`) and a click reveals it
+  (`aria-expanded="true"`, row present). The filter-threshold tests
+  (:409-437) only ever seed tool-capable (selectable, always-expanded) rows,
+  so they needed no changes. One jsdom-only wrinkle in the regression test
+  (:267-296): expanding 24 rows post-mount triggers a floating-ui
+  reposition that jsdom's missing `ResizeObserver`/layout leaves the
+  popover's positioning wrapper stuck at inline `visibility: hidden`
+  (confirmed via a throwaway debug script that the 24 real `role="option"`
+  elements are genuinely in the DOM) — used
+  `screen.getAllByRole("option", { hidden: true })` there, documented
+  inline, rather than mask it silently; unrelated to the real DOM/a11y tree
+  in a live browser (see the live-storybook-check gate).
+  Gates: `npm test` (81 files, 1326 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven, i18n unchanged at 446 keys
+  x 10 locales — confirms decisions/43's "no new key needed" claim), `npm
+  run build`, and `npm run verify` (10/10 + both best-effort) all green —
+  see `## Gates` for full evidence lines. Live-checked the renamed
+  Storybook story via Playwright against `npm run storybook -- -p 6008
+  --ci --no-open`: both sections render collapsed with correct counts
+  ("Unverified (24)", "No tool support (1)"), and clicking each
+  independently expands it (`aria-expanded` flips to `true`, option count
+  goes 1 → 25 → 26 across both clicks). Killed the Storybook process
+  afterward. decisions/43 already matched what I built exactly — no
+  amendment needed. Moving to `column: review`.
+- **claude-sonnet** (2026-09-01T20:55:00Z): Three code-review fixes on the
+  review-column diff, all in `column: review` per the task brief (not
+  restarting the card).
+  **Fix 1 (filtering didn't reveal matches inside collapsed sections):**
+  `unverifiedRows`/`noToolsRows` (src/sidepanel/components/ModelPicker.svelte:354-364)
+  were already filtered by the query, so a match correctly narrowed a
+  collapsed heading's count but stayed hidden behind the raw
+  `unverifiedExpanded`/`noToolsExpanded` toggle. Added
+  `filtering`/`unverifiedEffectivelyExpanded`/`noToolsEffectivelyExpanded`
+  derived values (ModelPicker.svelte:384-390): `(manual toggle) ||
+  (filtering && rowCount > 0)`, deliberately NOT an `$effect` mutating the
+  raw toggles (which would fight a manual collapse-during-filter click on
+  every re-run) — the raw `unverifiedExpanded`/`noToolsExpanded` state is
+  never written to by the filter, so it stays a stable, independent target
+  for the toggle's own click handler, and the auto-expand naturally reverts
+  the moment the query clears since only the OR's second term goes false.
+  Wired the two `{#if}` row-gates and the `expanded` argument passed to
+  `collapsibleHeading` to the new "effectively expanded" values instead of
+  the raw toggles (ModelPicker.svelte:637-673). Added a dedicated test,
+  `ModelPicker.test.ts:242-283`, proving a filtered match in a
+  currently-collapsed 9-row Unverified section becomes visible with no
+  extra click, and reverts to collapsed once the filter is cleared.
+  **Fix 2 (capability badge lost its muted-foreground default):** the
+  `Badge` at ModelPicker.svelte:439-448 only added `text-primary` for the
+  tool-capable case, so `Badge`'s own `text-foreground` won for
+  Unverified/No-tool-support rows instead of the original span's muted
+  default. Added `text-muted-foreground` as the always-on base class
+  (ModelPicker.svelte:441-444), matching the pattern at
+  CallLogEntry.svelte:145, ToolCallRow.svelte:218, AnnotationBadges.svelte:52.
+  **Fix 3 (collapsible sections lost their accessible group name):**
+  bits-ui only wires `Command.GroupItems`' (the actual `role="group"`
+  element per bits-ui's `command.svelte.js` — `Command.Group` itself is
+  `role="presentation"`) `aria-labelledby` when a heading is rendered
+  through the `heading` string prop, which fires `CommandGroupHeadingState`'s
+  `attachRef` onto `group.headingNode`. The interactive
+  `collapsibleHeading` button (ModelPicker.svelte:462-479 now takes a
+  `headingId` argument and sets `id={headingId}` on the button, :465-470)
+  never triggers that wiring since it renders as a `children` sibling, not
+  through `heading`. Added a `headingId` prop to
+  src/ui/components/ui/command/command-group.svelte:5-31, forwarded to
+  `<CommandPrimitive.GroupItems aria-labelledby={headingId}>`
+  (command-group.svelte:71) — `mergeProps`' plain-key rule
+  (svelte-toolbelt: `b !== undefined ? b : a`) means bits-ui's own computed
+  `aria-labelledby` still wins whenever a real `heading` prop is also
+  passed, so this doesn't disturb the provider-group case. Added
+  `unverifiedHeadingId`/`noToolsHeadingId` (`$props.id()`-derived, unique
+  per mounted instance) at ModelPicker.svelte:135-137, and wired
+  `headingId={unverifiedHeadingId}`/`headingId={noToolsHeadingId}` onto the
+  two `Command.Group`s (ModelPicker.svelte:637, 653). Verified live (see
+  the new `live-storybook-check` gate entry) via the resolved DOM rather
+  than just adding the attribute and hoping: `aria-labelledby` on each
+  section's `[data-command-group-items]` resolves to an element with a
+  real, non-empty `textContent` ("Unverified (24)", "No tool support (1)",
+  and "Self-hosted" for the untouched provider-group case).
+  Gates: `npm test` (81 files, 1327 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven, including a `biome format
+  --write` pass on the new test's formatting; i18n unchanged at 446 keys x
+  10 locales), `npm run build`, and `npm run verify` (10/10 required +
+  both best-effort) all green — see `## Gates` for full evidence lines.
+  Live-checked all three fixes against the "Many unverified models (large
+  gateway catalog)" Storybook story via Playwright at
+  http://localhost:6009 (details in the gate entry above); killed
+  Storybook afterward. Leaving `column: review` as instructed — these were
+  review-column fixes, not a restart of the card.
+- **claude** (2026-09-01T21:05:00.000Z): Committed to branch `card/130`,
+  pushed to origin, and opened GitLab issue #1 and MR !1 for tracking,
+  requesting review from shockwave.
+  Issue: https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/work_items/1
+  MR: https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/merge_requests/1
+- **claude-sonnet** (2026-09-01T22:35:00Z): Fourth pass — five FAIL findings
+  from reviewer shockwave on MR !1 (notes 12383-12387, summary 12391), all
+  addressed in `column: review` per the task brief (not restarting the
+  card).
+  **Fix 1 (Enter closed the picker instead of expanding):** on the old
+  `<button>`-based `collapsibleHeading`, Enter bubbled to `Command.Root`
+  (module doc comment, ModelPicker.svelte:37-40), which owns Enter globally
+  for "activate the currently-highlighted row" and committed whatever row
+  was highlighted. Superseded by Fix 3 below (making the control a real
+  `Command.Item` routes Enter through the SAME mechanism correctly, onto
+  the control's own `onSelect`) rather than patched in isolation with
+  `stopPropagation`.
+  **Fix 2 (collapse-during-filter was a no-op that latched the section open
+  after clearing):** `unverifiedEffectivelyExpanded`/`noToolsEffectivelyExpanded`
+  (ModelPicker.svelte:402-408) no longer OR the raw toggle with the
+  filtering condition. Added `unverifiedFilterOverride`/`noToolsFilterOverride`
+  (:117-133, `boolean | null`, reset to `null` whenever `filtering` goes
+  false via the `$effect` at :416-420, and on popover close at :157-165):
+  while filtering leaves a section nonempty, effective-expanded is
+  `filterOverride ?? true` (auto-expanded by default, overridable by a
+  click scoped to THIS filter session only); outside filtering, the raw
+  toggle exactly as before. `toggleUnverified`/`toggleNoTools`
+  (:424-437) flip whichever state applies. Proved both exact repro
+  sequences from the review live (filter → click collapse → verify 0
+  options; filter → click collapse → clear filter → verify collapsed, not
+  latched at 25/26 options) — see the Fourth-pass gate entry below.
+  **Fix 3 (critical axe `aria-required-children`: a `<button>` inside
+  `role="listbox"`) — the one that reshaped the other four fixes:** the
+  first two designs tried both measured as failures, not just
+  theoretically wrong:
+    1. A `headingContent` snippet slot on command-group.svelte (rendering
+       the button as a `Command.GroupItems` SIBLING, the position the
+       plain-string `heading` prop safely uses) — axe still failed with
+       "children which are not allowed: button" on the listbox, because its
+       check recurses through `role="group"` wrappers rather than stopping
+       at them; `group` has no owned-elements restriction of its own to act
+       as a boundary.
+    2. A hand-rolled `<div role="group" tabindex="0" aria-expanded>` doing
+       the button's job manually — satisfied axe, but `npm run check`
+       (svelte-check) rejected it on three independent, spec-correct
+       grounds: `group` is non-interactive (no `tabindex`/handlers), and —
+       contrary to its name — does NOT support `aria-expanded` as a state
+       at all. Passing one checker by failing another isn't a fix.
+    The design that measures clean on BOTH: the disclosure is now a real
+    `Command.Item` (`role="option"`, the same primitive every model row
+    uses), `collapsibleOption` (ModelPicker.svelte:551-621), rendered as
+    the group's first item through `children` (:788-820) rather than any
+    special slot. `command-group.svelte` reverted in full to its
+    pre-review state (no `headingContent`/`headingId` — both now dead code,
+    since the plain string `heading` prop's existing bits-ui wiring is
+    unused too: passing it would DUPLICATE "Unverified (24)" on screen
+    alongside the option, so these two groups pass no `heading` at all and
+    get their accessible name from the toggle option's own content
+    instead, same as any option). Its `onSelect` toggles instead of
+    picking a model (never calls `selectModel`/`closePicker`); Enter now
+    works through Command.Root's OWN Enter-activates-highlighted-item
+    mechanism — the exact interception the original bug report was about
+    is now correctly routed to the control's own handler, no
+    `stopPropagation` hack needed. `aria-required-children`: 0 on both
+    "Many unverified models (large gateway catalog)" and "Grouped
+    (selectable, unverified, no-tools)" stories (was 1, critical, on the
+    first), matching origin/main's baseline exactly.
+  **Fix 1 continued (Space):** Command's roving/"virtual focus" pattern
+  keeps real DOM focus on the filter input (or `commandRootEl`), never on
+  the highlighted `Command.Item` — confirmed live that a per-item
+  `onkeydown` on the toggle option never fires; Space just typed a literal
+  space into the filter. `handleListKeydown` (ModelPicker.svelte:469-491),
+  wired on `Command.Root` itself (:678), checks whether the currently
+  `[data-selected]` item's `data-value` is one of the two toggles'
+  stable keys (`"unverified-toggle"`/`"no-tools-toggle"`, set via
+  `collapsibleOption`'s `sectionKey` param) and, if so, calls `toggle()`
+  and `preventDefault`s Space's native action. Documented, accepted edge
+  case in that function's own comment: a filter query that happens to
+  leave the toggle highlighted mid-typing a multi-word query containing a
+  space would have that one space keystroke intercepted rather than typed
+  — rare and self-correcting, traded for Space genuinely working in the
+  common case (arrow to the toggle, press Space) the review measured.
+  **Fix 4 (`ollama pull` hint hidden behind a click):** moved the hint
+  paragraph (ModelPicker.svelte:825-831) out from under the
+  `{#if noToolsEffectivelyExpanded}` row-gate — it now always renders
+  whenever `noToolsHasOllama` (:373) is true, collapsed or not, matching
+  decisions/43's "only the individual rows require one click to reach" and
+  origin/main's pre-card-130 behaviour.
+  **Fix 5 (no test coverage for the two broken paths):** added to
+  ModelPicker.test.ts — a real-keyboard Enter test (:322-370, ArrowDown to
+  highlight then Enter, asserting the row appears, the popover stays open
+  via the filter input's continued presence, and neither `selectModel` nor
+  `closePicker` was called), a Space regression test (:372-397, same
+  ArrowDown-then-Space sequence, plus asserting the filter's value stayed
+  empty — proving the interception actually worked, not just that
+  something toggled), and rewrote the collapse-during-filter test
+  (:413-462) to prove both exact repro sequences. All `getByRole("button"/
+  "group", ...)` queries updated to `"option"` throughout the file to match
+  the new markup; two tests that query mid-filter-typing kept the
+  pre-existing `getByText(...).closest(...)` jsdom/floating-ui workaround
+  (name-from-content is affected by the same `visibility: hidden` artifact
+  again, now that the control's name comes from content rather than an
+  explicit `aria-label`).
+  Known, disclosed trade-off (not silently absorbed): after ANY
+  Enter/Space/click on the toggle, Command's own item-set-changed handling
+  resets its roving highlight back to the first item in the list (the same
+  mechanism the module doc already documents for "reselecting the first
+  valid row when a filter removes the highlighted one" — generalized here,
+  not new to this fix). A second immediate Enter/Space does NOT collapse
+  it back without re-navigating to it first; mouse click is unaffected
+  (goes through `onSelect` directly, no highlight dependency). This wasn't
+  interaction the review's five findings covered, but it's a real
+  consequence of making the control a genuine `Command.Item` — flagging
+  rather than omitting.
+  Gates: `npm test` (81 files, 1331 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven, including a `biome
+  check --write` pass on the test file's formatting; i18n unchanged at 446
+  keys x 10 locales), `npm run build`, and `npm run verify` (10/10
+  required + both best-effort) all green — see the Fourth-pass `## Gates`
+  entry for full evidence and the live-Chromium measurements for all five
+  fixes. Killed the Storybook (`-p 6010`) and the throwaway `python3 -m
+  http.server 8098` (serving `node_modules/axe-core/axe.min.js` for
+  injection into the Storybook page, since Storybook's dev server doesn't
+  serve `node_modules` and the extension's real CSP-safe `addInitScript`
+  approach in `verify/checks/axe.mjs` isn't applicable to a bare Storybook
+  page) processes afterward. Not committing/pushing per the task brief —
+  leaving `column: review` for Jonathan to review the diff himself.
+- **claude** (2026-09-01T22:40:00.000Z): Verified the fourth pass myself
+  before pushing: `npm test` (18/18 ModelPicker tests), `npm run check`
+  (0 errors), biome clean, and an independent axe-core run (standalone
+  Playwright script, not trusting the subagent's report alone) against
+  both `Side panel/ModelPicker` stories — 0 serious/critical violations
+  from this diff. Manually drove the keyboard path live: Tab to
+  "Unverified (24)", Enter → section expands (options 3→27), popover
+  stays open — confirmed the fix, not just the code.
+  While doing that pass I found ONE separate critical axe violation —
+  `aria-required-attr`, missing `aria-controls` on the filter
+  `Command.Input` (`src/ui/components/ui/command/command-input.svelte`)
+  — confirmed pre-existing (file untouched since card 91, well before
+  this branch) and unrelated to card 130's diff. Filed
+  https://gitlab.beluga-sirius.ts.net/flying-dice/open-chat-webmcp/-/work_items/3
+  rather than scope-creeping it into this MR. Committed
+  (`1d77905`, "Fix keyboard, filter-collapse, ARIA, and hint-visibility
+  regressions from shockwave's review") and pushed to `card/130`.
+  Watching MR !1 for shockwave's re-review.
+- **claude-sonnet** (2026-09-01T23:52:00.000Z): shockwave's second review
+  (head `4a3fc96`) confirmed all 5 prior findings fixed but filed a FAIL on
+  4 new ones (notes 12449/12450/12451/12452, verdict note 12459). Fixed all
+  four, read live against a locally built/served Storybook (Playwright,
+  Chromium) rather than trusting jsdom, per the review's own repeated point
+  that jsdom has twice missed real regressions here.
+  **12449 — disclosure highlight reset (ModelPicker.svelte:490-527,
+  614-624, 855-892):** read bits-ui's actual `Command` source
+  (`node_modules/bits-ui/dist/bits/command/command.svelte.js`) rather than
+  guessing. Root cause: with `shouldFilter={false}`, `CommandRootState`'s
+  `#sort()`/`#selectFirstItem()` unconditionally re-picks the first valid
+  item every time `registerItem` fires for a newly-mounted row (not just on
+  initial mount), and expanding a section mounts a batch of them —
+  `CommandItemState.isSelected` derives `data-selected` straight off
+  `Command.Root`'s own bindable `value` prop, which is exactly the
+  "controllable highlighted value" the finding asked me to look for. Bound
+  it as `highlightedValue` (`bind:value` on `Command.Root`,
+  ModelPicker.svelte:721) and added `restoreDisclosureHighlight` — after
+  each toggle, `await tick()` a handful of times, forcing `highlightedValue`
+  back onto the toggle's own key any time bits-ui's async reselect (itself
+  chained through nested `afterTick`s) has knocked it off. `toggleUnverified`/
+  `toggleNoTools` got thin wrappers (`toggleUnverifiedDisclosure`/
+  `toggleNoToolsDisclosure`) that call the restore after toggling; passed
+  to `collapsibleOption` in place of the bare toggles. Verified live:
+  Enter/Enter/Enter cycles 3→27→3→27 options with the toggle staying
+  `[data-selected]` throughout, popover never closing, `selectModel`/
+  `closePicker` never firing; same result via two real `.click()`s. Added
+  two jsdom tests (ModelPicker.test.ts, keyboard and mouse) that each
+  activate the toggle three times and assert the full round-trip.
+  **12450 — Space eating filter text (ModelPicker.svelte:449-467, deleted
+  the `handleListKeydown` function and its `onkeydown` wiring on
+  `Command.Root` at the old line 678; also `command-item.svelte`'s doc
+  comment at the old 624-633):** deleted rather than patched, per the
+  review's own recommendation — now that 12449 makes Enter/click reliably
+  repeatable, Space needs no special handling at all. Removed the old
+  Space-toggle test and its "known, accepted edge case" framing entirely;
+  replaced with a test that types "local" into a filter over a "Local
+  Ollama"-named provider (matching `ModelPicker.stories.svelte`'s own
+  fixture provider name, and the review's exact repro shape), confirms the
+  toggle is highlighted (matches via provider name), then types a literal
+  space and asserts it lands in the filter value rather than collapsing
+  anything. Verified live with the review's own literal repro
+  ("gateway-model-1" then space): filter value became
+  `"gateway-model-1 "`, options unchanged at 12.
+  **12451 — group accessible name (command-group.svelte:5-27, new
+  `headingHidden` prop; ModelPicker.svelte:135-152, 848-892):** the false
+  doc comment claiming `aria-labelledby` came "for free" without passing
+  `heading` is rewritten to state what's actually true. Both collapsible
+  groups now pass `heading` (the plain label, no count — deliberately NOT
+  matching the toggle's own visible "Unverified (24)" text, so it can never
+  collide with it in a DOM/text query) plus a new `headingHidden` boolean
+  that renders `command-group.svelte`'s `GroupHeading` with `sr-only`
+  instead of its normal sticky/visible classes. Verified live: all three
+  `role="group"` elements on the "Grouped" story resolve a non-empty
+  `aria-labelledby` (matching origin/main's 3-of-3 baseline), the sr-only
+  node's computed style is genuinely Tailwind's `sr-only` (1x1px,
+  `clip-path: inset(50%)`), and the toggle's own visible text is still
+  exactly "Unverified (1)" with no on-screen duplicate. Added a jsdom test
+  reading `aria-labelledby` off the DOM directly (accessible-name-by-role
+  queries are unreliable here due to the pre-existing jsdom/floating-ui
+  `visibility:hidden` artifact this file's other tests already document).
+  **12452 — `scrollable-region-focusable` (ModelPicker.svelte:698-719,
+  `tabindex={0}` on `Command.List`):** verified live that this doesn't
+  fight bits-ui's roving-highlight (items never carry their own `tabindex`,
+  so there's nothing to compete with) — arrow-key roving still works with
+  the list region focused, since `Command.Root`'s `onkeydown` still
+  receives the bubbled keydown. Measured: axe reports 0
+  `scrollable-region-focusable` violations on the expanded picker (was 1,
+  serious); pressing Space while the list region is focused genuinely
+  scrolls it (`scrollTop` 0→316) without typing into the filter; Tab from
+  the filter lands on the list region then "Refresh" (sane order); Escape
+  from the list region still closes the popover. Reported the FULL
+  violation set both collapsed and expanded, not just the targeted rule —
+  unchanged from before this fix (the pre-existing `aria-required-attr`
+  critical on the filter combobox, tracked separately as issue #3, plus
+  three non-blocking moderate document-structure ones).
+  **Whole-diff regression check:** re-measured all 5 previously-fixed
+  findings live this pass (12383/12384/12385/12386/12387) — all still hold,
+  none reintroduced; details in the `## Gates` entry above.
+  Gates: `npm test` (81 files, 1335 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven), `npm run build`, `npm run
+  verify` (10/10 required + both best-effort) all green. Killed the
+  Storybook static server afterward. Not committing/pushing per the task
+  brief — leaving `column: review` for Jonathan's own diff review and a
+  further internal pass before pushing.
+- **claude-sonnet** (2026-09-02T00:33:00Z): shockwave's THIRD review (head
+  `0f1182b`) confirmed all 9 prior findings across two passes still fixed,
+  but filed a third FAIL on 2 new ones (notes 12478/12479, verdict 12480),
+  both on the collapsible disclosure `Command.Item`.
+  **12478 — click leaves real focus on `Command.List`, discarding every
+  keystroke after (`restoreDisclosureHighlight`,
+  ModelPicker.svelte:483-510):** the keyboard path was already correct
+  (focus never left the filter/root), but a mouse click on the toggle moves
+  real DOM focus to the nearest focusable ancestor of the clicked
+  `Command.Item` — which, since items carry no `tabindex` of their own, is
+  now `Command.List` itself (card 130's own `tabindex={0}` fix, note
+  12452). Added the "matching half" the review asked for directly inside
+  `restoreDisclosureHighlight` (ModelPicker.svelte:483-510, called from
+  both `toggleUnverifiedDisclosure` and `toggleNoToolsDisclosure`): `if
+  (filterInputEl) filterInputEl.focus(); else commandRootEl?.focus();`,
+  fired unconditionally alongside the existing highlight-restore loop so it
+  behaves identically regardless of activation method (Enter/Space are a
+  no-op there since focus never moved; click is the actual fix). Explicitly
+  guarded the filter-input-absent case (the coordinator flagged
+  `filterInputEl!.focus()` as a crash risk on the below-`FILTER_THRESHOLD`
+  "Grouped" story) rather than asserting non-null.
+  **12479 — the `tabindex={0}` comment overclaimed which keys scroll the
+  region (ModelPicker.svelte:767-798):** rewrote the paragraph to name
+  PageDown/Space specifically as the keys that move `scrollTop`, and to
+  state explicitly that Command.Root's own roving-highlight keys (arrows,
+  Home/End) are consumed by its `preventDefault` and never reach native
+  scroll — plus that Space only scrolls while focus is on the list itself,
+  not the filter input (where it just types a space, per note 12450's
+  fix).
+  **Tests added/extended in ModelPicker.test.ts:** a new test asserting a
+  click's focus-restore AND highlight-restore together (not separately),
+  followed by a real keystroke (`user.keyboard`, no click on the input)
+  proving the filter actually receives it and narrows the list; the same
+  test duplicated for the No-tool-support toggle to prove the fix isn't
+  Unverified-specific; a below-`FILTER_THRESHOLD` test proving the fallback
+  lands on `[role="application"]` (`commandRootEl`), never
+  `document.body`; a scrollTop-invariance test (a different toggle's click
+  triggers the same focus-restore while the list is pre-scrolled, asserts
+  `scrollTop` unchanged, documented as a DOM-level guard since jsdom can't
+  lay out real scrolling); `document.activeElement` assertions added at
+  every step of the existing Enter x3 and click x3 round-trip tests (proves
+  no regression on either path); and the `tabindex={0}` DOM test's comment
+  rewritten to explain why a genuine PageDown/Space scroll assertion can't
+  be expressed in jsdom (no native keydown-scroll behavior at all there)
+  and points at the live Chromium measurement instead.
+  **Live Chromium verification (Playwright, local Storybook, killed
+  afterward) covering the coordinator's structural note — all four
+  activation paths measured for consistency, not just the click path in
+  isolation:** click → focus on filter + highlight on toggle, together;
+  typed "gate" with no click on the input → filter value `"gate"`, list
+  narrowed to 28 options. Full click cycle 27→3→27, focus on the filter at
+  every step. Below-threshold "Grouped" story → focus on `commandRootEl`,
+  not body. Isolated the `.focus()`-causes-scroll risk directly: focusing
+  the filter input alone left a pre-set `scrollTop=40` at exactly 40; the
+  4.5px drift seen when a DIFFERENT toggle's click also inserted new rows
+  traced to Chromium's own scroll-anchoring reacting to the content change,
+  not to the added focus call. Enter path: 27→3→27, focus stayed on the
+  filter throughout (true no-op, as expected). Filter auto-expand: typing
+  "model-7" narrowed to "Unverified (1)" and revealed the row with no
+  click, focus never left the filter (this path never moves focus).
+  Popover-close-reset: Escape closed it; reopening showed filter reset to
+  empty, both sections re-collapsed, and `handleOpenAutoFocus` still landed
+  focus on the filter. For 12479: expanded list, focus on
+  `[role="listbox"]`, `scrollTop` reset to 0 before each key — ArrowDown
+  and End both stayed at 0 (consumed by Command's roving highlight,
+  confirmed by watching `[data-selected]` move instead), PageDown reached
+  316, Space (focus on the list) also reached 316, and Space typed with
+  focus on the filter input instead left `scrollTop` at 0 and put a literal
+  space into the filter's value.
+  **Full 11-finding regression pass** (all three review rounds — the
+  coordinator's standing rule, not just the 9 the task brief named):
+  12383/12384/12386/12449/12452 reconfirmed via the measurements above;
+  12385 reconfirmed structurally (toggle still `role="option"`, a valid
+  listbox child) plus `npm run verify`'s axe-core pass (0 blocking
+  violations against the real built extension); 12387 reconfirmed via `npm
+  test` green with no skips; 12450 reconfirmed via `grep -rn
+  handleListKeydown src/` finding only historical comment references, no
+  live handler; 12451 reconfirmed on the "Grouped" story — all three
+  `role="group"` elements resolve non-empty `aria-labelledby`. Full detail
+  and exact numbers in the Sixth-pass `## Gates` entry above.
+  Gates: `npm test` (81 files, 1339 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven), `npm run build`, `npm run
+  verify` (10/10 required + both best-effort) all green. Killed the
+  Storybook dev server afterward. Not committing/pushing per the task
+  brief — leaving `column: review` for Jonathan to review the diff and push
+  himself.
+
+- **claude-sonnet** (2026-09-02T01:20:00.000Z): Fourth re-review's one new
+  finding (note 12491): activating "No tool support (1)" from a scrolled
+  position threw the list's viewport to the top even though the highlight
+  and focus fixes from the prior three rounds both held correctly — the
+  control the user just activated, and the row it revealed, both left the
+  screen. Traced the actual root cause (not just patched the symptom) in
+  bits-ui's `command.svelte.js`: expanding a section mounts a batch of new
+  `Command.Item`s, each a fresh `registerItem` call; every one re-runs
+  `CommandRootState#sort()` -> `#selectFirstItem()`, and that call's
+  `setValue()` runs with `preventScroll` false, internally calling
+  `#scrollSelectedIntoView()` on whatever it transiently (and usually
+  wrongly — typically the very first row of the very first group in the
+  WHOLE list) re-selected. By the time `restoreDisclosureHighlight`
+  (ModelPicker.svelte:541) notices and corrects `highlightedValue` back to
+  the toggle, the wrong scroll already fired — correcting the highlight
+  after the fact does nothing to undo it. This is why three rounds each
+  fixed one symptom (highlight, then focus) while a further one persisted:
+  the underlying race was never touched, only its most recently-measured
+  side effect.
+
+  Fix: added a third element ref, `commandListEl`
+  (ModelPicker.svelte:108-114), bound to `Command.List`
+  (ModelPicker.svelte:~807). `captureScrollState()`
+  (ModelPicker.svelte:~596-620) reads the list's `scrollTop`/`scrollHeight`/
+  `clientHeight` immediately BEFORE each toggle callback flips its boolean
+  (`toggleUnverifiedDisclosure`/`toggleNoToolsDisclosure`,
+  ModelPicker.svelte:~622-631), and `restoreDisclosureHighlight`'s existing
+  per-tick loop (ModelPicker.svelte:592-599) — the same loop that already
+  reasserts `highlightedValue` every tick to outrun bits-ui's async
+  reselect — now ALSO reasserts the list's scroll position every tick, for
+  the identical reason: the disturbance can land on any of several ticks,
+  so the correction has to keep re-applying, not check once.
+
+  Chose "restore the captured value" over `scrollIntoView`-ing the toggle
+  (the reviewer's other suggested framing), after live-testing both — full
+  reasoning and the derivation of the one refinement it needed is in
+  ModelPicker.svelte:488-540's doc comment. Short version: restoring the
+  literal old `scrollTop` is correct whenever nothing above the toggle
+  changed size, which is the ordinary case (expand/collapse only touches
+  rows AFTER the toggle). But live-testing the reviewer's own exact repro —
+  scrolled to the TRUE bottom already (`scrollHeight - scrollTop ===
+  clientHeight` exactly) — surfaced a case neither of the reviewer's two
+  framings states outright: "scrollTop literally unchanged" and "the
+  revealed row is visible" are mathematically incompatible there, not just
+  two independent asks. Measured live: holding `scrollTop` fixed while
+  `scrollHeight` grows necessarily pushes the new content below the old
+  bottom edge (`revealedRowInView: false`, confirmed before the fix). Added
+  a `priorWasAtBottom` flag (`captureScrollState()`,
+  ModelPicker.svelte:~596-620) so the restore loop targets
+  `commandListEl.scrollHeight` (browser-clamped to the new max) instead of
+  the frozen number specifically in that case — "if you were already
+  pinned to the bottom, stay pinned as it grows", the same convention chat
+  logs and tailed output use. Collapse needs no separate branch: the
+  clamped-scrollHeight target and the browser's own out-of-range clamping
+  produce the identical destination either way.
+
+  One more refinement surfaced only once real gate scripts ran:
+  `clientHeight > 0` had to gate `wasAtBottom` explicitly
+  (ModelPicker.svelte:~608-620), or the check reads "always at the bottom"
+  on any zero-size/unlaid-out container — exactly what jsdom's tests hit
+  (jsdom has no layout engine; `scrollHeight`/`clientHeight` never leave 0).
+  Caught by the file's own pre-existing jsdom test
+  (`ModelPicker.test.ts:~610`, which sets `scrollTop = 42` and expects it to
+  stay 42): without the guard, the fix "corrected" that literal value back
+  to jsdom's `scrollHeight` (0). Confirmed the fix is real (not
+  jsdom-only-passing) by re-measuring live in Chromium after adding the
+  guard — same three-property-correct result as before.
+
+  **Combined-snapshot verification across all four activation paths** (the
+  reviewer's standing meta-instruction — assert `data-selected`,
+  `document.activeElement`, and real visible-rectangle content TOGETHER, per
+  path, not as four separate isolated checks): full measurements recorded in
+  this card's `## Gates` section above (the
+  `live-chromium-combined-check` entry). Summary: click-expand-from-bottom,
+  keyboard-expand-from-bottom, keyboard-collapse-from-bottom, and
+  click-collapse-not-at-bottom all measured all three properties correct
+  together. Filter auto-expand was deliberately left un-special-cased — a
+  documented decision (ModelPicker.svelte:~416-441) that Command's own
+  default reselect-and-scroll-into-view-on-every-keystroke is the intended,
+  pre-existing combobox behavior for typing, not something inherited from
+  the toggle bug — and measured correct on both properties jsdom can't
+  reach anyway plus the visible-content check live. Popover close/reopen
+  needs no fix: closing genuinely unmounts `[role="listbox"]` (confirmed via
+  accessibility snapshot), so there is nothing left over to disturb on
+  reopen.
+
+  **Test changes in `src/sidepanel/components/ModelPicker.test.ts`**: the
+  reviewer flagged the existing scrollTop test's comment as overclaiming —
+  rewrote it (line ~602) to say precisely what it does and does not prove
+  (a narrow "no stray `scrollTop = 0` write" jsdom guard, NOT proof of the
+  real fix, which is layout-dependent and jsdom cannot express) and renamed
+  the test itself to say so inline. Added a new test asserting
+  `data-selected` and `document.activeElement` together, in one snapshot,
+  immediately after a toggle click — the two-thirds of the combined
+  assertion jsdom CAN express without real layout — with a comment pointing
+  at this board card's journal for the visibility third.
+
+  **Non-blocking FYI for the board, not investigated per the task
+  brief**: the reviewer separately noted the last `main` pipeline (16491,
+  `d28b449`) shows `verify` failing at its 40-minute timeout, green overall
+  only via `allow_failure: true` in `.gitlab-ci.yml`. Unrelated to card 130;
+  flagging for someone's attention, not acted on here.
+
+  **Gates**: `npm test` (81 files, 1340 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven, `biome format --write`
+  needed once on the two touched files), `npm run build`, `npm run verify`
+  (10/10 required + both best-effort) all green. Live Chromium/Playwright
+  verification against local Storybook, killed afterward. Not
+  committing/pushing per the task brief — leaving `column: review` for
+  Jonathan to review the diff and push himself.
+
+- **claude** (2026-09-02T01:50:00.000Z): Fifth re-review (head `69d5b02`),
+  smallest FAIL yet — 2 findings.
+
+  **Note 12505 (bug, regression)**: `captureScrollState`'s `wasAtBottom`
+  predicate (`ModelPicker.svelte:673`) was `clientHeight > 0 && scrollHeight
+  - scrollTop <= clientHeight + 1`. That inequality is trivially true
+  whenever `scrollHeight === clientHeight` — a list with nothing to scroll
+  yet, which is this picker's state on every real open (both sections start
+  collapsed). So the very first expansion a user ever does took the
+  stick-to-bottom branch and jumped to the END of the revealed rows instead
+  of the top. Fixed by requiring genuine scrollability first:
+  `scrollHeight > clientHeight && scrollHeight - scrollTop <= clientHeight +
+  1` (`ModelPicker.svelte:673`), which also subsumes the old `clientHeight >
+  0` jsdom guard (removed rather than kept alongside a redundant check) —
+  rewrote the doc comment above it (`ModelPicker.svelte:648-664`) to explain
+  the fix and why it subsumes the old guard.
+
+  Added a jsdom regression test,
+  `ModelPicker.test.ts:660-720` ("does not treat a not-yet-scrollable list
+  … as 'at the bottom' on the first expansion"), that pins the list's
+  `scrollHeight`/`clientHeight` to a real, non-zero, EQUAL pair via
+  `Object.defineProperty` — exercising the actual `scrollHeight >
+  clientHeight` boundary the fix added, rather than jsdom's coincidental `0
+  === 0`. Verified this is a genuine regression guard, not a decorative
+  one, by temporarily reverting the predicate to the old `clientHeight > 0`
+  guard and confirming the new test fails (`scrollTop` lands on 140 instead
+  of the expected 0) — then restored the fix. The comment on the test is
+  explicit that jsdom's own zeroed metrics make the REAL bug (a laid-out,
+  non-scrollable container with genuine equal numbers) structurally
+  unobservable regardless of which guard ships, and points at this card's
+  live Chromium measurements (below) as the real regression evidence for
+  the visual symptom.
+
+  **Note 12506 (issue, wording only)**: the doc comment at
+  `ModelPicker.svelte:551` claimed "nothing ABOVE the current viewport
+  moved" on expand — false whenever the expanding section isn't the one in
+  view, since both disclosure toggles are `sticky top-0` and clickable from
+  anywhere in the list. Rewrote the comment (`ModelPicker.svelte:551-568`)
+  to say precisely what's true: the restore preserves the scroll OFFSET,
+  and when that lands new rows above the current viewport (expanding a
+  sticky toggle while scrolled past it), this deliberately shows the user
+  the section they just asked to see. No behavior change for this finding,
+  comment only, per the reviewer's explicit instruction.
+
+  **Live Chromium verification, both starting states** (the coordinator's
+  standing note — this exact gap, not-yet-scrollable vs. already-scrollable
+  at capture time, is what caused the regression): full measurements in
+  this card's `## Gates` section above
+  (`live-chromium-both-starting-states`). Summary: fresh-open first
+  expansion (both sections, both activation paths) lands at the top, not
+  the bottom; expanding a second section from that state doesn't jump
+  either; all four already-scrollable cases the reviewer previously
+  validated (exact-bottom, mid-list, collapse-from-bottom, collapse
+  mid-list) still hold exactly; two boundary cases (scrollable by a few px
+  at the top, collapsing back to non-scrollable) confirmed via a real-DOM
+  harness running the exact production predicate.
+
+  **Whole-diff regression, all 16 findings** (coordinator's explicit
+  instruction, since this round touches the shared scroll predicate and its
+  doc comment): re-measured all 16 (14 prior + these 2) live in Chromium —
+  full detail in the `whole-diff-16-findings-live-chromium` `## Gates`
+  entry above. All still hold. One non-blocking, out-of-scope, PRE-EXISTING
+  finding surfaced incidentally (not one of the 16, not touched by this or
+  any prior card-130 round): axe-core flags a critical
+  `aria-required-attr` on the Command filter `<input>` (`role="combobox"`
+  with no `aria-controls`) — a bits-ui `Command.Input` characteristic that
+  predates this card and that `npm run verify`'s own axe pass doesn't
+  happen to exercise. Flagging for a separate card.
+
+  **Gates**: `npm test` (81 files, 1341 tests — 1 net new), `npm run check`
+  (1631 files, 0 errors/warnings), `npm run guard` (all seven), `npm run
+  build`, `npm run verify` (10/10 required + both best-effort) all green.
+  Storybook dev server started and killed cleanly; a temporary story-fixture
+  edit used for the fresh-open No-tool-support measurement was reverted
+  before finishing (`git diff --stat` confirms `ModelPicker.stories.svelte`
+  is untouched — only `ModelPicker.svelte` and `ModelPicker.test.ts`
+  changed). Not committing/pushing per the task brief — leaving `column:
+  review` for Jonathan to review the diff and push himself.

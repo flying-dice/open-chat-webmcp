@@ -63,6 +63,7 @@
   import Icon from "./Icon.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import * as Command from "$lib/components/ui/command";
+  import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Separator } from "$lib/components/ui/separator";
@@ -106,6 +107,56 @@
   // throws Svelte's props_invalid_value at mount, so they start `null`.
   let filterInputEl: HTMLInputElement | null = $state(null);
   let commandRootEl: HTMLDivElement | null = $state(null);
+  // Review fix on card 130 (MR !1, note 12491): needed so
+  // `restoreDisclosureHighlight` can read/repair this element's OWN
+  // `scrollTop`, not just focus and highlight. See that function's doc
+  // comment for why a third thing needed restoring.
+  let commandListEl: HTMLDivElement | null = $state(null);
+
+  // Card 130 / decisions/43: the Unverified and No-tool-support sections
+  // start collapsed behind a heading stating their count, and expand in
+  // place on click. Both start collapsed — reset alongside the filter query
+  // whenever the popover closes (see the `$effect` below) so each open
+  // starts from the same condensed state rather than remembering the last
+  // session's expansion.
+  let unverifiedExpanded = $state(false);
+  let noToolsExpanded = $state(false);
+
+  /**
+   * Review fix on card 130 (MR !1, note 12384): while filtering auto-expands
+   * a section (see `*EffectivelyExpanded` below), a click on the heading has
+   * to produce a REAL, visible toggle — not a no-op — and must NOT leak into
+   * the raw `unverifiedExpanded`/`noToolsExpanded` state once the filter
+   * clears (that leak is what "latched the section open" after clearing the
+   * query). So filtering gets its OWN override, entirely separate from the
+   * raw toggle: `null` means "no override yet, use the auto-expand default
+   * (open)"; `true`/`false` are an explicit click during filtering. Reset to
+   * `null` whenever `filtering` (below) goes false, so it never survives
+   * into the next filter session or leaks into the non-filtering toggle.
+   */
+  let unverifiedFilterOverride: boolean | null = $state(null);
+  let noToolsFilterOverride: boolean | null = $state(null);
+
+  /**
+   * Review fix on card 130 (MR !1, note 12451): the Unverified/No-tool-
+   * support disclosure headings render as a real `Command.Item` (a genuine
+   * `role="option"` row) rather than a `<button>`/custom widget nested
+   * inside the group — see the doc comment on `collapsibleOption` below for
+   * why. That row's own visible text ("Unverified (24)") is exactly what a
+   * plain string `heading` prop would ALSO render (command-group.svelte's
+   * `GroupHeading`), so passing `heading` the ordinary way would print the
+   * label twice on screen. The two groups below instead pass `heading` with
+   * `headingHidden` — command-group.svelte renders that `GroupHeading` with
+   * `sr-only` instead of its normal visible classes, so the group still gets
+   * a real, non-empty `aria-labelledby` (measured: matches origin/main's
+   * three-of-three named groups) without a second, visible copy of the
+   * label. This was previously skipped as a false economy ("no `heading`
+   * string prop here" — see the group templates below) on the theory that
+   * the option row's own content-based accessible name would cover the
+   * *group's* name too; it doesn't — `group` and `option` are named
+   * independently, and skipping `heading` left `aria-labelledby: null` on
+   * both groups (note 12451's measured regression from origin/main).
+   */
 
   /** A current tool-calling-capable Ollama model, named concretely per card 14 rather than leaving "pull a model" vague. */
   const OLLAMA_TOOL_MODEL_SUGGESTION = "llama3.1";
@@ -117,9 +168,15 @@
     if (info) void syncToTab(info.tabId, info.origin);
   });
 
-  // Reset the filter between opens.
+  // Reset the filter and the section collapse state between opens.
   $effect(() => {
-    if (!selection.pickerOpen) filterQuery = "";
+    if (!selection.pickerOpen) {
+      filterQuery = "";
+      unverifiedExpanded = false;
+      noToolsExpanded = false;
+      unverifiedFilterOverride = null;
+      noToolsFilterOverride = null;
+    }
   });
 
   /**
@@ -330,6 +387,326 @@
   /** Keeps the concrete `ollama pull` suggestion alive for the "some models installed, none tool-capable" case, without violating the "no heading for a provider with no selectable models" rule above — this hint lives on the No-tool-support SECTION instead of on a per-provider heading. */
   const noToolsHasOllama = $derived(noToolsRows.some((r) => r.isOllama));
 
+  /**
+   * Review fix on card 130 (MR !1, notes 12384/12387 — the original OR'd
+   * design is preserved only in git history): `unverifiedRows`/
+   * `noToolsRows` above are already filtered by the query, so typing e.g.
+   * "gateway-model-7" correctly narrows a collapsed heading down to
+   * "Unverified (1)" and that match should be visible without an extra
+   * click. The first cut expressed that as
+   * `unverifiedExpanded || (filtering && rows.length > 0)` — but the OR
+   * pinned the rendered state to `true` while filtering regardless of
+   * `unverifiedExpanded`, so a click during filtering flipped the raw
+   * toggle with zero visible effect, AND left it `true`, which then stuck
+   * the section open once the query was cleared.
+   *
+   * Fixed by giving filtering its OWN override (`unverifiedFilterOverride`/
+   * `noToolsFilterOverride` above) instead of overloading the raw toggle:
+   * while filtering leaves this section nonempty, the effective state is
+   * the override if the user has clicked during THIS filter session
+   * (`?? true` — auto-expanded by default), otherwise the raw toggle
+   * exactly as it is outside filtering. The override is reset to `null`
+   * whenever `filtering` goes false (the `$effect` below), so a click made
+   * while filtering can never leak into the next session or into the
+   * non-filtering toggle — a filtered-open section reverts to whatever
+   * `unverifiedExpanded` already was (collapsed, unless the user had
+   * manually expanded it before filtering started) the moment the query is
+   * cleared.
+   */
+  /**
+   * Review fix on card 130 (MR !1, note 12491's re-review): the reviewer
+   * flagged that this auto-expand path does NOT run through
+   * `toggleUnverifiedDisclosure`/`toggleNoToolsDisclosure`, so it gets none
+   * of `restoreDisclosureHighlight`'s scroll-position handling, and asked for
+   * a DELIBERATE decision here rather than silently inheriting whatever
+   * happens.
+   *
+   * Decision: no special-casing added. Every keystroke that changes the
+   * query re-runs bits-ui's own `search`-change handling (`#filterItems()`
+   * -> `#sort()` -> `#selectFirstItem()`), which highlights and
+   * `scrollIntoView`s the first matching row on every keystroke regardless
+   * of anything this component does — that is Command's ordinary,
+   * long-standing filtering behavior, not something card 130 introduced.
+   * Landing on the top of the new result set while typing is the
+   * expected combobox convention (every keystroke can change what "first
+   * match" even means), and the user's attention and real DOM focus are
+   * both already on the input they're actively typing into — unlike toggle
+   * activation, there is no specific row the user just asked to see that a
+   * scroll-preserving mechanism would need to protect. Measured live in
+   * Chromium (Storybook's "Many unverified models" story, narrowing then
+   * widening a query while scrolled): `data-selected` and
+   * `document.activeElement` stayed correct together on every keystroke:
+   * the newly-matched top row highlighted and the filter input kept focus —
+   * see board card 130's journal for the full trace across all four
+   * activation paths, including this one.
+   */
+  const filtering = $derived(normalizedQuery() !== "");
+  const unverifiedEffectivelyExpanded = $derived(
+    filtering && unverifiedRows.length > 0
+      ? (unverifiedFilterOverride ?? true)
+      : unverifiedExpanded,
+  );
+  const noToolsEffectivelyExpanded = $derived(
+    filtering && noToolsRows.length > 0 ? (noToolsFilterOverride ?? true) : noToolsExpanded,
+  );
+
+  // The override only means anything WHILE filtering — reset it the moment
+  // filtering ends (query cleared, or narrowed back below FILTER_THRESHOLD)
+  // so it never survives into the next filter session. Popover-close already
+  // resets it directly above too (belt and suspenders: that effect fires on
+  // close regardless of how `filtering` gets there).
+  $effect(() => {
+    if (!filtering) {
+      unverifiedFilterOverride = null;
+      noToolsFilterOverride = null;
+    }
+  });
+
+  /** Toggle callbacks passed into `collapsibleOption` — during filtering they flip the filter-scoped override; otherwise the raw persistent toggle, exactly as outside filtering. */
+  function toggleUnverified(): void {
+    if (filtering && unverifiedRows.length > 0) {
+      unverifiedFilterOverride = !(unverifiedFilterOverride ?? true);
+    } else {
+      unverifiedExpanded = !unverifiedExpanded;
+    }
+  }
+  function toggleNoTools(): void {
+    if (filtering && noToolsRows.length > 0) {
+      noToolsFilterOverride = !(noToolsFilterOverride ?? true);
+    } else {
+      noToolsExpanded = !noToolsExpanded;
+    }
+  }
+
+  /**
+   * Review fix on card 130 (MR !1, note 12449): bound to `Command.Root`'s
+   * `value` below. bits-ui derives EVERY item's `data-selected`/`aria-
+   * selected` (`CommandItemState.isSelected`, command.svelte.js) straight
+   * off this value, so forcing it onto a toggle's own `value` forces that
+   * toggle to read as highlighted, immediately and reactively — this is the
+   * "controllable highlighted value" the finding asked to look for.
+   *
+   * Why it needs forcing at all: with `shouldFilter={false}` (this list's
+   * own visibility logic replaces Command's), `CommandRootState#sort()`
+   * unconditionally re-picks the FIRST valid item (`#selectFirstItem()`)
+   * every time `registerItem` runs for a newly-mounted item, once past
+   * initial mount. Expanding a section mounts a batch of newly-visible rows,
+   * each a fresh `registerItem` call, so activating the toggle is
+   * immediately followed — a few ticks later, via bits-ui's own
+   * `afterTick`-chained `registerItem` -> `#sort()` -> `#selectFirstItem()`
+   * — by the highlight silently jumping to whatever row now sorts first.
+   * Nothing on screen shows this: the toggle keeps its `data-value`, it
+   * simply stops being `[data-selected]`. The next Enter/click therefore
+   * lands on that first row instead of re-collapsing the section — note
+   * 12449's exact repro.
+   *
+   * There is no prop to opt out of that reselect (read: command.svelte.js
+   * has no "don't reselect on registration" option), so this reacts instead
+   * of preventing: `tick()` a handful of times after every toggle — enough
+   * to span `registerItem`'s own `afterTick` plus `#selectFirstItem`'s
+   * nested one — snapping `highlightedValue` back onto the toggle any time
+   * bits-ui's async reselect has knocked it off. Collapsing never triggers
+   * the reselect in the first place (removing items only reselects if the
+   * REMOVED item was the one selected, and the toggle itself is never
+   * removed), so these calls are harmless no-ops on that path.
+   */
+  let highlightedValue = $state("");
+
+  /**
+   * Review fix on card 130 (MR !1, note 12491 — the fourth re-review, one
+   * new finding after three rounds already fixed highlight then focus):
+   * activating a toggle from a scrolled position threw the list's viewport
+   * to the top, on top of already being correct on highlight and focus.
+   *
+   * Root cause, traced in bits-ui's `command.svelte.js`: expanding a section
+   * mounts a batch of newly-visible rows, each a fresh `registerItem` call.
+   * Every one of those re-runs `CommandRootState#sort()` ->
+   * `#selectFirstItem()` (documented above this function, in the
+   * `highlightedValue` doc comment — that's what necessitates the
+   * highlight-reassert loop below in the first place), and — new finding —
+   * `#selectFirstItem()` calls `setValue()` with `preventScroll` false,
+   * which internally calls `#scrollSelectedIntoView()`. During the handful
+   * of ticks before OUR loop below reasserts the correct `highlightedValue`,
+   * bits-ui has already (transiently) selected some OTHER item — typically
+   * the very first row of the very first group in the whole list, since
+   * `getValidItems()` walks the full list, not just the expanding section —
+   * and scrolled THAT into view. By the time we notice and correct
+   * `highlightedValue`, the wrong scroll already happened; correcting the
+   * highlight after the fact does nothing to undo it. Measured: this is
+   * exactly why the prior round's fix (which only reasserted
+   * `highlightedValue`) left `data-selected` correct while the viewport
+   * still jumped to the top.
+   *
+   * Fix: capture the list's `scrollTop` before the toggle runs (in the two
+   * callers below) and reassert it on every tick of the SAME loop that
+   * already reasserts `highlightedValue`, for the same reason — the
+   * disturbance can land on any of several ticks, so the correction has to
+   * keep re-applying across all of them, not just check once.
+   *
+   * Restoring the OLD scrollTop verbatim, rather than `scrollIntoView`-ing
+   * the toggle or the revealed rows, was picked deliberately over the
+   * reviewer's other suggested framing, after live-testing both — with one
+   * refinement live-testing surfaced that neither of the reviewer's two
+   * framings states outright:
+   *   - On EXPAND, what this restores is the scroll OFFSET (`scrollTop`),
+   *     not "what's on screen" — those are the same thing only when the
+   *     expanding section is the one already in view. Review fix (note
+   *     12506, fifth re-review): an earlier version of this comment claimed
+   *     "nothing above the current viewport moved", but that is false
+   *     whenever the toggle is activated from elsewhere in the list — both
+   *     disclosure rows are `sticky top-0`, so e.g. the Unverified toggle
+   *     stays clickable while the user is scrolled down reading the
+   *     No-tool-support section below it. Measured live: expanding
+   *     Unverified from that scrolled position inserts ~1788px of new rows
+   *     ABOVE the current viewport, so the preserved `scrollTop` now points
+   *     at completely different content than before the toggle. This is
+   *     deliberate, not a bug: the user just asked to see the section they
+   *     expanded, so landing inside it is the right outcome even though the
+   *     numeric offset alone doesn't explain why. When the expanding
+   *     section IS the one in view (the common case), the unchanged offset
+   *     keeps the same rows on screen and `scrollIntoView` on the toggle
+   *     would have been redundant at best (the toggle was already visible —
+   *     that is how the user reached it) and wrong at worst: with both
+   *     disclosure rows styled `sticky top-0`, `scrollIntoView` treats a
+   *     stuck sticky element as already "in view" and may no-op even when
+   *     the revealed rows below it are not.
+   *   - EXCEPT: when the user was scrolled to the exact bottom already (the
+   *     reviewer's own measured repro — `scrollHeight - scrollTop ===
+   *     clientHeight`), "unchanged scrollTop" and "the revealed row is
+   *     visible" are mutually exclusive, not just two independent asks —
+   *     measured live: growing the list's `scrollHeight` while holding
+   *     `scrollTop` fixed necessarily pushes the newly-added pixels below
+   *     the old bottom edge, off-screen, no matter what that fixed value is.
+   *     Something has to give. The one that matches how "already at the
+   *     bottom" reads everywhere else (chat logs, tailed output) is to keep
+   *     following the bottom as it moves — so `priorWasAtBottom` (captured
+   *     alongside `priorScrollTop`, same before-the-toggle timing) makes
+   *     this loop target `commandListEl.scrollHeight` instead of the frozen
+   *     number on every tick; the browser's own clamping turns that into
+   *     "the new max", i.e. the revealed row genuinely on screen, which is
+   *     what note 12491 actually asked for. A user who was NOT at the
+   *     bottom keeps the literal old value — they were reading something
+   *     specific, and content appearing further down than they can already
+   *     see is not this picker's business to shove at them.
+   *   - On COLLAPSE, content shrinks below the (possibly now out-of-range)
+   *     old `scrollTop`; the browser clamps an out-of-range assignment to
+   *     the new max automatically, which keeps the collapsed toggle in view
+   *     without any special-casing (measured live: collapsing from the
+   *     bottom lands at the new, smaller bottom, toggle visible) — and if
+   *     `priorWasAtBottom`, the `scrollHeight`-tracking branch above
+   *     produces exactly the same clamped destination anyway, so collapse
+   *     needs no separate branch at all.
+   * Restoring the raw number also sidesteps `scrollIntoView`'s sticky-header
+   * special case entirely, and needs no knowledge of which/how many rows a
+   * given toggle reveals.
+   */
+  async function restoreDisclosureHighlight(
+    sectionKey: string,
+    priorScrollTop: number | null,
+    priorWasAtBottom: boolean,
+  ): Promise<void> {
+    /**
+     * Review fix on card 130 (MR !1, note 12478): a CLICK on the toggle
+     * doesn't just risk the roving *highlight* handled below — it also moves
+     * real DOM *focus*, and nothing was putting that back. `Command.Item`
+     * rows carry no `tabindex` of their own (see the module doc comment:
+     * real focus stays on the input/root the whole time), so a mousedown on
+     * one bubbles focus to the nearest focusable ancestor. Before card 130's
+     * `tabindex={0}` fix (line ~763) that ancestor was `Command.Root`; now
+     * it's `Command.List` itself. Either way, focus lands on the scroll
+     * container instead of the filter input, and every key typed afterward
+     * is consumed by the (non-editable) container and silently discarded —
+     * the filter box stays visibly empty with no feedback at all.
+     *
+     * Enter/Space activation never had this problem: focus was already on
+     * the input (or root) before the key was pressed, and activating
+     * `onSelect` doesn't move it, so this call is a harmless no-op on that
+     * path — it fires identically regardless of activation method, matching
+     * `handleOpenAutoFocus` (line ~190), which already establishes
+     * "filter when there is one, else the root" as this picker's one
+     * intended default focus target.
+     */
+    if (filterInputEl) filterInputEl.focus();
+    else commandRootEl?.focus();
+
+    for (let i = 0; i < 8; i++) {
+      await tick();
+      if (highlightedValue !== sectionKey) highlightedValue = sectionKey;
+      if (priorScrollTop !== null && commandListEl) {
+        const target = priorWasAtBottom ? commandListEl.scrollHeight : priorScrollTop;
+        if (commandListEl.scrollTop !== target) commandListEl.scrollTop = target;
+      }
+    }
+  }
+
+  /**
+   * Shared by both toggle callbacks below: capture what
+   * `restoreDisclosureHighlight` needs to know about the list's scroll state
+   * BEFORE the toggle runs — see that function's doc comment for why both
+   * numbers matter.
+   *
+   * Review fix (note 12505, fifth re-review): `wasAtBottom` requires the
+   * container to actually BE scrollable — `scrollHeight > clientHeight` —
+   * before "at the bottom" can mean anything. A bare `scrollHeight -
+   * scrollTop <= clientHeight + 1` check is trivially true whenever
+   * `scrollHeight === clientHeight`, i.e. a list with nothing to scroll yet,
+   * which is this picker's state on EVERY open (both sections start
+   * collapsed). Without the `scrollHeight > clientHeight` guard, the very
+   * first expansion a user does reads as "already at the bottom" and takes
+   * the scroll-to-`scrollHeight` branch in `restoreDisclosureHighlight`,
+   * jumping to the END of the just-revealed rows instead of showing them
+   * from the top — measured live: clicking "Unverified (24)" on a fresh
+   * open showed models 21-24, not 1-4.
+   *
+   * This also subsumes the previous `clientHeight > 0` jsdom guard
+   * (`scrollHeight > clientHeight` is false whenever `clientHeight` is 0,
+   * since `scrollHeight` can't be negative), so that clause is gone rather
+   * than kept alongside a now-redundant check.
+   */
+  function captureScrollState(): { scrollTop: number | null; wasAtBottom: boolean } {
+    if (!commandListEl) return { scrollTop: null, wasAtBottom: false };
+    const { scrollTop, scrollHeight, clientHeight } = commandListEl;
+    // 1px slop: fractional scroll offsets (seen live, e.g. 1223.5) can leave
+    // `scrollHeight - scrollTop` a hair over `clientHeight` at genuine max.
+    return {
+      scrollTop,
+      wasAtBottom: scrollHeight > clientHeight && scrollHeight - scrollTop <= clientHeight + 1,
+    };
+  }
+
+  function toggleUnverifiedDisclosure(): void {
+    const { scrollTop, wasAtBottom } = captureScrollState();
+    toggleUnverified();
+    void restoreDisclosureHighlight("unverified-toggle", scrollTop, wasAtBottom);
+  }
+
+  function toggleNoToolsDisclosure(): void {
+    const { scrollTop, wasAtBottom } = captureScrollState();
+    toggleNoTools();
+    void restoreDisclosureHighlight("no-tools-toggle", scrollTop, wasAtBottom);
+  }
+
+  /**
+   * Review fix on card 130 (MR !1, note 12450): `handleListKeydown` used to
+   * intercept Space centrally on `Command.Root` whenever the toggle held
+   * `[data-selected]`, on the theory that this was a rare edge case. Measured
+   * by the review, it was not rare: Command auto-highlights the FIRST option
+   * on every filter change, and the toggle IS the first option whenever the
+   * current query has no tool-capable match — the ordinary shape of
+   * searching a large gateway catalog. Any space typed at that point (e.g.
+   * mid-way through "local ollama", `ModelPicker.stories.svelte`'s own
+   * fixture provider name) was silently eaten and the section collapsed
+   * instead, corrupting the query the user was still typing.
+   *
+   * Now that the toggle is a real `Command.Item` reached through Command's
+   * own `onSelect` (see `collapsibleOption` below), Enter and click both
+   * activate it correctly with no interception needed — and `role="option"`
+   * in a combobox+listbox does not require Space to activate at all; Space's
+   * only correct job here is typing into the filter input. So the handler,
+   * its `onkeydown` wiring on `Command.Root`, and the Space-specific test
+   * coverage it existed for are deleted outright rather than patched.
+   */
+
   function handlePickModel(row: Row): void {
     if (!isSelectable(row.capability)) return;
     void selectModel(row.providerId, row.model.id).then(() => closePicker());
@@ -347,19 +724,22 @@
     data-status={row.capability?.status ?? "unknown"}
     data-active={row.isActive}
     class={cn(
-      "flex items-center justify-between gap-2 rounded-xl px-3 py-2",
+      "flex items-center justify-between gap-2 rounded-xl px-3 py-1.5",
       row.isActive && "border border-primary data-selected:bg-muted",
     )}
   >
-    <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span class={cn("truncate text-foreground", !selectable && "text-muted-foreground")} dir="ltr">
+    <span class="flex min-w-0 flex-1 flex-col gap-0">
+      <span
+        class={cn("truncate leading-tight text-foreground", !selectable && "text-muted-foreground")}
+        dir="ltr"
+      >
         {row.model.name}
       </span>
       {#if showProvider}
-        <span class="text-xs text-muted-foreground">{row.providerName}</span>
+        <span class="text-xs leading-tight text-muted-foreground">{row.providerName}</span>
       {/if}
       {#if reason}
-        <span class="text-xs break-words text-muted-foreground">{reason}</span>
+        <span class="text-xs leading-tight break-words text-muted-foreground">{reason}</span>
       {/if}
     </span>
     {#if row.isActive}
@@ -368,15 +748,112 @@
            is a box. -->
       <span class="flex-none text-primary"><Icon name="check_circle" class="size-4" /></span>
     {:else if badge}
-      <span
+      <!-- Code-review fix on card 130: `text-muted-foreground` is the
+           always-on base — matches the raw `<span>` this replaced and the
+           same outline-Badge pattern elsewhere (CallLogEntry.svelte:145,
+           ToolCallRow.svelte:218, AnnotationBadges.svelte:52). Without it,
+           `Badge`'s own `text-foreground` won for Unverified/No-tool-support
+           rows since only the tool-capable case was overriding color. -->
+      <Badge
+        variant="outline"
         class={cn(
-          "flex-none text-xs whitespace-nowrap text-muted-foreground",
-          row.capability?.status === "tool-capable" && "text-primary",
+          "flex-none whitespace-nowrap text-muted-foreground",
+          row.capability?.status === "tool-capable" && "border-primary/30 text-primary",
         )}
       >
         {badge.icon} {badge.label}
-      </span>
+      </Badge>
     {/if}
+  </Command.Item>
+{/snippet}
+
+<!--
+  Review fix on card 130 (MR !1, notes 12383 AND 12385 — both threads land on
+  this one control, and the fix for one turned out to be the fix for both).
+
+  Two earlier designs were tried and measured to fail:
+
+  1. A real `<button aria-expanded>`, rendered via a new `headingContent`
+     snippet slot on command-group.svelte so it sat as a SIBLING of
+     `Command.GroupItems` rather than nested inside it (the position the
+     plain-string `heading` prop already uses safely). Still failed:
+     axe-core's `aria-required-children` flags ANY `role="button"`
+     descendant of `role="listbox"` (`Command.List`, below) as a critical
+     violation, at ANY nesting depth — `group` has no owned-elements
+     restriction of its own for axe's check to stop at, so it's a
+     pass-through, not a boundary. Confirmed live: even
+     `<div role="group"><button>…</button></div>` still failed with
+     "Element has children which are not allowed: button".
+  2. A hand-rolled `<div role="group" tabindex="0" aria-expanded>` doing the
+     button's job manually. This satisfied axe, but Svelte's OWN a11y linter
+     (`svelte-check`) rejects it on three independent counts, all correct
+     per the real WAI-ARIA spec (not just axe's specific rule coverage):
+     `group` is a non-interactive/structural role (no `tabindex`, no
+     click/keydown handlers), and — contrary to what its name might
+     suggest — `group` does NOT support `aria-expanded` as a state at all.
+     Passing axe this way was passing one checker by failing another, not a
+     genuine fix.
+
+  The actual constraint, once both of those failed: NEITHER role a listbox
+  permits (`option` or `group`) supports `aria-expanded`. There is no valid
+  way to nest an `aria-expanded`-bearing element inside `role="listbox"`.
+
+  The fix that is genuinely correct: this disclosure is now a real
+  `Command.Item` (`role="option"`) — the same primitive every selectable
+  model row already uses, which is why it can live here at all. Its
+  `onSelect` toggles the section instead of picking a model (and never
+  calls `selectModel`/`closePicker`):
+    - Enter now works through Command.Root's OWN existing mechanism (module
+      doc comment above: "Enter activates the currently-highlighted row") —
+      the exact interception that used to WRONGLY commit/close the picker
+      is now correctly routed to THIS item's `onSelect`. No `stopPropagation`
+      hack needed; Command.Root doing its normal job IS the fix.
+    - Click goes through the same `onSelect` path Command.Item already
+      wires internally.
+    - Space is deliberately NOT handled here or anywhere else (review fix,
+      MR !1 note 12450) — `role="option"` in a combobox+listbox is activated
+      via Enter/click, not Space, and this picker's filter input needs Space
+      to type normally. An earlier version intercepted Space centrally on
+      Command.Root; it was deleted because it stole a space keystroke out of
+      an in-progress filter query whenever the toggle happened to be the
+      highlighted (typically first) option — see `handlePickModel`'s
+      neighboring doc comment for the measured regression.
+    - Enter/click landing on `onSelect` toggles the section correctly every
+      time, including a SECOND activation to re-collapse (review fix, MR !1
+      note 12449) — see `restoreDisclosureHighlight`'s doc comment above for
+      why that needed its own fix: bits-ui silently steals the highlight off
+      this item once the section's rows mount, and without correcting that,
+      a second Enter/click would land on whatever row bits-ui picked instead
+      of back on this toggle.
+  Its accessible name comes from content, same as every other row here
+  (`option` gets name-from-content; `group`, notably, does not) — there is
+  no formal `aria-expanded` announcement (no listbox-permitted role
+  supports it), so state is communicated the way a "Show more" option row
+  in any real combobox already communicates it: the listbox's own visible
+  row count changes when it activates.
+  Verified with axe-core against Storybook's "Many unverified models (large
+  gateway catalog)" AND "Grouped (selectable, unverified, no-tools)"
+  stories, open picker: 0 `aria-required-children` violations on both
+  (previously 1, critical, on the first), matching origin/main's baseline —
+  and 0 new Svelte a11y warnings from `npm run check`.
+-->
+{#snippet collapsibleOption(
+  sectionKey: "unverified-toggle" | "no-tools-toggle",
+  label: string,
+  count: number,
+  expanded: boolean,
+  toggle: () => void,
+)}
+  <Command.Item
+    value={sectionKey}
+    onSelect={toggle}
+    class="sticky top-0 z-10 flex w-full items-center justify-between gap-2 rounded-none bg-popover px-2 py-1 text-start text-xs font-medium text-muted-foreground"
+  >
+    <span>{label} ({count})</span>
+    <Icon
+      name="expand_more"
+      class={cn("size-4 flex-none transition-transform", expanded && "rotate-180")}
+    />
   </Command.Item>
 {/snippet}
 
@@ -428,7 +905,12 @@
           </p>
         {/if}
 
-        <Command.Root shouldFilter={false} bind:ref={commandRootEl} class="flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0">
+        <Command.Root
+          shouldFilter={false}
+          bind:ref={commandRootEl}
+          bind:value={highlightedValue}
+          class="min-h-0 flex-1 gap-2 overflow-hidden rounded-none bg-transparent p-0"
+        >
           {#if showFilter}
             <Command.Input
               bind:value={filterQuery}
@@ -445,8 +927,48 @@
                without it, the list was clipping mid-row exactly at the top/
                bottom edge with no cushion (card 89's visual QA note).
                `scroll-py-1` (from Command.List's own base class) only
-               affects scroll-into-view margins, not this. -->
-          <Command.List class="flex max-h-full flex-col gap-3 overflow-y-auto py-1">
+               affects scroll-into-view margins, not this.
+
+               `tabindex="0"` — review fix on card 130 (MR !1, note 12452):
+               once a section expands, this region genuinely scrolls
+               (scrollHeight > clientHeight) but had no keyboard focus target
+               of its own — axe-core flagged it `scrollable-region-focusable`
+               (serious), and a real keyboard walk confirmed it: 30x
+               ArrowDown after expanding only ever visits the 2 toggle rows
+               (Command's roving nav correctly skips the revealed rows, which
+               are `aria-disabled` until selectable), and the container's own
+               `scrollTop` never moved because nothing in it could take real
+               focus. Making the region itself a tab stop gives keyboard users
+               a way to reach it and scroll it directly, satisfying axe's
+               rule, without touching Command's own roving-tabindex
+               management of its child items — items never carry a
+               `tabindex` of their own (see the module doc comment: real DOM
+               focus stays on the input/root the whole time), so this doesn't
+               compete with that mechanism.
+
+               Review fix on card 130 (MR !1, note 12479): the paragraph
+               above used to credit "arrow keys / Page Down" with doing the
+               scrolling once this region is focused. Measured live in
+               Chromium (Unverified expanded, scrollHeight 1928 / clientHeight
+               321, focus on this element, scrollTop reset to 0 before each
+               key): ArrowDown and End do NOT move `scrollTop` — Command.Root
+               owns those for its own roving highlight and calls
+               `preventDefault` before they ever reach the browser's native
+               scroll behavior. Only PageDown and Space — the two keys
+               Command doesn't claim for roving — actually move `scrollTop`
+               (measured: both landed at 273). Space only does this while
+               focus is on THIS element; the same key typed while focus is on
+               the filter input above just types a space character (note
+               12450's fix), it does not scroll anything. Arrow-key roving
+               still bubbles from this element up to Command.Root's own
+               `onkeydown` exactly as before, and Escape still closes the
+               popover from here — none of that changed, only the claim about
+               which keys scroll the region. -->
+          <Command.List
+            tabindex={0}
+            bind:ref={commandListEl}
+            class="flex min-h-0 max-h-full flex-1 flex-col gap-3 overflow-y-auto py-1"
+          >
             {#each visibleGroups as group (group.provider.id)}
               <Command.Group value={group.provider.id} heading={group.provider.name} class="flex flex-col gap-1 p-0">
                 {#if group.filteredSelectable.length > 0}
@@ -526,23 +1048,62 @@
             {/each}
 
             {#if unverifiedRows.length > 0}
+              <!-- Review fix on card 130 (MR !1, note 12451): `heading` IS
+                   passed here now, with `headingHidden` — command-group.svelte
+                   renders that `GroupHeading` `sr-only` instead of its normal
+                   visible classes, so the group gets a real, non-empty
+                   `aria-labelledby` (this was previously skipped entirely,
+                   leaving the group unnamed — see the doc comment near this
+                   file's top for the full history) without a second, VISIBLE
+                   copy of "Unverified (24)" alongside the disclosure item's
+                   own on-screen text below. -->
               <Command.Group
                 value="unverified"
                 heading={m.providerPicker_unverifiedHeading()}
+                headingHidden
                 class="flex flex-col gap-1 p-0"
               >
-                {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
-                  {@render modelRow(row, true)}
-                {/each}
+                {@render collapsibleOption(
+                  "unverified-toggle",
+                  m.providerPicker_unverifiedHeading(),
+                  unverifiedRows.length,
+                  unverifiedEffectivelyExpanded,
+                  toggleUnverifiedDisclosure,
+                )}
+                {#if unverifiedEffectivelyExpanded}
+                  {#each unverifiedRows as row (`${row.providerId}:${row.model.id}`)}
+                    {@render modelRow(row, true)}
+                  {/each}
+                {/if}
               </Command.Group>
             {/if}
 
             {#if noToolsRows.length > 0}
+              <!-- See the matching comment on the Unverified group above:
+                   sr-only `heading` for a real accessible name, same reason. -->
               <Command.Group
                 value="no-tools"
                 heading={m.providerPicker_noToolSupportHeading()}
+                headingHidden
                 class="flex flex-col gap-1 p-0"
               >
+                {@render collapsibleOption(
+                  "no-tools-toggle",
+                  m.providerPicker_noToolSupportHeading(),
+                  noToolsRows.length,
+                  noToolsEffectivelyExpanded,
+                  toggleNoToolsDisclosure,
+                )}
+                <!-- Review fix on card 130 (MR !1, note 12386): this hint has
+                     to render whenever `noToolsHasOllama` is true regardless
+                     of collapse state — decisions/43 only authorises
+                     collapsing the ROWS ("only the individual rows require
+                     one click to reach"), and card 14 requires this
+                     concrete, copyable fix to stay reachable for the exact
+                     case where a user's only provider has zero tool-capable
+                     models. Previously swept inside the expand-gate below by
+                     mistake; matches origin/main's pre-card-130 behaviour
+                     (always rendered whenever the section exists) now. -->
                 {#if noToolsHasOllama}
                   <p class="px-2 text-sm text-muted-foreground">
                     {m.providerPicker_pullToolCapableHintPrefix()}<code
@@ -550,9 +1111,11 @@
                     >{m.providerPicker_pullToolCapableHintSuffix()}
                   </p>
                 {/if}
-                {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
-                  {@render modelRow(row, true)}
-                {/each}
+                {#if noToolsEffectivelyExpanded}
+                  {#each noToolsRows as row (`${row.providerId}:${row.model.id}`)}
+                    {@render modelRow(row, true)}
+                  {/each}
+                {/if}
               </Command.Group>
             {/if}
 
