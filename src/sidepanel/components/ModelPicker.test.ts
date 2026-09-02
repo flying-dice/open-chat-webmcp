@@ -657,6 +657,68 @@ describe("ModelPicker", () => {
     expect(list.scrollTop).toBe(42);
   });
 
+  // Review fix on card 130 (MR !1, note 12505 — the fifth re-review): the
+  // fourth round's `wasAtBottom` guard was `clientHeight > 0 && scrollHeight
+  // - scrollTop <= clientHeight + 1`, which reads "at the bottom" as true
+  // for ANY list where `scrollHeight === clientHeight` — i.e. nothing to
+  // scroll yet, which is this picker's state on every real open (both
+  // sections start collapsed). That made the FIRST expansion a user ever
+  // does jump the (soon-to-exist) scrollbar straight to the bottom instead
+  // of showing the revealed rows from the top. Fixed by requiring the
+  // container to actually be scrollable first: `scrollHeight > clientHeight
+  // && ...` (ModelPicker.svelte:~670).
+  //
+  // What this test can and cannot prove: jsdom has no layout engine, so a
+  // FRESH, real, unstubbed `commandListEl` always reports `scrollHeight ===
+  // clientHeight === 0` — which reads as "not scrollable" under BOTH the
+  // old guard (`clientHeight > 0` was false) and the new one (`0 > 0` is
+  // false), for the same accidental reason. That means the real bug — a
+  // laid-out, non-scrollable list with genuine non-zero equal metrics — is
+  // structurally unobservable in jsdom regardless of which guard ships; a
+  // test that rendered the component and asserted on its real, unstubbed
+  // metrics here would pass before AND after the fix, proving nothing. The
+  // live Chromium measurement (fresh open, click/Enter "Unverified (24)",
+  // rows 1-4 visible not 21-24) recorded in board card 130's `## Comments`
+  // journal is the real regression guard for the visual bug.
+  //
+  // What CAN be expressed here: `commandListEl`'s `scrollHeight`/
+  // `clientHeight` are ordinary getters, so this pins them to a NON-zero,
+  // EQUAL pair via `Object.defineProperty` — exercising the exact
+  // `scrollHeight > clientHeight` boundary the fix added, rather than the
+  // `0 > 0` case every other jsdom test coincidentally hits. Against the
+  // OLD guard this would have failed (`clientHeight > 0` true, `140 - 0 <=
+  // 141` true, so `wasAtBottom` reads true and the restore loop targets
+  // `scrollHeight` (140) instead of the literal captured `scrollTop` (0)).
+  it("does not treat a not-yet-scrollable list (scrollHeight === clientHeight) as 'at the bottom' on the first expansion (note 12505 — see comment above for what jsdom can/cannot prove here)", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const unverifiedNames = Array.from({ length: 9 }, (_, i) => `gateway-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(unverifiedNames.map((name) => entry(model(name), UNKNOWN))),
+    };
+
+    render(ModelPicker);
+
+    const unverifiedToggle = await screen.findByRole("option", {
+      name: `${m.providerPicker_unverifiedHeading()} (${unverifiedNames.length})`,
+    });
+
+    const list = document.querySelector('[role="listbox"]') as HTMLElement;
+    // Fabricate "laid out, but nothing to scroll yet": a real, non-zero
+    // `scrollHeight === clientHeight` pair, not jsdom's coincidental 0 === 0.
+    Object.defineProperty(list, "scrollHeight", { value: 140, configurable: true });
+    Object.defineProperty(list, "clientHeight", { value: 140, configurable: true });
+    list.scrollTop = 0;
+
+    await user.click(unverifiedToggle);
+
+    expect(screen.getByText("gateway-model-1")).toBeInTheDocument();
+    // The fix: `wasAtBottom` must read false here, so the restore loop
+    // targets the literal captured `scrollTop` (0), never `scrollHeight`.
+    expect(list.scrollTop).toBe(0);
+  });
+
   // Review fix on card 130 (MR !1, note 12491's re-review — the reviewer's
   // standing meta-instruction: "assert all three in one snapshot —
   // `data-selected`, `document.activeElement`, and what is actually inside

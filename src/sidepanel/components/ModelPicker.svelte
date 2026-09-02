@@ -548,14 +548,27 @@
    * reviewer's other suggested framing, after live-testing both — with one
    * refinement live-testing surfaced that neither of the reviewer's two
    * framings states outright:
-   *   - On EXPAND, nothing ABOVE the current viewport moved (the new rows
-   *     land inside/after the section the user already had in view), so the
-   *     literally correct scroll position is normally the UNCHANGED one —
-   *     there is no better target to compute, and `scrollIntoView` on the
-   *     toggle would have been redundant at best (the toggle was already
-   *     visible — that is how the user reached it) and wrong at worst: with
-   *     both disclosure rows styled `sticky top-0`, `scrollIntoView` treats
-   *     a stuck sticky element as already "in view" and may no-op even when
+   *   - On EXPAND, what this restores is the scroll OFFSET (`scrollTop`),
+   *     not "what's on screen" — those are the same thing only when the
+   *     expanding section is the one already in view. Review fix (note
+   *     12506, fifth re-review): an earlier version of this comment claimed
+   *     "nothing above the current viewport moved", but that is false
+   *     whenever the toggle is activated from elsewhere in the list — both
+   *     disclosure rows are `sticky top-0`, so e.g. the Unverified toggle
+   *     stays clickable while the user is scrolled down reading the
+   *     No-tool-support section below it. Measured live: expanding
+   *     Unverified from that scrolled position inserts ~1788px of new rows
+   *     ABOVE the current viewport, so the preserved `scrollTop` now points
+   *     at completely different content than before the toggle. This is
+   *     deliberate, not a bug: the user just asked to see the section they
+   *     expanded, so landing inside it is the right outcome even though the
+   *     numeric offset alone doesn't explain why. When the expanding
+   *     section IS the one in view (the common case), the unchanged offset
+   *     keeps the same rows on screen and `scrollIntoView` on the toggle
+   *     would have been redundant at best (the toggle was already visible —
+   *     that is how the user reached it) and wrong at worst: with both
+   *     disclosure rows styled `sticky top-0`, `scrollIntoView` treats a
+   *     stuck sticky element as already "in view" and may no-op even when
    *     the revealed rows below it are not.
    *   - EXCEPT: when the user was scrolled to the exact bottom already (the
    *     reviewer's own measured repro — `scrollHeight - scrollTop ===
@@ -632,20 +645,23 @@
    * BEFORE the toggle runs — see that function's doc comment for why both
    * numbers matter.
    *
-   * `clientHeight > 0` is a deliberate guard, not just a `scrollHeight -
-   * scrollTop <= clientHeight + 1` check on its own: with a genuinely
-   * unlaid-out or zero-size container (`clientHeight === 0`), that
-   * inequality is trivially true for ANY `scrollTop` (`scrollHeight - x <=
-   * 1` whenever `scrollHeight` is also 0), which would misreport "at the
-   * bottom" always. jsdom hits this on every test — it has no layout engine,
-   * so `scrollHeight`/`clientHeight` never leave 0 — which is exactly how
-   * `ModelPicker.test.ts`'s jsdom regression guard caught this: without the
-   * guard, that test's `list.scrollTop = 42` got silently corrected back to
-   * `0` (jsdom's `scrollHeight`) instead of staying at the literal value it
-   * set, since jsdom's zeroed metrics made `wasAtBottom` read `true`
-   * unconditionally. Requiring `clientHeight > 0` means "no real box yet" is
-   * treated the same as "not at the bottom" — preserve the literal value,
-   * the always-safe default — rather than guessing.
+   * Review fix (note 12505, fifth re-review): `wasAtBottom` requires the
+   * container to actually BE scrollable — `scrollHeight > clientHeight` —
+   * before "at the bottom" can mean anything. A bare `scrollHeight -
+   * scrollTop <= clientHeight + 1` check is trivially true whenever
+   * `scrollHeight === clientHeight`, i.e. a list with nothing to scroll yet,
+   * which is this picker's state on EVERY open (both sections start
+   * collapsed). Without the `scrollHeight > clientHeight` guard, the very
+   * first expansion a user does reads as "already at the bottom" and takes
+   * the scroll-to-`scrollHeight` branch in `restoreDisclosureHighlight`,
+   * jumping to the END of the just-revealed rows instead of showing them
+   * from the top — measured live: clicking "Unverified (24)" on a fresh
+   * open showed models 21-24, not 1-4.
+   *
+   * This also subsumes the previous `clientHeight > 0` jsdom guard
+   * (`scrollHeight > clientHeight` is false whenever `clientHeight` is 0,
+   * since `scrollHeight` can't be negative), so that clause is gone rather
+   * than kept alongside a now-redundant check.
    */
   function captureScrollState(): { scrollTop: number | null; wasAtBottom: boolean } {
     if (!commandListEl) return { scrollTop: null, wasAtBottom: false };
@@ -654,7 +670,7 @@
     // `scrollHeight - scrollTop` a hair over `clientHeight` at genuine max.
     return {
       scrollTop,
-      wasAtBottom: clientHeight > 0 && scrollHeight - scrollTop <= clientHeight + 1,
+      wasAtBottom: scrollHeight > clientHeight && scrollHeight - scrollTop <= clientHeight + 1,
     };
   }
 
