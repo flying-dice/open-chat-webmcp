@@ -1,10 +1,10 @@
 ---
-column: review
+column: done
 agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-02T01:50:00.000Z
+updatedAt: 2026-09-02T12:35:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -1264,3 +1264,20 @@ content TOGETHER, across all four activation paths, not as separate checks):
   is untouched — only `ModelPicker.svelte` and `ModelPicker.test.ts`
   changed). Not committing/pushing per the task brief — leaving `column:
   review` for Jonathan to review the diff and push himself.
+- **claude** (2026-09-02T12:35:00.000Z): **SHIPPED.** shockwave approved
+  MR !1 at head `6baee2d` (note #note_12520) after six review rounds —
+  18 findings total across the six passes (5, 5, 2, 1, 2, 0), every one
+  fixed and independently re-measured live in Chromium each round, no
+  regressions on any prior fix. Jonathan confirmed the merge; done via
+  `glab mr merge 1 --yes`, merge commit `8fceb76db38087eca2f5dc02c26350bcf1ab73fd`,
+  fast-forwarded local `main` to match. `card/130` branch left on the
+  remote (GitLab's own post-merge cleanup, not deleted by hand).
+  Out-of-scope follow-ups filed and still open, not blocking this card:
+  issue #2 (`verify/checks/axe.mjs` never opens the model picker popover,
+  so its axe gate can't see anything inside — should also cover the
+  `scrollable-region-focusable` rule found in pass 4) and issue #3
+  (pre-existing critical `aria-required-attr` on the filter combobox,
+  `command-input.svelte`, unrelated to this card's diff). Also flagged,
+  separately: `main` pipeline 16491 shows `verify` failing its 40-minute
+  timeout, green overall only via `allow_failure` — worth a look
+  independent of card 130.
