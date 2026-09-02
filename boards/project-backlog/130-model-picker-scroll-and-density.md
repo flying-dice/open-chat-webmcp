@@ -4,7 +4,7 @@ agent: claude-sonnet
 live: false
 labels: [frontend, bug]
 priority: high
-updatedAt: 2026-09-02T00:33:00.000Z
+updatedAt: 2026-09-02T01:20:00.000Z
 ---
 # Model picker: fix scroll trap, denser list UX
 
@@ -372,6 +372,78 @@ verdict 12480) — 2 new findings, both on the collapsible disclosure
       region reachable + real scroll) — reconfirmed via the PageDown/Space
       measurements above. 12478/12479 — this pass's own fixes, measured
       above. (claude-sonnet, 2026-09-02T00:32:00Z)
+
+Fourth re-review (note 12491, one new finding: activating an off-screen
+toggle threw the viewport to the top; the reviewer's meta-instruction was to
+assert `data-selected` + `document.activeElement` + real visible-rectangle
+content TOGETHER, across all four activation paths, not as separate checks):
+
+- [x] tests-passing — `npm test`: 81 files, 1340 tests, all green (incl. the
+      two rewritten/added ModelPicker.test.ts cases below) (claude-sonnet,
+      2026-09-02T01:16:24Z)
+- [x] typecheck — `npm run check`: svelte-check 1631 files, 0 errors/0
+      warnings; `tsc -p tsconfig.node.json` clean (claude-sonnet,
+      2026-09-02T01:15:01Z)
+- [x] guard — `npm run guard`: all seven sub-guards green (biome — clean
+      after `biome format --write` on the two touched files; boundaries;
+      clean-code — nothing new above 0.5, the existing ModelPicker.svelte:293
+      SRP note unchanged; return-types; throws; i18n — 446 keys x 10 locales
+      unchanged; stories — 44/44) (claude-sonnet, 2026-09-02T01:17:00Z)
+- [x] build — `npm run build`: vite build clean, no errors (claude-sonnet,
+      2026-09-02T01:17:30Z)
+- [x] verify — `npm run verify`: 10/10 required checks + both best-effort
+      checks (screenshots, axe — 0 blocking violations) passed against the
+      real built extension (claude-sonnet, 2026-09-02T01:19:00Z)
+- [x] live-chromium-combined-check — Storybook + Playwright, "Many unverified
+      models" story, list deliberately scrolled so the effect would show if
+      broken. ONE snapshot per path, all three properties together
+      (`data-selected`, `document.activeElement`, visible-rectangle content),
+      not four separate checks:
+      **Click, expand from true bottom** (`scrollTop` 1223.5, `scrollHeight`
+      1568, `clientHeight` 344 — exactly maxed): native `.click()` on "No tool
+      support (1)" → `data-selected="no-tools-toggle"`,
+      `document.activeElement` = filter input, `scrollTop` followed to the
+      NEW max (1298, `scrollHeight` grew to 1642) — both the toggle AND the
+      revealed row `gateway-legacy-chat` measured inside the list's own
+      `getBoundingClientRect()` rectangle (`toggleInView: true,
+      revealedInView: true`). A literal "keep scrollTop unchanged" was tried
+      first and measured to FAIL this exact case: at true-bottom, growing
+      `scrollHeight` while holding `scrollTop` fixed mathematically pushes
+      the new content below the old bottom edge (confirmed: `revealedInView:
+      false` with that approach) — see ModelPicker.svelte:488-540's doc
+      comment for the derivation. **Keyboard, same scenario**: real
+      `KeyboardEvent('keydown')` ArrowDown x26 to reach the toggle then Enter
+      → identical result to click (`data-selected`, focus, `scrollTop` 1298,
+      both rows in view). **Keyboard collapse from bottom**: Enter again on
+      the now-expanded toggle → `data-selected` stays `no-tools-toggle`,
+      focus stays on the filter, `scrollTop` followed the shrinking content
+      back down to the new max (1223.5, `scrollHeight` back to 1568), toggle
+      stayed in view. **Click, NOT at the bottom** (scrolled to top,
+      `scrollTop` 0, `beforeAtBottom: false`): collapsing the (separately)
+      expanded Unverified section left `scrollTop` at the literal, unchanged
+      0 (nothing above the toggle moved, matching the doc comment's "no
+      special-casing needed here" claim), `data-selected` and focus correct,
+      toggle stayed in view. **Filter auto-expand** (typing "gateway-legacy"
+      while scrolled): `data-selected` landed on `no-tools-toggle` (the sole
+      match), focus stayed on the filter input throughout, both remaining
+      options measured inside the list's rectangle — this path does not call
+      `restoreDisclosureHighlight` at all (documented decision in
+      ModelPicker.svelte:~416: Command's own default reselect-first-
+      match-and-scroll-into-view on every keystroke is the intended combobox
+      behavior here, not inherited from the toggle bug). **Popover
+      close/reopen**: closing genuinely unmounts `[role="listbox"]`
+      (confirmed via accessibility snapshot — 0 listboxes present while
+      closed); reopening remounts fresh — 3 options, both sections
+      collapsed, `scrollTop` 0, focus on the filter — nothing to restore
+      because there is nothing left over to disturb. Storybook killed
+      afterward (`pkill -f "storybook dev"`, confirmed no process on :6006).
+      (claude-sonnet, 2026-09-02T01:15:47Z)
+- [x] prior-findings-spot-check — reviewer had already reconfirmed all 14 at
+      this head before the fix; spot-checked (not re-audited) post-fix: the
+      "Grouped" story still resolves 3/3 `role="group"` elements to a
+      non-empty `aria-labelledby` and 0 `[role="listbox"] button` elements
+      (12385/12451), and `npm run verify`'s axe pass stayed at 0 blocking
+      violations (claude-sonnet, 2026-09-02T01:15:47Z)
 
 ## Comments
 
@@ -899,3 +971,114 @@ verdict 12480) — 2 new findings, both on the collapsible disclosure
   Storybook dev server afterward. Not committing/pushing per the task
   brief — leaving `column: review` for Jonathan to review the diff and push
   himself.
+
+- **claude-sonnet** (2026-09-02T01:20:00.000Z): Fourth re-review's one new
+  finding (note 12491): activating "No tool support (1)" from a scrolled
+  position threw the list's viewport to the top even though the highlight
+  and focus fixes from the prior three rounds both held correctly — the
+  control the user just activated, and the row it revealed, both left the
+  screen. Traced the actual root cause (not just patched the symptom) in
+  bits-ui's `command.svelte.js`: expanding a section mounts a batch of new
+  `Command.Item`s, each a fresh `registerItem` call; every one re-runs
+  `CommandRootState#sort()` -> `#selectFirstItem()`, and that call's
+  `setValue()` runs with `preventScroll` false, internally calling
+  `#scrollSelectedIntoView()` on whatever it transiently (and usually
+  wrongly — typically the very first row of the very first group in the
+  WHOLE list) re-selected. By the time `restoreDisclosureHighlight`
+  (ModelPicker.svelte:541) notices and corrects `highlightedValue` back to
+  the toggle, the wrong scroll already fired — correcting the highlight
+  after the fact does nothing to undo it. This is why three rounds each
+  fixed one symptom (highlight, then focus) while a further one persisted:
+  the underlying race was never touched, only its most recently-measured
+  side effect.
+
+  Fix: added a third element ref, `commandListEl`
+  (ModelPicker.svelte:108-114), bound to `Command.List`
+  (ModelPicker.svelte:~807). `captureScrollState()`
+  (ModelPicker.svelte:~596-620) reads the list's `scrollTop`/`scrollHeight`/
+  `clientHeight` immediately BEFORE each toggle callback flips its boolean
+  (`toggleUnverifiedDisclosure`/`toggleNoToolsDisclosure`,
+  ModelPicker.svelte:~622-631), and `restoreDisclosureHighlight`'s existing
+  per-tick loop (ModelPicker.svelte:592-599) — the same loop that already
+  reasserts `highlightedValue` every tick to outrun bits-ui's async
+  reselect — now ALSO reasserts the list's scroll position every tick, for
+  the identical reason: the disturbance can land on any of several ticks,
+  so the correction has to keep re-applying, not check once.
+
+  Chose "restore the captured value" over `scrollIntoView`-ing the toggle
+  (the reviewer's other suggested framing), after live-testing both — full
+  reasoning and the derivation of the one refinement it needed is in
+  ModelPicker.svelte:488-540's doc comment. Short version: restoring the
+  literal old `scrollTop` is correct whenever nothing above the toggle
+  changed size, which is the ordinary case (expand/collapse only touches
+  rows AFTER the toggle). But live-testing the reviewer's own exact repro —
+  scrolled to the TRUE bottom already (`scrollHeight - scrollTop ===
+  clientHeight` exactly) — surfaced a case neither of the reviewer's two
+  framings states outright: "scrollTop literally unchanged" and "the
+  revealed row is visible" are mathematically incompatible there, not just
+  two independent asks. Measured live: holding `scrollTop` fixed while
+  `scrollHeight` grows necessarily pushes the new content below the old
+  bottom edge (`revealedRowInView: false`, confirmed before the fix). Added
+  a `priorWasAtBottom` flag (`captureScrollState()`,
+  ModelPicker.svelte:~596-620) so the restore loop targets
+  `commandListEl.scrollHeight` (browser-clamped to the new max) instead of
+  the frozen number specifically in that case — "if you were already
+  pinned to the bottom, stay pinned as it grows", the same convention chat
+  logs and tailed output use. Collapse needs no separate branch: the
+  clamped-scrollHeight target and the browser's own out-of-range clamping
+  produce the identical destination either way.
+
+  One more refinement surfaced only once real gate scripts ran:
+  `clientHeight > 0` had to gate `wasAtBottom` explicitly
+  (ModelPicker.svelte:~608-620), or the check reads "always at the bottom"
+  on any zero-size/unlaid-out container — exactly what jsdom's tests hit
+  (jsdom has no layout engine; `scrollHeight`/`clientHeight` never leave 0).
+  Caught by the file's own pre-existing jsdom test
+  (`ModelPicker.test.ts:~610`, which sets `scrollTop = 42` and expects it to
+  stay 42): without the guard, the fix "corrected" that literal value back
+  to jsdom's `scrollHeight` (0). Confirmed the fix is real (not
+  jsdom-only-passing) by re-measuring live in Chromium after adding the
+  guard — same three-property-correct result as before.
+
+  **Combined-snapshot verification across all four activation paths** (the
+  reviewer's standing meta-instruction — assert `data-selected`,
+  `document.activeElement`, and real visible-rectangle content TOGETHER, per
+  path, not as four separate isolated checks): full measurements recorded in
+  this card's `## Gates` section above (the
+  `live-chromium-combined-check` entry). Summary: click-expand-from-bottom,
+  keyboard-expand-from-bottom, keyboard-collapse-from-bottom, and
+  click-collapse-not-at-bottom all measured all three properties correct
+  together. Filter auto-expand was deliberately left un-special-cased — a
+  documented decision (ModelPicker.svelte:~416-441) that Command's own
+  default reselect-and-scroll-into-view-on-every-keystroke is the intended,
+  pre-existing combobox behavior for typing, not something inherited from
+  the toggle bug — and measured correct on both properties jsdom can't
+  reach anyway plus the visible-content check live. Popover close/reopen
+  needs no fix: closing genuinely unmounts `[role="listbox"]` (confirmed via
+  accessibility snapshot), so there is nothing left over to disturb on
+  reopen.
+
+  **Test changes in `src/sidepanel/components/ModelPicker.test.ts`**: the
+  reviewer flagged the existing scrollTop test's comment as overclaiming —
+  rewrote it (line ~602) to say precisely what it does and does not prove
+  (a narrow "no stray `scrollTop = 0` write" jsdom guard, NOT proof of the
+  real fix, which is layout-dependent and jsdom cannot express) and renamed
+  the test itself to say so inline. Added a new test asserting
+  `data-selected` and `document.activeElement` together, in one snapshot,
+  immediately after a toggle click — the two-thirds of the combined
+  assertion jsdom CAN express without real layout — with a comment pointing
+  at this board card's journal for the visibility third.
+
+  **Non-blocking FYI for the board, not investigated per the task
+  brief**: the reviewer separately noted the last `main` pipeline (16491,
+  `d28b449`) shows `verify` failing at its 40-minute timeout, green overall
+  only via `allow_failure: true` in `.gitlab-ci.yml`. Unrelated to card 130;
+  flagging for someone's attention, not acted on here.
+
+  **Gates**: `npm test` (81 files, 1340 tests), `npm run check` (0
+  errors/warnings), `npm run guard` (all seven, `biome format --write`
+  needed once on the two touched files), `npm run build`, `npm run verify`
+  (10/10 required + both best-effort) all green. Live Chromium/Playwright
+  verification against local Storybook, killed afterward. Not
+  committing/pushing per the task brief — leaving `column: review` for
+  Jonathan to review the diff and push himself.

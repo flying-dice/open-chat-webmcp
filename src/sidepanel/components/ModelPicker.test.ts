@@ -599,15 +599,30 @@ describe("ModelPicker", () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
-  // Review follow-up: `.focus()` on an element that lives inside (or beside)
-  // a scroll container can itself cause the browser to scroll something into
-  // view. The filter input and the Command root both live OUTSIDE the
-  // scrollable `Command.List`, so restoring focus to either must never move
-  // that list's own scroll position. jsdom has no real layout, so this only
-  // guards the DOM-level fact (the property this component actually touches
-  // is untouched); the genuine measurement — expand, scroll down, click a
-  // toggle, confirm `scrollTop` doesn't reset — is a live Chromium check.
-  it("does not disturb the scrollable list's own scroll position when restoring focus", async () => {
+  // Review fix on card 130 (MR !1, note 12491's re-review): this test's OWN
+  // comment used to claim more than it could prove — "confirm scrollTop
+  // doesn't reset" reads like a regression guard for the real bug, but jsdom
+  // has NO layout engine at all: `scrollHeight`/`clientHeight` are always 0,
+  // `scrollIntoView` is stubbed to a no-op above (jsdom doesn't implement it,
+  // stubbed or not), and `list.scrollTop = 42` followed by reading `42` back
+  // is just jsdom storing and returning a number — nothing here can lay out,
+  // overflow, or scroll, so nothing here can reproduce note 12491's actual
+  // defect (a real, layout-driven `scrollIntoView` call landing on the wrong
+  // element while the highlight silently comes unstuck). A version of this
+  // component that reverted to unconditionally zeroing `scrollTop` on every
+  // toggle would still pass this test only by accident, not because it was
+  // caught — jsdom would just as happily observe `list.scrollTop = 0` here.
+  //
+  // What this test genuinely proves, and no more: `restoreDisclosureHighlight`
+  // does not itself contain a stray `scrollTop = 0` (or similar) write that a
+  // jsdom-visible assertion COULD catch — a narrow but real regression guard,
+  // kept for that reason. It does NOT prove the fix for note 12491's actual
+  // finding (the scrollTop-preserving / stick-to-bottom logic in
+  // `restoreDisclosureHighlight`, ModelPicker.svelte:~540) works. That proof
+  // is a live Chromium measurement, recorded in board card 130's `## Comments`
+  // journal, not a jsdom assertion — see the next test for what jsdom CAN
+  // additionally prove (the highlight/focus half of the combined snapshot).
+  it("does not disturb the scrollable list's own scroll position when restoring focus (narrow jsdom guard only — see comment above)", async () => {
     const user = userEvent.setup();
     const a = provider("a", { name: "Alpha" });
     state.providers = [a];
@@ -640,6 +655,53 @@ describe("ModelPicker", () => {
     await user.click(noToolsToggle);
 
     expect(list.scrollTop).toBe(42);
+  });
+
+  // Review fix on card 130 (MR !1, note 12491's re-review — the reviewer's
+  // standing meta-instruction: "assert all three in one snapshot —
+  // `data-selected`, `document.activeElement`, and what is actually inside
+  // the list's rectangle — across all four activation paths", after three
+  // prior rounds each fixed one property in isolation and broke another).
+  // jsdom can genuinely express two of those three: `data-selected` (a plain
+  // attribute) and `document.activeElement` (a real, spec-compliant jsdom
+  // concept — no layout needed). The third, "what is actually inside the
+  // list's rectangle", is NOT expressible here (see the test above) — jsdom
+  // has no layout, so this test asserts the two it can, together, in one
+  // block, immediately after activation, and says nothing about visibility.
+  // The visibility half of the combined snapshot is the live Chromium
+  // measurement in board card 130's journal, across all four paths (Enter,
+  // click, filter auto-expand, popover close/reopen) — not this test.
+  it("keeps data-selected and document.activeElement correct TOGETHER, in one snapshot, right after a toggle click (visibility half is a live Chromium check — see board card 130's journal)", async () => {
+    const user = userEvent.setup();
+    const a = provider("a", { name: "Alpha" });
+    state.providers = [a];
+    const noToolsNames = Array.from({ length: 9 }, (_, i) => `no-tools-model-${i + 1}`);
+    state.modelsByProvider = {
+      a: loaded(noToolsNames.map((name) => entry(model(name), NO_TOOLS))),
+    };
+
+    render(ModelPicker);
+
+    const noToolsToggle = (
+      await screen.findByText(`${m.providerPicker_noToolSupportHeading()} (${noToolsNames.length})`)
+    ).closest('[role="option"]') as HTMLElement;
+
+    await user.click(noToolsToggle);
+    await waitFor(() => expect(screen.getByText("no-tools-model-1")).toBeInTheDocument());
+
+    // ONE snapshot, both properties, not two separate assertions in two
+    // separate `waitFor`s — that separation is exactly how three prior
+    // rounds each verified one property against a DOM state where the OTHER
+    // had already drifted.
+    expect({
+      selectedValue:
+        noToolsToggle.getAttribute("data-selected") !== null ? noToolsToggle.dataset.value : null,
+      activeElementIsFilterInput:
+        document.activeElement === screen.getByLabelText(m.providerPicker_filterAriaLabel()),
+    }).toEqual({
+      selectedValue: "no-tools-toggle",
+      activeElementIsFilterInput: true,
+    });
   });
 
   // Review fix on card 130 (MR !1, note 12450): `handleListKeydown` used to

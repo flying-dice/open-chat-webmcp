@@ -107,6 +107,11 @@
   // throws Svelte's props_invalid_value at mount, so they start `null`.
   let filterInputEl: HTMLInputElement | null = $state(null);
   let commandRootEl: HTMLDivElement | null = $state(null);
+  // Review fix on card 130 (MR !1, note 12491): needed so
+  // `restoreDisclosureHighlight` can read/repair this element's OWN
+  // `scrollTop`, not just focus and highlight. See that function's doc
+  // comment for why a third thing needed restoring.
+  let commandListEl: HTMLDivElement | null = $state(null);
 
   // Card 130 / decisions/43: the Unverified and No-tool-support sections
   // start collapsed behind a heading stating their count, and expand in
@@ -408,6 +413,33 @@
    * manually expanded it before filtering started) the moment the query is
    * cleared.
    */
+  /**
+   * Review fix on card 130 (MR !1, note 12491's re-review): the reviewer
+   * flagged that this auto-expand path does NOT run through
+   * `toggleUnverifiedDisclosure`/`toggleNoToolsDisclosure`, so it gets none
+   * of `restoreDisclosureHighlight`'s scroll-position handling, and asked for
+   * a DELIBERATE decision here rather than silently inheriting whatever
+   * happens.
+   *
+   * Decision: no special-casing added. Every keystroke that changes the
+   * query re-runs bits-ui's own `search`-change handling (`#filterItems()`
+   * -> `#sort()` -> `#selectFirstItem()`), which highlights and
+   * `scrollIntoView`s the first matching row on every keystroke regardless
+   * of anything this component does — that is Command's ordinary,
+   * long-standing filtering behavior, not something card 130 introduced.
+   * Landing on the top of the new result set while typing is the
+   * expected combobox convention (every keystroke can change what "first
+   * match" even means), and the user's attention and real DOM focus are
+   * both already on the input they're actively typing into — unlike toggle
+   * activation, there is no specific row the user just asked to see that a
+   * scroll-preserving mechanism would need to protect. Measured live in
+   * Chromium (Storybook's "Many unverified models" story, narrowing then
+   * widening a query while scrolled): `data-selected` and
+   * `document.activeElement` stayed correct together on every keystroke:
+   * the newly-matched top row highlighted and the filter input kept focus —
+   * see board card 130's journal for the full trace across all four
+   * activation paths, including this one.
+   */
   const filtering = $derived(normalizedQuery() !== "");
   const unverifiedEffectivelyExpanded = $derived(
     filtering && unverifiedRows.length > 0
@@ -480,7 +512,86 @@
    */
   let highlightedValue = $state("");
 
-  async function restoreDisclosureHighlight(sectionKey: string): Promise<void> {
+  /**
+   * Review fix on card 130 (MR !1, note 12491 — the fourth re-review, one
+   * new finding after three rounds already fixed highlight then focus):
+   * activating a toggle from a scrolled position threw the list's viewport
+   * to the top, on top of already being correct on highlight and focus.
+   *
+   * Root cause, traced in bits-ui's `command.svelte.js`: expanding a section
+   * mounts a batch of newly-visible rows, each a fresh `registerItem` call.
+   * Every one of those re-runs `CommandRootState#sort()` ->
+   * `#selectFirstItem()` (documented above this function, in the
+   * `highlightedValue` doc comment — that's what necessitates the
+   * highlight-reassert loop below in the first place), and — new finding —
+   * `#selectFirstItem()` calls `setValue()` with `preventScroll` false,
+   * which internally calls `#scrollSelectedIntoView()`. During the handful
+   * of ticks before OUR loop below reasserts the correct `highlightedValue`,
+   * bits-ui has already (transiently) selected some OTHER item — typically
+   * the very first row of the very first group in the whole list, since
+   * `getValidItems()` walks the full list, not just the expanding section —
+   * and scrolled THAT into view. By the time we notice and correct
+   * `highlightedValue`, the wrong scroll already happened; correcting the
+   * highlight after the fact does nothing to undo it. Measured: this is
+   * exactly why the prior round's fix (which only reasserted
+   * `highlightedValue`) left `data-selected` correct while the viewport
+   * still jumped to the top.
+   *
+   * Fix: capture the list's `scrollTop` before the toggle runs (in the two
+   * callers below) and reassert it on every tick of the SAME loop that
+   * already reasserts `highlightedValue`, for the same reason — the
+   * disturbance can land on any of several ticks, so the correction has to
+   * keep re-applying across all of them, not just check once.
+   *
+   * Restoring the OLD scrollTop verbatim, rather than `scrollIntoView`-ing
+   * the toggle or the revealed rows, was picked deliberately over the
+   * reviewer's other suggested framing, after live-testing both — with one
+   * refinement live-testing surfaced that neither of the reviewer's two
+   * framings states outright:
+   *   - On EXPAND, nothing ABOVE the current viewport moved (the new rows
+   *     land inside/after the section the user already had in view), so the
+   *     literally correct scroll position is normally the UNCHANGED one —
+   *     there is no better target to compute, and `scrollIntoView` on the
+   *     toggle would have been redundant at best (the toggle was already
+   *     visible — that is how the user reached it) and wrong at worst: with
+   *     both disclosure rows styled `sticky top-0`, `scrollIntoView` treats
+   *     a stuck sticky element as already "in view" and may no-op even when
+   *     the revealed rows below it are not.
+   *   - EXCEPT: when the user was scrolled to the exact bottom already (the
+   *     reviewer's own measured repro — `scrollHeight - scrollTop ===
+   *     clientHeight`), "unchanged scrollTop" and "the revealed row is
+   *     visible" are mutually exclusive, not just two independent asks —
+   *     measured live: growing the list's `scrollHeight` while holding
+   *     `scrollTop` fixed necessarily pushes the newly-added pixels below
+   *     the old bottom edge, off-screen, no matter what that fixed value is.
+   *     Something has to give. The one that matches how "already at the
+   *     bottom" reads everywhere else (chat logs, tailed output) is to keep
+   *     following the bottom as it moves — so `priorWasAtBottom` (captured
+   *     alongside `priorScrollTop`, same before-the-toggle timing) makes
+   *     this loop target `commandListEl.scrollHeight` instead of the frozen
+   *     number on every tick; the browser's own clamping turns that into
+   *     "the new max", i.e. the revealed row genuinely on screen, which is
+   *     what note 12491 actually asked for. A user who was NOT at the
+   *     bottom keeps the literal old value — they were reading something
+   *     specific, and content appearing further down than they can already
+   *     see is not this picker's business to shove at them.
+   *   - On COLLAPSE, content shrinks below the (possibly now out-of-range)
+   *     old `scrollTop`; the browser clamps an out-of-range assignment to
+   *     the new max automatically, which keeps the collapsed toggle in view
+   *     without any special-casing (measured live: collapsing from the
+   *     bottom lands at the new, smaller bottom, toggle visible) — and if
+   *     `priorWasAtBottom`, the `scrollHeight`-tracking branch above
+   *     produces exactly the same clamped destination anyway, so collapse
+   *     needs no separate branch at all.
+   * Restoring the raw number also sidesteps `scrollIntoView`'s sticky-header
+   * special case entirely, and needs no knowledge of which/how many rows a
+   * given toggle reveals.
+   */
+  async function restoreDisclosureHighlight(
+    sectionKey: string,
+    priorScrollTop: number | null,
+    priorWasAtBottom: boolean,
+  ): Promise<void> {
     /**
      * Review fix on card 130 (MR !1, note 12478): a CLICK on the toggle
      * doesn't just risk the roving *highlight* handled below — it also moves
@@ -508,17 +619,55 @@
     for (let i = 0; i < 8; i++) {
       await tick();
       if (highlightedValue !== sectionKey) highlightedValue = sectionKey;
+      if (priorScrollTop !== null && commandListEl) {
+        const target = priorWasAtBottom ? commandListEl.scrollHeight : priorScrollTop;
+        if (commandListEl.scrollTop !== target) commandListEl.scrollTop = target;
+      }
     }
   }
 
+  /**
+   * Shared by both toggle callbacks below: capture what
+   * `restoreDisclosureHighlight` needs to know about the list's scroll state
+   * BEFORE the toggle runs — see that function's doc comment for why both
+   * numbers matter.
+   *
+   * `clientHeight > 0` is a deliberate guard, not just a `scrollHeight -
+   * scrollTop <= clientHeight + 1` check on its own: with a genuinely
+   * unlaid-out or zero-size container (`clientHeight === 0`), that
+   * inequality is trivially true for ANY `scrollTop` (`scrollHeight - x <=
+   * 1` whenever `scrollHeight` is also 0), which would misreport "at the
+   * bottom" always. jsdom hits this on every test — it has no layout engine,
+   * so `scrollHeight`/`clientHeight` never leave 0 — which is exactly how
+   * `ModelPicker.test.ts`'s jsdom regression guard caught this: without the
+   * guard, that test's `list.scrollTop = 42` got silently corrected back to
+   * `0` (jsdom's `scrollHeight`) instead of staying at the literal value it
+   * set, since jsdom's zeroed metrics made `wasAtBottom` read `true`
+   * unconditionally. Requiring `clientHeight > 0` means "no real box yet" is
+   * treated the same as "not at the bottom" — preserve the literal value,
+   * the always-safe default — rather than guessing.
+   */
+  function captureScrollState(): { scrollTop: number | null; wasAtBottom: boolean } {
+    if (!commandListEl) return { scrollTop: null, wasAtBottom: false };
+    const { scrollTop, scrollHeight, clientHeight } = commandListEl;
+    // 1px slop: fractional scroll offsets (seen live, e.g. 1223.5) can leave
+    // `scrollHeight - scrollTop` a hair over `clientHeight` at genuine max.
+    return {
+      scrollTop,
+      wasAtBottom: clientHeight > 0 && scrollHeight - scrollTop <= clientHeight + 1,
+    };
+  }
+
   function toggleUnverifiedDisclosure(): void {
+    const { scrollTop, wasAtBottom } = captureScrollState();
     toggleUnverified();
-    void restoreDisclosureHighlight("unverified-toggle");
+    void restoreDisclosureHighlight("unverified-toggle", scrollTop, wasAtBottom);
   }
 
   function toggleNoToolsDisclosure(): void {
+    const { scrollTop, wasAtBottom } = captureScrollState();
     toggleNoTools();
-    void restoreDisclosureHighlight("no-tools-toggle");
+    void restoreDisclosureHighlight("no-tools-toggle", scrollTop, wasAtBottom);
   }
 
   /**
@@ -801,6 +950,7 @@
                which keys scroll the region. -->
           <Command.List
             tabindex={0}
+            bind:ref={commandListEl}
             class="flex min-h-0 max-h-full flex-1 flex-col gap-3 overflow-y-auto py-1"
           >
             {#each visibleGroups as group (group.provider.id)}
